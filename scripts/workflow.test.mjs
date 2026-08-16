@@ -10,8 +10,19 @@ import {
   deploymentForBranch,
   isPlaceholderDatabaseId,
   parsePort,
+  readWranglerConfig,
   remoteDatabaseFor,
 } from './lib/workflow.mjs';
+
+test('uses the SvelteKit Worker entry point and static asset directory', async () => {
+  const config = await readWranglerConfig();
+
+  assert.equal(config.main, '.svelte-kit/cloudflare/_worker.js');
+  assert.equal(config.assets?.directory, '.svelte-kit/cloudflare');
+  assert.equal(config.pages_build_output_dir, undefined);
+  assert.equal(config.env?.preview?.name, 'diamond-defense-preview');
+  assert.equal(config.env?.production?.name, 'diamond-defense-production');
+});
 
 test('maps only the main and preview branches to Cloudflare environments', () => {
   assert.deepEqual(deploymentForBranch('main'), {

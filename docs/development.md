@@ -15,7 +15,7 @@ This single command performs these operations in order:
 3. Counts users, teams, and situations.
 4. Imports `database/seed.sql` only when all three counts are zero.
 5. Builds the SvelteKit application with the Cloudflare adapter.
-6. Starts `wrangler pages dev` with the same local D1 storage.
+6. Starts `wrangler dev` with the same local D1 storage and Worker entry point.
 7. Prints the browser address.
 
 The default address is:

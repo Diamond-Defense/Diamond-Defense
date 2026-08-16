@@ -1,5 +1,5 @@
 {
-  "name": "diamond-iq",
+  "name": "diamond-defense",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,6 @@
     "dev:local": "node scripts/dev-local.mjs",
     "dev:cloudflare": "npm run dev:local",
     "build": "vite build",
-    "build:github": "BASE_PATH=/diamoniq.github.io vite build",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "preview": "vite preview",
     "pretest": "npm run test:scripts",
@@ -17,7 +16,7 @@
     "test:database": "BASE_URL=http://127.0.0.1:8788 playwright test tests/database-api.spec.js",
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:password-script": "node --test scripts/update-admin-password.test.mjs",
-    "test:live": "BASE_URL=https://smbambling.github.io/diamoniq.github.io/ playwright test tests/app.spec.js",
+    "test:live": "playwright test tests/app.spec.js",
     "test:ui": "playwright test --ui",
     "db:seed:generate": "node scripts/generate-seed-sql.mjs",
     "db:migrate:local": "node scripts/wrangler-command.mjs d1 migrations apply diamond-defense --local --persist-to .wrangler/state",

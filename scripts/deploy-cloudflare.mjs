@@ -7,7 +7,6 @@ import {
   runWrangler,
 } from './lib/process.mjs';
 import {
-  BUILD_OUTPUT,
   PROJECT_ROOT,
   deploymentForBranch,
   isPlaceholderDatabaseId,
@@ -31,7 +30,7 @@ export function parseDeployArguments(argumentsList) {
 }
 
 async function currentBranch() {
-  if (process.env.CF_PAGES_BRANCH) return process.env.CF_PAGES_BRANCH;
+  if (process.env.WORKERS_CI_BRANCH) return process.env.WORKERS_CI_BRANCH;
   const { stdout } = await run('git', ['branch', '--show-current'], {
     cwd: PROJECT_ROOT,
     capture: true,
@@ -49,7 +48,7 @@ export async function main(argumentsList = process.argv.slice(2)) {
   console.log(`Branch: ${deployment.branch}`);
   console.log(`Cloudflare environment: ${deployment.environment}`);
   console.log(`D1 database: ${database.database_name}`);
-  console.log(`Pages project: ${config.name}`);
+  console.log(`Worker: ${config.env?.[deployment.environment]?.name || config.name}`);
 
   if (options.dryRun) {
     console.log('Dry run complete; no tests, migrations, or deployment were run.');
@@ -78,18 +77,9 @@ export async function main(argumentsList = process.argv.slice(2)) {
     ],
     { cwd: PROJECT_ROOT },
   );
-  await runWrangler(
-    [
-      'pages',
-      'deploy',
-      BUILD_OUTPUT,
-      '--project-name',
-      config.name,
-      '--branch',
-      deployment.branch,
-    ],
-    { cwd: PROJECT_ROOT },
-  );
+  await runWrangler(['deploy', '--env', deployment.environment], {
+    cwd: PROJECT_ROOT,
+  });
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';

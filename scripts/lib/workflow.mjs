@@ -6,7 +6,6 @@ import { runWrangler } from './process.mjs';
 export const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const DEVELOPMENT_STATE = resolve(PROJECT_ROOT, '.wrangler/state');
 export const TEST_STATE = resolve(PROJECT_ROOT, '.wrangler/test-state');
-export const BUILD_OUTPUT = resolve(PROJECT_ROOT, '.svelte-kit/cloudflare');
 
 export async function readWranglerConfig() {
   return JSON.parse(
@@ -105,14 +104,12 @@ export async function seedIfEmpty(database, statePath) {
   return { seeded: false, counts };
 }
 
-export async function servePages({ port, statePath }) {
+export async function serveWorker({ port, statePath }) {
   console.log(`Diamond Defense is available at http://localhost:${port}`);
   console.log('Press Ctrl+C to stop the local server.');
   await runWrangler(
     [
-      'pages',
       'dev',
-      BUILD_OUTPUT,
       '--ip',
       '127.0.0.1',
       '--port',

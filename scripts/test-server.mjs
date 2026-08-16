@@ -10,7 +10,7 @@ import {
   parsePort,
   readWranglerConfig,
   seedLocalDatabase,
-  servePages,
+  serveWorker,
 } from './lib/workflow.mjs';
 
 export async function main(argumentsList = process.argv.slice(2)) {
@@ -24,7 +24,7 @@ export async function main(argumentsList = process.argv.slice(2)) {
   await applyLocalMigrations(database, TEST_STATE);
   await seedLocalDatabase(database, TEST_STATE);
   await runNpm(['run', 'build'], { cwd: PROJECT_ROOT });
-  await servePages({ port, statePath: TEST_STATE });
+  await serveWorker({ port, statePath: TEST_STATE });
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : '';

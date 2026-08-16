@@ -29,10 +29,10 @@ Run the complete release verification sequence:
 npm run verify
 ```
 
-To run the browser behavior checks against a deployed Cloudflare Pages URL:
+To run the browser behavior checks against a deployed Cloudflare Worker URL:
 
 ```sh
-npm run test:live
+BASE_URL=https://your-worker.workers.dev npm run test:live
 ```
 
 The live command does not start a local server and does not run the local JSON

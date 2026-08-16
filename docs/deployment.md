@@ -1,18 +1,40 @@
-# Cloudflare deployment
+# Cloudflare Workers deployment
 
-## Branch and database mapping
+## One repository, two isolated Workers
 
-The deployment command recognizes exactly two branches:
+Diamond Defense has one GitHub repository and one application codebase. It uses
+two Cloudflare Worker services so each branch can have its own D1 database and
+deployment history:
 
-| Git branch | Pages environment | D1 database |
-|---|---|---|
-| `preview` | Preview | `diamond-defense-preview` |
-| `main` | Production | `diamond-defense-production` |
+| Git branch | Worker service | Wrangler environment | D1 database |
+|---|---|---|---|
+| `preview` | `diamond-defense-preview` | `preview` | `diamond-defense-preview` |
+| `main` | `diamond-defense-production` | `production` | `diamond-defense-production` |
 
-Any other branch, including a detached checkout, is rejected before testing,
-migration, or deployment.
+The Worker names do not represent separate repositories or separate copies of
+the application. They are environment-specific Cloudflare services created from
+the same source. Keeping them separate prevents preview code, bindings, data,
+and rollbacks from affecting production.
 
-## First-time Cloudflare setup
+Any other Git branch is rejected by the repository deployment wrapper. Feature
+branches can still be tested locally before they are merged into `preview`.
+
+## Worker runtime configuration
+
+`wrangler.jsonc` configures SvelteKit as a Worker with static assets:
+
+```text
+Worker entry point: .svelte-kit/cloudflare/_worker.js
+Static assets:      .svelte-kit/cloudflare
+D1 binding:         DB
+Compatibility:      nodejs_compat
+```
+
+The `env.preview` and `env.production` sections select the matching Worker name
+and D1 binding. D1 bindings are deliberately repeated because Wrangler does not
+inherit non-inheritable bindings into named environments.
+
+## First-time D1 setup
 
 Authenticate and create both D1 databases:
 
@@ -22,81 +44,112 @@ npx wrangler d1 create diamond-defense-preview
 npx wrangler d1 create diamond-defense-production
 ```
 
-Copy the returned UUIDs into the matching `env.preview` and `env.production`
-`database_id` values in `wrangler.jsonc`. The checked-in zero-based UUIDs are
-deliberate placeholders. A real deployment refuses to continue while the
-selected environment still has a placeholder.
+Copy each returned UUID into the matching `env.preview` or `env.production`
+`database_id` value in `wrangler.jsonc`. A real deployment refuses to continue
+while its selected database still has a placeholder UUID.
 
-Create or connect the Cloudflare Pages project named `diamond-defense` and set:
+Apply migrations before the first deployment:
+
+```sh
+npm run db:migrate:preview
+npm run db:migrate:production
+```
+
+Migration commands are repeatable. D1 applies only migrations that have not
+already been recorded.
+
+## Preview Worker Builds configuration
+
+Create or connect the GitHub repository to the Worker named
+`diamond-defense-preview`, then use these settings:
+
+```text
+Production branch: preview
+Root directory: /
+Build command: npm run build
+Deploy command: npx wrangler deploy --env preview
+Non-production branch deploy command: npx wrangler versions upload --env preview
+```
+
+The word “production” in the first setting means the primary branch for this
+particular Worker service. For the preview Worker, that branch is `preview`; it
+does not make the service the real production application.
+
+Use a dedicated Cloudflare API token for this repository. Do not reuse a token
+from an unrelated site. The token must be able to deploy Workers and access the
+account resources referenced by `wrangler.jsonc`. Store it in Cloudflare's build
+configuration, never in the repository.
+
+## Production Worker Builds configuration
+
+After the production D1 UUID is configured and the preview deployment has been
+accepted, connect the same GitHub repository to the Worker named
+`diamond-defense-production`:
 
 ```text
 Production branch: main
-Allowed preview branch: preview
-D1 binding name: DB
+Root directory: /
+Build command: npm run build
+Deploy command: npx wrangler deploy --env production
+Non-production branch deploy command: npx wrangler versions upload --env production
 ```
 
-The Pages preview configuration applies to all preview deployments, so branch
-controls should allow only the `preview` branch for this two-environment model.
+Normally, disable non-production branch builds on the production Worker. The
+`preview` Worker is the controlled place for live pre-production testing.
 
-## Deployment dry run
+## Local validation and direct deployment
 
-Validate branch mapping and configuration without changing Cloudflare:
-
-```sh
-npm run deploy:cloudflare -- --dry-run
-```
-
-An agent may validate a specific branch without checking it out:
+Validate branch mapping without changing Cloudflare:
 
 ```sh
 npm run deploy:cloudflare -- --branch preview --dry-run
 npm run deploy:cloudflare -- --branch main --dry-run
 ```
 
-## Real deployment
-
-From `preview` or `main`, run:
+From `preview` or `main`, a reviewed direct deployment can be run with:
 
 ```sh
 npm run deploy:cloudflare
 ```
 
-The command:
+The wrapper:
 
-1. Resolves the branch to the preview or production environment.
+1. Maps the current branch to its Wrangler environment.
 2. Validates the environment-specific D1 binding and UUID.
 3. Runs `npm run verify` against isolated local test D1.
 4. Applies only pending migrations to the selected remote D1 database.
-5. Uploads `.svelte-kit/cloudflare` to the matching Pages branch.
+5. Deploys the SvelteKit Worker with `wrangler deploy --env ...`.
 
 It never imports seed data and never resets a remote database.
 
-The deployment wrapper disables local Wrangler disk logs by default. This does
-not change Cloudflare runtime logging or deployed application behavior; it only
-prevents transient build-agent diagnostics from accumulating on disk. Set
-`WRANGLER_LOG_PATH` or `WRANGLER_WRITE_LOGS` explicitly when a deployment needs
-additional local CLI diagnostics.
-
-For a non-interactive build agent, provide `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID` through its secret store. Do not place credentials in
-the repository or command line.
-
-The script performs a direct Wrangler upload. If Cloudflare Git integration is
-also enabled, disable automatic deployments or choose Git-triggered deployment
-instead; using both would create duplicate builds.
+When Cloudflare Git integration is enabled, routine releases should be Git
+triggered. Do not also run the direct deployment command for the same commit,
+because that would create a duplicate deployment.
 
 ## Release sequence
 
-Test each migration on the `preview` database first. After the preview build is
-accepted, merge the same migration and application code into `main`. Do not
-manually copy preview data into production.
-
-If a migration succeeds but Pages upload fails, the previous app remains live
-against the migrated schema. This is why released migrations must be backward
-compatible. Correct problems with a new migration and deployment.
-
-## Initial data
+1. Add backward-compatible application and migration changes on a feature branch.
+2. Apply and verify its pending migrations against preview.
+3. Merge the accepted commit into `preview` and let the preview Worker deploy.
+4. Test the preview Worker and D1 data path.
+5. Apply the same accepted migrations against production.
+6. Merge the accepted commit into `main` and let the production Worker deploy.
 
 Remote migrations create schema but not operational accounts or teams. Initial
-preview/production data setup is a separate reviewed operation. Never deploy the
-checked-in demo passwords to a public production application.
+data setup is a separate reviewed administration operation. Never deploy the
+checked-in demonstration passwords to a public environment.
+
+If a migration succeeds but Worker deployment fails, the previous Worker
+version remains active against the migrated schema. Released migrations must
+therefore be backward compatible; correct issues with a new migration and
+deployment rather than rewriting an applied migration.
+
+## Wrangler diagnostics
+
+The deployment wrapper disables local Wrangler disk logs by default. This does
+not change Cloudflare runtime logging. Set `WRANGLER_LOG_PATH` or
+`WRANGLER_WRITE_LOGS` explicitly when local CLI diagnostics are needed.
+
+For non-interactive agents, provide `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID` through the agent's secret store. Never place
+credentials in the repository or a checked-in command.
