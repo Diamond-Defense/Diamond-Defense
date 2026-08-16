@@ -1343,6 +1343,10 @@ async function tryUnlock(){
   const valid = (typeof authenticateStaff === 'function')
     ? await authenticateStaff('coach', pwInput.value)
     : pwInput.value===CALIB_PASSWORD;
+  if(valid === null){
+    pwMsg.textContent='Login service is temporarily unavailable. Please try again.';
+    return;
+  }
   if(valid){
     closePwModal();
     setCoachMode(true);

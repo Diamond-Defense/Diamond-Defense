@@ -545,6 +545,31 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(mobileDrawer.width).toBeLessThanOrEqual(370);
   });
 
+  test('login service failures do not masquerade as a database outage', async ({ page }) => {
+    await openCleanApp(page);
+    await page.route('**/api/auth/login', async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'Internal Error' }),
+      });
+    });
+
+    await page.locator('.tools-menu summary').click();
+    await page.getByRole('button', { name: 'Coach Tools' }).click();
+    await page.locator('#pwInput').fill('coach');
+    await page.getByRole('button', { name: 'Unlock' }).click();
+
+    await expect(page.locator('#pwMsg')).toHaveText(
+      'Login service is temporarily unavailable. Please try again.',
+    );
+    await expect(page.locator('#databaseUnavailable')).toHaveCount(0);
+    await expect(page.locator('html')).not.toHaveAttribute(
+      'data-diq-database',
+      'unavailable',
+    );
+  });
+
   test('admin team edits use record-level APIs and preserve stable IDs', async ({ page }) => {
     await openCleanApp(page);
     await page.locator('.tools-menu summary').click();

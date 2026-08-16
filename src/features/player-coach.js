@@ -55,6 +55,11 @@ function reportDatabaseWriteError(context, error){
   else if(typeof toast === 'function') toast(error.message || `${context} failed.`);
 }
 
+function reportAuthenticationError(context, error){
+  console.error(`[Authentication] ${context}:`, error);
+  return 'Login service is temporarily unavailable. Please try again.';
+}
+
 async function authenticateStaff(role, password){
   try{
     const result = await diqApiRequest('auth/login', {
@@ -66,8 +71,8 @@ async function authenticateStaff(role, password){
     return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === role);
   }catch(error){
     if(error && error.status === 401) return false;
-    reportDatabaseWriteError('Staff login failed', error);
-    return false;
+    reportAuthenticationError('Staff login failed', error);
+    return null;
   }
 }
 
@@ -1542,8 +1547,10 @@ function updatePlayerHeaderButton(){
       DIQ_AUTH_USER = result && result.user ? result.user : null;
       window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
     }catch(error){
-      if(!error || error.status !== 401) reportDatabaseWriteError('Player login failed', error);
-      return alert(error && error.status === 401 ? 'Incorrect password.' : (error?.message || 'Unable to login.'));
+      const message = error && error.status === 401
+        ? 'Incorrect password.'
+        : reportAuthenticationError('Player login failed', error);
+      return alert(message);
     }
 
     // Keep a UI projection of the authenticated database user for this page.
@@ -3827,6 +3834,10 @@ wireSeqBuilderOnce();
   async function tryUnlockAdmin(){
     if (!adminPwInput) return;
     const valid = await authenticateStaff('admin', adminPwInput.value);
+    if (valid === null){
+      adminPwMsg.textContent = 'Login service is temporarily unavailable. Please try again.';
+      return;
+    }
     if (valid){
       closeAdminPwModal();
       setAdminMode(true);

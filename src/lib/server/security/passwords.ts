@@ -1,14 +1,17 @@
-const encoder = new TextEncoder();
+import { Buffer } from 'node:buffer';
+import { pbkdf2, randomBytes, timingSafeEqual } from 'node:crypto';
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
-
-function base64ToBytes(value: string): Uint8Array {
-  const binary = atob(value);
-  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+function derivePasswordBytes(
+  password: string,
+  salt: Buffer,
+  iterations: number,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    pbkdf2(password, salt, iterations, 32, 'sha256', (error, derivedKey) => {
+      if (error) reject(error);
+      else resolve(derivedKey);
+    });
+  });
 }
 
 export async function derivePasswordHash(
@@ -16,32 +19,19 @@ export async function derivePasswordHash(
   saltBase64: string,
   iterations: number,
 ): Promise<string> {
-  const key = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
+  const derivedKey = await derivePasswordBytes(
+    password,
+    Buffer.from(saltBase64, 'base64'),
+    iterations,
   );
-  const bits = await crypto.subtle.deriveBits(
-    {
-      name: 'PBKDF2',
-      hash: 'SHA-256',
-      salt: base64ToBytes(saltBase64).buffer as ArrayBuffer,
-      iterations,
-    },
-    key,
-    256,
-  );
-  return bytesToBase64(new Uint8Array(bits));
+  return derivedKey.toString('base64');
 }
 
 export async function createPasswordHash(
   password: string,
   iterations = 120000,
 ): Promise<{ hash: string; salt: string; iterations: number }> {
-  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
-  const salt = bytesToBase64(saltBytes);
+  const salt = randomBytes(16).toString('base64');
   return {
     hash: await derivePasswordHash(password, salt, iterations),
     salt,
@@ -55,14 +45,10 @@ export async function verifyPassword(
   salt: string,
   iterations: number,
 ): Promise<boolean> {
-  const actual = base64ToBytes(
+  const actual = Buffer.from(
     await derivePasswordHash(password, salt, iterations),
+    'base64',
   );
-  const expected = base64ToBytes(expectedHash);
-  if (actual.length !== expected.length) return false;
-  let difference = 0;
-  for (let index = 0; index < actual.length; index += 1) {
-    difference |= actual[index] ^ expected[index];
-  }
-  return difference === 0;
+  const expected = Buffer.from(expectedHash, 'base64');
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
