@@ -1,0 +1,527 @@
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Diamond Defense — Baseball Situation Simulator</title>
+<link rel="stylesheet" href="./src/styles/app.css">
+
+</head>
+<body>
+<!--
+  Diamond IQ patch anchors
+  - HTML anchors: @diq:begin [H_*] ... @diq:end [H_*]
+  - JS anchors:   @diq:begin [A*] ... @diq:end [A*]
+  Keep these markers intact to enable reliable copy/paste patching.
+-->
+
+<header><h1>Diamond Defense</h1>
+
+  <!-- @diq:begin [H_PLAYER_BTN] Player Login button -->
+      <button id="playerBtn" class="btn-small btn-green" title="View Player Info" aria-pressed="true">Player Info</button>
+  <!-- @diq:end [H_PLAYER_BTN] -->
+
+  
+
+  
+
+  <div class="header-actions">
+    <!-- @diq:begin control:startBtn -->
+
+    <!-- @diq:end control:startBtn -->
+    <!-- @diq:begin control:checkBtn -->
+
+    <!-- @diq:end control:checkBtn -->
+    <!-- @diq:begin control:continueBtn -->
+
+  <button id="randomSitBtn" class="btn-slate btn-small" title="Pick a random situation">Random</button><select id="sitSelect" aria-label="Situation" data-testid="sit-select"><option value="BD-01">Situation #1</option><option value="BD-02">Situation #2</option><option value="BD-03">Situation #3</option><option value="BD-04">Situation #4</option><option value="BD-05">Situation #5</option><option value="BD-06">Situation #6</option><option value="BD-07">Situation #7</option><option value="BD-08">Situation #8</option><option value="BD-09">Situation #9</option><option value="BD-10-1">Situation #10-1</option><option value="BD-10-2">Situation #10-2</option><option value="BD-10-3">Situation #10-3</option><option value="BD-11">Situation #11</option><option value="BD-12">Situation #12</option><option value="BD-13">Situation #13</option><option value="BD-14">Situation #14</option><option value="BD-15">Situation #15</option><option value="BD-16">Situation #16</option><option value="BD-17">Situation #17</option><option value="BD-18">Situation #18</option><option value="BD-19">Situation #19</option><option value="BD-20">Situation #20</option></select><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
+    <span class="status-label">Outs</span><b><span id="outsVal">0</span></b>
+  </span><button id="startBtn" class="btn-green">Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
+    <span id="scoreBadge" class="badge badge-score score-red" data-testid="score-badge"><span class="status-label">Score</span><b><span id="scoreVal">0</span>/9</b></span>
+    <span id="triesBadge" class="badge badge-tries tries-green"><span class="status-label">Tries</span><b><span id="triesVal">3/3</span></b></span>
+    <span id="timerBadge" class="badge badge-timer" title="Time left in this phase">
+      <span class="status-label">Time</span><b>⏱ <span id="timerVal">60</span>s</b>
+    </span>
+  </div><button id="coachBtn" class="btn-slate">Coach Tools</button></div>
+
+    <button id="adminBtn" class="btn-slate">Admin</button>
+    <!-- @diq:end control:continueBtn -->
+</header>
+
+<main class="app">
+  <section id="contextBar" class="context-bar" aria-live="polite">
+    <!-- Selected target notes and sequence feedback appear here contextually. -->
+    <div id="targetPanel" class="card hidden">
+      <strong id="targetPanelTitle">Position Notes</strong>
+      <div id="targetPanelBody" style="margin-top:6px; font-size:13px; line-height:1.45"></div>
+    </div>
+    <div id="seqPanel" class="card hidden">
+      <strong>Play Review</strong>
+      <div id="seqBody" aria-live="polite" style="margin-top:6px; font-size:13px; line-height:1.45"></div>
+    </div>
+    <button id="contextBarClose" class="context-bar-close" type="button" aria-label="Close notes and review">×</button>
+  </section>
+  <section class="card field-card">
+    <div id="wrap">
+      <img id="fieldImg" alt="Diamond Defense baseball strategy field">
+      <div id="fieldNotice" class="field-notice hidden" role="status" aria-live="polite"></div>
+      <!-- visual-only layers kept for z-ordering -->
+      <div id="targetsLayer" class="overlay"></div>
+      <div id="ballLayer" class="overlay"><svg viewBox="0 0 1136.953125 942.53125"></svg></div>
+      <!-- chips, rings, and hit marker are appended directly to #wrap -->
+    <div class="ball locked" style="display: none; width: 15px; height: 15px; box-shadow: rgb(0, 0, 0) 0px 0px 0px 1px, rgba(0, 0, 0, 0.35) 0px 1px 1px; left: 265.289063px; top: 350.180489px; z-index: 10;"></div><div class="chip Battery locked" style="left: 568.476563px; top: 618.12162px;">P</div><div class="chip Battery locked" style="left: 569.613516px; top: 813.676958px;">C</div><div class="chip Infield locked" style="left: 727.271016px; top: 540.809045px;">1B</div><div class="chip Infield locked" style="left: 695.815313px; top: 439.620527px;">2B</div><div class="chip Infield locked" style="left: 435.453047px; top: 438.104594px;">SS</div><div class="chip Infield locked" style="left: 409.303125px; top: 534.745313px;">3B</div><div class="chip Outfield locked" style="left: 280.448438px; top: 277.036728px;">LF</div><div class="chip Outfield locked" style="left: 578.709141px; top: 132.644124px;">CF</div><div class="chip Outfield locked" style="left: 859.536562px; top: 274.004863px;">RF</div><div class="tgt locked" data-id="P" style="left: 646.168359px; top: 574.159567px; width: 73px; height: 73px; display: none;"><span class="tgt-label">P</span></div><div class="tgt locked" data-id="C" style="left: 757.589766px; top: 706.424708px; width: 74px; height: 74px; display: none;"><span class="tgt-label">C</span></div><div class="tgt locked" data-id="1B" style="left: 733.334766px; top: 602.204325px; width: 65px; height: 65px; display: none;"><span class="tgt-label">1B</span></div><div class="tgt locked" data-id="2B" style="left: 568.855547px; top: 441.515443px; width: 65px; height: 65px; display: none;"><span class="tgt-label">2B</span></div><div class="tgt locked" data-id="SS" style="left: 422.567578px; top: 395.279491px; width: 65px; height: 65px; display: none;"><span class="tgt-label">SS</span></div><div class="tgt locked" data-id="3B" style="left: 408.166172px; top: 602.583308px; width: 65px; height: 65px; display: none;"><span class="tgt-label">3B</span></div><div class="tgt locked" data-id="LF" style="left: 266.047031px; top: 349.801505px; width: 65px; height: 65px; display: none;"><span class="tgt-label">LF</span></div><div class="tgt locked" data-id="CF" style="left: 305.840391px; top: 190.628556px; width: 80px; height: 80px; display: none;"><span class="tgt-label">CF</span></div><div class="tgt locked" data-id="RF" style="left: 747.736172px; top: 382.394062px; width: 80px; height: 80px; display: none;"><span class="tgt-label">RF</span></div></div>
+  </section>
+
+  <aside class="sideCol" id="playbookRail">
+    <div class="playbook-rail">
+      <div class="playbook-rail-heading">
+        <div>
+          <span class="eyebrow">Help &amp; coaching</span>
+          <strong>Guide</strong>
+        </div>
+        <button id="playbookClose" class="playbook-close" type="button" aria-label="Close Guide">×</button>
+      </div>
+    <div class="card" id="howToCard">
+      <details id="howToDetails" open>
+        <summary>
+          <strong>How to play</strong>
+          <span class="htp-caret" aria-hidden="true">▸</span>
+        </summary>
+
+        <div class="howto-body">
+  <ol style="margin:6px 0 0 1.2em">
+    <li>Select a situation from the dropdown (or click <em>Random</em>).</li>
+    <li>Review the Description, Runners, and Outs shown in the header.</li>
+    <li>Press <em>Start Situation</em> to begin</li>
+    <li>Drag the 9 player chips into the correct defensive positions.</li>
+    <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
+  </ol>
+  <div class="hint" style="margin-top:8px">
+    Note: Correct chips will display within a highlighted target ring
+  </div>
+</div>
+      </details>
+    </div>
+
+    </div>
+
+    <!-- Coach Tools (hidden until unlocked) -->
+    
+    <div id="playerSidebarCard" class="card hidden">
+      <div class="cardTitleRow">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div class="cardTitle" style="margin:0">Player</div>
+          <span id="playerSidebarStatus" class="tag">logged in</span>
+        </div>
+        <button id="playerSidebarCloseBtn" class="btn btn-ghost" type="button">Close</button>
+      </div>
+      <div id="playerSidebarMount">
+        <div class="subsec">
+          <div class="sectionTitle">Player Login</div>
+          <div class="rowGrid playerLoginGrid">
+            <label class="field">
+              <span>Team</span>
+              <select id="playerTeamSelect" class="select"><option value="">— Select team —</option><option value="13u-black">13U Black</option><option value="13u-orange">13U Orange</option></select>
+            </label>
+
+            <label class="field">
+              <span>Player</span>
+              <select id="playerNameSelect" class="select"><option value="">— Select player —</option><option value="13u-black-bob-smith-11">#11 Bob Smith</option><option value="13u-black-john-smith-12">#12 John Smith</option><option value="13u-black-kevin-smith-22">#22 Kevin Smith</option></select>
+            </label>
+          </div>
+
+          <label class="field" style="margin-top:10px;">
+            <span>Password</span>
+            <input id="playerPass" class="input" type="password" autocomplete="current-password" placeholder="Password">
+          </label>
+
+          <div class="rowGrid" style="margin-top:10px;">
+            <div class="pill" id="playerLoginStatus" style="justify-self:start;">Logged in: 13U Black • #12 John Smith</div>
+            <div style="justify-self:end; display:flex; gap:10px; flex-wrap:wrap;">
+              <button id="playerLoginBtn" class="btn btn-brand" type="button" style="display: none;">Login</button>
+              <button id="playerLogoutBtn" class="btn btn-ghost" type="button" style="display: inline-flex;">Logout</button>
+            </div>
+          </div>
+
+          <div id="playerIdLine" class="muted" style="margin-top: 8px; display: block;">
+            Player ID: <span id="playerIdText" style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">13u-black-john-smith-12</span>
+          </div>
+        </div>
+
+        <div class="subsec" style="margin-top:14px;">
+          <div class="sectionTitle">Results</div>
+          <div class="muted" style="margin-bottom:8px;">
+            Share sends a quick coach-friendly report to your coach’s email (configured for your team).
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button id="playerShareResultsBtn" class="btn btn-brand" type="button">Share my results</button>
+            <button id="playerCopyReviewCodeBtn" class="btn btn-white w-full">Copy Coach Review Code</button>
+</div>
+          <div class="muted" id="playerShareHint" style="margin-top:8px;">Coach email: coach@example.com</div>
+        </div>
+      </div>
+    </div>
+
+<div id="coachCard" class="card hidden">
+      <div class="coachGrid">
+  <div class="row">
+    <strong>Coach Tools</strong>
+    <span id="coachStatus" class="mono" style="color:#64748b">locked</span>
+    <span class="hint"> (drag chips, targets &amp; hit marker while unlocked)</span>
+  
+    <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+      <button id="coachCollapseAllBtn" class="btn-slate" type="button" title="Collapse sections">Collapse all</button>
+      <button id="coachExpandAllBtn" class="btn-slate" type="button" title="Expand sections">Expand all</button>
+      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
+    </span>
+</div>
+
+  <div class="subsec diq-collapsible diq-collapsed" id="coachReviewSubsec" style="margin-top:14px;" data-diq-collapsible="1">
+        <div class="title">Coach Review<span class="diq-chevron">▾</span></div>
+
+        
+      <div class="diq-body"><div class="muted" style="margin-bottom:10px;">
+          Paste a Coach Review Code from a player email to view a clean table + Phase 2 playback.
+        </div><div class="grid" style="gap:10px;">
+          <label class="field">
+            <span>Coach Review Code</span>
+            <textarea id="coachReviewInput" class="textarea mono" rows="5" placeholder="DIQ1:..."></textarea>
+          </label>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button id="coachReviewLoadBtn" class="btn btn-brand" type="button">Load Review</button>
+            <button id="coachReviewClearBtn" class="btn btn-ghost" type="button">Clear</button>
+          </div>
+
+          <div id="coachReviewMini" class="card" style="padding:10px; background:#fafafa; border:1px solid #e5e7eb; border-radius:12px; display:none;">
+            <div class="tiny muted" style="margin-bottom:6px;">Loaded review</div>
+            <div id="coachReviewMiniText" style="font-size:13px; line-height:1.35;"></div>
+            <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
+              <button id="coachReviewOpenBtn" class="btn btn-brand" type="button">Open Report</button>
+              <button id="coachReviewCopyCodeBtn" class="btn btn-ghost" type="button">Copy Code</button>
+            </div>
+          </div>
+<div id="coachReviewOutput"></div>
+          <div id="coachReviewPlayback"></div>
+        </div></div></div>
+
+    <div class="subsec diq-collapsible diq-collapsed" id="teamsSubsec" style="margin-top:14px;" data-diq-collapsible="1">
+        <div class="title">Teams<span class="diq-chevron">▾</span></div>
+
+      <div class="diq-body">
+        <div style="display:flex; flex-direction:column; gap:10px; max-width:460px;">
+          <label class="field" style="display:flex; flex-direction:column; gap:4px;">
+            <span style="font-size:12px; font-weight:700; color:#64748b; line-height:1.1;">Team</span>
+            <select id="coachTeamSelect" class="select"></select>
+          </label>
+
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <button id="teamsCsvTemplateBtn" class="btn btn-white">Download Template</button>
+            <button id="teamsCsvSelectedBtn" class="btn btn-white" type="button">Download Selected Team</button>
+          </div>
+        </div>
+</div>
+      </div>
+    </div>
+
+<div class="subsec diq-collapsible diq-collapsed" id="situationBuilderSubsec" data-diq-collapsible="1">
+    <div class="title">Situation Builder<span class="diq-chevron">▾</span></div>
+
+    
+
+  
+
+
+
+      
+
+
+
+  <div class="diq-body"><div class="row">
+      <button id="newSituationBtn" class="btn-slate">➕ New Situation</button>
+      <button id="deleteSituationBtn" class="btn-slate" title="Delete current situation" style="color:#ef4444;border-color:#fecaca">🗑️ Delete Situation</button>
+      <button id="saveSituationBtn" class="btn-slate">🔄 Refresh Situation</button>
+    
+      <button id="downloadCurrentBtn" class="btn-slate" type="button">⬇️ Download Situation</button>
+    </div><div class="row">
+      <label class="hint">Title:</label>
+      <input id="newTitleInput" type="text" style="flex:1;min-width:120px">
+    </div><div class="row">
+      <label class="hint">Description:</label>
+      <input id="newDescInput" type="text" style="flex:2;min-width:200px">
+    </div><div class="row">
+      <label class="hint">Outs:</label>
+      <select id="outsSelSituation">
+        <option value="0">0 outs</option>
+        <option value="1">1 out</option>
+        <option value="2">2 outs</option>
+      </select>
+    </div>
+    <div class="subsec diq-collapsible diq-collapsed" id="sbRunnersSubsec" data-diq-collapsible="1">
+          <div class="title">Runners on Base<span class="diq-chevron">▾</span></div>
+
+        <div class="diq-body"><span class="hint" style="margin-left:auto">Updates HUD instantly</span><div class="row" id="runnersRow">
+            <label class="hint">Select base runners:</label>
+            <label><input id="run1B" type="checkbox"> 1B</label>
+            <label><input id="run2B" type="checkbox"> 2B</label>
+            <label><input id="run3B" type="checkbox"> 3B</label>
+          </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbTargetsSubsec" data-diq-collapsible="1">
+          <div class="title">Targets &amp; Tolerance<span class="diq-chevron">▾</span></div>
+          
+
+          
+        <div class="diq-body">
+<div class="row" style="gap:10px; align-items:center; margin-top:6px">
+            <button id="resetStartsBtn" class="btn-slate" title="Reset player chips to default locations">↺ Reset Player Starts</button>
+      <button id="sbUndoBtn" class="btn-slate" type="button" title="Undo last edit" disabled>↩ Undo</button>
+      <button id="sbRedoBtn" class="btn-slate" type="button" title="Redo" disabled>↪ Redo</button>
+      <span id="situationMsg" class="hint" style="margin-left:auto"></span>
+          </div>
+<div class="row" style="flex-direction:column; align-items:stretch; gap:8px">
+            <div class="row">
+              <label class="hint">Target:</label>
+              <select id="tolTargetSel"><option value="P">P</option><option value="C">C</option><option value="1B">1B</option><option value="2B">2B</option><option value="SS">SS</option><option value="3B">3B</option><option value="LF">LF</option><option value="CF">CF</option><option value="RF">RF</option></select>
+            </div>
+            <div class="row">
+              <label class="hint">Tolerance:</label>
+              <input id="tolNum" type="number" min="5" max="400" step="1" value="69">
+              <input id="tolRange" type="range" min="5" max="400" step="1" value="69" style="flex:1">
+            </div>
+          </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px">
+            <label class="hint" style="font-weight:800">Target Note <span style="font-weight:600; opacity:.8">(optional)</span></label>
+            <textarea id="tolNotes" rows="3" placeholder="Enter coaching notes for this target…" style="width:100%; min-height:72px; resize:vertical"></textarea>
+</div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbBallHitSubsec" data-diq-collapsible="1">
+          <div class="title">Ball Hit<span class="diq-chevron">▾</span></div>
+
+          
+        <div class="diq-body"><div class="hint">Drag the marker to set the ball’s landing spot and set batter advance for this situation.</div><button id="testHitBtn" class="btn-green" style="margin-left:auto;padding:4px 8px;font-size:12px;line-height:1.2">▶ Test</button><div class="row">
+            <label class="hint">Hit type:</label>
+            <select id="hitTypeSel">
+              <option value="line">Line drive</option>
+              <option value="popup">Pop up</option>
+              <option value="grounder">Grounder</option>
+            </select>
+            <select id="advanceSel" title="Batter bases to advance (0–3)">
+              <option value="0">0 (Out)</option>
+              <option value="1">1 (Single)</option>
+              <option value="2">2 (Double)</option>
+              <option value="3">3 (Triple)</option>
+            </select>
+          </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="seqSubsec" data-diq-collapsible="1">
+          <div class="title">Play Sequence<span class="diq-chevron">▾</span></div>
+
+
+          <!-- Click-to-add grid -->
+
+          <!-- Sequence list (draggable items) -->
+
+          <!-- Toolbar: templates / clear -->
+
+          <!-- Optional overall coach note (keeps the same id you already use) -->
+          
+        <div class="diq-body"><span class="hint" style="color:#dc2626">Leave the sequence empty to disable Phase 2 for this situation.</span><div class="hint">Click positions below to add; drag items to reorder; remove with the ❌ button.</div><div id="seqPosGrid" class="pos-grid" style="margin-top:6px"><button type="button" class="pos-btn" data-group="Battery">P</button><button type="button" class="pos-btn" data-group="Battery">C</button><button type="button" class="pos-btn" data-group="Infield">1B</button><button type="button" class="pos-btn" data-group="Infield">2B</button><button type="button" class="pos-btn" data-group="Infield">SS</button><button type="button" class="pos-btn" data-group="Infield">3B</button><button type="button" class="pos-btn" data-group="Outfield">LF</button><button type="button" class="pos-btn" data-group="Outfield">CF</button><button type="button" class="pos-btn" data-group="Outfield">RF</button></div><div id="seqList" class="seq-list" aria-live="polite"><div class="seq-item" draggable="true" data-index="0"><div class="seq-num">1</div><div class="seq-tag">LF</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="1"><div class="seq-num">2</div><div class="seq-tag">SS</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="2"><div class="seq-num">3</div><div class="seq-tag">2B</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div></div><div class="seq-toolbar">
+            <select id="seqTemplateSel" title="Load a common relay">
+              <option value="">Template…</option>
+              <option value="LF,SS,2B,C">LF → SS → 2B → C (relay home)</option>
+              <option value="CF,SS,3B">CF → SS → 3B (hold runner)</option>
+              <option value="RF,1B">RF → 1B (hold at first)</option>
+              <option value="SS,2B,1B">SS → 2B → 1B (6-4-3 DP)</option>
+            </select>
+            <button id="seqClearBtn" class="btn-slate btn-small">Clear sequence</button>
+            <span class="hint">Total steps: <b id="seqCountHud">3</b></span>
+          </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px; margin-top:6px">
+            <textarea id="seqNoteInput" rows="3" placeholder="Optional coach note shown to players on the Play Sequence card…" class="mono" style="width:100%"></textarea>
+          </div></div></div></div></div>
+
+      </div>
+
+
+    </div>
+
+  <div id="adminCard" class="card hidden">
+  <div class="coachGrid">
+    <div class="row">
+      <strong>Admin</strong>
+      <span id="adminStatus" class="mono" style="color:#64748b">locked</span>
+      <span class="hint"> (admin-only tools)</span>
+    </div>
+
+    <div class="row" style="justify-content:flex-end; gap:8px; margin-top:6px">
+      <button id="adminCollapseAllBtn" class="btn-slate" type="button">Collapse all</button>
+      <button id="adminExpandAllBtn" class="btn-slate" type="button">Expand all</button>
+      <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
+    </div>
+
+
+
+    <!-- TEAMS (Admin) -->
+    <div class="subsec admin-subsec" id="adminTeamsSubsec" data-admin-collapsible="1" data-admin-open="1" style="margin-top:14px;">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="sectionTitle" style="margin:0">TEAMS</div>
+        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
+      </div>
+
+      <div class="adminSubsecBody" style="margin-top:10px">
+        <div class="muted" style="margin-bottom:10px;">
+          Manage teams & rosters. Export <code>teams.json</code> and place it next to <code>index.html</code> and <code>situations.json</code>.
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+          <button id="adminTeamsDownloadBtn" class="btn btn-ghost" type="button">Download teams.json</button>
+          <button id="adminTeamsCopyBtn" class="btn btn-ghost" type="button">Copy teams.json</button>
+          <button id="adminTeamsImportBtn" class="btn btn-ghost" type="button">Import teams JSON</button>
+          <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Clear locally saved teams (does not affect teams.json on disk)">Clear local teams</button>
+        </div>
+        <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" style="margin-bottom:10px;">
+          <div class="mt-2 flex flex-wrap gap-2">
+            <input id="adminTeamsCsvFile" type="file" accept=".csv,.tsv,.txt,.xlsx" class="hidden">
+            <button id="adminTeamsCsvUploadBtn" class="btn btn-white" type="button">Upload CSV</button>
+            <button id="adminTeamsCsvTemplateBtn" class="btn btn-white" type="button">Download Template</button>
+            <button id="adminTeamsCsvSelectedBtn" class="btn btn-white" type="button">Download Selected Team</button>
+          </div>
+        </div>
+
+
+        <div class="rowGrid">
+          <label class="field">
+            <span>Team</span>
+            <select id="adminTeamSelect" class="select"></select>
+          </label>
+
+          <label class="field">
+            <span>Team Name</span>
+            <input id="adminTeamName" class="input" type="text" placeholder="e.g., 13U Black"/>
+          </label>
+
+          <label class="field">
+            <span>Coach Email</span>
+            <input id="adminTeamEmail" class="input" type="email" placeholder="coach@example.com"/>
+          </label>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add Team</button>
+          <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Update Team</button>
+          <button id="adminTeamRemoveBtn" class="btn btn-ghost" type="button">Remove Team</button>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="sectionTitle">Roster</div>
+        <div class="rowGrid">
+          <label class="field">
+            <span>Player</span>
+            <select id="adminRosterSelect" class="select" disabled></select>
+          </label>
+
+          <label class="field">
+            <span>Player Name</span>
+            <input id="adminPlayerName" class="input" type="text" placeholder="e.g., John Smith" disabled/>
+          </label>
+
+          <label class="field">
+            <span>Player Number</span>
+            <input id="adminPlayerNumber" class="input" type="text" inputmode="numeric" placeholder="e.g., 12" disabled/>
+          </label>
+
+          <label class="field">
+            <span>Password</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="adminPlayerPass" class="input" type="text" placeholder="e.g., 4821" disabled/>
+              <button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Gen</button>
+            </div>
+          </label>
+        </div>
+
+        <div class="muted" id="adminPlayerIdPreview" style="margin-top:8px;"></div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+          <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add Player</button>
+          <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Update Player</button>
+          <button id="adminPlayerRemoveBtn" class="btn btn-ghost" type="button" disabled>Remove Player</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SITUATIONS (Admin) -->
+    <div class="subsec admin-subsec" id="adminSituationsSubsec" data-admin-collapsible="1" data-admin-open="0" style="margin-top:14px;">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="sectionTitle" style="margin:0">SITUATIONS</div>
+        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
+      </div>
+
+      <div class="adminSubsecBody" style="margin-top:10px">
+        <div class="muted" style="margin-bottom:10px;">
+          Import one or more <code>.json</code> files containing an array of situations. Existing keys are merged (imported values win).
+        </div>
+
+        <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" style="margin-bottom:10px;">
+          <div class="mt-2 flex flex-wrap gap-2">
+            <input id="adminSituationsJsonFile" type="file" accept=".json,application/json" class="hidden" multiple>
+            <button id="adminSituationsJsonUploadBtn" class="btn btn-white" type="button">Upload Situations JSON</button>
+            <button id="downloadAllBtn" class="btn btn-white" type="button">Download ALL Situations</button>
+            <span id="adminSituationsMsg" class="hint" style="margin-left:auto"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+  </aside>
+</main>
+
+<!-- Password modal -->
+<div id="pwModal">
+  <div class="box">
+    <div style="font-weight:800;margin-bottom:8px">Enter Coach Password</div>
+    <input id="pwInput" type="password" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px">
+    <div id="pwMsg" style="color:#ef4444;margin-top:6px;min-height:1.2em"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px">
+      <button id="pwOk" class="btn-green">Unlock</button>
+      <button id="pwCancel" class="btn-slate">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin password modal -->
+<div id="adminPwModal" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:1000">
+  <div class="box" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;min-width:280px;box-shadow:0 10px 30px rgba(0,0,0,.25)">
+    <div style="font-weight:800;margin-bottom:8px">Enter Admin Password</div>
+    <input id="adminPwInput" type="password" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px">
+    <div id="adminPwMsg" style="color:#ef4444;margin-top:6px;min-height:1.2em"></div>
+    <div class="row" style="justify-content:flex-end;margin-top:10px">
+      <button id="adminPwOk" class="btn-green">Unlock</button>
+      <button id="adminPwCancel" class="btn-slate">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Player Info Modal -->
+
+  <!-- Player Modal -->
+  <div id="playerModalOverlay" class="modalOverlay hidden" style="display:none;">
+    <div class="modalPanel">
+      <div class="modalHeader">
+        <div style="font-weight:800;">Player</div>
+        <button id="playerModalCloseX" class="btn btn-ghost" type="button">Close</button>
+      </div>
+
+      <div class="modalBody"></div>
+    </div>
+  </div>
+
+<!-- Coach Review Modal (Option B) -->
+<div id="coachReviewModal" class="diq-modal hidden" role="dialog" aria-modal="true" aria-label="Coach Review">
+  <div class="diq-modal-backdrop"></div>
+  <div class="diq-modal-panel">
+    <div class="diq-modal-head">
+      <div style="font-weight:900;">Coach Review</div>
+      <button id="coachReviewModalClose" class="btn btn-ghost" type="button">Close</button>
+    </div>
+    <div id="coachReviewModalMeta" class="muted" style="margin-top:6px;"></div>
+    <div id="coachReviewModalOutput" style="margin-top:10px;"></div>
+    <div id="coachReviewModalPlayback" style="margin-top:10px;"></div>
+  </div>
+</div>
+
+</body></html>

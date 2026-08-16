@@ -1,0 +1,33 @@
+{
+  "name": "diamond-iq",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:cloudflare": "npm run build && wrangler pages dev .svelte-kit/cloudflare",
+    "build": "vite build",
+    "build:github": "BASE_PATH=/diamoniq.github.io vite build",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "preview": "vite preview",
+    "test": "playwright test",
+    "test:server": "npm run db:migrate:local && npm run db:seed:local && npm run build && wrangler pages dev .svelte-kit/cloudflare",
+    "test:database": "BASE_URL=http://127.0.0.1:8788 playwright test tests/database-api.spec.js",
+    "test:live": "BASE_URL=https://smbambling.github.io/diamoniq.github.io/ playwright test tests/app.spec.js",
+    "test:ui": "playwright test --ui",
+    "db:seed:generate": "node scripts/generate-seed-sql.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply diamond-defense --local",
+    "db:seed:local": "wrangler d1 execute diamond-defense --local --file=database/seed.sql",
+    "db:export": "wrangler d1 export diamond-defense --remote --output=database-export.sql"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@sveltejs/adapter-cloudflare": "^7.2.9",
+    "@sveltejs/kit": "^2.70.2",
+    "@sveltejs/vite-plugin-svelte": "^7.2.0",
+    "svelte": "^5.56.8",
+    "svelte-check": "^4.7.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.2.0",
+    "wrangler": "^4.28.1"
+  }
+}

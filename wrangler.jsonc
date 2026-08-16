@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "diamond-defense",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "pages_build_output_dir": ".svelte-kit/cloudflare",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "diamond-defense",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "preview_database_id": "DB",
+      "migrations_dir": "migrations"
+    }
+  ]
+}
