@@ -13,13 +13,8 @@ test.describe('SvelteKit application boundary', () => {
     await expect(page.locator('script[data-diq-runtime="legacy-compatibility"]')).toHaveCount(3);
   });
 
-  test('serves situations and teams through application routes', async ({ request }) => {
-    const situationsResponse = await request.get('/situations.json');
-    const teamsResponse = await request.get('/teams.json');
-
-    expect(situationsResponse.ok()).toBe(true);
-    expect(teamsResponse.ok()).toBe(true);
-    expect(await situationsResponse.json()).toHaveLength(22);
-    expect((await teamsResponse.json()).teams).toHaveLength(2);
+  test('does not expose seed JSON as a runtime data source', async ({ request }) => {
+    expect((await request.get('/situations.json')).status()).toBe(404);
+    expect((await request.get('/teams.json')).status()).toBe(404);
   });
 });

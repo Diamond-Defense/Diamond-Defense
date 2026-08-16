@@ -2,7 +2,6 @@
 let SITUATIONS = [];
 let SITUATIONS_ORIG_BY_KEY = {};
 
-const SITUATIONS_FALLBACK = [];
 let currentSituation = null;
 
 let startsMap = {};
@@ -1213,7 +1212,8 @@ function animateExistingRunnersAdvance(advance, onDone){
 
 // @diq:end [A6]
 /// @diq:begin [A7] Coach tools & visibility
-const CALIB_PASSWORD = COACH_PASSWORD;
+// Staff credentials are verified by the database API; there is no browser fallback.
+const CALIB_PASSWORD = '';
 function applyCoachVisibility(){
   coachCard.classList.toggle('hidden', !coachUnlocked);
   getAllRings().forEach(el=> el.style.display = coachUnlocked ? 'block' : 'none');
@@ -1354,10 +1354,6 @@ async function tryUnlock(){
 
 // @diq:end [A7]
 /// @diq:begin [A8] Situations I/O & helpers
-const STORAGE_VERSION = 12;
-const STORAGE_STARTS = `bb_iq_starts_v${STORAGE_VERSION}`;
-const STORAGE_HITS   = `bb_iq_hits_v${STORAGE_VERSION}`;
-
 /** @param {any} sRaw @param {number} i @returns {Situation} */
 function normalizeSituation(sRaw, i){
   const safe = { ...(sRaw||{}) };
@@ -1397,37 +1393,24 @@ function defaultStartsMap(){
   (SITUATIONS||[]).forEach(s=>{ map[s.key] = s.starts ? Fcopy(s.starts) : Fcopy(DEFAULT_STARTS); });
   return map;
 }
-function migrateLocalStorage(){
-  // Example: from v1 -> v2 in the future
-  // keep as placeholder; do nothing today
-  return;
-}
-migrateLocalStorage();
-loadStarts(); loadHits();
 function loadStarts(){
   startsMap = defaultStartsMap();
-  try{
-    const raw = localStorage.getItem(STORAGE_STARTS); if (!raw) return;
-    const saved = JSON.parse(raw);
-    Object.keys(saved||{}).forEach(k=>{
-      const dst = startsMap[k] || (startsMap[k]=Fcopy(DEFAULT_STARTS));
-      POS_IDS.forEach(id=>{
-        const v = saved[k]?.[id];
-        if (v && !isNaN(v.x) && !isNaN(v.y)) dst[id] = { x:Math.round(Number(v.x)), y:Math.round(Number(v.y)) };
-      });
-    });
-  }catch(e){ console.warn('[Starts] localStorage merge error:', e); }
 }
 function saveStarts(){
-  try{ localStorage.setItem(STORAGE_STARTS, JSON.stringify(startsMap)); }catch{}
   queueCurrentSituationDatabaseSync();
 }
 function getStartFor(sKey,id){ const s = startsMap[sKey] || DEFAULT_STARTS; return s[id] || DEFAULT_STARTS[id]; }
 function setStartFor(sKey,id,pt){ if(!startsMap[sKey]) startsMap[sKey]=Fcopy(DEFAULT_STARTS); startsMap[sKey][id]={x:pt.x,y:pt.y}; }
 
-function loadHits(){ try{ const raw=localStorage.getItem(STORAGE_HITS); hitsMap = raw ? JSON.parse(raw) : {}; }catch{ hitsMap={}; } }
+function loadHits(){
+  hitsMap = {};
+  (SITUATIONS || []).forEach(s=>{
+    if(s && s.key && s.hit && Number.isFinite(s.hit.x) && Number.isFinite(s.hit.y)){
+      hitsMap[s.key] = { x:Math.round(s.hit.x), y:Math.round(s.hit.y) };
+    }
+  });
+}
 function saveHits(){
-  try{ localStorage.setItem(STORAGE_HITS, JSON.stringify(hitsMap)); }catch{}
   queueCurrentSituationDatabaseSync();
 }
 function getHitSaved(sKey){ const v=hitsMap[sKey]; return (v && !isNaN(v.x) && !isNaN(v.y)) ? { x:Math.round(v.x), y:Math.round(v.y) } : null; }
@@ -1501,34 +1484,12 @@ function normalizeHit(obj){ if (!obj || typeof obj !== 'object') return {}; cons
 function mapHitType(v){ const t=String(v||'').toLowerCase(); return (t==='line'||t==='popup'||t==='grounder')?t:'line'; }
 
 async function loadSituationsFromJson(){
-  try{
-    if(typeof diqApiRequest === 'function'){
-      const arr = await diqApiRequest('situations', { cache:'no-store' });
-      if(!Array.isArray(arr)) throw new Error('Situation API did not return an array.');
-      SITUATIONS = arr.map((raw,i)=> normalizeSituation(raw,i));
-      console.info('[Database] Loaded', SITUATIONS.length, 'situations.');
-      snapshotSituationsOrig();
-      return;
-    }
-  }catch(error){
-    console.info('[Database] Situation API unavailable; using static fallback.', error?.message || error);
-  }
-  try{
-    const res = await fetch('./situations.json?ts=' + Date.now(), { cache:'no-store' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const arr = await res.json();
-    if (!Array.isArray(arr)) throw new Error('situations.json must be an array');
-
-    SITUATIONS = arr.map((raw,i)=> normalizeSituation(raw,i));
-    console.info('[Situations] Loaded', SITUATIONS.length);
-
-  }catch(err){
-    console.warn('[Situations] JSON load failed, using fallback:', err?.message||err);
-    SITUATIONS = (SITUATIONS_FALLBACK||[]).map((raw,i)=> normalizeSituation(raw,i));
-  }
-
-    // Keep an immutable snapshot of the loaded situations for Refresh Situation.
-    snapshotSituationsOrig();
+  const arr = await diqApiRequest('situations', { cache:'no-store' });
+  if(!Array.isArray(arr)) throw new Error('Situation API did not return an array.');
+  if(arr.length === 0) throw new Error('The database contains no situations. Run the database seed command.');
+  SITUATIONS = arr.map((raw,i)=> normalizeSituation(raw,i));
+  console.info('[Database] Loaded', SITUATIONS.length, 'situations.');
+  snapshotSituationsOrig();
 }
 
 
@@ -1755,10 +1716,10 @@ function deleteCurrentSituation(){
   const key = currentSituation.key;
   const idx = (SITUATIONS||[]).findIndex(s=>s.key===key);
   if (idx < 0) return;
-  const ok = confirm(`Delete situation "${currentSituation.title||key}"? This cannot be undone.`);
+  const ok = confirm(`Archive situation "${currentSituation.title||key}"? It can be restored from Admin tools.`);
   if (!ok) return;
 
-  try{ window._diqDeleteSituation && window._diqDeleteSituation(key); }catch(_e){}
+  try{ window._diqDeleteSituation && window._diqDeleteSituation(key, currentSituation.revision); }catch(_e){}
 
   // Remove from arrays/maps + persist
   SITUATIONS.splice(idx,1);
@@ -1783,7 +1744,7 @@ function deleteCurrentSituation(){
   setSituation(nextKey);
 
   if (situationMsg){
-    situationMsg.textContent = 'Situation deleted.';
+    situationMsg.textContent = 'Situation archived.';
     setTimeout(()=> situationMsg.textContent = '', 1400);
   }
 }
@@ -2767,13 +2728,10 @@ async function init(){
     sizeOverlays();
 
     await loadSituationsFromJson();
-      await loadTeamsFromJson();
-      refreshTeamsUIAll();
+    await loadTeamsFromJson();
+    await loadDatabaseSession();
+    refreshTeamsUIAll();
     loadStarts(); loadHits();
-    if (!Array.isArray(SITUATIONS) || SITUATIONS.length===0){
-      SITUATIONS=[{ key:'S1', title:'Default', desc:'', starts:Fcopy(DEFAULT_STARTS), targets:{},
-        hit:{x:1600,y:700}, hitType:'line', batterAdvance:1, outs:0, runnersOn:{first:false,second:false,third:false} }];
-    }
     populateSituations();
     const firstKey = (sitSelect && sitSelect.value) || (SITUATIONS[0] && SITUATIONS[0].key);
     buildTokens(); updateChipScale(); setSituation(firstKey); setCoachMode(false);
@@ -2802,7 +2760,7 @@ async function init(){
 
   } catch (err){
     console.error('[Init] fatal error:', err && (err.stack||err.message||err));
-    alert('There was an error starting the app. Open the console for details.');
+    if(typeof showDatabaseUnavailable === 'function') showDatabaseUnavailable(err);
   }
   ensurePlayerMeta();
   _resolveDiamondIqReady?.();

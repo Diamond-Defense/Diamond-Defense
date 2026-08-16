@@ -23,3 +23,14 @@ export async function requireUser(
   }
   return user;
 }
+
+export async function requireTeamManager(
+  event: RequestEvent,
+  teamId: string,
+): Promise<AuthenticatedUser> {
+  const user = await requireUser(event, ['coach', 'admin']);
+  if (user.role === 'coach' && user.teamId !== teamId) {
+    throw error(403, 'Coaches may only administer their own team.');
+  }
+  return user;
+}

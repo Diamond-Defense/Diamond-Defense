@@ -42,7 +42,8 @@ export class SqliteAuthRepository {
          FROM users u
          JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'player'
          JOIN teams t ON t.id = tm.team_id
-        WHERE u.id = ?1 AND t.id = ?2 AND u.role = 'player' AND u.active = 1`,
+        WHERE u.id = ?1 AND t.id = ?2 AND u.role = 'player' AND u.active = 1
+          AND t.active = 1 AND tm.active = 1`,
       [playerId, teamId],
     );
     return this.verify(row, password);
@@ -58,8 +59,8 @@ export class SqliteAuthRepository {
               t.id AS team_id, t.name AS team_name, t.coach_email,
               tm.jersey_number
          FROM users u
-         LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'coach'
-         LEFT JOIN teams t ON t.id = tm.team_id
+         LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'coach' AND tm.active = 1
+         LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
         WHERE u.username = ?1 AND u.role = ?1 AND u.active = 1
         ORDER BY t.id
         LIMIT 1`,

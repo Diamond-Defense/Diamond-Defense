@@ -12,7 +12,64 @@ async function openCleanApp(page) {
   return pageErrors;
 }
 
+async function loginAsSeedPlayer(page) {
+  await page.getByRole('button', { name: 'Player Login' }).click();
+  await page.locator('#playerTeamSelect').selectOption('13u-black');
+  await page.locator('#playerNameSelect').selectOption('13u-black-bob-smith-11');
+  await page.locator('#playerPass').fill('1234');
+  const successfulLoginDialog = page.waitForEvent('dialog');
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+  const dialog = await successfulLoginDialog;
+  expect(dialog.message()).toBe('Logged in.');
+  await dialog.dismiss();
+  await expect(page.getByRole('button', { name: 'Player Info' })).toBeVisible();
+}
+
 test.describe('Diamond Defense regression behavior', () => {
+  test('ignores legacy browser data and loads authoritative D1 records', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('diq_teams_v1', JSON.stringify({
+        teams: [{ id: 'browser-only', name: 'Browser Only', roster: [] }],
+      }));
+      localStorage.setItem('bb_iq_starts_v12', JSON.stringify({
+        'BD-01': { P: { x: 1, y: 1 } },
+      }));
+      localStorage.setItem('bb_iq_hits_v12', JSON.stringify({
+        'BD-01': { x: 1, y: 1 },
+      }));
+      localStorage.setItem('diq_results_v1_browser-only', JSON.stringify({
+        log: [{ situationKey: 'BROWSER-ONLY' }],
+      }));
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => window.__DIQ_READY__);
+
+    await expect
+      .poll(() => page.locator('#sitSelect option').count())
+      .toBeGreaterThanOrEqual(22);
+    expect(await page.locator('#playerTeamSelect option').allTextContents()).not.toContain('Browser Only');
+    const pitcherStart = await page.evaluate(() => getStartFor('BD-01', 'P'));
+    expect(pitcherStart).not.toEqual({ x: 1, y: 1 });
+  });
+
+  test('shows a blocking state when the database API is unavailable', async ({ page }) => {
+    await page.route('**/api/situations', async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Test database outage' }),
+      });
+    });
+
+    await page.goto('/');
+    await page.evaluate(() => window.__DIQ_READY__);
+
+    await expect(page.getByRole('alert')).toContainText('Database unavailable');
+    await expect(page.getByRole('alert')).toContainText('Test database outage');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-database', 'unavailable');
+  });
+
   test('boots without JavaScript errors and renders the complete game', async ({ page }) => {
     const pageErrors = await openCleanApp(page);
 
@@ -25,7 +82,7 @@ test.describe('Diamond Defense regression behavior', () => {
     );
     await expect(field).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    await expect(page.locator('#sitSelect option')).toHaveCount(22);
+    expect(await page.locator('#sitSelect option').count()).toBeGreaterThanOrEqual(22);
     await expect(page.locator('#wrap .chip')).toHaveCount(9);
     await expect(page.locator('#wrap .tgt')).toHaveCount(9);
     const appIcon = page.locator('.brand-mark img');
@@ -103,6 +160,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.getByRole('button', { name: 'Player Login' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Guide' })).toBeVisible();
@@ -487,6 +545,48 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(mobileDrawer.width).toBeLessThanOrEqual(370);
   });
 
+  test('admin team edits use record-level APIs and preserve stable IDs', async ({ page }) => {
+    await openCleanApp(page);
+    await page.locator('.tools-menu summary').click();
+    await page.getByRole('button', { name: 'Admin' }).click();
+    await page.locator('#adminPwInput').fill('admin');
+    await page.locator('#adminPwOk').click();
+    await expect(page.locator('#adminCard')).toBeVisible();
+
+    const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const teamName = `Browser Admin ${suffix}`;
+    const teamId = teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    await page.locator('#adminTeamName').fill(teamName);
+    await page.locator('#adminTeamEmail').fill('browser-admin@example.com');
+    const createResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/admin/teams') && response.request().method() === 'POST',
+    );
+    await page.locator('#adminTeamAddBtn').click();
+    const created = (await (await createResponse).json()).record;
+    expect(created).toEqual(expect.objectContaining({ id: teamId, revision: 1 }));
+
+    await page.locator('#adminTeamName').fill(`${teamName} Renamed`);
+    const updateResponse = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/admin/teams/${teamId}`) && response.request().method() === 'PUT',
+    );
+    await page.locator('#adminTeamUpdateBtn').click();
+    const updated = (await (await updateResponse).json()).record;
+    expect(updated).toEqual(expect.objectContaining({
+      id: teamId,
+      name: `${teamName} Renamed`,
+      revision: 2,
+    }));
+
+    const cleanupStatus = await page.evaluate(async ({ id, revision }) => {
+      const response = await fetch(`./api/admin/teams/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: { 'If-Match': String(revision) },
+      });
+      return response.status;
+    }, { id: teamId, revision: updated.revision });
+    expect(cleanupStatus).toBe(200);
+  });
+
   test('current pure helpers retain their established output', async ({ page }) => {
     await openCleanApp(page);
 
@@ -542,8 +642,8 @@ test.describe('Diamond Defense regression behavior', () => {
       hitType: 'line',
       hit: { x: 1600, y: 533 },
     });
-    expect(result.exportCount).toBe(22);
-    expect(new Set(result.exportKeys).size).toBe(22);
+    expect(result.exportCount).toBeGreaterThanOrEqual(22);
+    expect(new Set(result.exportKeys).size).toBe(result.exportCount);
   });
 
   test('team and roster operations add, update, and remove records', async ({ page }) => {
@@ -609,6 +709,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
   test('a correct phase-one placement proceeds through the phase-two sequence', async ({ page }) => {
     await openCleanApp(page);
+    await loginAsSeedPlayer(page);
 
     await page.getByRole('button', { name: 'Start Situation' }).click();
     await page.evaluate(() => {
@@ -718,12 +819,19 @@ test.describe('Diamond Defense regression behavior', () => {
 
   test('recorded attempts persist with a summary for their situation', async ({ page }) => {
     await openCleanApp(page);
+    await loginAsSeedPlayer(page);
 
-    const saved = await page.evaluate(() => {
+    const marker = `Regression Test ${Date.now()}`;
+    const countBefore = await page.evaluate(() => RESULTS.log.length);
+    const savedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+    );
+
+    const saved = await page.evaluate((situationTitle) => {
       recordAttempt({
         phase: 1,
-        situationKey: 'TEST-01',
-        situationTitle: 'Regression Test',
+        situationKey: 'BD-01',
+        situationTitle,
         score: 7,
         total: 9,
         triesUsed: 2,
@@ -731,22 +839,27 @@ test.describe('Diamond Defense regression behavior', () => {
       });
       return {
         log: RESULTS.log,
-        summary: RESULTS.bySituation['TEST-01'],
+        summary: RESULTS.bySituation['BD-01'],
       };
-    });
+    }, marker);
+    expect((await savedResponse).status()).toBe(201);
 
-    expect(saved.log).toHaveLength(1);
-    expect(saved.summary.attempts).toBe(1);
-    expect(saved.summary.bestPhase1).toEqual(expect.objectContaining({
-      score: 7,
-      total: 9,
-      triesUsed: 2,
-      timeElapsed: 14,
-    }));
+    expect(saved.log).toHaveLength(countBefore + 1);
+    expect(saved.log).toEqual(expect.arrayContaining([
+      expect.objectContaining({ situationTitle: marker }),
+    ]));
+    expect(saved.summary.attempts).toBeGreaterThanOrEqual(1);
+    expect(saved.summary.bestPhase1.score).toBeGreaterThanOrEqual(7);
+    expect(saved.summary.bestPhase1.total).toBe(9);
 
     await page.reload();
-    const restored = await page.evaluate(() => RESULTS.bySituation['TEST-01']);
-    expect(restored.attempts).toBe(1);
-    expect(restored.bestPhase1.score).toBe(7);
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    const restored = await page.evaluate((situationTitle) => ({
+      attempts: RESULTS.bySituation['BD-01']?.attempts,
+      hasMarker: RESULTS.log.some((entry) => entry.situationTitle === situationTitle),
+    }), marker);
+    expect(restored.attempts).toBeGreaterThanOrEqual(1);
+    expect(restored.hasMarker).toBe(true);
   });
 });

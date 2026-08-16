@@ -361,14 +361,14 @@
 
       <div class="adminSubsecBody" style="margin-top:10px">
         <div class="muted" style="margin-bottom:10px;">
-          Manage teams & rosters. Export <code>teams.json</code> and place it next to <code>index.html</code> and <code>situations.json</code>.
+          Manage database-backed teams and rosters. JSON and CSV tools are optional import/export utilities.
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
           <button id="adminTeamsDownloadBtn" class="btn btn-ghost" type="button">Download teams.json</button>
           <button id="adminTeamsCopyBtn" class="btn btn-ghost" type="button">Copy teams.json</button>
           <button id="adminTeamsImportBtn" class="btn btn-ghost" type="button">Import teams JSON</button>
-          <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Clear locally saved teams (does not affect teams.json on disk)">Clear local teams</button>
+          <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Discard form changes and reload from the database">Reload Database</button>
         </div>
         <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" style="margin-bottom:10px;">
           <div class="mt-2 flex flex-wrap gap-2">
@@ -400,7 +400,7 @@
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
           <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add Team</button>
           <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Update Team</button>
-          <button id="adminTeamRemoveBtn" class="btn btn-ghost" type="button">Remove Team</button>
+          <button id="adminTeamRemoveBtn" class="btn btn-ghost" type="button">Archive Team</button>
         </div>
 
         <div class="divider"></div>
@@ -436,7 +436,7 @@
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
           <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add Player</button>
           <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Update Player</button>
-          <button id="adminPlayerRemoveBtn" class="btn btn-ghost" type="button" disabled>Remove Player</button>
+          <button id="adminPlayerRemoveBtn" class="btn btn-ghost" type="button" disabled>Archive Player</button>
         </div>
       </div>
     </div>
@@ -460,6 +460,36 @@
             <button id="downloadAllBtn" class="btn btn-white" type="button">Download ALL Situations</button>
             <span id="adminSituationsMsg" class="hint" style="margin-left:auto"></span>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="subsec admin-subsec" id="adminArchivedSubsec" data-admin-collapsible="1" data-admin-open="0" style="margin-top:14px;">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <div class="sectionTitle" style="margin:0">ARCHIVED RECORDS</div>
+        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
+      </div>
+      <div class="adminSubsecBody" style="margin-top:10px">
+        <div class="muted" style="margin-bottom:10px;">Archived records remain available to historical results and can be restored.</div>
+        <label class="field">
+          <span>Archived Team</span>
+          <select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select>
+        </label>
+        <button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button" style="margin-top:8px">Restore Team</button>
+        <div class="divider"></div>
+        <label class="field">
+          <span>Archived Player or Coach</span>
+          <select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select>
+        </label>
+        <button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button" style="margin-top:8px">Restore Member</button>
+        <div class="divider"></div>
+        <label class="field">
+          <span>Archived Situation</span>
+          <select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select>
+        </label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore Situation</button>
+          <button id="adminRefreshArchivedBtn" class="btn btn-ghost" type="button">Refresh</button>
         </div>
       </div>
     </div>

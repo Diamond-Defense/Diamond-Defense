@@ -26,6 +26,16 @@
   const adminPlayerAddBtn = document.getElementById('adminPlayerAddBtn');
   const adminPlayerUpdateBtn = document.getElementById('adminPlayerUpdateBtn');
   const adminPlayerRemoveBtn = document.getElementById('adminPlayerRemoveBtn');
+  const adminArchivedTeamSelect = document.getElementById('adminArchivedTeamSelect');
+  const adminArchivedSituationSelect = document.getElementById('adminArchivedSituationSelect');
+  const adminArchivedMemberSelect = document.getElementById('adminArchivedMemberSelect');
+  const adminRestoreTeamBtn = document.getElementById('adminRestoreTeamBtn');
+  const adminRestoreMemberBtn = document.getElementById('adminRestoreMemberBtn');
+  const adminRestoreSituationBtn = document.getElementById('adminRestoreSituationBtn');
+  const adminRefreshArchivedBtn = document.getElementById('adminRefreshArchivedBtn');
+  let adminArchivedTeams = [];
+  let adminArchivedSituations = [];
+  let adminArchivedMembers = [];
 
   function openAdminPwModal(){
     if (!adminPwModal) return;
@@ -77,6 +87,7 @@
     if (adminUnlocked){
       adminInitCollapsibles();
       adminRefreshAll();
+      void adminLoadArchivedRecords();
     }
   }
 
@@ -84,7 +95,7 @@
     if (!adminPwInput) return;
     const valid = (typeof authenticateStaff === 'function')
       ? await authenticateStaff('admin', adminPwInput.value)
-      : adminPwInput.value === ADMIN_PASSWORD;
+      : false;
     if (valid){
       closeAdminPwModal();
       adminSetMode(true);
@@ -162,7 +173,7 @@
     const teamId = adminTeamSelect.value;
     const t = teamId ? findTeam(teamId) : null;
     const pid = adminRosterSelect.value;
-    const p = (t && pid) ? findPlayer(t, pid) : null;
+    const p = (t && pid) ? findPlayer(teamId, pid) : null;
 
     if (adminPlayerName) adminPlayerName.value = p ? (p.name||'') : '';
     if (adminPlayerNumber) adminPlayerNumber.value = p ? (p.number!=null ? String(p.number) : '') : '';
@@ -196,6 +207,96 @@
     adminRefreshTeamSelect();
     adminSetTeamFieldsFromSelection();
   }
+
+  async function adminLoadArchivedRecords(){
+    if(!adminUnlocked) return;
+    try{
+      const [teamsResult, situationsResult] = await Promise.all([
+        diqApiRequest('admin/teams?includeArchived=true', { cache:'no-store' }),
+        diqApiRequest('admin/situations', { cache:'no-store' })
+      ]);
+      adminArchivedTeams = ((teamsResult && teamsResult.teams) || []).filter(item=>item.active === false);
+      adminArchivedSituations = ((situationsResult && situationsResult.situations) || []).filter(item=>item.active === false);
+      adminArchivedMembers = [];
+      ((teamsResult && teamsResult.teams) || []).forEach(team=>{
+        (team.roster || []).filter(member=>member.active === false).forEach(member=>{
+          adminArchivedMembers.push({ ...member, teamId:team.id, teamName:team.name });
+        });
+      });
+
+      if(adminArchivedTeamSelect){
+        adminArchivedTeamSelect.innerHTML = '<option value="">— No archived teams —</option>';
+        adminArchivedTeams.forEach(team=>{
+          const option = document.createElement('option');
+          option.value = team.id;
+          option.textContent = team.name || team.id;
+          adminArchivedTeamSelect.appendChild(option);
+        });
+      }
+      if(adminArchivedSituationSelect){
+        adminArchivedSituationSelect.innerHTML = '<option value="">— No archived situations —</option>';
+        adminArchivedSituations.forEach(situation=>{
+          const option = document.createElement('option');
+          option.value = situation.key;
+          option.textContent = `${situation.key} — ${situation.title || situation.key}`;
+          adminArchivedSituationSelect.appendChild(option);
+        });
+      }
+      if(adminArchivedMemberSelect){
+        adminArchivedMemberSelect.innerHTML = '<option value="">— No archived members —</option>';
+        adminArchivedMembers.forEach(member=>{
+          const option = document.createElement('option');
+          option.value = `${member.teamId}\u0000${member.playerId}`;
+          option.textContent = `${member.teamName} — ${member.name}`;
+          adminArchivedMemberSelect.appendChild(option);
+        });
+      }
+    }catch(error){ reportDatabaseWriteError('Archived records could not be loaded', error); }
+  }
+
+  if(adminRefreshArchivedBtn) adminRefreshArchivedBtn.addEventListener('click', ()=>void adminLoadArchivedRecords());
+  if(adminRestoreTeamBtn) adminRestoreTeamBtn.addEventListener('click', async ()=>{
+    const id = adminArchivedTeamSelect && adminArchivedTeamSelect.value;
+    const team = adminArchivedTeams.find(item=>item.id === id);
+    if(!team) return alert('Select an archived team.');
+    try{
+      await diqApiRequest(`admin/teams/${encodeURIComponent(id)}/restore`, {
+        method:'POST', headers:{ 'If-Match':String(team.revision) }
+      });
+      await loadTeamsFromJson();
+      refreshTeamsUIAll();
+      adminRefreshAll();
+      await adminLoadArchivedRecords();
+    }catch(error){ reportDatabaseWriteError('Team restore failed', error); }
+  });
+  if(adminRestoreMemberBtn) adminRestoreMemberBtn.addEventListener('click', async ()=>{
+    const value = adminArchivedMemberSelect && adminArchivedMemberSelect.value;
+    const [teamId, userId] = String(value || '').split('\u0000');
+    const member = adminArchivedMembers.find(item=>item.teamId === teamId && item.playerId === userId);
+    if(!member) return alert('Select an archived player or coach.');
+    try{
+      await diqApiRequest(`admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}/restore`, {
+        method:'POST', headers:{ 'If-Match':String(member.revision) }
+      });
+      await loadTeamsFromJson();
+      refreshTeamsUIAll(); adminRefreshAll();
+      await adminLoadArchivedRecords();
+    }catch(error){ reportDatabaseWriteError('Member restore failed', error); }
+  });
+  if(adminRestoreSituationBtn) adminRestoreSituationBtn.addEventListener('click', async ()=>{
+    const key = adminArchivedSituationSelect && adminArchivedSituationSelect.value;
+    const situation = adminArchivedSituations.find(item=>item.key === key);
+    if(!situation) return alert('Select an archived situation.');
+    try{
+      await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/restore`, {
+        method:'POST', headers:{ 'If-Match':String(situation.revision) }
+      });
+      await loadSituationsFromJson();
+      loadStarts(); loadHits();
+      populateSituations(key); setSituation(key);
+      await adminLoadArchivedRecords();
+    }catch(error){ reportDatabaseWriteError('Situation restore failed', error); }
+  });
 
   if (adminTeamSelect) adminTeamSelect.addEventListener('change', adminSetTeamFieldsFromSelection);
   if (adminRosterSelect) adminRosterSelect.addEventListener('change', adminSetPlayerFieldsFromSelection);
@@ -252,14 +353,17 @@
 
   if (adminTeamsResetBtn){
     adminTeamsResetBtn.addEventListener('click', async ()=>{
-      if(!confirm('Clear locally saved teams (does not affect teams.json on disk)?')) return;
-      try{ localStorage.removeItem(TEAMS_STORAGE_KEY); }catch(_e){}
+      if(!confirm('Discard unsaved form changes and reload teams from the database?')) return;
       if (typeof loadTeamsFromJson === 'function'){
-        try{ await loadTeamsFromJson(); }catch(_e){}
+        try{ await loadTeamsFromJson(); }
+        catch(error){
+          if(typeof showDatabaseUnavailable === 'function') showDatabaseUnavailable(error);
+          return;
+        }
       }
       if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
       adminRefreshAll();
-      alert('Local teams cleared.');
+      alert('Teams reloaded from the database.');
     });
   }
 
@@ -370,30 +474,15 @@
       if(!old) return;
 
       const newName = String(adminTeamName ? adminTeamName.value : '').trim();
-      const newId = slugifyLoose(newName) || teamId;
       const newEmail = String(adminTeamEmail ? adminTeamEmail.value : '').trim();
-
-      if(newId !== teamId){
-        // migrate (match coach tools behavior)
-        const migrated = { id: newId, name: newName, coachEmail: newEmail, roster: deepClone(old.roster || []) };
-        migrated.roster.forEach(p=>{
-          p.playerId = buildPlayerIdForTeam(migrated.name, p.name, p.number, p.baseId);
-        });
-        removeTeam(teamId);
-        TEAMS.teams.push(migrated);
-      }else{
-        old.name = newName || old.name;
-        old.coachEmail = newEmail;
-        (old.roster||[]).forEach(p=>{
-          p.playerId = buildPlayerIdForTeam(old.name, p.name, p.number, p.baseId);
-        });
-      }
+      old.name = newName || old.name;
+      old.coachEmail = newEmail;
 
       TEAMS.teams = TEAMS.teams.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-      saveTeamsToLocal();
+      saveTeamsToLocal(teamId);
       if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
       adminRefreshAll();
-      if (adminTeamSelect) adminTeamSelect.value = newId;
+      if (adminTeamSelect) adminTeamSelect.value = teamId;
       adminSetTeamFieldsFromSelection();
     });
   }
@@ -402,7 +491,7 @@
     adminTeamRemoveBtn.addEventListener('click', ()=>{
       const teamId = adminTeamSelect ? adminTeamSelect.value : '';
       if(!teamId) return;
-      if(!confirm('Remove this team and all players?')) return;
+      if(!confirm('Archive this team? Historical results will be preserved.')) return;
       removeTeam(teamId);
       if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
       adminRefreshAll();
@@ -438,14 +527,13 @@
       if(!t) return;
       const pid = adminRosterSelect ? adminRosterSelect.value : '';
       if(!pid) return alert('Select a player to update.');
-      const p = findPlayer(t, pid);
+      const p = findPlayer(teamId, pid);
       if(!p) return;
 
       p.name = String(adminPlayerName ? adminPlayerName.value : '').trim() || p.name;
       p.number = String(adminPlayerNumber ? adminPlayerNumber.value : '').trim() || p.number;
       p.password = String(adminPlayerPass ? adminPlayerPass.value : '').trim() || p.password;
-      p.playerId = buildPlayerIdForTeam(t.name, p.name, p.number, p.baseId);
-      saveTeamsToLocal();
+      saveTeamsToLocal(teamId, p.playerId);
 
       if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
       adminRefreshAll();
@@ -461,7 +549,7 @@
       if(!teamId) return;
       const pid = adminRosterSelect ? adminRosterSelect.value : '';
       if(!pid) return;
-      if(!confirm('Remove this player?')) return;
+      if(!confirm('Archive this player? Historical results will be preserved.')) return;
       removePlayer(teamId, pid);
 
       if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();

@@ -81,7 +81,7 @@ export async function currentUser(
     `SELECT u.id, u.username, u.display_name, u.role, tm.team_id
        FROM sessions s
        JOIN users u ON u.id = s.user_id
-       LEFT JOIN team_memberships tm ON tm.user_id = u.id
+       LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
       WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.active = 1
       ORDER BY tm.team_id
       LIMIT 1`,

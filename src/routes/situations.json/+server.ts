@@ -1,8 +1,6 @@
-import { json } from '@sveltejs/kit';
-import situations from '../../../situations.json';
+import type { RequestHandler } from './$types';
 
-export const prerender = true;
+export const prerender = false;
 
-export function GET() {
-  return json(situations);
-}
+export const GET: RequestHandler = () =>
+  new Response('Seed data is not a runtime endpoint.', { status: 404 });

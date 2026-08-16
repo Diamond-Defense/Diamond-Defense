@@ -2,15 +2,14 @@
 // Passwords (edit here)
 // Note: Coach Tools password is also used to unlock chip/target editing.
 // Keep these near the top for easy updates.
-const COACH_PASSWORD = 'coach';
-const ADMIN_PASSWORD = 'admin';
-
-// Database API bridge. The legacy localStorage/JSON path remains available as
-// an offline/static fallback, while Cloudflare Pages uses the SQLite API.
+// Database API bridge. D1/SQLite is the runtime source of truth.
 let DIQ_API_AVAILABLE = false;
 let DIQ_AUTH_USER = null;
 let _diqTeamSyncTimer = null;
 let _diqSituationSyncTimer = null;
+let _diqSituationSaveQueue = Promise.resolve();
+const _diqDirtyTeams = new Set();
+const _diqDirtyMembers = new Map();
 
 function diqApiUrl(path){
   return `./api/${String(path || '').replace(/^\/+/, '')}`;
@@ -32,64 +31,129 @@ async function diqApiRequest(path, options={}){
   return data;
 }
 
-async function authenticateStaff(role, password){
-  if(DIQ_API_AVAILABLE){
-    try{
-      const result = await diqApiRequest('auth/login', {
-        method:'POST',
-        body:JSON.stringify({ role, password })
-      });
-      DIQ_AUTH_USER = result && result.user ? result.user : null;
-      window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
-      return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === role);
-    }catch(error){
-      if(error && error.status === 401) return false;
-      console.warn('[Database] Staff login failed:', error);
-      return false;
-    }
+function showDatabaseUnavailable(error){
+  const message = (error && error.message) ? error.message : String(error || 'The database could not be reached.');
+  window.__DIQ_DATABASE_ERROR__ = message;
+  document.documentElement.dataset.diqDatabase = 'unavailable';
+  let panel = document.getElementById('databaseUnavailable');
+  if(!panel){
+    panel = document.createElement('section');
+    panel.id = 'databaseUnavailable';
+    panel.setAttribute('role', 'alert');
+    panel.style.cssText = 'position:fixed;inset:1rem;z-index:100000;display:grid;place-content:center;text-align:center;padding:2rem;border:1px solid #43e7f4;border-radius:18px;background:rgba(6,18,37,.97);color:#e1f9ff;box-shadow:0 0 40px rgba(67,231,244,.2)';
+    panel.innerHTML = '<div style="max-width:38rem"><h1 style="margin:0 0 .75rem;font-size:1.6rem">Database unavailable</h1><p style="margin:0 0 1rem;line-height:1.5">Diamond Defense needs its SQLite database to load situations, teams, users, and results.</p><p data-database-error style="margin:0 0 1.25rem;color:#a9c8dd"></p><button type="button" style="padding:.7rem 1.1rem;border:0;border-radius:10px;background:#43e7f4;color:#061225;font-weight:800;cursor:pointer">Try again</button></div>';
+    panel.querySelector('button').addEventListener('click', ()=>window.location.reload());
+    document.body.appendChild(panel);
   }
-  // Static/offline compatibility only; database writes remain unavailable.
-  return String(password || '') === (role === 'admin' ? ADMIN_PASSWORD : COACH_PASSWORD);
+  const detail = panel.querySelector('[data-database-error]');
+  if(detail) detail.textContent = message;
+}
+
+function reportDatabaseWriteError(context, error){
+  console.error(`[Database] ${context}:`, error);
+  if(!error || ![400,401,403].includes(error.status)) showDatabaseUnavailable(error);
+  else if(typeof toast === 'function') toast(error.message || `${context} failed.`);
+}
+
+async function authenticateStaff(role, password){
+  try{
+    const result = await diqApiRequest('auth/login', {
+      method:'POST',
+      body:JSON.stringify({ role, password })
+    });
+    DIQ_AUTH_USER = result && result.user ? result.user : null;
+    window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === role);
+  }catch(error){
+    if(error && error.status === 401) return false;
+    reportDatabaseWriteError('Staff login failed', error);
+    return false;
+  }
 }
 
 function queueTeamsDatabaseSync(){
-  if(!DIQ_API_AVAILABLE) return;
   clearTimeout(_diqTeamSyncTimer);
   _diqTeamSyncTimer = setTimeout(async ()=>{
     try{
-      await diqApiRequest('teams/sync', {
-        method:'PUT',
-        body:JSON.stringify({ teams:(TEAMS && TEAMS.teams) || [] })
-      });
-    }catch(error){
-      console.warn('[Database] Team sync failed:', error);
-    }
+      const teamIds = Array.from(_diqDirtyTeams);
+      const memberEntries = Array.from(_diqDirtyMembers.entries());
+      _diqDirtyTeams.clear();
+      _diqDirtyMembers.clear();
+
+      for(const teamId of teamIds){
+        const team = (TEAMS.teams || []).find(item=>item.id === teamId);
+        if(!team) continue;
+        const creating = !Number.isInteger(Number(team.revision)) || Number(team.revision) < 1;
+        const result = await diqApiRequest(creating ? 'admin/teams' : `admin/teams/${encodeURIComponent(team.id)}`, {
+          method:creating ? 'POST' : 'PUT',
+          headers:creating ? {} : { 'If-Match':String(team.revision) },
+          body:JSON.stringify({ id:team.id, name:team.name, coachEmail:team.coachEmail || '' })
+        });
+        if(result && result.record) team.revision = result.record.revision;
+      }
+
+      for(const [identity] of memberEntries){
+        const [teamId, playerId] = identity.split('\u0000');
+        const team = (TEAMS.teams || []).find(item=>item.id === teamId);
+        const member = team && (team.roster || []).find(item=>item.playerId === playerId);
+        if(!team || !member) continue;
+        const creating = !Number.isInteger(Number(member.revision)) || Number(member.revision) < 1;
+        const result = await diqApiRequest(
+          creating
+            ? `admin/teams/${encodeURIComponent(teamId)}/members`
+            : `admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(playerId)}`,
+          {
+            method:creating ? 'POST' : 'PUT',
+            headers:creating ? {} : { 'If-Match':String(member.revision) },
+            body:JSON.stringify({
+              userId:playerId,
+              name:member.name,
+              number:member.number,
+              role:member.role || 'player',
+              ...(member.password ? { password:member.password } : {})
+            })
+          }
+        );
+        if(result && result.record){
+          member.revision = result.record.revision;
+          member.userRevision = result.record.userRevision;
+          delete member.password;
+        }
+      }
+    }catch(error){ reportDatabaseWriteError('Team save failed', error); }
   }, 450);
 }
 
 function queueSituationDatabaseSync(situation){
-  if(!DIQ_API_AVAILABLE || !situation || !situation.key) return;
+  if(!situation || !situation.key) return;
   clearTimeout(_diqSituationSyncTimer);
   const snapshot = JSON.parse(JSON.stringify(situation));
-  _diqSituationSyncTimer = setTimeout(async ()=>{
-    try{
-      await diqApiRequest(`situations/${encodeURIComponent(snapshot.key)}`, {
-        method:'PUT',
-        body:JSON.stringify(snapshot)
-      });
-    }catch(error){
-      console.warn('[Database] Situation sync failed:', error);
-    }
+  _diqSituationSyncTimer = setTimeout(()=>{
+    _diqSituationSaveQueue = _diqSituationSaveQueue.then(async ()=>{
+      const live = (typeof SITUATIONS !== 'undefined' ? SITUATIONS : []).find(item=>item.key === snapshot.key);
+      const revision = Number(live && live.revision);
+      const creating = !Number.isInteger(revision) || revision < 1;
+      const result = await diqApiRequest(
+        creating ? 'situations' : `situations/${encodeURIComponent(snapshot.key)}`,
+        {
+          method:creating ? 'POST' : 'PUT',
+          headers:creating ? {} : { 'If-Match':String(revision) },
+          body:JSON.stringify(snapshot)
+        }
+      );
+      if(live && result && result.record) live.revision = result.record.revision;
+    }).catch(error=>reportDatabaseWriteError('Situation save failed', error));
   }, 500);
 }
 
-async function deleteSituationFromDatabase(key){
-  if(!DIQ_API_AVAILABLE || !key) return;
+async function deleteSituationFromDatabase(key, revision){
+  if(!key) return;
   try{
-    await diqApiRequest(`situations/${encodeURIComponent(key)}`, { method:'DELETE' });
-  }catch(error){
-    console.warn('[Database] Situation delete failed:', error);
-  }
+    await diqApiRequest(`situations/${encodeURIComponent(key)}`, {
+      method:'DELETE',
+      headers:{ 'If-Match':String(revision) }
+    });
+  }catch(error){ reportDatabaseWriteError('Situation delete failed', error); }
 }
 
 window._diqApiRequest = diqApiRequest;
@@ -145,13 +209,9 @@ const TIMER_START_SECS = 60;
 let _timerId = null;
 let _timerSecs = TIMER_START_SECS;
 
-// --- Player identity + per-situation results (localStorage) ---
+// --- Player identity + per-situation results (database-backed) ---
 
   // --- Player identity (base random id + user-entered metadata) ---
-  const STORAGE_PLAYER_BASE_ID = "diq_player_baseid_v1";
-  const STORAGE_PLAYER_META   = "diq_player_meta_v1";
-  const STORAGE_RESULTS_PREFIX = "diq_results_v1_";
-
   function slugify(str){
     return String(str || "")
       .trim()
@@ -161,52 +221,13 @@ let _timerSecs = TIMER_START_SECS;
       .replace(/^-|-$/g, "");
   }
 
-  function getOrCreatePlayerBaseId(){
-    let base = localStorage.getItem(STORAGE_PLAYER_BASE_ID);
-    if(!base){
-      // 8-char random (base36), stable per browser/device unless cleared
-      base = [...crypto.getRandomValues(new Uint32Array(2))]
-        .map(n => n.toString(36).padStart(6,"0"))
-        .join("")
-        .slice(0,8);
-      localStorage.setItem(STORAGE_PLAYER_BASE_ID, base);
-    }
-    return base;
-  }
-
-  function loadPlayerMeta(){
-    try{
-      const raw = localStorage.getItem(STORAGE_PLAYER_META);
-      if(!raw) return {team:"", name:"", number:""};
-      const obj = JSON.parse(raw);
-      return {
-        team: typeof obj.team === "string" ? obj.team : "",
-        name: typeof obj.name === "string" ? obj.name : "",
-        number: typeof obj.number === "string" ? obj.number : (obj.number!=null ? String(obj.number) : "")
-      };
-    }catch(e){
-      return {team:"", name:"", number:""};
-    }
-  }
-
-  function savePlayerMeta(meta){
-    localStorage.setItem(STORAGE_PLAYER_META, JSON.stringify({
-      team: meta.team || "",
-      name: meta.name || "",
-      number: meta.number || ""
-    }));
-  }
-
-  let PLAYER_BASE_ID = getOrCreatePlayerBaseId();
-  let PLAYER_META = loadPlayerMeta();
+  let PLAYER_BASE_ID = 'anonymous';
+  let PLAYER_META = {team:"", name:"", number:""};
 
   // Ensure cached player session is loaded (and base id exists) on page load.
   // Safe to call multiple times.
   function ensurePlayerMeta(){
-    PLAYER_BASE_ID = getOrCreatePlayerBaseId();
-    const meta = loadPlayerMeta();
-    // Never allow PLAYER_META to be null/undefined — app must boot even when logged out.
-    PLAYER_META = (meta && typeof meta === 'object') ? meta : {team:"", name:"", number:""};
+    PLAYER_META = (PLAYER_META && typeof PLAYER_META === 'object') ? PLAYER_META : {team:"", name:"", number:""};
     if(typeof PLAYER_META.team !== 'string') PLAYER_META.team = (PLAYER_META.team!=null ? String(PLAYER_META.team) : "");
     if(typeof PLAYER_META.name !== 'string') PLAYER_META.name = (PLAYER_META.name!=null ? String(PLAYER_META.name) : "");
     if(typeof PLAYER_META.number !== 'string') PLAYER_META.number = (PLAYER_META.number!=null ? String(PLAYER_META.number) : "");
@@ -223,16 +244,12 @@ let _timerSecs = TIMER_START_SECS;
   }
 
   function getPlayerId(){
-    // Prefer roster playerId when logged in; fallback to local meta-based id.
-    try{
-      const cur = getCurrentPlayerFromMeta();
-      if(cur && cur.player && cur.player.playerId) return String(cur.player.playerId);
-    }catch(_e){}
-    return buildPlayerId();
+    return (DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'player' && DIQ_AUTH_USER.id)
+      ? String(DIQ_AUTH_USER.id)
+      : 'anonymous';
   }
 
   // --- Teams (Coach-managed) + Player Login ---
-  const TEAMS_STORAGE_KEY = "diq_teams_v1";
   let TEAMS = { version: 1, teams: [] };
 
   function slugifyLoose(str){
@@ -269,10 +286,26 @@ let _timerSecs = TIMER_START_SECS;
       const playerNumber = String((p && (p.number || p.playerNumber || p.num || p.PlayerNumber)) || '').trim();
       const password = String((p && (p.password || p.pass || p.pin || p.PlayerPassword)) || '').trim();
       const playerId = String((p && (p.playerId || p.id)) || '').trim();
-      return { name: playerName, number: playerNumber, password, playerId };
+      return {
+        name: playerName,
+        number: playerNumber,
+        password,
+        playerId,
+        role: (p && p.role) === 'coach' ? 'coach' : 'player',
+        revision: Number(p && p.revision) || 0,
+        userRevision: Number(p && p.userRevision) || 0,
+        active: !p || p.active !== false
+      };
     }).filter(p=>p.name && p.number);
 
-    out.teams.push({ id, name, coachEmail, roster: roster.map(p => ({ ...p, playerId: computeRosterPlayerId({id, name}, p) })) });
+    out.teams.push({
+      id,
+      name,
+      coachEmail,
+      revision:Number(t && t.revision) || 0,
+      active:!t || t.active !== false,
+      roster:roster.map(p => ({ ...p, playerId:computeRosterPlayerId({id, name}, p) }))
+    });
   });
 
   return out;
@@ -288,60 +321,25 @@ function computeRosterPlayerId(teamObj, playerObj){
   return `${teamSlug}-${nameSlug}-${numSafe}`;
 }
 
-  function saveTeamsToLocal(){
-    try{
-      localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(TEAMS));
-    }catch(e){
-      console.warn("Failed to save TEAMS to localStorage", e);
+  function saveTeamsToLocal(teamId, memberId){
+    if(teamId && memberId){
+      _diqDirtyMembers.set(`${teamId}\u0000${memberId}`, true);
+    }else if(teamId){
+      _diqDirtyTeams.add(String(teamId));
+    }else{
+      (TEAMS.teams || []).forEach(team=>{
+        _diqDirtyTeams.add(String(team.id));
+        (team.roster || []).forEach(member=>{
+          _diqDirtyMembers.set(`${team.id}\u0000${member.playerId}`, true);
+        });
+      });
     }
     queueTeamsDatabaseSync();
   }
 
-  function loadTeamsFromLocal(){
-    try{
-      const raw = localStorage.getItem(TEAMS_STORAGE_KEY);
-      if(!raw) return null;
-      return normalizeTeamsData(JSON.parse(raw));
-    }catch(e){
-      console.warn("Failed to load TEAMS from localStorage", e);
-      return null;
-    }
-  }
-
   async function loadTeamsFromJson(){
-    try{
-      const data = await diqApiRequest('teams/options', { cache:'no-store' });
-      TEAMS = normalizeTeamsData(data);
-      try{ localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(TEAMS)); }catch(_e){}
-      return;
-    }catch(error){
-      console.info('[Database] Team API unavailable; using static/local fallback.', error?.message || error);
-    }
-
-    // Load teams.json (lives alongside index.html) and cache to localStorage as fallback.
-    // This works on GitHub Pages and on any HTTP(S) server. (file:// cannot fetch.)
-    const base = new URL('.', window.location.href);
-    const url = new URL('teams.json', base);
-
-    try{
-      const res = await fetch(url.toString(), { cache: 'no-store' });
-      if(!res.ok) throw new Error('HTTP ' + res.status);
-      const data = await res.json();
-      TEAMS = normalizeTeamsData(data);
-      // Persist a copy so the app still works if teams.json is temporarily unavailable
-      try{ localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(TEAMS)); }catch(_e){}
-      return;
-    }catch(err){
-      console.warn('[Teams] Unable to load teams.json, falling back to localStorage.', err);
-    }
-
-    // Fallback: localStorage copy
-    try{
-      const raw = localStorage.getItem(TEAMS_STORAGE_KEY);
-      TEAMS = raw ? normalizeTeamsData(JSON.parse(raw)) : { teams: [] };
-    }catch(_e){
-      TEAMS = { teams: [] };
-    }
+    const data = await diqApiRequest('teams/options', { cache:'no-store' });
+    TEAMS = normalizeTeamsData(data);
 }
 
   // @diq:begin [A13] Teams CSV upload
@@ -762,7 +760,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   async function loadCoachDatabaseReport(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(!DIQ_API_AVAILABLE || !user || !user.teamId || !coachReviewOutput) return;
+    if(!user || !user.teamId || !coachReviewOutput) return;
     coachReviewOutput.replaceChildren();
     const loading = document.createElement('div');
     loading.className = 'muted';
@@ -983,20 +981,26 @@ function setRosterControlsEnabled(enabled){
 
     let t = findTeam(id);
     if(!t){
-      t = { id, name: teamName, coachEmail: String(email||"").trim(), roster: [] };
+      t = { id, name: teamName, coachEmail: String(email||"").trim(), revision:0, active:true, roster: [] };
       TEAMS.teams.push(t);
     }else{
       t.name = teamName;
       t.coachEmail = String(email||"").trim();
     }
     TEAMS.teams = TEAMS.teams.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-    saveTeamsToLocal();
+    saveTeamsToLocal(t.id);
     return t;
   }
 
   function removeTeam(teamId){
+    const team = findTeam(teamId);
+    if(team && Number(team.revision) > 0){
+      diqApiRequest(`admin/teams/${encodeURIComponent(teamId)}`, {
+        method:'DELETE',
+        headers:{ 'If-Match':String(team.revision) }
+      }).catch(error=>reportDatabaseWriteError('Team archive failed', error));
+    }
     TEAMS.teams = (TEAMS.teams || []).filter(t => t.id !== teamId);
-    saveTeamsToLocal();
   }
 
   function upsertPlayer(teamId, playerName, playerNumber, password){
@@ -1015,25 +1019,30 @@ function setRosterControlsEnabled(enabled){
       existing.name = name;
       existing.number = number;
       existing.password = pass;
-      existing.playerId = buildPlayerIdForTeam(t.name, name, number, existing.baseId);
     }
     else{
       const baseId = randomId(8);
       const playerId = buildPlayerIdForTeam(t.name, name, number, baseId);
-      existing = { name, number, password: pass, baseId, playerId };
+      existing = { name, number, password: pass, baseId, playerId, role:'player', revision:0, userRevision:0, active:true };
       t.roster.push(existing);
     }
 
     t.roster = (t.roster || []).sort((a,b)=> (a.number||"").localeCompare(b.number||"") || (a.name||"").localeCompare(b.name||""));
-    saveTeamsToLocal();
+    saveTeamsToLocal(teamId, existing.playerId);
     return existing;
   }
 
   function removePlayer(teamId, playerId){
     const t = findTeam(teamId);
     if(!t) return;
+    const member = (t.roster || []).find(p=>p.playerId === playerId);
+    if(member && Number(member.revision) > 0){
+      diqApiRequest(`admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(playerId)}`, {
+        method:'DELETE',
+        headers:{ 'If-Match':String(member.revision) }
+      }).catch(error=>reportDatabaseWriteError('Player archive failed', error));
+    }
     t.roster = (t.roster || []).filter(p => p.playerId !== playerId);
-    saveTeamsToLocal();
   }
 
   function downloadJson(filename, obj){
@@ -1107,31 +1116,14 @@ function setRosterControlsEnabled(enabled){
       const old = findTeam(teamId);
       if(!old) return;
       const newName = String(coachTeamName.value||"").trim();
-      const newId = slugifyLoose(newName) || teamId;
       const newEmail = String(coachTeamEmail.value||"").trim();
-
-      if(newId !== teamId){
-        // migrate
-        const migrated = { id: newId, name: newName, coachEmail: newEmail, roster: deepClone(old.roster || []) };
-        // rebuild playerIds with new team name/slug
-        migrated.roster.forEach(p=>{
-          p.playerId = buildPlayerIdForTeam(migrated.name, p.name, p.number, p.baseId);
-        });
-        removeTeam(teamId);
-        TEAMS.teams.push(migrated);
-      }else{
-        old.name = newName || old.name;
-        old.coachEmail = newEmail;
-        // rebuild playerIds with team name changes
-        (old.roster||[]).forEach(p=>{
-          p.playerId = buildPlayerIdForTeam(old.name, p.name, p.number, p.baseId);
-        });
-      }
+      old.name = newName || old.name;
+      old.coachEmail = newEmail;
 
       TEAMS.teams = TEAMS.teams.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
-      saveTeamsToLocal();
+      saveTeamsToLocal(teamId);
       refreshCoachTeamSelect();
-      coachTeamSelect.value = newId;
+      coachTeamSelect.value = teamId;
       setCoachTeamFieldsFromSelection();
     });
   }
@@ -1139,7 +1131,7 @@ function setRosterControlsEnabled(enabled){
     coachTeamRemoveBtn.addEventListener("click", ()=>{
       const teamId = coachTeamSelect.value;
       if(!teamId) return alert("Select a team to remove.");
-      if(!confirm("Remove this team and its roster?")) return;
+      if(!confirm("Archive this team? Historical results will be preserved.")) return;
       removeTeam(teamId);
       refreshCoachTeamSelect();
       coachTeamSelect.value = "";
@@ -1204,10 +1196,8 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       old.name = String(coachPlayerName.value||"").trim();
       old.number = String(coachPlayerNumber.value||"").trim();
       old.password = String(coachPlayerPass.value||"").trim();
-      old.playerId = buildPlayerIdForTeam(t.name, old.name, old.number, old.baseId);
-
       t.roster = (t.roster || []).sort((a,b)=> (a.number||"").localeCompare(b.number||"") || (a.name||"").localeCompare(b.name||""));
-      saveTeamsToLocal();
+      saveTeamsToLocal(teamId, old.playerId);
       refreshCoachRosterSelect();
       coachRosterSelect.value = old.playerId;
       setCoachPlayerFieldsFromSelection();
@@ -1220,7 +1210,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       const teamId = coachTeamSelect.value;
       const playerId = coachRosterSelect.value;
       if(!teamId || !playerId) return alert("Select a player to remove.");
-      if(!confirm("Remove this player from the roster?")) return;
+      if(!confirm("Archive this player? Historical results will be preserved.")) return;
       removePlayer(teamId, playerId);
       refreshCoachRosterSelect();
       refreshPlayerTeamDropdown();
@@ -1327,7 +1317,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
 const playerShareHint = document.getElementById("playerShareHint");
 
   function getCurrentPlayerFromMeta(){
-    // PLAYER_META is global (loaded from STORAGE_PLAYER_META); must be null-safe.
+    // The server session is authoritative; PLAYER_META is an in-memory UI projection.
     const m = (PLAYER_META && typeof PLAYER_META === 'object') ? PLAYER_META : {team:"", name:"", number:""};
     const teamId = slugifyLoose(m.team || "");
     if(!teamId) return null;
@@ -1544,49 +1534,22 @@ function updatePlayerHeaderButton(){
     const p = findPlayer(teamId, playerId);
     if(!t || !p) return alert("Invalid team/player selection.");
     if(!pass) return alert("Enter your password.");
-    if(DIQ_API_AVAILABLE){
-      try{
-        const result = await diqApiRequest('auth/login', {
-          method:'POST',
-          body:JSON.stringify({ role:'player', teamId, playerId, password:pass })
-        });
-        DIQ_AUTH_USER = result && result.user ? result.user : null;
-        window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
-      }catch(error){
-        return alert(error && error.status === 401 ? 'Incorrect password.' : (error?.message || 'Unable to login.'));
-      }
-    }else if(String(p.password || "").trim() !== pass){
-      return alert("Incorrect password.");
-    }
-
-    // Persist player identity for this browser/session
-    PLAYER_META = { team: t.name, name: p.name, number: p.number };
-    savePlayerMeta(PLAYER_META);
-
-    // Switch results storage to this player's base id
     try{
-      localStorage.setItem(STORAGE_PLAYER_BASE_ID, p.baseId || p.playerId);
-    }catch(e){}
-    PLAYER_BASE_ID = p.baseId || p.playerId;
-
-    // Reload results for this player base id
-    RESULTS = loadResults();
-    if(DIQ_API_AVAILABLE){
-      try{
-        const remote = await diqApiRequest('results/me', { cache:'no-store' });
-        if(remote && Array.isArray(remote.log)){
-          RESULTS = {
-            playerBaseId:PLAYER_BASE_ID,
-            playerId:remote.playerId || p.playerId,
-            log:remote.log,
-            bySituation:remote.bySituation || {}
-          };
-          saveResults();
-        }
-      }catch(error){
-        console.warn('[Database] Unable to load remote player results:', error);
-      }
+      const result = await diqApiRequest('auth/login', {
+        method:'POST',
+        body:JSON.stringify({ role:'player', teamId, playerId, password:pass })
+      });
+      DIQ_AUTH_USER = result && result.user ? result.user : null;
+      window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    }catch(error){
+      if(!error || error.status !== 401) reportDatabaseWriteError('Player login failed', error);
+      return alert(error && error.status === 401 ? 'Incorrect password.' : (error?.message || 'Unable to login.'));
     }
+
+    // Keep a UI projection of the authenticated database user for this page.
+    PLAYER_META = { team: t.name, name: p.name, number: p.number };
+    PLAYER_BASE_ID = p.playerId;
+    await loadCurrentPlayerResults();
 
     refreshPlayerLoginUI();
     updatePlayerHeaderButton();
@@ -1598,17 +1561,13 @@ function updatePlayerHeaderButton(){
 
   async function doPlayerLogout(){
     if(!confirm("Logout?")) return;
-    // Clear player meta & base id
-    if(DIQ_API_AVAILABLE){
-      try{ await diqApiRequest('auth/logout', { method:'POST' }); }catch(_e){}
-    }
+    try{ await diqApiRequest('auth/logout', { method:'POST' }); }
+    catch(error){ reportDatabaseWriteError('Logout failed', error); return; }
     DIQ_AUTH_USER = null;
     window.__DIQ_AUTH_USER__ = null;
     PLAYER_META = { team:"", name:"", number:"" };
-    savePlayerMeta(PLAYER_META);
-    try{ localStorage.removeItem(STORAGE_PLAYER_BASE_ID); }catch(e){}
-    PLAYER_BASE_ID = getOrCreatePlayerBaseId(); // back to anon/random
-    RESULTS = loadResults();
+    PLAYER_BASE_ID = 'anonymous';
+    RESULTS = emptyResults();
 
     refreshPlayerLoginUI();
     updatePlayerHeaderButton();
@@ -2281,10 +2240,6 @@ const mailto = `mailto:${encodeURIComponent(coachEmail)}?subject=${mailtoEncode(
 
 
 
-  function resultsStorageKey(){
-    return STORAGE_RESULTS_PREFIX + PLAYER_BASE_ID;
-  }
-
   if(playerCopyReviewCodeBtn){
     playerCopyReviewCodeBtn.addEventListener('click', async ()=>{
       const cur = getCurrentPlayerFromMeta();
@@ -2297,37 +2252,52 @@ const mailto = `mailto:${encodeURIComponent(coachEmail)}?subject=${mailtoEncode(
     });
   }
 
-  function loadResults(){
-    try{
-      const raw = localStorage.getItem(resultsStorageKey());
-      if(!raw) return { playerBaseId: PLAYER_BASE_ID, playerId: "", log: [], bySituation: {} };
-      const obj = JSON.parse(raw) || {};
-      return {
-        playerBaseId: PLAYER_BASE_ID,
-        playerId: (typeof obj.playerId === "string") ? obj.playerId : "",
-        log: Array.isArray(obj.log) ? obj.log : [],
-        bySituation: (obj.bySituation && typeof obj.bySituation === "object") ? obj.bySituation : {}
-      };
-    }catch(e){
-      return { playerBaseId: PLAYER_BASE_ID, playerId: "", log: [], bySituation: {} };
-    }
+  function emptyResults(){
+    return { playerBaseId: PLAYER_BASE_ID, playerId: getPlayerId(), log: [], bySituation: {} };
   }
-  function saveResults(){
-    try{
-      localStorage.setItem(resultsStorageKey(), JSON.stringify(RESULTS));
-    }catch(e){
-      // ignore quota / privacy mode errors
+
+  async function loadCurrentPlayerResults(){
+    if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player'){
+      RESULTS = emptyResults();
+      return;
+    }
+    const remote = await diqApiRequest('results/me', { cache:'no-store' });
+    RESULTS = {
+      playerBaseId:DIQ_AUTH_USER.id,
+      playerId:remote.playerId || DIQ_AUTH_USER.id,
+      log:Array.isArray(remote.log) ? remote.log : [],
+      bySituation:(remote.bySituation && typeof remote.bySituation === 'object') ? remote.bySituation : {}
+    };
+  }
+
+  async function loadDatabaseSession(){
+    const session = await diqApiRequest('auth/session', { cache:'no-store' });
+    DIQ_AUTH_USER = session && session.user ? session.user : null;
+    window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    if(DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'player'){
+      const team = findTeam(DIQ_AUTH_USER.teamId);
+      const player = team && (team.roster || []).find(p=>p.playerId === DIQ_AUTH_USER.id);
+      if(team && player){
+        PLAYER_BASE_ID = player.playerId;
+        PLAYER_META = { team:team.name, name:player.name, number:player.number };
+      }
+      await loadCurrentPlayerResults();
+    }else{
+      PLAYER_BASE_ID = 'anonymous';
+      PLAYER_META = { team:"", name:"", number:"" };
+      RESULTS = emptyResults();
     }
   }
 
 
-let RESULTS = loadResults();
-if(!RESULTS.playerId) RESULTS.playerId = getPlayerId();
-if(RESULTS.playerId !== getPlayerId()) RESULTS.playerId = getPlayerId();
-saveResults();
+let RESULTS = emptyResults();
 
 function recordAttempt(entry){
   try{
+    if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player'){
+      if(typeof toast === 'function') toast('Log in before saving a result.');
+      return;
+    }
     const e = Object.assign({ playerId: getPlayerId(), ts: new Date().toISOString() }, entry || {});
     RESULTS.log.push(e);
 
@@ -2359,11 +2329,8 @@ function recordAttempt(entry){
 
       RESULTS.bySituation[key] = next;
     }
-    saveResults();
-    if(DIQ_API_AVAILABLE){
-      diqApiRequest('attempts', { method:'POST', body:JSON.stringify(e) })
-        .catch(error=>console.warn('[Database] Attempt sync failed:', error));
-    }
+    diqApiRequest('attempts', { method:'POST', body:JSON.stringify(e) })
+      .catch(error=>reportDatabaseWriteError('Attempt save failed', error));
   }catch(err){}
 }
 // --- end results ---

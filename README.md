@@ -2,59 +2,78 @@
 
 Diamond Defense is a SvelteKit baseball situation simulator and interactive
 playbook trainer. Its persistent data layer uses portable SQLite schema and
-repository code, with Cloudflare D1 as the first hosting adapter.
+repositories, with Cloudflare D1 as the first hosting adapter.
 
-## Data architecture
+## Quick start
+
+Install dependencies, prepare the persistent local D1 database, build the app,
+and start it with one command:
+
+```sh
+npm install
+npm run dev:local
+```
+
+Open [http://localhost:8788](http://localhost:8788). To use another port:
+
+```sh
+npm run dev:local -- --port 9000
+```
+
+The command always applies pending migrations. It installs seed data only when
+the local database contains no users, teams, or situations, so routine startup
+does not overwrite local passwords or application data.
+
+## Environment model
 
 ```text
 Browser UI
   -> SvelteKit /api routes
   -> portable SQLite repositories
-  -> D1 adapter
-  -> Cloudflare D1 (production) or local D1/SQLite (development)
+  -> D1 adapter and DB binding
+       -> .wrangler/state         persistent local development
+       -> .wrangler/test-state    disposable automated tests
+       -> diamond-defense-preview remote Cloudflare preview
+       -> diamond-defense-production remote Cloudflare production
 ```
 
-Cloudflare-specific database calls are isolated in
-`src/lib/server/database/d1-adapter.ts`. Repositories depend only on the small
-`SqliteDatabaseAdapter` contract, so another SQLite provider can be added
-without changing the game UI, API behavior, schema, or repository queries.
+The local and test databases use the same D1 binding API as Cloudflare. Only
+their storage location changes. Cloudflare-specific calls remain isolated in
+`src/lib/server/database/d1-adapter.ts`.
 
-The browser's previous JSON/localStorage behavior remains as a static/offline
-fallback. When the `/api` routes are available, situations, teams, login
-sessions, attempts, and coach reports use SQLite.
+Detailed documentation:
 
-## Local Cloudflare D1 development
+- [Local development](docs/development.md)
+- [Database environments and migrations](docs/database-environments.md)
+- [Database administration API](docs/database-administration.md)
+- [Cloudflare deployment](docs/deployment.md)
+- [Database conversion roadmap](docs/database-roadmap.md)
 
-Install dependencies and generate the seed SQL:
+## Common commands
 
-```sh
-npm install
-npm run db:seed:generate
-```
+| Command | Purpose |
+|---|---|
+| `npm run dev:local` | Migrate, conditionally seed, build, and start local D1 |
+| `npm run verify` | Run checks, isolated tests, and a production build |
+| `npm test` | Run script tests and browser/API tests against isolated D1 |
+| `npm run deploy:cloudflare -- --dry-run` | Show the branch deployment target without changing Cloudflare |
+| `npm run deploy:cloudflare` | Verify, migrate, and deploy `main` or `preview` |
+| `npm run admin:password` | Update the local administrator password |
 
-Create the local database schema and seed it:
+`npm run dev:vite` remains available for UI-only troubleshooting, but it does
+not provide the local Cloudflare D1 runtime and is not the supported full-app
+development command.
 
-```sh
-npm run db:migrate:local
-npm run db:seed:local
-```
-
-Build and run the complete Cloudflare application:
-
-```sh
-npm run dev:cloudflare
-```
-
-Wrangler serves the app at `http://localhost:8788`. The local database is
-stored in `.wrangler/state` and is separate from production.
-
-`npm run dev` still runs the UI-only Vite server at
-`http://127.0.0.1:4173`; database features use the local/static fallback in
-that mode.
+Wrangler diagnostics produced by local development and manual database commands
+are written beneath `.wrangler/logs`, which is ignored by Git. Automated tests,
+verification, and Cloudflare deployment disable Wrangler disk logs by default.
+Either behavior can be overridden with an explicit `WRANGLER_LOG_PATH` or
+`WRANGLER_WRITE_LOGS` environment variable. These local diagnostics and state
+files are never included in a Cloudflare deployment.
 
 ## Initial local accounts
 
-The generated development seed includes these existing test credentials:
+The development seed currently contains:
 
 ```text
 Player: 13U Black / Bob Smith / 1234
@@ -62,97 +81,59 @@ Coach: coach
 Admin: admin
 ```
 
-Passwords are salted and hashed before being placed in SQLite. Change the
-staff and player passwords before using production with real teams.
+These are development credentials only. Generate a production seed with strong
+environment-provided staff passwords, or create production accounts through a
+controlled administration process before real use.
 
-Set `DIAMOND_DEFENSE_ADMIN_PASSWORD` and
-`DIAMOND_DEFENSE_COACH_PASSWORD` before running `db:seed:generate` to create
-a seed with non-demo staff passwords. Player seed passwords come from the
-current team JSON and should also be replaced before importing production
-data.
+## Updating the administrator password
 
-## Database files
+Local D1:
+
+```sh
+npm run admin:password
+```
+
+Preview D1:
+
+```sh
+npm run admin:password -- --remote --database diamond-defense-preview
+```
+
+Production D1:
+
+```sh
+npm run admin:password -- --remote --database diamond-defense-production
+```
+
+The script hides interactive entry, requires at least 12 characters, generates
+a fresh PBKDF2 salt and hash, verifies the database update, and invalidates
+existing administrator sessions. For automation, provide
+`DIAMOND_DEFENSE_NEW_ADMIN_PASSWORD` through the CI secret store; the script
+removes it from the environment before launching Wrangler.
+
+## Database sources
 
 ```text
-migrations/0001_initial.sql          Portable SQLite schema
-database/seed.sql                    Generated portable SQL seed
-scripts/generate-seed-sql.mjs        Converts current JSON to SQL and hashes passwords
-wrangler.jsonc                       Cloudflare binding and local runtime configuration
-src/lib/server/database/             Portable adapter contract and D1 adapter
-src/lib/server/repositories/         SQLite repository implementations
-src/routes/api/                      Authenticated application endpoints
+migrations/*.sql                     Ordered portable SQLite migrations
+database/seed.sql                    Generated development seed
+scripts/generate-seed-sql.mjs        JSON-to-SQL seed generator
+wrangler.jsonc                       Local, preview, and production bindings
+src/lib/server/database/             Portable adapter and D1 implementation
+src/lib/server/repositories/         SQLite repositories
+src/routes/api/                      Authenticated API endpoints
 ```
 
-Do not edit generated `database/seed.sql` by hand. Update the source JSON and
-regenerate it until the admin screens become the only data-management path.
+Do not edit `database/seed.sql` manually. Update its source data and regenerate
+it with `npm run db:seed:generate`. Seed execution is intentionally separate
+from normal remote deployment.
 
-## Verification
+## Current database state
 
-The default suite starts a local Cloudflare Pages server with local D1:
-
-```sh
-npm run check
-npm test
-npm run build
-```
-
-Database API coverage includes password-free roster responses, player login,
-attempt persistence, authorization, and coach team reports.
-
-## Deploying to Cloudflare Pages
-
-Create the production database:
-
-```sh
-npx wrangler login
-npx wrangler d1 create diamond-defense
-```
-
-Replace the placeholder `database_id` in `wrangler.jsonc` with the ID returned
-by Cloudflare. Then create and seed the production schema:
-
-```sh
-npx wrangler d1 migrations apply diamond-defense --remote
-npx wrangler d1 execute diamond-defense --remote --file=database/seed.sql
-```
-
-Cloudflare Pages build settings:
-
-```text
-Build command: npm run build
-Build output directory: .svelte-kit/cloudflare
-```
-
-The D1 binding must be named `DB`. The checked-in Wrangler configuration is the
-source of truth for that binding.
-
-## Backups and SQLite portability
-
-Export production schema and data with:
-
-```sh
-npm run db:export
-```
-
-The result is a standard SQL dump. To move to another SQLite provider:
-
-1. Apply the files in `migrations/` to the new database.
-2. Import the D1 SQL export.
-3. Implement `SqliteDatabaseAdapter` for the new provider.
-4. Replace the adapter construction in `database/context.ts`.
-
-The domain models, API endpoints, authentication rules, and game code do not
-need to change.
-
-## Current application structure
-
-```text
-src/lib/components/                 Svelte UI boundary
-src/lib/domain/                     TypeScript domain models
-src/lib/server/                     Database, security, and reports
-src/lib/legacy/loadRuntime.ts       Tested compatibility loader
-src/features/player-coach.js        Existing player, team, and coach behavior
-src/game/engine.js                  Existing field, scoring, and game flow
-src/admin/admin.js                  Existing administrator behavior
-tests/                              Browser, data-contract, and database API tests
-```
+Situations, teams, login sessions, attempts, and reports use D1/SQLite as the
+only runtime source of truth. The JSON files at the repository root are retained
+only as explicit seed/import inputs; the running application does not request
+them. Browser storage is limited to non-authoritative UI preferences. Team,
+member, situation, password, archive, restore, revision, and audit operations
+now use the [record-level administration API](docs/database-administration.md).
+See the [database roadmap](docs/database-roadmap.md) for reporting and
+environment-refresh work that follows.

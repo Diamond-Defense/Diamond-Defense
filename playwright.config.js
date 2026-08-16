@@ -21,7 +21,7 @@ export default defineConfig({
   webServer: liveBaseUrl ? undefined : {
     command: `npm run test:server -- --port ${testPort}`,
     url: localBaseUrl,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 30_000,
   },
 });
