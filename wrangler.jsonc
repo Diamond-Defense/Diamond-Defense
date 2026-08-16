@@ -1,38 +1,45 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "diamond-defense",
-  "compatibility_date": "2026-08-06",
-  "compatibility_flags": ["nodejs_compat"],
-  "pages_build_output_dir": ".svelte-kit/cloudflare",
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "diamond-defense",
-      "database_id": "00000000-0000-0000-0000-000000000000",
-      "preview_database_id": "DB",
-      "migrations_dir": "migrations"
-    }
-  ],
-  "env": {
-    "preview": {
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "diamond-defense-preview",
-          "database_id": "00000000-0000-0000-0000-000000000001",
-          "migrations_dir": "migrations"
-        }
-      ]
-    },
-    "production": {
-      "d1_databases": [
-        {
-          "binding": "DB",
-          "database_name": "diamond-defense-production",
-          "database_id": "00000000-0000-0000-0000-000000000002",
-          "migrations_dir": "migrations"
-        }
-      ]
-    }
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "diamond-defense",
+	"compatibility_date": "2026-08-06",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"pages_build_output_dir": ".svelte-kit/cloudflare",
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "diamond-defense",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"preview_database_id": "DB",
+			"migrations_dir": "migrations"
+		},
+		{
+			"binding": "diamond_defense_preview",
+			"database_name": "diamond-defense-preview",
+			"database_id": "44c4b830-b434-49e9-93af-77400493e40d"
+		}
+	],
+	"env": {
+		"preview": {
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "diamond-defense-preview",
+					"database_id": "00000000-0000-0000-0000-000000000001",
+					"migrations_dir": "migrations"
+				}
+			]
+		},
+		"production": {
+			"d1_databases": [
+				{
+					"binding": "DB",
+					"database_name": "diamond-defense-production",
+					"database_id": "00000000-0000-0000-0000-000000000002",
+					"migrations_dir": "migrations"
+				}
+			]
+		}
+	}
 }
