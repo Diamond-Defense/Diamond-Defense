@@ -17,6 +17,7 @@ let _allTargetsCorrect = false;
 let _phase1Summary = null; // { ok:boolean, triesUsed:number, elapsed:number, ts:number }
 
 let coachUnlocked = false;
+let situationEditorRole = null;
 
 // Situation Builder edit history (Undo/Redo, per-situation; 10-step)
 const SB_HISTORY_MAX = 10;
@@ -25,30 +26,6 @@ let sbUndoStack = [];         // array of snapshots
 let sbRedoStack = [];
 let _sbTolStartSnap = null;   // snapshot captured at start of tol edits
 let _sbNotesStartSnap = null; // snapshot captured at start of notes edits
-
-// Coach Review: allow loading report code from URL fragment (e.g. #coachReview=...)
-let _pendingCoachReviewCode = null;
-try{
-  const h = String(window.location.hash || '');
-  const m = h.match(/(?:^#|&)coachReview=([^&]+)/);
-  if(m && m[1]) _pendingCoachReviewCode = decodeURIComponent(m[1]);
-}catch(e){ _pendingCoachReviewCode = null; }
-
-try{
-  window.addEventListener('hashchange', ()=>{
-    try{
-      const h = String(window.location.hash || '');
-      const m = h.match(/(?:^#|&)coachReview=([^&]+)/);
-      if(m && m[1]) _pendingCoachReviewCode = decodeURIComponent(m[1]);
-    }catch(e){}
-    
-    if(_pendingCoachReviewCode && !coachUnlocked){ try{ openPwModal(); }catch(e){} }
-if(coachUnlocked && typeof window._diqCoachReviewAutoload === 'function'){
-      try{ window._diqCoachReviewAutoload(); }catch(e){}
-    }
-  });
-}catch(e){}
-
 
 let runnerEl = null;
 let runnerAnimId = null;
@@ -132,8 +109,40 @@ const seqCountHud    = document.getElementById('seqCountHud');
 
 const timerBadge = document.getElementById('timerBadge');
 const timerVal   = document.getElementById('timerVal');
+const gameLoginGate = document.getElementById('gameLoginGate');
+const gameLoginGateBtn = document.getElementById('gameLoginGateBtn');
 
 const coachBtn=document.getElementById('coachBtn');
+
+function hasGameAccess(){
+  return Boolean(window.__DIQ_AUTH_USER__?.id);
+}
+
+function applyGameAccess(){
+  const allowed = hasGameAccess();
+  const fieldCard = document.querySelector('.field-card');
+  fieldCard?.classList.toggle('is-login-required', !allowed);
+  wrap?.setAttribute('aria-disabled', String(!allowed));
+  gameLoginGate?.classList.toggle('hidden', allowed);
+  if(randomSitBtn) randomSitBtn.disabled = !allowed;
+  if(sitSelect) sitSelect.disabled = !allowed;
+
+  if(!allowed){
+    if(gameActive || _roundHasStarted) resetPlayers();
+    if(startBtn) startBtn.disabled = true;
+    if(resetBtn) resetBtn.disabled = true;
+    if(checkBtn) checkBtn.disabled = true;
+    if(continueBtn) continueBtn.disabled = true;
+    if(verifySeqBtn) verifySeqBtn.disabled = true;
+    setChipsLocked(true);
+  }else{
+    if(startBtn && !gameActive && !_roundHasStarted) startBtn.disabled = false;
+    if(continueBtn) continueBtn.disabled = false;
+    if(verifySeqBtn) verifySeqBtn.disabled = false;
+  }
+}
+
+window._diqApplyGameAccess = applyGameAccess;
 
 function closeGuideRail(){
   playbookRail?.classList.remove('is-open');
@@ -256,16 +265,34 @@ const ensureHeaderGrouping = () => {
     accountActions.appendChild(playbookToggle);
   }
 
-  let toolsMenu = accountActions.querySelector('.tools-menu');
-  if (!toolsMenu) {
-    toolsMenu = document.createElement('details');
-    toolsMenu.className = 'tools-menu';
-    toolsMenu.innerHTML = '<summary>Tools</summary><div class="tools-menu-panel"></div>';
-    accountActions.appendChild(toolsMenu);
+  let staffToolsButton = document.getElementById('staffToolsBtn');
+  if (!staffToolsButton) {
+    staffToolsButton = document.createElement('button');
+    staffToolsButton.id = 'staffToolsBtn';
+    staffToolsButton.className = 'btn-slate hidden';
+    staffToolsButton.type = 'button';
+    staffToolsButton.textContent = 'Tools';
+    staffToolsButton.setAttribute('aria-controls', 'toolsDrawer');
+    accountActions.appendChild(staffToolsButton);
   }
-  const toolsPanel = toolsMenu.querySelector('.tools-menu-panel');
+  let legacyRoleActions = accountActions.querySelector('.legacy-role-actions');
+  if (!legacyRoleActions) {
+    legacyRoleActions = document.createElement('div');
+    legacyRoleActions.className = 'legacy-role-actions hidden';
+    legacyRoleActions.setAttribute('aria-hidden', 'true');
+    accountActions.appendChild(legacyRoleActions);
+  }
   [document.getElementById('coachBtn'), document.getElementById('adminBtn')]
-    .forEach(el => { if (el && toolsPanel) toolsPanel.appendChild(el); });
+    .forEach(el => { if (el) legacyRoleActions.appendChild(el); });
+  if (staffToolsButton.dataset.wired !== '1') {
+    staffToolsButton.dataset.wired = '1';
+    staffToolsButton.addEventListener('click', () => {
+      const role = window.__DIQ_AUTH_USER__?.role;
+      if (role === 'coach') document.getElementById('coachBtn')?.click();
+      else if (role === 'admin') document.getElementById('adminBtn')?.click();
+    });
+  }
+  window._diqUpdateAuthNavigation?.();
 
   const closePlaybook = () => {
     closeGuideRail();
@@ -355,6 +382,8 @@ const pwInput=document.getElementById('pwInput');
 const pwOk=document.getElementById('pwOk');
 const pwCancel=document.getElementById('pwCancel');
 const pwMsg=document.getElementById('pwMsg');
+const coachLoginTeamSelect=document.getElementById('coachLoginTeamSelect');
+const coachLoginNameSelect=document.getElementById('coachLoginNameSelect');
 
 const newTitleInput   = document.getElementById('newTitleInput');
 const newDescInput    = document.getElementById('newDescInput');
@@ -1215,7 +1244,7 @@ function animateExistingRunnersAdvance(advance, onDone){
 // Staff credentials are verified by the database API; there is no browser fallback.
 const CALIB_PASSWORD = '';
 function applyCoachVisibility(){
-  coachCard.classList.toggle('hidden', !coachUnlocked);
+  coachCard.classList.toggle('hidden', !(coachUnlocked && situationEditorRole === 'coach'));
   getAllRings().forEach(el=> el.style.display = coachUnlocked ? 'block' : 'none');
 
   // Single-ball model in coach mode: remove the orange hit marker if present
@@ -1310,18 +1339,19 @@ function setBadgeState(el, state /* 'green'|'yellow'|'red' */, base){
   el.classList.add(`${base}-${state}`);
 }
 
-function setCoachMode(enabled){
+function setCoachMode(enabled, options={}){
   coachUnlocked = !!enabled;
+  situationEditorRole = coachUnlocked ? (options.role || 'coach') : null;
   if (coachUnlocked) {
     closeGuideRail();
-    window._diqSetAdminMode?.(false);
+    if(situationEditorRole !== 'admin') window._diqSetAdminMode?.(false);
   }
   coachStatus.textContent = coachUnlocked ? 'unlocked' : 'locked';
   coachStatus.style.color = coachUnlocked ? '#16a34a' : '#64748b';
 
   // Ensure Coach Tools panel is only visible when unlocked
   if (typeof coachCard !== 'undefined' && coachCard){
-    if (coachUnlocked) coachCard.classList.remove('hidden');
+    if (coachUnlocked && situationEditorRole === 'coach') coachCard.classList.remove('hidden');
     else coachCard.classList.add('hidden');
   }
 
@@ -1329,28 +1359,37 @@ function setCoachMode(enabled){
   buildTargets(); applyCoachVisibility(); updateHud(Number(scoreVal.textContent)||0);
   disableTargetSelection();
   hideTargetPanel();
-  endPhase2(false);
+  void window._diqAbandonCurrentPlayAttempt?.('tools_opened');
+  wipePhase2StateUI();
   if (continueBtn) continueBtn.classList.add('hidden');
 
-  // If a Coach Review code was supplied via URL, try to auto-load it when coach mode is enabled
-  if(coachUnlocked && typeof window._diqCoachReviewAutoload === 'function'){
-    try{ window._diqCoachReviewAutoload(); }catch(e){}
-  }
 }
-function openPwModal(){ pwModal.style.display='flex'; pwMsg.textContent=''; pwInput.value=''; pwInput.focus(); }
-function closePwModal(){ pwModal.style.display='none'; }
+window._diqSetEditorMode = (role)=>setCoachMode(Boolean(role), { role:role || 'coach' });
+function openPwModal(){
+  window._diqOpenAuthModal?.('coach');
+  pwMsg.textContent='';
+  pwInput.value='';
+  void window._diqPrepareCoachLogin?.();
+  setTimeout(()=>coachLoginTeamSelect?.focus(), 0);
+}
+function closePwModal(){ window._diqCloseAuthModal?.(); }
 async function tryUnlock(){
-  const valid = (typeof authenticateStaff === 'function')
-    ? await authenticateStaff('coach', pwInput.value)
-    : pwInput.value===CALIB_PASSWORD;
+  const teamId = String(coachLoginTeamSelect?.value || '');
+  const coachId = String(coachLoginNameSelect?.value || '');
+  if(!teamId || !coachId){
+    pwMsg.textContent='Select your team and coach account.';
+    return;
+  }
+  const valid = typeof window._diqAuthenticateCoach === 'function'
+    ? await window._diqAuthenticateCoach(teamId, coachId, pwInput.value)
+    : false;
   if(valid === null){
     pwMsg.textContent='Login service is temporarily unavailable. Please try again.';
     return;
   }
   if(valid){
     closePwModal();
-    setCoachMode(true);
-    try{ window._diqLoadCoachDatabaseReport && window._diqLoadCoachDatabaseReport(); }catch(_e){}
+    window._diqUpdateAuthNavigation?.();
   }else{
     pwMsg.textContent='Incorrect password.';
   }
@@ -1430,10 +1469,11 @@ function databaseSituationSnapshot(situation){
 }
 
 function queueCurrentSituationDatabaseSync(){
-  if(!coachUnlocked || !currentSituation || typeof window._diqQueueSituationSave !== 'function') return;
+  if(!coachUnlocked || !currentSituation) return;
   const snapshot = databaseSituationSnapshot(currentSituation);
-  if(snapshot) window._diqQueueSituationSave(snapshot);
+  if(snapshot) window._diqMarkSituationDirty?.(snapshot, situationEditorRole);
 }
+window._diqGetCurrentSituationSnapshot = ()=>databaseSituationSnapshot(currentSituation);
 
 function setTargetFor(sKey,id,pt,tol=DEFAULT_TOL){
   const s = SITUATIONS.find(x=>x.key===sKey); if(!s) return;
@@ -1806,6 +1846,7 @@ function populateSituations(selectedKey){
 
 
 function setSituation(key){
+  void window._diqAbandonCurrentPlayAttempt?.('situation_changed');
   currentSituation = getSituationByKey(key) || SITUATIONS[0];
   if (!currentSituation) return;
 
@@ -1857,7 +1898,7 @@ function setSituation(key){
 
   // HUD / controls
   updateHud(0); gameActive=false; remainingTries=0;
-  startBtn.disabled=false; resetBtn.disabled=true; checkBtn.disabled=true;
+  startBtn.disabled=!hasGameAccess(); resetBtn.disabled=true; checkBtn.disabled=true;
   setChipsLocked(!coachUnlocked);
 
   // Tolerance inputs
@@ -2204,128 +2245,6 @@ function _fmtIso(ts){
   try{ return new Date(ts).toLocaleString(); }catch(e){ return String(ts); }
 }
 
-function renderPlayerResultsForCoach(outEl, parsed){
-  if(!outEl) return;
-
-  if(!parsed || !parsed.ok){
-    const msg = _escHtml(parsed && parsed.error ? parsed.error : 'Unable to parse.');
-    const detail = parsed && parsed.detail ? `<div class="hint" style="margin-top:6px">${_escHtml(parsed.detail)}</div>` : '';
-    outEl.innerHTML = `<div class="card" style="border:1px solid #fecaca;background:#fff1f2;padding:10px;border-radius:12px">
-      <div style="font-weight:900;color:#991b1b">Parse failed</div>
-      <div style="color:#7f1d1d">${msg}</div>${detail}
-    </div>`;
-    return;
-  }
-
-  const meta = parsed.meta || {};
-  const results = parsed.results || {};
-  const log = Array.isArray(results.log) ? results.log : [];
-  const by = (results.bySituation && typeof results.bySituation==='object') ? results.bySituation : {};
-
-  const keys = Object.keys(by);
-  keys.sort((a,b)=> String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'}));
-
-  const totalAttempts = log.length;
-  const totalScore = log.reduce((sum,e)=> sum + (Number(e && e.scoreDelta)||0), 0);
-
-  const playerId =
-    meta.playerId ||
-    results.playerId ||
-    (log[0] && log[0].playerId) ||
-    '—';
-
-  const exportedAt =
-    meta.exportedAt ? _fmtIso(meta.exportedAt) :
-    (results.exportedAt ? _fmtIso(results.exportedAt) : '—');
-
-  const header = `
-    <div class="card" style="padding:12px;border-radius:14px">
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between">
-        <div>
-          <div style="font-weight:900">Player Results</div>
-          <div class="hint" style="margin-top:2px">
-            Player ID: <span class="mono">${_escHtml(playerId)}</span><br/>
-            Exported: ${_escHtml(exportedAt)}
-          </div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <span class="pill" style="background:#ecfeff;border:1px solid #a5f3fc;color:#155e75">Attempts: <b>${totalAttempts}</b></span>
-          <span class="pill" style="background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3">Score Δ: <b>${totalScore}</b></span>
-        </div>
-      </div>
-    </div>`;
-
-  const ptxt = (p) => {
-    if(!p) return '—';
-    const b = p.correct===true ? '✅' : (p.correct===false ? '❌' : '—');
-    const tries = (p.triesUsed!=null ? p.triesUsed : '—');
-    return `${b} • ${_escHtml(tries)} • ${_escHtml(_fmtMs(p.timeMs))}`;
-  };
-
-  const tableRows = keys.map(k=>{
-    const s = by[k] || {};
-    const p1 = s.p1 || null;
-    const p21 = s.p2_1 || null;
-    const p22 = s.p2_2 || null;
-
-    const last = s.lastTs ? _fmtIso(s.lastTs) : '—';
-    const attempts = (s.attempts!=null ? s.attempts : 0);
-
-    return `<tr>
-      <td class="mono">${_escHtml(k)}</td>
-      <td>${_escHtml(s.title||'')}</td>
-      <td style="white-space:nowrap">${ptxt(p1)}</td>
-      <td style="white-space:nowrap">${ptxt(p21)}</td>
-      <td style="white-space:nowrap">${ptxt(p22)}</td>
-      <td style="white-space:nowrap">${_escHtml(String(attempts))}</td>
-      <td style="white-space:nowrap">${_escHtml(last)}</td>
-    </tr>`;
-  }).join('');
-
-  const table = `
-    <div class="card" style="padding:12px;border-radius:14px;margin-top:10px">
-      <div style="font-weight:900;margin-bottom:8px">Summary by Situation</div>
-      <div style="overflow:auto">
-        <table class="tbl" style="min-width:920px">
-          <thead>
-            <tr>
-              <th style="text-align:left">Key</th>
-              <th style="text-align:left">Title</th>
-              <th style="text-align:left">Phase 1</th>
-              <th style="text-align:left">Phase 2 – Seq</th>
-              <th style="text-align:left">Phase 2 – Stage 2</th>
-              <th style="text-align:left">Attempts</th>
-              <th style="text-align:left">Last</th>
-            </tr>
-          </thead>
-          <tbody>${tableRows || `<tr><td colspan="11" class="hint">No situations found in this export.</td></tr>`}</tbody>
-        </table>
-      </div>
-      <details style="margin-top:10px">
-        <summary class="hint" style="cursor:pointer">Show raw attempt log (${totalAttempts})</summary>
-        <div style="margin-top:8px;max-height:260px;overflow:auto;border:1px solid var(--rule);border-radius:12px;padding:10px;background:#fbfbfd">
-          <pre class="mono" style="margin:0;white-space:pre-wrap">${_escHtml(JSON.stringify(log.slice().reverse(), null, 2))}</pre>
-        </div>
-      </details>
-<div class="subsec-desc">Paste a Coach Review Code from a player email to view a clean report + playback (Phase 2 sequence).</div>
-
-          <div class="mt-3 grid gap-2">
-            <label class="label" for="coachReviewInput">Coach Review Code</label>
-            <textarea id="coachReviewInput" class="textarea mono" rows="5" placeholder="DIQ1:..."></textarea>
-            <div class="flex gap-2">
-              <button id="coachReviewLoadBtn" class="btn btn-white">Load Review</button>
-              <button id="coachReviewClearBtn" class="btn btn-white">Clear</button>
-            </div>
-          </div>
-
-          <div id="coachReviewOutput" class="mt-3"></div>
-          <div id="coachReviewPlayback" class="mt-3"></div>
-        </div>
-</div>`;
-
-  outEl.innerHTML = header + table;
-}
-
 function download(filename,content){
   const blob=new Blob([content], {type:'application/json'});
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
@@ -2501,6 +2420,12 @@ function checkPositions(){
       // Consume a try after showing rings
       remainingTries = Math.max(0, remainingTries - 1);
       updateHud(correct);
+      window._diqTrackPhaseOneCheck?.({
+        scoreCorrect:correct,
+        scoreTotal:Array.isArray(POS_IDS) ? POS_IDS.length : 9,
+        triesUsed:MAX_TRIES - remainingTries,
+        remainingTries,
+      });
     }
 
     const outOfTries = (remainingTries === 0);
@@ -2542,6 +2467,7 @@ function checkPositions(){
 
       // If a sequence exists, reveal Continue and switch How-to to Phase 2
       const hasSeq = (typeof getSeqForCurrent === 'function') && getSeqForCurrent().length > 0;
+      void window._diqCompletePhaseOneAttempt?.(_phase1Summary, hasSeq);
 
       if (_roundHasStarted && continueBtn){
         if (hasSeq) continueBtn.classList.remove('hidden');
@@ -2564,7 +2490,9 @@ function resetBallAndRunnerForSituation(){
   hideRunner();
 }
 
-function resetPlayers(){
+function resetPlayers(reason='reset'){
+  const abandonReason = typeof reason === 'string' ? reason : 'reset';
+  void window._diqAbandonCurrentPlayAttempt?.(abandonReason);
   wipePhase2StateUI();
   _phase2Ended = false;
   stopTimer();
@@ -2593,7 +2521,7 @@ function resetPlayers(){
   remainingTries=0;
 
   // Re-enable Start / Reset buttons
-  startBtn.disabled=false;
+  startBtn.disabled=!hasGameAccess();
   resetBtn.disabled=true;
 
   // ⬅️ Make sure Check Positions is visible and reset to its initial state
@@ -2743,23 +2671,11 @@ async function init(){
 
     updateDescriptionHudText();
     wireOnce();
+    applyGameAccess();
   setCoachMode(coachUnlocked);
-    // Coach Review deep-link: if a report code is in the URL, prompt for coach password immediately
-    if(_pendingCoachReviewCode){
-      if(coachUnlocked){
-        try{ window._diqCoachReviewAutoload && window._diqCoachReviewAutoload(); }catch(e){}
-      }else{
-        try{
-          if(typeof openPwModal === 'function') openPwModal();
-          if(typeof pwMsg !== 'undefined' && pwMsg) pwMsg.textContent = 'Unlock Coach Tools to view the report.';
-        }catch(e){}
-      }
-    }
-
 // Teams UI elements are wired after JSON load; refresh dropdowns now
       refreshTeamsUIAll();
-      // Mount Player panel into sidebar
-      mountPlayerSidebar();
+      // The player controls are mounted into their popup by player-coach.js.
     setHowToPhase('p1');
 
   } catch (err){

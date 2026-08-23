@@ -12,7 +12,19 @@ export const PUT: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const user = await requireTeamManager(event, event.params.teamId);
   try {
-    const record = await new SqliteTeamRepository(databaseFor(event)).updateMember(
+    const repository = new SqliteTeamRepository(databaseFor(event));
+    const existing = await repository.getMember(
+      event.params.teamId,
+      event.params.userId,
+      true,
+    );
+    if (existing?.role === 'coach' && user.role !== 'admin') {
+      return json(
+        { error: 'Only an administrator can update coach accounts.' },
+        { status: 403 },
+      );
+    }
+    const record = await repository.updateMember(
       event.params.teamId,
       event.params.userId,
       (await event.request.json()) as Partial<MemberInput>,
@@ -29,7 +41,19 @@ export const DELETE: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const user = await requireTeamManager(event, event.params.teamId);
   try {
-    const record = await new SqliteTeamRepository(databaseFor(event)).setMemberActive(
+    const repository = new SqliteTeamRepository(databaseFor(event));
+    const existing = await repository.getMember(
+      event.params.teamId,
+      event.params.userId,
+      true,
+    );
+    if (existing?.role === 'coach' && user.role !== 'admin') {
+      return json(
+        { error: 'Only an administrator can archive coach accounts.' },
+        { status: 403 },
+      );
+    }
+    const record = await repository.setMemberActive(
       event.params.teamId,
       event.params.userId,
       false,

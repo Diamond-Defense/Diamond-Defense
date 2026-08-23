@@ -35,6 +35,7 @@ export function executable(name) {
 export function run(command, argumentsList = [], options = {}) {
   const capture = Boolean(options.capture);
   const childEnvironment = { ...process.env, ...options.env };
+  for (const name of options.unsetEnv ?? []) delete childEnvironment[name];
 
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(command, argumentsList, {

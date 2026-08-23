@@ -394,26 +394,65 @@
     #sitSelect{ min-width:140px; }
   }
 
-/* Player sidebar header */
-.cardTitleRow{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
-
 /* Player Login form alignment (scoped) */
-#playerSidebarCard .playerLoginGrid{
+.auth-modal .auth-account-grid{
   display:grid;
   grid-template-columns:1fr 1fr;
   gap:10px;
   align-items:end;
 }
-#playerSidebarCard .field{
+#playerModalOverlay .field{
   display:flex;
   flex-direction:column;
   gap:4px;
 }
-#playerSidebarCard .field > span{
+#playerModalOverlay .field > span{
   font-size:12px;
   font-weight:700;
   color:#64748b;
   line-height:1.1;
+}
+
+#playerModalOverlay{
+  position:fixed;
+  inset:0;
+  z-index:1000;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  box-sizing:border-box;
+  background:rgba(1,5,15,.76);
+  backdrop-filter:blur(8px);
+}
+#playerModalOverlay .modalPanel{
+  width:min(580px,100%);
+  max-height:calc(100dvh - 36px);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  border:1px solid rgba(89,231,255,.25);
+  border-radius:18px;
+  background:linear-gradient(180deg,rgba(13,32,61,.99),rgba(8,23,44,.99));
+  box-shadow:0 28px 80px rgba(0,4,15,.68),0 0 28px rgba(67,231,244,.12);
+}
+#playerModalOverlay .modalHeader{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  border-bottom:1px solid rgba(121,185,235,.22);
+}
+#playerModalOverlay .modalBody{
+  padding:16px;
+  overflow:auto;
+  overscroll-behavior:contain;
+}
+body.player-modal-open{overflow:hidden}
+
+@media (max-width:600px){
+  #playerModalOverlay{padding:10px;align-items:flex-start}
+  #playerModalOverlay .modalPanel{max-height:calc(100dvh - 20px)}
 }
 
   /* --- Coach TEAMS section tweaks --- */
@@ -1204,6 +1243,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .app{
   width:min(1840px,calc(100vw - 24px));
   display:block;
+  --tools-drawer-width:clamp(400px,33.333vw,560px);
   padding:10px 0 5px;
 }
 .field-card{width:100%;box-sizing:border-box;padding:8px 10px 10px}
@@ -1234,9 +1274,11 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   top:calc(var(--app-header-height) + 8px);
   right:12px;
   z-index:76;
-  width:min(480px,calc(100vw - 24px));
+  width:min(var(--tools-drawer-width),calc(100vw - 24px));
   max-height:calc(100dvh - var(--app-header-height) - 20px);
   box-sizing:border-box;
+  container-name:tools-workspace;
+  container-type:inline-size;
   visibility:hidden;
   opacity:0;
   transform:translateX(20px);
@@ -1252,12 +1294,50 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .tools-drawer > #coachCard,
 .tools-drawer > #adminCard{
   width:100%;
+  min-width:0;
   max-height:inherit;
   margin:0!important;
   overflow-x:hidden!important;
   overflow-y:auto!important;
   overscroll-behavior:contain;
 }
+
+/* On desktop, tools and the strategy board share the viewport instead of overlapping. */
+@media (min-width:1200px){
+  .app:has(> .tools-drawer > .card:not(.hidden)) > :is(.field-card,.coach-results-workspace,.admin-workspace){
+    width:calc(100% - var(--tools-drawer-width) - 14px);
+  }
+}
+
+.coach-tabs{display:grid;grid-template-columns:1fr 1.35fr;gap:8px;margin:14px 0}
+.coach-tab{min-height:48px;border:1px solid rgba(92,180,255,.26);border-radius:12px;background:rgba(5,24,48,.62);color:#a9bfd3;font:inherit;font-weight:900;cursor:pointer}
+.coach-tab.is-active{color:#031526;border-color:#43e7f4;background:linear-gradient(180deg,#55ebf5,#35cfdf);box-shadow:0 0 18px rgba(67,231,244,.2)}
+.coach-view{padding:14px;border:1px solid rgba(92,180,255,.18);border-radius:13px;background:rgba(4,20,41,.55)}
+.coach-view h3{margin:0 0 5px;color:#f1fbff}
+.coach-view p{margin:0;color:#a9bfd3;line-height:1.5}
+
+.coach-results-workspace{width:100%;box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height) - 30px);padding:24px;overflow:auto}
+.coach-results-header,.coach-result-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;border-bottom:1px solid rgba(92,180,255,.16);padding-bottom:18px}
+.coach-results-header h2,.coach-result-detail-heading h2{margin:3px 0 4px;color:#f4fbff;font-size:clamp(22px,2vw,32px)}
+.coach-results-header p,.coach-result-detail-heading p{margin:0;color:#9fb8ce}
+.coach-results-filter{display:grid;grid-template-columns:minmax(210px,1.5fr) minmax(190px,1.3fr) minmax(150px,.75fr) minmax(145px,.7fr) minmax(145px,.7fr);gap:12px;align-items:end;margin:18px 0}
+.coach-results-workspace .field{display:grid;gap:6px;color:#a9bfd3;font-weight:800}
+.coach-results-workspace :is(select,input[type="date"]){width:100%;min-height:42px;box-sizing:border-box;border:1px solid rgba(67,231,244,.45);border-radius:9px;background:#071b35;color:#effcff;padding:7px 10px;font:inherit;color-scheme:dark}
+.coach-results-filter-actions{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:9px}
+.coach-results-filter-actions button{min-height:40px}
+.coach-results-summary{display:grid;grid-template-columns:repeat(8,minmax(90px,1fr));gap:8px;margin:0 0 18px}
+.coach-summary-card{display:grid;gap:4px;min-width:0;padding:11px 12px;border:1px solid rgba(92,180,255,.2);border-radius:11px;background:rgba(7,27,53,.72)}
+.coach-summary-card span{color:#86a4bd;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.045em}.coach-summary-card strong{color:#effcff;font-size:18px;font-variant-numeric:tabular-nums}
+.coach-results-pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:18px;color:#a9bfd3}
+.coach-results-empty{padding:28px;text-align:center;border:1px dashed rgba(92,180,255,.26);border-radius:13px;color:#9fb8ce}
+.coach-review-table-wrap{width:100%;overflow:auto;border:1px solid rgba(92,180,255,.2);border-radius:14px;background:rgba(4,20,41,.55)}
+.coach-review-table{width:100%;min-width:1020px;border-collapse:collapse;color:#e8f7ff;font-size:11px}.coach-review-table th,.coach-review-table td{padding:11px 7px;border-bottom:1px solid rgba(92,180,255,.14);text-align:left;white-space:nowrap}.coach-review-table thead th{color:#a9bfd3;background:rgba(14,40,72,.78);font-size:10px;text-transform:uppercase;letter-spacing:.025em}.coach-review-table tbody tr:last-child td{border-bottom:0}.coach-review-table tbody tr:hover{background:rgba(67,231,244,.045)}.coach-review-sequence{min-width:95px;white-space:normal!important}
+.coach-review-primary{display:block;color:#eefaff;font-weight:850}.coach-results-table small{display:block;margin-top:3px;color:#7f9db7;font-size:10px}.coach-review-datetime{min-width:118px;white-space:normal!important}
+.coach-review-badge{display:inline-flex;align-items:center;justify-content:center;min-width:44px;padding:4px 7px;border-radius:999px;font-weight:900;font-size:11px}.coach-review-badge.is-success{color:#8fffd5;border:1px solid rgba(74,239,178,.34);background:rgba(44,206,150,.13)}.coach-review-badge.is-warning{color:#ffd369;border:1px solid rgba(255,211,105,.35);background:rgba(255,183,61,.13)}.coach-review-badge.is-fail{color:#ff9eb5;border:1px solid rgba(255,92,130,.35);background:rgba(255,72,112,.13)}.coach-review-empty{color:#718ba3}
+.coach-review-count{font-weight:900;font-variant-numeric:tabular-nums}.coach-review-count.is-success{color:#8fffd5}.coach-review-count.is-warning{color:#ffd369}.coach-review-count.is-fail{color:#ff9eb5}
+@media (max-width:1200px){.coach-results-filter{grid-template-columns:repeat(3,minmax(160px,1fr))}.coach-results-summary{grid-template-columns:repeat(4,minmax(100px,1fr))}}
+@media (max-width:850px){.coach-results-workspace{padding:16px}.coach-results-filter{grid-template-columns:1fr 1fr}.coach-results-summary{grid-template-columns:repeat(2,minmax(100px,1fr))}}
+@media (max-width:560px){.coach-results-filter{grid-template-columns:1fr}.coach-results-filter-actions{grid-column:auto}.coach-results-filter-actions button{flex:1 1 100%}}
 
 .context-bar{
   position:fixed;
@@ -1629,6 +1709,7 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
     0 24px 70px rgba(0,3,14,.54),
     inset 0 1px 0 rgba(255,255,255,.04);
 }
+.game-login-gate{position:absolute;inset:50% auto auto 50%;z-index:55;display:grid;width:min(360px,calc(100% - 32px));box-sizing:border-box;gap:9px;justify-items:center;transform:translate(-50%,-50%);padding:20px;border:1px solid rgba(67,231,244,.38);border-radius:16px;color:var(--dd-text);text-align:center;background:rgba(5,18,38,.94);box-shadow:0 18px 48px rgba(0,3,16,.55),0 0 28px rgba(67,231,244,.12);backdrop-filter:blur(12px)}.game-login-gate strong{font-size:20px}.game-login-gate span{color:#a9bfd3;line-height:1.45}.game-login-gate .btn-green{margin-top:3px}.field-card.is-login-required #wrap{pointer-events:none;filter:saturate(.65) brightness(.66)}
 #fieldImg{
   background:transparent;
   filter:
@@ -1856,9 +1937,143 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .coachTbl thead th{color:#c9dceb;border-bottom-color:var(--dd-border);background:#10243f}
 .coachTbl tbody td{border-bottom-color:rgba(121,185,235,.13)}
 .coachTbl .grp td{color:#eaf5ff;border-bottom-color:var(--dd-border);background:#0d2039}
-.diq-modal-backdrop,.modal-overlay,#pwModal,#adminPwModal{background:rgba(1,5,15,.76)!important}
+.diq-modal-backdrop,.modal-overlay,#playerModalOverlay,#pwModal,#adminPwModal{background:rgba(1,5,15,.76)!important}
 .modal-header,.modal-actions,.diq-modal-head{border-color:var(--dd-border)}
-.modal-body label,#playerSidebarCard .field > span,#coachCard .rowGrid .field > span,#teamsSubsec .coachGrid .field > span{color:#a9bfd3}
+.modal-body label,#playerModalOverlay .field > span,#coachCard .rowGrid .field > span,#teamsSubsec .coachGrid .field > span{color:#a9bfd3}
+
+/* Administrator workspace and shared situation workflow */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.admin-workspace{width:100%;box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height) - 30px);padding:24px;overflow:auto}
+.tools-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:4px 2px 14px;border-bottom:1px solid rgba(92,180,255,.2)}
+.tools-panel-header strong{display:block;font-size:18px;color:#f2fbff}
+.tools-panel-actions,.admin-actions,.admin-toolbar,.situation-editor-actions,.modal-actions-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.btn-danger{background:rgba(255,72,112,.1);color:#ff8da8;border:1px solid rgba(255,72,112,.45)}
+.btn-danger:hover{background:rgba(255,72,112,.18)}
+
+.admin-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
+.admin-tab{background:rgba(7,27,53,.72);color:#9fc1d9;border:1px solid rgba(92,180,255,.22);min-height:42px}
+.admin-tab.is-active{color:#061225;background:#43e7f4;border-color:#8ff5ff;box-shadow:0 0 18px rgba(67,231,244,.2)}
+.admin-view{display:grid;gap:14px}
+.admin-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.admin-section-heading h3{margin:0;color:#f1fbff;font-size:17px}
+.admin-section-heading p{margin:4px 0 0;color:#8eacc2;line-height:1.45}
+.admin-record-card,.admin-bulk-actions{padding:14px;border:1px solid rgba(92,180,255,.2);border-radius:14px;background:rgba(5,24,48,.68);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.admin-bulk-actions summary{cursor:pointer;color:#a9c9df;font-weight:800}
+.admin-bulk-actions .admin-toolbar{margin-top:12px}
+.admin-csv-intro{display:grid;gap:4px;margin:13px 0;color:#9fb8ce;line-height:1.4}.admin-csv-intro strong{color:#edfaff}.admin-csv-intro span{font-size:12px}
+.admin-csv-dropzone{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;border:1px dashed rgba(67,231,244,.46);border-radius:13px;background:rgba(67,231,244,.045);transition:border-color .15s,background .15s,box-shadow .15s}.admin-csv-dropzone.is-dragging{border-color:#43e7f4;background:rgba(67,231,244,.12);box-shadow:0 0 20px rgba(67,231,244,.12)}.admin-csv-dropzone>div{display:grid;gap:3px;color:#e8faff}.admin-csv-dropzone span{color:#8faac1;font-size:12px}
+.admin-csv-preview{display:grid;gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid rgba(92,180,255,.18)}
+.admin-csv-summary{display:grid;grid-template-columns:repeat(6,minmax(72px,1fr));gap:7px}.admin-csv-summary>div{display:grid;gap:2px;padding:9px 10px;border:1px solid rgba(92,180,255,.18);border-radius:9px;background:rgba(4,20,41,.55)}.admin-csv-summary span{color:#86a4bd;font-size:9px;font-weight:850;text-transform:uppercase}.admin-csv-summary strong{color:#f0fbff;font-size:17px;font-variant-numeric:tabular-nums}
+.admin-csv-ready{padding:10px;border:1px solid rgba(68,232,170,.24);border-radius:9px;background:rgba(68,232,170,.08);color:#77f3c0;font-weight:750}.admin-csv-issues{display:grid;gap:6px}.admin-csv-issues>strong{color:#edfaff}.admin-csv-issues>div{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:8px 9px;border-radius:8px;font-size:12px}.admin-csv-issues>div.is-error{border:1px solid rgba(255,72,112,.25);background:rgba(255,72,112,.08);color:#ff9bb2}.admin-csv-issues>div.is-warning{border:1px solid rgba(255,211,105,.25);background:rgba(255,183,61,.08);color:#ffd369}.admin-csv-issues p{margin:0}.admin-csv-issues span{font-weight:850}
+.admin-csv-table-wrap{max-height:280px;overflow:auto;border:1px solid rgba(92,180,255,.18);border-radius:10px}.admin-csv-table{width:100%;border-collapse:collapse;color:#e8f7ff;font-size:11px}.admin-csv-table th,.admin-csv-table td{padding:8px;border-bottom:1px solid rgba(92,180,255,.12);text-align:left}.admin-csv-table th{position:sticky;top:0;background:#0c2949;color:#9fb8ce;text-transform:uppercase;font-size:9px}.admin-csv-table code{color:#a6d9ef;font-size:10px}.admin-csv-action{font-weight:900;text-transform:uppercase;font-size:9px}.admin-csv-action.is-create,.admin-csv-action.is-restore{color:#77f3c0}.admin-csv-action.is-update{color:#6deeff}.admin-csv-action.is-archive{color:#ff9bb2}.admin-csv-action.is-unchanged{color:#8099ae}
+.admin-csv-confirm{display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid rgba(255,92,130,.3);border-radius:9px;background:rgba(255,72,112,.07);color:#ffb2c4;font-size:12px;line-height:1.4}.admin-csv-confirm input{margin-top:2px;accent-color:#ff4870}
+@media(max-width:720px){.admin-csv-dropzone{align-items:stretch;flex-direction:column}.admin-csv-summary{grid-template-columns:repeat(3,1fr)}}
+.admin-record-grid{display:grid;grid-template-columns:minmax(170px,.8fr) minmax(220px,1fr) minmax(220px,1fr);gap:12px}
+.admin-account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.admin-record-grid>*,.admin-account-grid>*{min-width:0}
+.admin-record-card{display:grid;gap:11px}
+.admin-record-card .sectionTitle{margin:0 0 2px;color:#f1fbff;font-size:15px}
+.field-with-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
+.record-id-preview{min-height:20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;overflow-wrap:anywhere}
+.operation-status{min-height:22px;padding:7px 10px;border-radius:9px;color:#9fc1d9;font-size:13px}
+.operation-status:empty{display:none}
+.operation-status.is-pending{display:block;background:rgba(67,231,244,.08);color:#9ff6ff;border:1px solid rgba(67,231,244,.2)}
+.operation-status.is-success{display:block;background:rgba(68,232,170,.09);color:#77f3c0;border:1px solid rgba(68,232,170,.24)}
+.operation-status.is-error{display:block;background:rgba(255,72,112,.09);color:#ff9bb2;border:1px solid rgba(255,72,112,.26)}
+.proposal-details{padding:10px;border-radius:9px;background:rgba(2,14,31,.65);line-height:1.5}
+.proposal-history{display:grid;gap:6px}
+.proposal-history-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(92,180,255,.15);border-radius:9px;color:#a9c9df;background:rgba(4,20,41,.55)}
+.situation-editor-actions{margin-bottom:4px}
+
+:is(#adminCard,.admin-workspace) .field,#coachCard .field,#pwModal .field{display:grid;gap:5px;color:#a9c9df}
+:is(#adminCard,.admin-workspace) .field>span,#coachCard .field>span,#pwModal .field>span{font-size:12px;font-weight:800;color:#a9bfd3}
+:is(#adminCard,.admin-workspace) :is(input,select,textarea),#coachCard input,#coachCard select,#coachCard textarea,#pwModal input,#pwModal select{width:100%;box-sizing:border-box;background:#071b35;color:#e6f8ff;border:1px solid rgba(92,180,255,.28)}
+#adminCard,#adminCard *,.admin-workspace,.admin-workspace *{box-sizing:border-box}
+:is(#adminCard,.admin-workspace) :is(input,select,textarea):focus,#coachCard input:focus,#coachCard select:focus,#coachCard textarea:focus,#pwModal input:focus,#pwModal select:focus{outline:none;border-color:#43e7f4;box-shadow:0 0 0 3px rgba(67,231,244,.13)}
+:is(#adminCard,.admin-workspace) :disabled,#coachCard :disabled{opacity:.48;cursor:not-allowed}
+#adminSituationEditorMount #situationBuilderSubsec,#coachSituationEditorMount #situationBuilderSubsec{margin:0;border:1px solid rgba(92,180,255,.2);border-radius:14px;background:rgba(5,24,48,.68);padding:12px;overflow:hidden}
+#adminSituationEditorMount #situationBuilderSubsec>.title,#coachSituationEditorMount #situationBuilderSubsec>.title{display:flex;justify-content:space-between;align-items:center;color:#f1fbff;font-size:15px;font-weight:900;cursor:pointer}
+#adminSituationEditorMount .subsec.diq-collapsible.diq-collapsed>.diq-body,#coachSituationEditorMount .subsec.diq-collapsible.diq-collapsed>.diq-body{display:none}
+.coach-login-box{width:min(460px,calc(100vw - 32px));display:grid;gap:12px}
+.modal-title{font-size:18px;font-weight:900;color:#f2fbff}
+.modal-actions-row{justify-content:flex-end}
+
+@container tools-workspace (max-width:620px){
+  .admin-record-grid,.admin-account-grid{grid-template-columns:1fr}
+  .admin-section-heading{flex-direction:column}
+  .admin-section-heading>.btn{width:100%;justify-content:center}
+  .field-with-action{grid-template-columns:1fr}
+  .field-with-action>.btn{width:100%;justify-content:center}
+  #coachCard .rowGrid{grid-template-columns:1fr}
+}
+
+/* Unified account login and role-aware navigation */
+#staffToolsBtn{
+  color:#d8d1ff;
+  border-color:rgba(139,124,255,.56);
+  background:rgba(73,58,145,.16);
+  box-shadow:inset 0 0 18px rgba(139,124,255,.06);
+}
+#staffToolsBtn:hover:not(:disabled){
+  color:#fff;
+  border-color:#b8afff;
+  background:rgba(114,94,232,.34);
+  box-shadow:0 0 16px rgba(139,124,255,.22);
+}
+.legacy-role-actions{display:none!important}
+.auth-modal-panel{width:min(500px,calc(100vw - 28px));max-height:min(760px,calc(100vh - 28px));overflow:auto}
+.auth-modal .modalHeader{align-items:flex-start}
+.auth-role-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:0 16px 14px}
+.auth-role-tab{min-height:40px;color:#9fc1d9;background:rgba(7,27,53,.72);border:1px solid rgba(92,180,255,.22)}
+.auth-role-tab.is-active{color:#061225;background:#43e7f4;border-color:#8ff5ff;box-shadow:0 0 18px rgba(67,231,244,.2)}
+.auth-modal-body{padding-top:0}
+.auth-modal .auth-role-view,
+.auth-modal #pwModal.auth-role-view,
+.auth-modal #adminPwModal.auth-role-view{
+  display:grid;
+  position:static;
+  inset:auto;
+  z-index:auto;
+  width:100%;
+  box-sizing:border-box;
+  gap:12px;
+  padding:2px;
+  align-items:stretch;
+  justify-content:stretch;
+  background:transparent!important;
+  color:var(--dd-text)
+}
+.auth-modal .auth-role-view.hidden{display:none!important}
+.auth-player-form{display:grid;gap:12px}
+.auth-modal .field{display:grid;gap:5px;color:#a9c9df}
+.auth-modal .field>span{font-size:12px;font-weight:800;color:#a9bfd3}
+.auth-modal input,.auth-modal select,.auth-modal #pwModal input,.auth-modal #pwModal select{
+  width:100%!important;
+  box-sizing:border-box;
+  margin:0!important;
+  padding:10px 12px!important;
+  color:#e6f8ff!important;
+  border:1px solid rgba(92,180,255,.28)!important;
+  border-radius:10px;
+  background:#071b35!important;
+}
+.auth-modal input:focus,.auth-modal select:focus,.auth-modal #pwModal input:focus,.auth-modal #pwModal select:focus{outline:none;border-color:#43e7f4!important;box-shadow:0 0 0 3px rgba(67,231,244,.13)!important}
+.auth-credentials-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+.auth-submit-btn{min-width:104px;min-height:41px;justify-content:center;white-space:nowrap}
+.auth-admin-credentials{margin-top:0}
+.auth-modal .operation-status{margin:0}
+.auth-modal .operation-status:empty{display:none!important;min-height:0;padding:0;border:0}
+
+@media(max-width:520px){
+  .auth-modal .auth-account-grid,.auth-credentials-row{grid-template-columns:1fr}
+  .auth-submit-btn{width:100%}
+}
+
+@media(max-width:900px){
+  .admin-record-grid,.admin-account-grid{grid-template-columns:1fr}
+  .admin-tabs{grid-template-columns:1fr}
+  .admin-section-heading{flex-direction:column}
+}
 
 @media (prefers-reduced-motion:reduce){
   .tgt.selected{animation:none}

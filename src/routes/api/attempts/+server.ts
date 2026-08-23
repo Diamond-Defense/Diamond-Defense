@@ -16,6 +16,22 @@ export const POST: RequestHandler = async (event) => {
   if (!attempt.situationKey || (attempt.phase !== 1 && attempt.phase !== 2)) {
     return json({ error: 'A valid situation and phase are required.' }, { status: 400 });
   }
-  await new SqliteAttemptRepository(databaseFor(event)).save(user.id, user.teamId, attempt);
-  return json({ ok: true }, { status: 201 });
+  if (
+    attempt.outcome
+    && !['passed', 'failed', 'abandoned'].includes(attempt.outcome)
+  ) {
+    return json({ error: 'A valid attempt outcome is required.' }, { status: 400 });
+  }
+  if (attempt.runId && String(attempt.runId).length > 100) {
+    return json({ error: 'The attempt run ID is too long.' }, { status: 400 });
+  }
+  const saved = await new SqliteAttemptRepository(databaseFor(event)).save(
+    user.id,
+    user.teamId,
+    attempt,
+  );
+  return json(
+    { ok: true, attemptId: saved.id, created: saved.created },
+    { status: saved.created ? 201 : 200 },
+  );
 };

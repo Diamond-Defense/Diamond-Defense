@@ -13,16 +13,12 @@ async function openCleanApp(page) {
 }
 
 async function loginAsSeedPlayer(page) {
-  await page.getByRole('button', { name: 'Player Login' }).click();
+  await page.locator('#playerBtn').click();
   await page.locator('#playerTeamSelect').selectOption('13u-black');
   await page.locator('#playerNameSelect').selectOption('13u-black-bob-smith-11');
   await page.locator('#playerPass').fill('1234');
-  const successfulLoginDialog = page.waitForEvent('dialog');
-  await page.getByRole('button', { name: 'Login', exact: true }).click();
-  const dialog = await successfulLoginDialog;
-  expect(dialog.message()).toBe('Logged in.');
-  await dialog.dismiss();
-  await expect(page.getByRole('button', { name: 'Player Info' })).toBeVisible();
+  await page.locator('#playerLoginBtn').click();
+  await expect(page.locator('#playerBtn')).toHaveText('#11 Bob Smith · Log out');
 }
 
 test.describe('Diamond Defense regression behavior', () => {
@@ -118,6 +114,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
   test('changing situations updates the situation HUD', async ({ page }) => {
     await openCleanApp(page);
+    await loginAsSeedPlayer(page);
 
     const values = await page.locator('#sitSelect option').evaluateAll((options) =>
       options.map((option) => option.value),
@@ -162,11 +159,11 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
-    await expect(page.getByRole('button', { name: 'Player Login' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Login', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Guide' })).toBeVisible();
-    await page.locator('.tools-menu summary').click();
-    await expect(page.getByRole('button', { name: 'Coach Tools' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Admin' })).toBeVisible();
+    await expect(page.locator('#staffToolsBtn')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Coach Tools' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeHidden();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   });
 
@@ -436,6 +433,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
   test('start, check, and reset preserve the round state contract', async ({ page }) => {
     await openCleanApp(page);
+    await loginAsSeedPlayer(page);
 
     const start = page.getByRole('button', { name: 'Start Situation' });
     const reset = page.getByRole('button', { name: 'Reset' });
@@ -465,52 +463,161 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#scoreVal')).toHaveText('0');
   });
 
+  test('resetting an active situation records one abandoned play attempt', async ({ page }) => {
+    await openCleanApp(page);
+    await loginAsSeedPlayer(page);
+
+    await page.getByRole('button', { name: 'Start Situation' }).click();
+    const savedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Reset' }).click();
+    const response = await savedResponse;
+    expect(response.status()).toBe(201);
+    const payload = response.request().postDataJSON();
+    expect(payload).toMatchObject({
+      formatVersion: 2,
+      outcome: 'abandoned',
+      abandonReason: 'reset',
+      situationKey: 'BD-01',
+      phase: 1,
+    });
+    expect(payload.runId).toBeTruthy();
+    expect(payload.startedAt).toBeTruthy();
+    expect(payload.completedAt).toBeTruthy();
+
+    const results = await page.evaluate(async (runId) => {
+      const data = await (await fetch('./api/results/me')).json();
+      return data.log.filter((attempt) => attempt.runId === runId);
+    }, payload.runId);
+    expect(results).toHaveLength(1);
+    expect(results[0].outcome).toBe('abandoned');
+  });
+
+  test('a positioning-only failure is saved without requiring a sequence', async ({ page }) => {
+    await openCleanApp(page);
+    await loginAsSeedPlayer(page);
+    await page.evaluate(() => {
+      currentSituation.playSeq = [];
+      currentSituation.playSeq2 = [];
+    });
+
+    await page.getByRole('button', { name: 'Start Situation' }).click();
+    await page.evaluate(() => {
+      for (const position of POS_IDS) {
+        tokens.get(position).pos = { x: 0, y: 0 };
+        placeToken(position);
+      }
+    });
+    await page.getByRole('button', { name: 'Check Positions' }).click();
+    await page.getByRole('button', { name: 'Check Positions' }).click();
+    const savedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+    );
+    await page.getByRole('button', { name: 'Check Positions' }).click();
+    const response = await savedResponse;
+    expect(response.status()).toBe(201);
+    const payload = response.request().postDataJSON();
+    expect(payload).toMatchObject({
+      formatVersion: 2,
+      outcome: 'failed',
+      situationKey: 'BD-01',
+      phase: 1,
+      phase1: { ok: false, scoreCorrect: 0, scoreTotal: 9, triesUsed: 3 },
+    });
+    expect(payload.phase1Checks).toHaveLength(3);
+    expect(payload.sequenceStages).toHaveLength(0);
+  });
+
   test('player login rejects a wrong password and accepts a roster password', async ({ page }) => {
     await openCleanApp(page);
 
-    await page.getByRole('button', { name: 'Player Login' }).click();
+    await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
+    await expect(page.locator('#sitSelect')).toBeDisabled();
+    await expect(page.locator('#randomSitBtn')).toBeDisabled();
+    await expect(page.locator('#gameLoginGate')).toBeVisible();
+
+    await page.locator('#playerBtn').click();
+    const playerModal = page.locator('#playerModalOverlay');
+    await expect(playerModal).toBeVisible();
+    await expect(playerModal).toHaveAttribute('role', 'dialog');
+    await expect(playerModal).toHaveAttribute('aria-modal', 'true');
+    await expect(page.locator('#playerModalTitle')).toHaveText('Login');
+    await expect(page.locator('#authPlayerTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#playerSidebarCard')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Share my results' })).toHaveCount(0);
+    await expect(page.locator('#playerResultsStatus')).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Copy Coach Review Code' })).toHaveCount(0);
     await page.locator('#playerTeamSelect').selectOption('13u-black');
     await page.locator('#playerNameSelect').selectOption('13u-black-bob-smith-11');
 
     await page.locator('#playerPass').fill('wrong-password');
     const wrongPasswordDialog = page.waitForEvent('dialog');
-    await page.getByRole('button', { name: 'Login', exact: true }).click();
+    await page.locator('#playerLoginBtn').click();
     const rejectedLogin = await wrongPasswordDialog;
     expect(rejectedLogin.message()).toBe('Incorrect password.');
     await rejectedLogin.dismiss();
-    await expect(page.locator('#playerLoginStatus')).toHaveText('Not logged in');
+    await expect(page.locator('#playerLoginStatus')).toHaveCount(0);
 
     await page.locator('#playerPass').fill('1234');
-    const successfulLoginDialog = page.waitForEvent('dialog');
-    await page.getByRole('button', { name: 'Login', exact: true }).click();
-    const acceptedLogin = await successfulLoginDialog;
-    expect(acceptedLogin.message()).toBe('Logged in.');
-    await acceptedLogin.dismiss();
+    await page.locator('#playerLoginBtn').click();
 
-    await expect(page.locator('#playerLoginStatus')).toContainText('#11 Bob Smith');
+    await expect(playerModal).toBeHidden();
     await expect(page.locator('#playerIdText')).toHaveText('13u-black-bob-smith-11');
-    await expect(page.getByRole('button', { name: 'Player Info' })).toBeVisible();
+    await expect(page.getByRole('button', { name:'Start Situation' })).toBeEnabled();
+    await expect(page.locator('#sitSelect')).toBeEnabled();
+    await expect(page.locator('#randomSitBtn')).toBeEnabled();
+    await expect(page.locator('#gameLoginGate')).toBeHidden();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    const logoutResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/auth/logout') && response.request().method() === 'POST',
+    );
+    await expect(page.locator('#playerBtn')).toHaveText('#11 Bob Smith · Log out');
+    await expect(page.locator('#staffToolsBtn')).toBeHidden();
+    await page.locator('#playerBtn').click();
+    expect((await logoutResponse).ok()).toBe(true);
+    await expect(page.locator('#playerBtn')).toHaveText('Login');
+    await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
+    await expect(page.locator('#gameLoginGate')).toBeVisible();
   });
 
   test('coach and admin tools enforce their current password gates', async ({ page }) => {
     await openCleanApp(page);
 
-    await page.locator('.tools-menu summary').click();
-    await page.getByRole('button', { name: 'Coach Tools' }).click();
+    await page.locator('#playerBtn').click();
+    await page.locator('#authCoachTab').click();
     await expect(page.locator('#pwModal')).toBeVisible();
+    await expect(page.locator('#coachLoginTeamSelect option[value="13u-black"]')).toHaveCount(1);
+    await page.locator('#coachLoginTeamSelect').selectOption('13u-black');
+    await page.locator('#coachLoginNameSelect').selectOption('staff-coach');
     await page.locator('#pwInput').fill('wrong');
-    await page.getByRole('button', { name: 'Unlock' }).click();
+    await page.locator('#pwOk').click();
     await expect(page.locator('#pwMsg')).toHaveText('Incorrect password.');
     await page.locator('#pwInput').fill('coach');
-    await page.getByRole('button', { name: 'Unlock' }).click();
+    await page.locator('#pwOk').click();
+    await expect(page.locator('#playerModalOverlay')).toBeHidden();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    await expect(page.locator('#playerBtn')).toHaveText('Diamond Defense Coach · Log out');
+    await expect(page.locator('#staffToolsBtn')).toBeVisible();
+    await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#coachCard')).toBeVisible();
     await expect(page.locator('#coachStatus')).toHaveText('unlocked');
+    await expect(page.locator('#coachIdentity')).toContainText('Diamond Defense Coach');
     const coachDrawerLayout = await page.evaluate(() => {
       const drawer = document.querySelector('#toolsDrawer');
       const rect = drawer.getBoundingClientRect();
       return {
         parentId: document.querySelector('#coachCard').parentElement.id,
         position: getComputedStyle(drawer).position,
+        drawerLeft: rect.left,
+        drawerWidth: rect.width,
+        viewportWidth: window.innerWidth,
+        fieldRight: document.querySelector('.field-card').getBoundingClientRect().right,
+        horizontalOverflow: drawer.scrollWidth - drawer.clientWidth,
         rightGap: window.innerWidth - rect.right,
         bottom: rect.bottom,
         viewportHeight: window.innerHeight,
@@ -518,21 +625,87 @@ test.describe('Diamond Defense regression behavior', () => {
     });
     expect(coachDrawerLayout.parentId).toBe('toolsDrawer');
     expect(coachDrawerLayout.position).toBe('fixed');
+    expect(coachDrawerLayout.drawerWidth).toBeLessThanOrEqual(coachDrawerLayout.viewportWidth / 3 + 1);
+    expect(coachDrawerLayout.fieldRight).toBeLessThanOrEqual(coachDrawerLayout.drawerLeft);
+    expect(coachDrawerLayout.horizontalOverflow).toBeLessThanOrEqual(1);
     expect(coachDrawerLayout.rightGap).toBeLessThanOrEqual(12);
     expect(coachDrawerLayout.bottom).toBeLessThanOrEqual(coachDrawerLayout.viewportHeight);
 
-    await page.locator('.tools-menu summary').click();
-    await page.getByRole('button', { name: 'Admin' }).click();
+    await page.locator('#playerBtn').click();
+    await expect(page.locator('#staffToolsBtn')).toBeHidden();
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
     await expect(page.locator('#adminPwModal')).toBeVisible();
     await page.locator('#adminPwInput').fill('wrong');
     await page.locator('#adminPwOk').click();
     await expect(page.locator('#adminPwMsg')).toHaveText('Incorrect password.');
     await page.locator('#adminPwInput').fill('admin');
     await page.locator('#adminPwOk').click();
+    await expect(page.locator('#playerModalOverlay')).toBeHidden();
+    await page.reload();
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    await expect(page.locator('#playerBtn')).toHaveText('Administrator · Log out');
+    await expect(page.locator('#staffToolsBtn')).toBeVisible();
+    await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#adminCard')).toBeVisible();
     await expect(page.locator('#adminStatus')).toHaveText('unlocked');
     await expect(page.locator('#coachCard')).toBeHidden();
     expect(await page.locator('#adminCard').evaluate((card) => card.parentElement.id)).toBe('toolsDrawer');
+    await expect(page.locator('#adminWorkspace')).toBeVisible();
+    await expect(page.locator('.field-card')).toBeHidden();
+    expect(await page.locator('[data-admin-view="teams"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
+    expect(await page.locator('[data-admin-view="recovery"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
+    expect(await page.locator('[data-admin-view="situations"]').evaluate((view) => view.parentElement.id)).toBe('adminCard');
+    const adminWorkspaceLayout = await page.evaluate(() => {
+      const drawer = document.querySelector('#toolsDrawer');
+      const admin = document.querySelector('#adminCard');
+      const workspace = document.querySelector('#adminWorkspace');
+      return {
+        drawerLeft: drawer.getBoundingClientRect().left,
+        drawerWidth: drawer.getBoundingClientRect().width,
+        viewportWidth: window.innerWidth,
+        workspaceRight: workspace.getBoundingClientRect().right,
+        horizontalOverflow: Math.max(
+          drawer.scrollWidth - drawer.clientWidth,
+          admin.scrollWidth - admin.clientWidth,
+          workspace.scrollWidth - workspace.clientWidth,
+        ),
+      };
+    });
+    expect(adminWorkspaceLayout.drawerWidth).toBeLessThanOrEqual(adminWorkspaceLayout.viewportWidth / 3 + 1);
+    expect(adminWorkspaceLayout.workspaceRight).toBeLessThanOrEqual(adminWorkspaceLayout.drawerLeft);
+    expect(adminWorkspaceLayout.horizontalOverflow).toBeLessThanOrEqual(1);
+    await page.getByText('CSV team import', { exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Choose CSV' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Download template' })).toBeVisible();
+    await page.locator('#adminTeamsCsvFile').setInputFiles({
+      name: 'team-preview.csv',
+      mimeType: 'text/csv',
+      buffer: Buffer.from([
+        'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
+        'team,upsert,browser-preview-team,Browser Preview Team,preview@example.com,,,,,',
+      ].join('\n')),
+    });
+    await expect(page.locator('#adminCsvPreview')).toBeVisible();
+    await expect(page.locator('#adminCsvSummary')).toContainText('Changes');
+    await expect(page.locator('#adminCsvSummary')).toContainText('1');
+    await expect(page.locator('.admin-csv-action.is-create')).toHaveText('create');
+    await expect(page.locator('#adminCsvCommitBtn')).toBeEnabled();
+    await page.locator('#adminCsvCancelBtn').click();
+    await expect(page.locator('#adminCsvPreview')).toBeHidden();
+    await expect(page.getByRole('button', { name: /teams\.json|situations json|download all situations/i })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Situations', exact: true }).click();
+    await expect(page.locator('#adminWorkspace')).toBeHidden();
+    await expect(page.locator('.field-card')).toBeVisible();
+    await expect(page.locator('[data-admin-view="situations"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Recovery', exact: true }).click();
+    await expect(page.locator('#adminWorkspace')).toBeVisible();
+    await expect(page.locator('.field-card')).toBeHidden();
+    await expect(page.locator('#adminArchivedTeamSelect')).toBeVisible();
+    await expect(page.locator('#adminArchivedMemberSelect')).toBeVisible();
+    await expect(page.locator('#adminArchivedSituationSelect')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
 
     await page.setViewportSize({ width: 390, height: 844 });
     const mobileDrawer = await page.locator('#toolsDrawer').evaluate((drawer) => {
@@ -555,10 +728,13 @@ test.describe('Diamond Defense regression behavior', () => {
       });
     });
 
-    await page.locator('.tools-menu summary').click();
-    await page.getByRole('button', { name: 'Coach Tools' }).click();
+    await page.locator('#playerBtn').click();
+    await page.locator('#authCoachTab').click();
+    await expect(page.locator('#coachLoginTeamSelect option[value="13u-black"]')).toHaveCount(1);
+    await page.locator('#coachLoginTeamSelect').selectOption('13u-black');
+    await page.locator('#coachLoginNameSelect').selectOption('staff-coach');
     await page.locator('#pwInput').fill('coach');
-    await page.getByRole('button', { name: 'Unlock' }).click();
+    await page.locator('#pwOk').click();
 
     await expect(page.locator('#pwMsg')).toHaveText(
       'Login service is temporarily unavailable. Please try again.',
@@ -572,10 +748,11 @@ test.describe('Diamond Defense regression behavior', () => {
 
   test('admin team edits use record-level APIs and preserve stable IDs', async ({ page }) => {
     await openCleanApp(page);
-    await page.locator('.tools-menu summary').click();
-    await page.getByRole('button', { name: 'Admin' }).click();
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
     await page.locator('#adminPwInput').fill('admin');
     await page.locator('#adminPwOk').click();
+    await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#adminCard')).toBeVisible();
 
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -589,6 +766,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#adminTeamAddBtn').click();
     const created = (await (await createResponse).json()).record;
     expect(created).toEqual(expect.objectContaining({ id: teamId, revision: 1 }));
+    await expect(page.locator('#adminOperationStatus')).toHaveText('Team created.');
 
     await page.locator('#adminTeamName').fill(`${teamName} Renamed`);
     const updateResponse = page.waitForResponse((response) =>
@@ -601,6 +779,7 @@ test.describe('Diamond Defense regression behavior', () => {
       name: `${teamName} Renamed`,
       revision: 2,
     }));
+    await expect(page.locator('#adminOperationStatus')).toHaveText('Team saved.');
 
     const cleanupStatus = await page.evaluate(async ({ id, revision }) => {
       const response = await fetch(`./api/admin/teams/${encodeURIComponent(id)}`, {
@@ -707,29 +886,92 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(result.finalCount).toBe(result.initialCount);
   });
 
-  test('coach review codes round-trip without losing report data', async ({ page }) => {
+  test('coach reviews replace the field and proposals restore it', async ({ page }) => {
     await openCleanApp(page);
-
-    const result = await page.evaluate(() => {
-      const payload = {
-        v: 1,
-        dayKey: '2026-08-02',
-        team: { id: '13u-black', name: '13U Black' },
-        player: { id: 'p-1', name: 'Test Player', number: '99' },
-        attempts: [{ situationKey: 'BD-01', posResult: 'SUCCESS' }],
-      };
-      const code = encodeCoachReviewCode(payload);
-      return { code, decoded: decodeCoachReviewCode(code) };
+    await loginAsSeedPlayer(page);
+    const savedAttempt = await page.evaluate(async () => {
+      const response = await fetch('./api/attempts', {
+        method:'POST',
+        headers:{ 'content-type':'application/json' },
+        body:JSON.stringify({
+          situationKey:'BD-01',
+          situationTitle:'Color verification',
+          phase:2,
+          success:true,
+          triesUsed:1,
+          timeElapsed:4,
+          phase1Ok:false,
+          phase1ScoreCorrect:5,
+          phase1ScoreTotal:9,
+          phase1TriesUsed:2,
+          phase1Elapsed:12,
+          picked:['LF', 'SS', '2B'],
+        }),
+      });
+      return response.status;
     });
+    expect(savedAttempt).toBe(201);
+    await page.locator('#playerBtn').click();
+    await page.locator('#playerBtn').click();
+    await page.locator('#authCoachTab').click();
+    await page.locator('#coachLoginTeamSelect').selectOption('13u-black');
+    await page.locator('#coachLoginNameSelect').selectOption('staff-coach');
+    await page.locator('#pwInput').fill('coach');
+    await page.locator('#pwOk').click();
+    await page.locator('#staffToolsBtn').click();
 
-    expect(result.code).toMatch(/^DIQ1:/);
-    expect(result.decoded).toEqual({
-      v: 1,
-      dayKey: '2026-08-02',
-      team: { id: '13u-black', name: '13U Black' },
-      player: { id: 'p-1', name: 'Test Player', number: '99' },
-      attempts: [{ situationKey: 'BD-01', posResult: 'SUCCESS' }],
-    });
+    await expect(page.locator('[data-coach-tab="reviews"]')).toHaveClass(/is-active/);
+    await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
+    await expect(page.locator('.field-card')).toBeHidden();
+    await expect(page.locator('#teamsSubsec')).toHaveCount(0);
+    await expect(page.locator('#coachReviewInput')).toHaveCount(0);
+    await expect(page.locator('#coachResultsSituationSelect')).toBeVisible();
+    await expect(page.locator('#coachResultsOutcomeSelect')).toBeVisible();
+    await expect(page.locator('#coachResultsDateFrom')).toBeVisible();
+    await expect(page.locator('#coachResultsDateTo')).toBeVisible();
+    await expect(page.locator('.coach-summary-card')).toHaveCount(8);
+
+    await expect(page.locator('.coach-review-table thead')).toContainText('Player');
+
+    await page.locator('#coachResultsPlayerSelect').selectOption('13u-black-bob-smith-11');
+
+    await expect(page.locator('.coach-review-table')).toBeVisible();
+    await expect(page.locator('.coach-review-table thead')).toContainText('Date & Time');
+    await expect(page.locator('.coach-review-table th', { hasText:/^Player$/ })).toHaveCount(0);
+    await expect(page.locator('.coach-review-table thead')).toContainText('Result');
+    await expect(page.locator('.coach-review-table thead')).toContainText('Score');
+    await expect(page.locator('.coach-review-table thead')).toContainText('Tries');
+    await expect(page.locator('.coach-review-table thead')).toContainText('Positioning Time');
+    await expect(page.locator('.coach-review-table thead')).toContainText('Selected Sequence');
+    await expect(page.locator('.coach-review-table th', { hasText:/^Phase$/ })).toHaveCount(0);
+    await expect(page.locator('.coach-review-situation')).toHaveCount(0);
+    await expect(page.locator('.coach-review-table')).not.toContainText('BD-01');
+    await expect(page.locator('.coach-review-count').first()).toBeVisible();
+    await expect(page.locator('.coach-review-count.is-warning', { hasText:'5/9' })).toBeVisible();
+    await expect(page.locator('.coach-review-count.is-warning', { hasText:'2/3' })).toBeVisible();
+    await expect(page.locator('.coach-review-count.is-success', { hasText:'1/3' }).first()).toBeVisible();
+    expect(await page.locator('.coach-review-count').evaluateAll((counts) => counts.every((count) =>
+      /is-(success|warning|fail)/.test(count.className)
+      && getComputedStyle(count).padding === '0px'
+      && getComputedStyle(count).backgroundColor === 'rgba(0, 0, 0, 0)'
+    ))).toBe(true);
+    await expect(page.getByText('Review →', { exact:true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name:'Back to results' })).toHaveCount(0);
+
+    await page.locator('#coachResultsOutcomeSelect').selectOption('passed');
+    await page.locator('#coachResultsApplyBtn').click();
+    await expect(page.locator('.coach-review-badge.is-success', { hasText:'PASS' }).first()).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.locator('#coachResultsExportBtn').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('diamond-defense-13u-black-results.csv');
+    await expect(page.locator('#coachResultsStatus')).toContainText('CSV export downloaded');
+
+    await page.locator('[data-coach-tab="proposals"]').click();
+    await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
+    await expect(page.locator('.field-card')).toBeVisible();
+    await expect(page.locator('#coachSituationEditorMount')).toBeVisible();
   });
 
   test('a correct phase-one placement proceeds through the phase-two sequence', async ({ page }) => {
@@ -786,7 +1028,23 @@ test.describe('Diamond Defense regression behavior', () => {
       await expect(chip).toHaveCount(1);
       await chip.click();
     }
+    const savedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+    );
     await page.getByRole('button', { name: 'Verify Sequence' }).click();
+    const completedResponse = await savedResponse;
+    expect(completedResponse.status()).toBe(201);
+    const completedAttempt = completedResponse.request().postDataJSON();
+    expect(completedAttempt).toMatchObject({
+      formatVersion: 2,
+      outcome: 'passed',
+      situationKey: 'BD-01',
+      phase: 2,
+      phase1: { ok: true, scoreCorrect: 9, scoreTotal: 9 },
+    });
+    expect(completedAttempt.phase1Checks).toHaveLength(1);
+    expect(completedAttempt.sequenceChecks).toHaveLength(1);
+    expect(completedAttempt.sequenceStages).toHaveLength(1);
 
     await expect(page.locator('#seqPanel')).toBeVisible();
     await expect(page.locator('#seqBody')).toContainText('Correct sequence!');
@@ -846,7 +1104,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
-    const marker = `Regression Test ${Date.now()}`;
+    const marker = `regression-test-${Date.now()}`;
     const countBefore = await page.evaluate(() => RESULTS.log.length);
     const savedResponse = page.waitForResponse((response) =>
       response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
@@ -854,9 +1112,19 @@ test.describe('Diamond Defense regression behavior', () => {
 
     const saved = await page.evaluate((situationTitle) => {
       recordAttempt({
+        formatVersion: 2,
+        runId: situationTitle,
+        outcome: 'passed',
         phase: 1,
         situationKey: 'BD-01',
-        situationTitle,
+        phase1: {
+          ok: true,
+          scoreCorrect: 7,
+          scoreTotal: 9,
+          triesUsed: 2,
+          elapsed: 14,
+          completedAt: new Date().toISOString(),
+        },
         score: 7,
         total: 9,
         triesUsed: 2,
@@ -871,7 +1139,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
     expect(saved.log).toHaveLength(countBefore + 1);
     expect(saved.log).toEqual(expect.arrayContaining([
-      expect.objectContaining({ situationTitle: marker }),
+      expect.objectContaining({ runId: marker }),
     ]));
     expect(saved.summary.attempts).toBeGreaterThanOrEqual(1);
     expect(saved.summary.bestPhase1.score).toBeGreaterThanOrEqual(7);
@@ -880,9 +1148,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
-    const restored = await page.evaluate((situationTitle) => ({
+    const restored = await page.evaluate((runId) => ({
       attempts: RESULTS.bySituation['BD-01']?.attempts,
-      hasMarker: RESULTS.log.some((entry) => entry.situationTitle === situationTitle),
+      hasMarker: RESULTS.log.some((entry) => entry.runId === runId),
     }), marker);
     expect(restored.attempts).toBeGreaterThanOrEqual(1);
     expect(restored.hasMarker).toBe(true);

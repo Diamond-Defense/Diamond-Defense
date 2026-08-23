@@ -185,4 +185,230 @@ test.describe('record-level administration API', () => {
       headers: writeHeaders(origin, restored.revision),
     })).ok()).toBeTruthy();
   });
+
+  test('gives each coach a team account and routes situation proposals through admin review', async ({ request, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const teamId = `coach-workflow-${suffix}`;
+    const coachId = `${teamId}-coach-jordan`;
+    const password = 'coach-test-4821';
+    const situationKey = `COACH-${suffix}`;
+
+    await loginAdmin(request, origin);
+    const teamResponse = await request.post('/api/admin/teams', {
+      headers: { Origin: origin },
+      data: { id: teamId, name: 'Coach Workflow Team' },
+    });
+    expect(teamResponse.status()).toBe(201);
+    const team = (await teamResponse.json()).record;
+
+    const coachResponse = await request.post(`/api/admin/teams/${teamId}/members`, {
+      headers: { Origin: origin },
+      data: {
+        userId: coachId,
+        name: 'Coach Jordan',
+        role: 'coach',
+        password,
+      },
+    });
+    expect(coachResponse.status()).toBe(201);
+    expect((await coachResponse.json()).record).toEqual(expect.objectContaining({
+      playerId: coachId,
+      role: 'coach',
+      active: true,
+    }));
+
+    const publicOptions = await request.get('/api/coaches/options');
+    expect(publicOptions.ok()).toBeTruthy();
+    expect((await publicOptions.json()).teams).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: teamId,
+        roster: expect.arrayContaining([
+          expect.objectContaining({ playerId: coachId, name: 'Coach Jordan' }),
+        ]),
+      }),
+    ]));
+
+    const coachRequest = await playwrightRequest.newContext({ baseURL });
+    const login = await coachRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'coach', teamId, coachId, password },
+    });
+    expect(login.ok()).toBeTruthy();
+    expect((await login.json()).user).toEqual(expect.objectContaining({
+      id: coachId,
+      role: 'coach',
+      teamId,
+      teamName: 'Coach Workflow Team',
+    }));
+
+    const template = (await (await coachRequest.get('/api/situations')).json())[0];
+    const proposal = { ...template, key: situationKey, title: 'Coach Proposed Situation' };
+    delete proposal.revision;
+    delete proposal.active;
+    delete proposal.archivedAt;
+
+    expect((await coachRequest.post('/api/situations', {
+      headers: { Origin: origin },
+      data: proposal,
+    })).status()).toBe(403);
+    expect((await coachRequest.post(`/api/admin/teams/${teamId}/members`, {
+      headers: { Origin: origin },
+      data: {
+        userId: `${coachId}-second`,
+        name: 'Unauthorized Coach',
+        role: 'coach',
+        password: 'not-allowed',
+      },
+    })).status()).toBe(403);
+
+    const submissionResponse = await coachRequest.post('/api/situation-submissions', {
+      headers: { Origin: origin },
+      data: proposal,
+    });
+    expect(submissionResponse.status()).toBe(201);
+    const submission = (await submissionResponse.json()).record;
+    expect(submission).toEqual(expect.objectContaining({
+      situationKey,
+      submissionType: 'create',
+      status: 'pending',
+      submittedBy: coachId,
+    }));
+
+    const ownSubmissions = await coachRequest.get('/api/situation-submissions');
+    expect((await ownSubmissions.json()).submissions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: submission.id, submittedBy: coachId }),
+    ]));
+    await coachRequest.dispose();
+
+    const approval = await request.put(`/api/admin/situation-submissions/${submission.id}`, {
+      headers: { Origin: origin },
+      data: { decision: 'approve', notes: 'Approved for the playbook.' },
+    });
+    expect(approval.ok()).toBeTruthy();
+    const approvalResult = await approval.json();
+    expect(approvalResult.submission).toEqual(expect.objectContaining({ status: 'approved' }));
+    expect(approvalResult.published).toEqual(expect.objectContaining({
+      key: situationKey,
+      title: 'Coach Proposed Situation',
+      revision: 1,
+    }));
+
+    expect((await request.delete(`/api/situations/${situationKey}`, {
+      headers: writeHeaders(origin, approvalResult.published.revision),
+    })).ok()).toBeTruthy();
+    expect((await request.delete(`/api/admin/teams/${teamId}`, {
+      headers: writeHeaders(origin, team.revision),
+    })).ok()).toBeTruthy();
+  });
+
+  test('previews and atomically imports modern team CSV records', async ({ request, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    const teamId = `csv-team-${suffix}`;
+    const playerId = `${teamId}-sam-27`;
+    const invalidTeamId = `csv-invalid-${suffix}`;
+    const csv = [
+      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
+      `member,upsert,${teamId},,,${playerId},player,Sam Rivera,27,7391`,
+      `team,upsert,${teamId},CSV Import Team,csv@example.com,,,,,`,
+    ].join('\n');
+
+    expect((await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'preview', csv },
+    })).status()).toBe(401);
+
+    await loginAdmin(request, origin);
+    const template = await request.get('/api/admin/team-import');
+    expect(template.ok()).toBeTruthy();
+    expect(template.headers()['content-disposition'])
+      .toContain('diamond-defense-team-import-template.csv');
+    expect(await template.text()).toContain('record_type,action,team_id');
+
+    const previewResponse = await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'preview', csv },
+    });
+    expect(previewResponse.ok()).toBeTruthy();
+    const preview = await previewResponse.json();
+    expect(preview).toMatchObject({
+      valid: true,
+      format: 'modern',
+      summary: { changes: 2, creates: 2, errors: 0 },
+    });
+    expect(preview.operations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ row: 2, kind: 'member', userId: playerId, action: 'create' }),
+      expect.objectContaining({ row: 3, kind: 'team', teamId, action: 'create' }),
+    ]));
+    expect(JSON.stringify(preview)).not.toContain('7391');
+    expect((await request.get('/api/admin/teams?includeArchived=true').then((response) => response.json()))
+      .teams.some((team) => team.id === teamId)).toBe(false);
+
+    expect((await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'commit', csv, fingerprint: 'stale-preview' },
+    })).status()).toBe(409);
+
+    const commit = await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'commit', csv, fingerprint: preview.fingerprint },
+    });
+    expect(commit.ok()).toBeTruthy();
+    expect((await commit.json()).summary).toMatchObject({ changes: 2, creates: 2 });
+
+    const playerRequest = await playwrightRequest.newContext({ baseURL });
+    const playerLogin = await playerRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'player', teamId, playerId, password: '7391' },
+    });
+    expect(playerLogin.ok()).toBeTruthy();
+    await playerRequest.dispose();
+
+    const updateCsv = [
+      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
+      `team,upsert,${teamId},CSV Import Team,updated-csv@example.com,,,,,`,
+      `member,upsert,${teamId},,,${playerId},player,Sam Rivera Updated,27,`,
+    ].join('\n');
+    const updatePreview = await (await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'preview', csv: updateCsv },
+    })).json();
+    expect(updatePreview).toMatchObject({ valid: true, summary: { updates: 2, changes: 2 } });
+    expect((await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'commit', csv: updateCsv, fingerprint: updatePreview.fingerprint },
+    })).ok()).toBeTruthy();
+    const preservedPasswordRequest = await playwrightRequest.newContext({ baseURL });
+    expect((await preservedPasswordRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'player', teamId, playerId, password: '7391' },
+    })).ok()).toBeTruthy();
+    await preservedPasswordRequest.dispose();
+
+    const invalidCsv = [
+      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
+      `team,upsert,${invalidTeamId},Invalid Import Team,,,,,,`,
+      `member,upsert,${invalidTeamId},,,${invalidTeamId}-player,player,No Password,9,`,
+    ].join('\n');
+    const invalidPreview = await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'preview', csv: invalidCsv },
+    });
+    const invalid = await invalidPreview.json();
+    expect(invalid.valid).toBe(false);
+    expect(invalid.summary.errors).toBe(1);
+    expect((await request.post('/api/admin/team-import', {
+      headers: { Origin: origin },
+      data: { mode: 'commit', csv: invalidCsv, fingerprint: invalid.fingerprint },
+    })).status()).toBe(422);
+    const allTeams = (await (await request.get('/api/admin/teams?includeArchived=true')).json()).teams;
+    expect(allTeams.some((team) => team.id === invalidTeamId)).toBe(false);
+
+    const importedTeam = allTeams.find((team) => team.id === teamId);
+    expect(importedTeam).toEqual(expect.objectContaining({ name: 'CSV Import Team', active: true }));
+    expect((await request.delete(`/api/admin/teams/${teamId}`, {
+      headers: writeHeaders(origin, importedTeam.revision),
+    })).ok()).toBeTruthy();
+  });
 });

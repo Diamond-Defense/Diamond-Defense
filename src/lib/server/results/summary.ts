@@ -12,17 +12,27 @@ export function summarizeAttempts(attempts: AttemptInput[]): Record<string, unkn
       title: attempt.situationTitle || previous.title || '',
       attempts: Number(previous.attempts ?? 0) + 1,
       lastTs: attempt.ts,
+      lastOutcome: attempt.outcome
+        ?? (attempt.success === true ? 'passed' : attempt.success === false ? 'failed' : null),
     };
-    if (
-      attempt.phase === 1 &&
-      Number.isFinite(Number(attempt.score)) &&
-      Number.isFinite(Number(attempt.total))
-    ) {
+    const phaseOne = attempt.phase1 ?? (
+      attempt.phase === 1
+        ? {
+            ok: Number(attempt.score) >= Number(attempt.total),
+            scoreCorrect: Number(attempt.score),
+            scoreTotal: Number(attempt.total),
+            triesUsed: Number(attempt.triesUsed ?? 0),
+            elapsed: Number(attempt.timeElapsed ?? 0),
+            completedAt: String(attempt.ts ?? ''),
+          }
+        : null
+    );
+    if (phaseOne && Number.isFinite(phaseOne.scoreCorrect) && Number.isFinite(phaseOne.scoreTotal)) {
       const candidate = {
-        score: Number(attempt.score),
-        total: Number(attempt.total),
-        triesUsed: Number(attempt.triesUsed ?? 0),
-        timeElapsed: Number(attempt.timeElapsed ?? 0),
+        score: Number(phaseOne.scoreCorrect),
+        total: Number(phaseOne.scoreTotal),
+        triesUsed: Number(phaseOne.triesUsed ?? 0),
+        timeElapsed: Number(phaseOne.elapsed ?? 0),
         ts: attempt.ts,
       };
       const best = previous.bestPhase1 as typeof candidate | undefined;
@@ -34,12 +44,26 @@ export function summarizeAttempts(attempts: AttemptInput[]): Record<string, unkn
         next.bestPhase1 = candidate;
       }
     }
-    if (attempt.phase === 2 && (attempt.stage === 1 || attempt.stage === 2)) {
-      next[attempt.stage === 2 ? 'lastPhase2Stage2' : 'lastPhase2Stage1'] = {
-        success: Boolean(attempt.success),
-        triesUsed: Number(attempt.triesUsed ?? 0),
-        timeElapsed: Number(attempt.timeElapsed ?? 0),
-        picked: attempt.picked ?? [],
+    const stages = attempt.sequenceStages?.length
+      ? attempt.sequenceStages
+      : attempt.phase === 2 && (attempt.stage === 1 || attempt.stage === 2)
+        ? [{
+            stage: attempt.stage,
+            success: Boolean(attempt.sequenceSuccess ?? attempt.success),
+            triesUsed: Number(attempt.triesUsed ?? 0),
+            timeElapsed: Number(attempt.timeElapsed ?? 0),
+            picked: (attempt.picked ?? []) as string[],
+            expected: [],
+            completedAt: String(attempt.ts ?? ''),
+          }]
+        : [];
+    for (const stage of stages) {
+      if (stage.stage !== 1 && stage.stage !== 2) continue;
+      next[stage.stage === 2 ? 'lastPhase2Stage2' : 'lastPhase2Stage1'] = {
+        success: Boolean(stage.success),
+        triesUsed: Number(stage.triesUsed ?? 0),
+        timeElapsed: Number(stage.timeElapsed ?? 0),
+        picked: stage.picked ?? [],
         ts: attempt.ts,
       };
     }

@@ -144,6 +144,20 @@ export class SqliteTeamRepository {
     return teams.map((team) => mapTeam(team, members.filter((member) => member.role === 'player')));
   }
 
+  async listCoachOptions(): Promise<TeamOption[]> {
+    const { teams, members } = await this.rows(false);
+    return teams
+      .map((team) =>
+        mapTeam(
+          team,
+          members.filter(
+            (member) => member.role === 'coach' && member.team_id === team.id,
+          ),
+        ),
+      )
+      .filter((team) => team.roster.length > 0);
+  }
+
   async listForAdministration(includeArchived = false): Promise<TeamOption[]> {
     const { teams, members } = await this.rows(includeArchived);
     return teams.map((team) => mapTeam(team, members));

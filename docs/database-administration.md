@@ -30,8 +30,11 @@ overwriting another edit.
 
 - Administrators can create teams and administer every team, member, password,
   situation, archived record, and audit entry.
-- Coaches can update their assigned team and administer memberships only for
-  that team.
+- Every coach has an individual account linked to one active team. Coaches can
+  administer player memberships only for their assigned team. Only an
+  administrator can create, update, archive, restore, or reset a coach account.
+- Coaches can draft situation changes and submit them for review. Only an
+  administrator can publish, archive, or restore a situation.
 - Players cannot call administration endpoints.
 - Every browser write is checked for same-origin access.
 
@@ -42,7 +45,7 @@ overwriting another edit.
 | List/create teams | `GET/POST /api/admin/teams` |
 | Update/archive team | `PUT/DELETE /api/admin/teams/:teamId` |
 | Restore team | `POST /api/admin/teams/:teamId/restore` |
-| Create player or coach membership | `POST /api/admin/teams/:teamId/members` |
+| Create player or coach membership | `POST /api/admin/teams/:teamId/members` (coach accounts require admin) |
 | Update/archive membership | `PUT/DELETE /api/admin/teams/:teamId/members/:userId` |
 | Restore membership | `POST /api/admin/teams/:teamId/members/:userId/restore` |
 | Reset member password | `PUT /api/admin/teams/:teamId/members/:userId/password` |
@@ -51,6 +54,10 @@ overwriting another edit.
 | List archived situations | `GET /api/admin/situations` |
 | Restore situation | `POST /api/admin/situations/:key/restore` |
 | Recent audit entries | `GET /api/admin/audit` |
+| List coach login options | `GET /api/coaches/options` |
+| Submit/list coach situation proposals | `POST/GET /api/situation-submissions` |
+| Withdraw a pending proposal | `DELETE /api/situation-submissions/:id` |
+| Approve or reject a proposal | `PUT /api/admin/situation-submissions/:id` |
 
 The former `PUT /api/teams/sync` endpoint returns HTTP `410 Gone` and must not be
 used by new clients.
@@ -68,9 +75,33 @@ entry with the actor, entity type, stable entity ID, timestamp, and applicable
 before/after JSON. The API returns the 200 most recent entries to an
 authenticated administrator.
 
+## Coach accounts and situation review
+
+Coach login uses team, coach account, and password instead of one shared coach
+password. The account ID is stable, while its display name and password can be
+changed by an administrator. Archiving the coach or team immediately prevents
+new logins and invalidates the coach's sessions.
+
+The application header has one Login entry point for players, coaches, and
+administrators. After authentication it displays the current account and acts
+as Log out. A separate Tools button is shown only to coaches and administrators
+and automatically opens the panel allowed for that account role.
+
+The coach and administrator panels share the same situation editor. Saving as a
+coach creates a pending proposal containing the full draft and the revision of
+the published situation it was based on. The published record does not change.
+An administrator can approve and publish the proposal or reject it with a note.
+Approval fails with a revision conflict if the published situation changed
+after the coach submitted the draft.
+
 ## Admin interface
 
-The existing Admin drawer uses these record-level endpoints. Its Archived
-Records section restores teams, members, and situations. JSON and CSV controls
-remain optional import/export utilities and are not required for normal database
-administration.
+The Admin drawer is organized into Teams & Accounts, Situations, and Recovery.
+All edits show an explicit pending, success, or error message. CSV remains the
+only bulk team/roster workflow; JSON upload/download controls are not part of
+normal administration. CSV files are validated and previewed without writes,
+then committed through one database-native administrator operation only after
+the administrator reviews the exact changes. See the
+[team CSV import guide](team-csv-import.md). Recovery can reactivate a specific
+archived team, player, coach, or situation without changing its stable ID or
+historical results.

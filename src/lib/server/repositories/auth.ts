@@ -49,8 +49,9 @@ export class SqliteAuthRepository {
     return this.verify(row, password);
   }
 
-  async authenticateStaff(
-    role: 'coach' | 'admin',
+  async authenticateCoach(
+    teamId: string,
+    coachId: string,
     password: string,
   ): Promise<LoginResult | null> {
     const row = await this.database.one<LoginRow>(
@@ -59,7 +60,26 @@ export class SqliteAuthRepository {
               t.id AS team_id, t.name AS team_name, t.coach_email,
               tm.jersey_number
          FROM users u
-         LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'coach' AND tm.active = 1
+         JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'coach'
+         JOIN teams t ON t.id = tm.team_id
+        WHERE u.id = ?1 AND t.id = ?2 AND u.role = 'coach' AND u.active = 1
+          AND t.active = 1 AND tm.active = 1`,
+      [coachId, teamId],
+    );
+    return this.verify(row, password);
+  }
+
+  async authenticateStaff(
+    role: 'admin',
+    password: string,
+  ): Promise<LoginResult | null> {
+    const row = await this.database.one<LoginRow>(
+      `SELECT u.id, u.username, u.display_name, u.role,
+              u.password_hash, u.password_salt, u.password_iterations,
+              t.id AS team_id, t.name AS team_name, t.coach_email,
+              tm.jersey_number
+         FROM users u
+         LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
          LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
         WHERE u.username = ?1 AND u.role = ?1 AND u.active = 1
         ORDER BY t.id

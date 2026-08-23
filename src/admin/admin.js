@@ -4,10 +4,6 @@
   const adminCollapseAllBtn = document.getElementById('adminCollapseAllBtn');
   const adminExpandAllBtn = document.getElementById('adminExpandAllBtn');
 
-  const adminTeamsSubsec = document.getElementById('adminTeamsSubsec');
-  const adminTeamsDownloadBtn = document.getElementById('adminTeamsDownloadBtn');
-  const adminTeamsCopyBtn = document.getElementById('adminTeamsCopyBtn');
-  const adminTeamsImportBtn = document.getElementById('adminTeamsImportBtn');
   const adminTeamsResetBtn = document.getElementById('adminTeamsResetBtn');
 
   const adminTeamSelect = document.getElementById('adminTeamSelect');
@@ -32,7 +28,6 @@
   const adminRestoreTeamBtn = document.getElementById('adminRestoreTeamBtn');
   const adminRestoreMemberBtn = document.getElementById('adminRestoreMemberBtn');
   const adminRestoreSituationBtn = document.getElementById('adminRestoreSituationBtn');
-  const adminRefreshArchivedBtn = document.getElementById('adminRefreshArchivedBtn');
   let adminArchivedTeams = [];
   let adminArchivedSituations = [];
   let adminArchivedMembers = [];
@@ -69,6 +64,7 @@
         t.addEventListener('click', ()=>{
           const isCollapsed = sec.dataset.collapsed === '1';
           adminSetSubsecCollapsed(sec, !isCollapsed);
+          if(isCollapsed && sec.id === 'adminArchivedSubsec') void adminLoadArchivedRecords();
         });
       }
     });
@@ -254,7 +250,6 @@
     }catch(error){ reportDatabaseWriteError('Archived records could not be loaded', error); }
   }
 
-  if(adminRefreshArchivedBtn) adminRefreshArchivedBtn.addEventListener('click', ()=>void adminLoadArchivedRecords());
   if(adminRestoreTeamBtn) adminRestoreTeamBtn.addEventListener('click', async ()=>{
     const id = adminArchivedTeamSelect && adminArchivedTeamSelect.value;
     const team = adminArchivedTeams.find(item=>item.id === id);
@@ -310,47 +305,6 @@
     });
   }
 
-  if (adminTeamsDownloadBtn){
-    adminTeamsDownloadBtn.addEventListener('click', ()=>{ downloadJson('teams.json', TEAMS); });
-  }
-  if (adminTeamsCopyBtn){
-    adminTeamsCopyBtn.addEventListener('click', ()=>{
-      const txt = JSON.stringify(TEAMS, null, 2);
-      copyTextToClipboard(txt)
-        .then(()=> alert('Teams JSON copied.'))
-        .catch(()=> alert('Clipboard copy failed. Use Download teams.json instead.'));
-    });
-  }
-
-  if (adminTeamsImportBtn){
-    adminTeamsImportBtn.addEventListener('click', ()=>{
-      const inp = document.createElement('input');
-      inp.type = 'file';
-      inp.accept = '.json,application/json';
-      inp.style.display = 'none';
-      document.body.appendChild(inp);
-      inp.addEventListener('change', async ()=>{
-        try{
-          const f = inp.files && inp.files[0];
-          if(!f) return;
-          const txt = await f.text();
-          const parsed = JSON.parse(txt);
-          if (!parsed || !parsed.teams || !Array.isArray(parsed.teams)) throw new Error('Expected JSON with { teams: [...] }');
-          TEAMS = normalizeTeamsData(parsed);
-          saveTeamsToLocal();
-          if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
-          adminRefreshAll();
-          alert('Imported teams JSON.');
-        }catch(err){
-          alert('Import failed: ' + (err && err.message ? err.message : String(err)));
-        } finally {
-          try{ document.body.removeChild(inp); }catch(_e){}
-        }
-      }, { once:true });
-      inp.click();
-    });
-  }
-
   if (adminTeamsResetBtn){
     adminTeamsResetBtn.addEventListener('click', async ()=>{
       if(!confirm('Discard unsaved form changes and reload teams from the database?')) return;
@@ -372,12 +326,6 @@
   const adminTeamsCsvUploadBtn = document.getElementById('adminTeamsCsvUploadBtn');
   const adminTeamsCsvTemplateBtn = document.getElementById('adminTeamsCsvTemplateBtn');
   const adminTeamsCsvSelectedBtn = document.getElementById('adminTeamsCsvSelectedBtn');
-
-  // Admin SITUATIONS import/merge
-  const adminSituationsJsonFile = document.getElementById('adminSituationsJsonFile');
-  const adminSituationsJsonUploadBtn = document.getElementById('adminSituationsJsonUploadBtn');
-  const adminSituationsMsg = document.getElementById('adminSituationsMsg');
-
 
   if(adminTeamsCsvUploadBtn && adminTeamsCsvFile){
     adminTeamsCsvUploadBtn.addEventListener('click', ()=> adminTeamsCsvFile.click());
@@ -418,44 +366,6 @@
       downloadText(`diamondiq_${slugify(safeTeam)}_v3.csv`, csv, 'text/csv');
     });
   }
-  if(adminSituationsJsonUploadBtn && adminSituationsJsonFile){
-    adminSituationsJsonUploadBtn.addEventListener('click', ()=> adminSituationsJsonFile.click());
-    adminSituationsJsonFile.addEventListener('change', async ()=>{
-      const files = adminSituationsJsonFile.files ? Array.from(adminSituationsJsonFile.files) : [];
-      if(!files.length) return;
-
-      let addedTotal = 0, updatedTotal = 0;
-      try{
-        for(const f of files){
-          const txt = await f.text();
-          const parsed = JSON.parse(txt);
-          const res = mergeSituationsFromArray(parsed);
-          addedTotal += res.added || 0;
-          updatedTotal += res.updated || 0;
-        }
-
-        // Refresh snapshots + dropdown + currently selected situation
-        snapshotSituationsOrig();
-        const keepKey = (currentSituation && currentSituation.key) ? currentSituation.key : (SITUATIONS[0] && SITUATIONS[0].key);
-        populateSituations(keepKey);
-        if (keepKey) setSituation(keepKey);
-
-        if(adminSituationsMsg){
-          adminSituationsMsg.textContent = `Merged situations. Added: ${addedTotal}. Updated: ${updatedTotal}.`;
-          setTimeout(()=>{ if(adminSituationsMsg) adminSituationsMsg.textContent=''; }, 4000);
-        }else{
-          alert(`Merged situations. Added: ${addedTotal}. Updated: ${updatedTotal}.`);
-        }
-      }catch(err){
-        alert('Situations import failed: ' + (err && err.message ? err.message : String(err)));
-      }finally{
-        try{ adminSituationsJsonFile.value = ''; }catch(_e){}
-      }
-    });
-  }
-
-
-
   if (adminTeamAddBtn){
     adminTeamAddBtn.addEventListener('click', ()=>{
       const t = upsertTeam(adminTeamName ? adminTeamName.value : '', adminTeamEmail ? adminTeamEmail.value : '');

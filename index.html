@@ -16,7 +16,7 @@
 <header><h1>Diamond Defense</h1>
 
   <!-- @diq:begin [H_PLAYER_BTN] Player Login button -->
-      <button id="playerBtn" class="btn-small btn-green" title="View Player Info" aria-pressed="true">Player Info</button>
+      <button id="playerBtn" class="btn-small btn-orange" title="Log in">Login</button>
   <!-- @diq:end [H_PLAYER_BTN] -->
 
   
@@ -32,17 +32,17 @@
     <!-- @diq:end control:checkBtn -->
     <!-- @diq:begin control:continueBtn -->
 
-  <button id="randomSitBtn" class="btn-slate btn-small" title="Pick a random situation">Random</button><select id="sitSelect" aria-label="Situation" data-testid="sit-select"><option value="BD-01">Situation #1</option><option value="BD-02">Situation #2</option><option value="BD-03">Situation #3</option><option value="BD-04">Situation #4</option><option value="BD-05">Situation #5</option><option value="BD-06">Situation #6</option><option value="BD-07">Situation #7</option><option value="BD-08">Situation #8</option><option value="BD-09">Situation #9</option><option value="BD-10-1">Situation #10-1</option><option value="BD-10-2">Situation #10-2</option><option value="BD-10-3">Situation #10-3</option><option value="BD-11">Situation #11</option><option value="BD-12">Situation #12</option><option value="BD-13">Situation #13</option><option value="BD-14">Situation #14</option><option value="BD-15">Situation #15</option><option value="BD-16">Situation #16</option><option value="BD-17">Situation #17</option><option value="BD-18">Situation #18</option><option value="BD-19">Situation #19</option><option value="BD-20">Situation #20</option></select><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
+  <button id="randomSitBtn" class="btn-slate btn-small" title="Pick a random situation" disabled>Random</button><select id="sitSelect" aria-label="Situation" data-testid="sit-select" disabled><option value="BD-01">Situation #1</option><option value="BD-02">Situation #2</option><option value="BD-03">Situation #3</option><option value="BD-04">Situation #4</option><option value="BD-05">Situation #5</option><option value="BD-06">Situation #6</option><option value="BD-07">Situation #7</option><option value="BD-08">Situation #8</option><option value="BD-09">Situation #9</option><option value="BD-10-1">Situation #10-1</option><option value="BD-10-2">Situation #10-2</option><option value="BD-10-3">Situation #10-3</option><option value="BD-11">Situation #11</option><option value="BD-12">Situation #12</option><option value="BD-13">Situation #13</option><option value="BD-14">Situation #14</option><option value="BD-15">Situation #15</option><option value="BD-16">Situation #16</option><option value="BD-17">Situation #17</option><option value="BD-18">Situation #18</option><option value="BD-19">Situation #19</option><option value="BD-20">Situation #20</option></select><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
     <span class="status-label">Outs</span><b><span id="outsVal">0</span></b>
-  </span><button id="startBtn" class="btn-green">Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
+  </span><button id="startBtn" class="btn-green" disabled>Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
     <span id="scoreBadge" class="badge badge-score score-red" data-testid="score-badge"><span class="status-label">Score</span><b><span id="scoreVal">0</span>/9</b></span>
     <span id="triesBadge" class="badge badge-tries tries-green"><span class="status-label">Tries</span><b><span id="triesVal">3/3</span></b></span>
     <span id="timerBadge" class="badge badge-timer" title="Time left in this phase">
       <span class="status-label">Time</span><b>⏱ <span id="timerVal">60</span>s</b>
     </span>
-  </div><button id="coachBtn" class="btn-slate">Coach Tools</button></div>
+  </div><button id="coachBtn" class="btn-slate hidden legacy-role-tool" type="button" tabindex="-1" aria-hidden="true">Coach Tools</button></div>
 
-    <button id="adminBtn" class="btn-slate">Admin</button>
+    <button id="adminBtn" class="btn-slate hidden legacy-role-tool" type="button" tabindex="-1" aria-hidden="true">Admin</button>
     <!-- @diq:end control:continueBtn -->
 </header>
 
@@ -59,7 +59,63 @@
     </div>
     <button id="contextBarClose" class="context-bar-close" type="button" aria-label="Close notes and review">×</button>
   </section>
+  <section id="coachResultsWorkspace" class="card coach-results-workspace hidden" aria-labelledby="coachResultsTitle">
+    <div class="coach-results-header">
+      <div>
+        <span class="eyebrow">Coach review</span>
+        <h2 id="coachResultsTitle">Team Activity</h2>
+        <p id="coachResultsSubtitle">The latest saved result for each player.</p>
+      </div>
+      <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button">Refresh</button>
+    </div>
+    <div class="coach-results-filter">
+      <label class="field">
+        <span>Player</span>
+        <select id="coachResultsPlayerSelect" class="select">
+          <option value="">All recent team activity</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Situation</span>
+        <select id="coachResultsSituationSelect" class="select">
+          <option value="">All situations</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Result</span>
+        <select id="coachResultsOutcomeSelect" class="select">
+          <option value="">All results</option>
+          <option value="passed">Passed</option>
+          <option value="failed">Failed</option>
+          <option value="abandoned">Abandoned</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>From</span>
+        <input id="coachResultsDateFrom" type="date">
+      </label>
+      <label class="field">
+        <span>Through</span>
+        <input id="coachResultsDateTo" type="date">
+      </label>
+      <div class="coach-results-filter-actions">
+        <button id="coachResultsApplyBtn" class="btn-green" type="button">Apply</button>
+        <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear</button>
+        <button id="coachResultsExportBtn" class="btn btn-ghost" type="button">Export CSV</button>
+      </div>
+    </div>
+    <div id="coachResultsStatus" class="operation-status" role="status" aria-live="polite"></div>
+    <div id="coachResultsSummary" class="coach-results-summary" aria-label="Filtered results summary"></div>
+    <div id="coachResultsList"></div>
+    <div id="coachResultsPagination" class="coach-results-pagination"></div>
+  </section>
+  <section id="adminWorkspace" class="card admin-workspace hidden" aria-label="Administrator workspace"></section>
   <section class="card field-card">
+    <div id="gameLoginGate" class="game-login-gate hidden" role="status" aria-live="polite">
+      <strong>Log in to play</strong>
+      <span>Select a player, coach, or administrator account to use the strategy board.</span>
+      <button id="gameLoginGateBtn" class="btn-green" type="button">Log in</button>
+    </div>
     <div id="wrap">
       <img id="fieldImg" alt="Diamond Defense baseball strategy field">
       <div id="fieldNotice" class="field-notice hidden" role="status" aria-live="polite"></div>
@@ -114,9 +170,8 @@
         <button id="playerSidebarCloseBtn" class="btn btn-ghost" type="button">Close</button>
       </div>
       <div id="playerSidebarMount">
-        <div class="subsec">
-          <div class="sectionTitle">Player Login</div>
-          <div class="rowGrid playerLoginGrid">
+        <div class="auth-player-form">
+          <div class="auth-account-grid playerLoginGrid">
             <label class="field">
               <span>Team</span>
               <select id="playerTeamSelect" class="select"><option value="">— Select team —</option><option value="13u-black">13U Black</option><option value="13u-orange">13U Orange</option></select>
@@ -128,102 +183,47 @@
             </label>
           </div>
 
-          <label class="field" style="margin-top:10px;">
-            <span>Password</span>
-            <input id="playerPass" class="input" type="password" autocomplete="current-password" placeholder="Password">
-          </label>
-
-          <div class="rowGrid" style="margin-top:10px;">
-            <div class="pill" id="playerLoginStatus" style="justify-self:start;">Logged in: 13U Black • #12 John Smith</div>
-            <div style="justify-self:end; display:flex; gap:10px; flex-wrap:wrap;">
-              <button id="playerLoginBtn" class="btn btn-brand" type="button" style="display: none;">Login</button>
-              <button id="playerLogoutBtn" class="btn btn-ghost" type="button" style="display: inline-flex;">Logout</button>
-            </div>
+          <div class="auth-credentials-row">
+            <label class="field">
+              <span>Password</span>
+              <input id="playerPass" class="input" type="password" autocomplete="current-password" placeholder="Password">
+            </label>
+            <button id="playerLoginBtn" class="btn btn-brand auth-submit-btn" type="button">Log in</button>
           </div>
 
-          <div id="playerIdLine" class="muted" style="margin-top: 8px; display: block;">
-            Player ID: <span id="playerIdText" style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;">13u-black-john-smith-12</span>
+          <div id="playerIdLine" class="muted" style="margin-top: 8px; display: none;">
+            Player ID: <span id="playerIdText" style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;"></span>
           </div>
         </div>
 
-        <div class="subsec" style="margin-top:14px;">
-          <div class="sectionTitle">Results</div>
-          <div class="muted" style="margin-bottom:8px;">
-            Share sends a quick coach-friendly report to your coach’s email (configured for your team).
-          </div>
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button id="playerShareResultsBtn" class="btn btn-brand" type="button">Share my results</button>
-            <button id="playerCopyReviewCodeBtn" class="btn btn-white w-full">Copy Coach Review Code</button>
-</div>
-          <div class="muted" id="playerShareHint" style="margin-top:8px;">Coach email: coach@example.com</div>
-        </div>
       </div>
     </div>
 
 <div id="coachCard" class="card hidden">
       <div class="coachGrid">
-  <div class="row">
-    <strong>Coach Tools</strong>
-    <span id="coachStatus" class="mono" style="color:#64748b">locked</span>
-    <span class="hint"> (drag chips, targets &amp; hit marker while unlocked)</span>
-  
-    <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
-      <button id="coachCollapseAllBtn" class="btn-slate" type="button" title="Collapse sections">Collapse all</button>
-      <button id="coachExpandAllBtn" class="btn-slate" type="button" title="Expand sections">Expand all</button>
-      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
-    </span>
-</div>
-
-  <div class="subsec diq-collapsible diq-collapsed" id="coachReviewSubsec" style="margin-top:14px;" data-diq-collapsible="1">
-        <div class="title">Coach Review<span class="diq-chevron">▾</span></div>
-
-        
-      <div class="diq-body"><div class="muted" style="margin-bottom:10px;">
-          Paste a Coach Review Code from a player email to view a clean table + Phase 2 playback.
-        </div><div class="grid" style="gap:10px;">
-          <label class="field">
-            <span>Coach Review Code</span>
-            <textarea id="coachReviewInput" class="textarea mono" rows="5" placeholder="DIQ1:..."></textarea>
-          </label>
-
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button id="coachReviewLoadBtn" class="btn btn-brand" type="button">Load Review</button>
-            <button id="coachReviewClearBtn" class="btn btn-ghost" type="button">Clear</button>
-          </div>
-
-          <div id="coachReviewMini" class="card" style="padding:10px; background:#fafafa; border:1px solid #e5e7eb; border-radius:12px; display:none;">
-            <div class="tiny muted" style="margin-bottom:6px;">Loaded review</div>
-            <div id="coachReviewMiniText" style="font-size:13px; line-height:1.35;"></div>
-            <div style="margin-top:8px; display:flex; gap:10px; flex-wrap:wrap;">
-              <button id="coachReviewOpenBtn" class="btn btn-brand" type="button">Open Report</button>
-              <button id="coachReviewCopyCodeBtn" class="btn btn-ghost" type="button">Copy Code</button>
-            </div>
-          </div>
-<div id="coachReviewOutput"></div>
-          <div id="coachReviewPlayback"></div>
-        </div></div></div>
-
-    <div class="subsec diq-collapsible diq-collapsed" id="teamsSubsec" style="margin-top:14px;" data-diq-collapsible="1">
-        <div class="title">Teams<span class="diq-chevron">▾</span></div>
-
-      <div class="diq-body">
-        <div style="display:flex; flex-direction:column; gap:10px; max-width:460px;">
-          <label class="field" style="display:flex; flex-direction:column; gap:4px;">
-            <span style="font-size:12px; font-weight:700; color:#64748b; line-height:1.1;">Team</span>
-            <select id="coachTeamSelect" class="select"></select>
-          </label>
-
-          <div style="display:flex; gap:10px; flex-wrap:wrap;">
-            <button id="teamsCsvTemplateBtn" class="btn btn-white">Download Template</button>
-            <button id="teamsCsvSelectedBtn" class="btn btn-white" type="button">Download Selected Team</button>
-          </div>
-        </div>
-</div>
-      </div>
+  <div class="tools-panel-header">
+    <div>
+      <strong>Coach Tools</strong>
+      <div id="coachIdentity" class="muted">Not logged in</div>
+      <span id="coachStatus" class="sr-only">locked</span>
     </div>
+    <div class="tools-panel-actions">
+      <button id="coachLogoutBtn" class="btn btn-ghost" type="button">Log out</button>
+      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
+    </div>
+  </div>
 
-<div class="subsec diq-collapsible diq-collapsed" id="situationBuilderSubsec" data-diq-collapsible="1">
-    <div class="title">Situation Builder<span class="diq-chevron">▾</span></div>
+  <nav class="coach-tabs" aria-label="Coach tool sections">
+    <button class="coach-tab is-active" type="button" data-coach-tab="reviews">Reviews</button>
+    <button class="coach-tab" type="button" data-coach-tab="proposals">Situation Proposals</button>
+  </nav>
+  <section class="coach-view" data-coach-view="reviews">
+    <h3>Player results</h3>
+    <p>Saved team activity and detailed attempts are displayed in the main workspace.</p>
+  </section>
+
+<div id="coachSituationEditorMount" class="hidden" data-coach-view="proposals"><div class="subsec diq-collapsible" id="situationBuilderSubsec" data-diq-collapsible="1" data-shared-situation-editor="1">
+    <div class="title"><span id="situationBuilderTitle">Situation Proposal</span><span class="diq-chevron">▾</span></div>
 
     
 
@@ -235,14 +235,18 @@
 
 
 
-  <div class="diq-body"><div class="row">
-      <button id="newSituationBtn" class="btn-slate">➕ New Situation</button>
-      <button id="deleteSituationBtn" class="btn-slate" title="Delete current situation" style="color:#ef4444;border-color:#fecaca">🗑️ Delete Situation</button>
-      <button id="saveSituationBtn" class="btn-slate">🔄 Refresh Situation</button>
-    
-      <button id="downloadCurrentBtn" class="btn-slate" type="button">⬇️ Download Situation</button>
-    </div><div class="row">
-      <label class="hint">Title:</label>
+  <div class="diq-body">
+    <div class="situation-editor-actions">
+      <button id="newSituationBtn" class="btn-slate">New situation</button>
+      <button id="submitSituationBtn" class="btn btn-brand" type="button">Submit for review</button>
+      <button id="publishSituationBtn" class="btn btn-brand hidden" type="button">Publish changes</button>
+      <button id="deleteSituationBtn" class="btn btn-danger hidden" title="Archive the published situation">Archive situation</button>
+      <button id="saveSituationBtn" class="btn-slate">Discard changes</button>
+      <button id="downloadCurrentBtn" class="btn-slate" type="button">Download</button>
+    </div>
+    <div id="situationWorkflowStatus" class="operation-status" role="status" aria-live="polite"></div>
+    <div id="coachProposalHistory" class="proposal-history"></div>
+    <div class="row"><label class="hint">Title:</label>
       <input id="newTitleInput" type="text" style="flex:1;min-width:120px">
     </div><div class="row">
       <label class="hint">Description:</label>
@@ -329,7 +333,7 @@
             <span class="hint">Total steps: <b id="seqCountHud">3</b></span>
           </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px; margin-top:6px">
             <textarea id="seqNoteInput" rows="3" placeholder="Optional coach note shown to players on the Play Sequence card…" class="mono" style="width:100%"></textarea>
-          </div></div></div></div></div>
+          </div></div></div></div></div></div>
 
       </div>
 
@@ -337,220 +341,175 @@
     </div>
 
   <div id="adminCard" class="card hidden">
-  <div class="coachGrid">
-    <div class="row">
-      <strong>Admin</strong>
-      <span id="adminStatus" class="mono" style="color:#64748b">locked</span>
-      <span class="hint"> (admin-only tools)</span>
-    </div>
-
-    <div class="row" style="justify-content:flex-end; gap:8px; margin-top:6px">
-      <button id="adminCollapseAllBtn" class="btn-slate" type="button">Collapse all</button>
-      <button id="adminExpandAllBtn" class="btn-slate" type="button">Expand all</button>
+    <div class="tools-panel-header">
+      <div>
+        <strong>Admin Tools</strong>
+        <div class="muted">Teams, accounts, and published playbook</div>
+        <span id="adminStatus" class="sr-only">locked</span>
+      </div>
       <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
     </div>
 
+    <nav class="admin-tabs" aria-label="Admin tool sections">
+      <button class="admin-tab is-active" type="button" data-admin-tab="teams">Teams &amp; accounts</button>
+      <button class="admin-tab" type="button" data-admin-tab="situations">Situations</button>
+      <button class="admin-tab" type="button" data-admin-tab="recovery">Recovery</button>
+    </nav>
 
+    <div id="adminOperationStatus" class="operation-status" role="status" aria-live="polite"></div>
 
-    <!-- TEAMS (Admin) -->
-    <div class="subsec admin-subsec" id="adminTeamsSubsec" data-admin-collapsible="1" data-admin-open="1" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="sectionTitle" style="margin:0">TEAMS</div>
-        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
+    <section class="admin-view" data-admin-view="teams">
+      <div class="admin-section-heading">
+        <div>
+          <h3>Teams and accounts</h3>
+          <p>Changes are saved directly to the database. Coaches receive individual logins linked to one team.</p>
+        </div>
+        <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Discard form changes and fetch the latest team data">Refresh team data</button>
       </div>
 
-      <div class="adminSubsecBody" style="margin-top:10px">
-        <div class="muted" style="margin-bottom:10px;">
-          Manage database-backed teams and rosters. JSON and CSV tools are optional import/export utilities.
+      <details class="admin-bulk-actions" id="adminCsvImportPanel">
+        <summary>CSV team import</summary>
+        <div class="admin-csv-intro">
+          <strong>Preview every change before it reaches the database.</strong>
+          <span>Import teams, players, and coaches. Blank passwords preserve existing passwords.</span>
         </div>
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
-          <button id="adminTeamsDownloadBtn" class="btn btn-ghost" type="button">Download teams.json</button>
-          <button id="adminTeamsCopyBtn" class="btn btn-ghost" type="button">Copy teams.json</button>
-          <button id="adminTeamsImportBtn" class="btn btn-ghost" type="button">Import teams JSON</button>
-          <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Discard form changes and reload from the database">Reload Database</button>
+        <div id="adminCsvDropzone" class="admin-csv-dropzone">
+          <input id="adminTeamsCsvFile" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" class="hidden">
+          <div><strong>Drop a CSV here</strong><span id="adminCsvFileName">or choose a file up to 512 KB</span></div>
+          <button id="adminTeamsCsvChooseBtn" class="btn btn-white" type="button">Choose CSV</button>
         </div>
-        <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" style="margin-bottom:10px;">
-          <div class="mt-2 flex flex-wrap gap-2">
-            <input id="adminTeamsCsvFile" type="file" accept=".csv,.tsv,.txt,.xlsx" class="hidden">
-            <button id="adminTeamsCsvUploadBtn" class="btn btn-white" type="button">Upload CSV</button>
-            <button id="adminTeamsCsvTemplateBtn" class="btn btn-white" type="button">Download Template</button>
-            <button id="adminTeamsCsvSelectedBtn" class="btn btn-white" type="button">Download Selected Team</button>
+        <div class="admin-toolbar">
+          <button id="adminTeamsCsvTemplateBtn" class="btn btn-ghost" type="button">Download template</button>
+          <button id="adminTeamsCsvSelectedBtn" class="btn btn-ghost" type="button">Download selected team</button>
+        </div>
+        <section id="adminCsvPreview" class="admin-csv-preview hidden" aria-live="polite">
+          <div id="adminCsvSummary" class="admin-csv-summary"></div>
+          <div id="adminCsvIssues"></div>
+          <div id="adminCsvOperations"></div>
+          <label id="adminCsvArchiveConfirmLabel" class="admin-csv-confirm hidden">
+            <input id="adminCsvArchiveConfirm" type="checkbox">
+            <span>I reviewed the archive actions and understand those accounts or teams will no longer be able to log in.</span>
+          </label>
+          <div class="admin-toolbar">
+            <button id="adminCsvCommitBtn" class="btn btn-brand" type="button" disabled>Import changes</button>
+            <button id="adminCsvCancelBtn" class="btn btn-ghost" type="button">Cancel preview</button>
           </div>
+        </section>
+      </details>
+
+      <div class="admin-record-card">
+        <div class="admin-record-grid">
+          <label class="field"><span>Team</span><select id="adminTeamSelect" class="select"></select></label>
+          <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" placeholder="e.g., 13U Black"></label>
+          <label class="field"><span>Contact email</span><input id="adminTeamEmail" class="input" type="email" placeholder="coach@example.com"></label>
         </div>
-
-
-        <div class="rowGrid">
-          <label class="field">
-            <span>Team</span>
-            <select id="adminTeamSelect" class="select"></select>
-          </label>
-
-          <label class="field">
-            <span>Team Name</span>
-            <input id="adminTeamName" class="input" type="text" placeholder="e.g., 13U Black"/>
-          </label>
-
-          <label class="field">
-            <span>Coach Email</span>
-            <input id="adminTeamEmail" class="input" type="email" placeholder="coach@example.com"/>
-          </label>
-        </div>
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-          <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add Team</button>
-          <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Update Team</button>
-          <button id="adminTeamRemoveBtn" class="btn btn-ghost" type="button">Archive Team</button>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="sectionTitle">Roster</div>
-        <div class="rowGrid">
-          <label class="field">
-            <span>Player</span>
-            <select id="adminRosterSelect" class="select" disabled></select>
-          </label>
-
-          <label class="field">
-            <span>Player Name</span>
-            <input id="adminPlayerName" class="input" type="text" placeholder="e.g., John Smith" disabled/>
-          </label>
-
-          <label class="field">
-            <span>Player Number</span>
-            <input id="adminPlayerNumber" class="input" type="text" inputmode="numeric" placeholder="e.g., 12" disabled/>
-          </label>
-
-          <label class="field">
-            <span>Password</span>
-            <div style="display:flex; gap:8px; align-items:center;">
-              <input id="adminPlayerPass" class="input" type="text" placeholder="e.g., 4821" disabled/>
-              <button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Gen</button>
-            </div>
-          </label>
-        </div>
-
-        <div class="muted" id="adminPlayerIdPreview" style="margin-top:8px;"></div>
-
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-          <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add Player</button>
-          <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Update Player</button>
-          <button id="adminPlayerRemoveBtn" class="btn btn-ghost" type="button" disabled>Archive Player</button>
+        <div class="admin-actions">
+          <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add team</button>
+          <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Save team</button>
+          <button id="adminTeamRemoveBtn" class="btn btn-danger" type="button">Archive team</button>
         </div>
       </div>
-    </div>
 
-    <!-- SITUATIONS (Admin) -->
-    <div class="subsec admin-subsec" id="adminSituationsSubsec" data-admin-collapsible="1" data-admin-open="0" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="sectionTitle" style="margin:0">SITUATIONS</div>
-        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
-      </div>
-
-      <div class="adminSubsecBody" style="margin-top:10px">
-        <div class="muted" style="margin-bottom:10px;">
-          Import one or more <code>.json</code> files containing an array of situations. Existing keys are merged (imported values win).
-        </div>
-
-        <div class="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" style="margin-bottom:10px;">
-          <div class="mt-2 flex flex-wrap gap-2">
-            <input id="adminSituationsJsonFile" type="file" accept=".json,application/json" class="hidden" multiple>
-            <button id="adminSituationsJsonUploadBtn" class="btn btn-white" type="button">Upload Situations JSON</button>
-            <button id="downloadAllBtn" class="btn btn-white" type="button">Download ALL Situations</button>
-            <span id="adminSituationsMsg" class="hint" style="margin-left:auto"></span>
+      <div class="admin-account-grid">
+        <section class="admin-record-card">
+          <div class="sectionTitle">Players</div>
+          <label class="field"><span>Player</span><select id="adminRosterSelect" class="select" disabled></select></label>
+          <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" placeholder="e.g., John Smith" disabled></label>
+          <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" inputmode="numeric" placeholder="e.g., 12" disabled></label>
+          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" placeholder="At least 4 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <div class="muted record-id-preview" id="adminPlayerIdPreview"></div>
+          <div class="admin-actions">
+            <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add player</button>
+            <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Save player</button>
+            <button id="adminPlayerRemoveBtn" class="btn btn-danger" type="button" disabled>Archive player</button>
           </div>
-        </div>
-      </div>
-    </div>
+        </section>
 
-    <div class="subsec admin-subsec" id="adminArchivedSubsec" data-admin-collapsible="1" data-admin-open="0" style="margin-top:14px;">
-      <div class="row" style="justify-content:space-between; align-items:center">
-        <div class="sectionTitle" style="margin:0">ARCHIVED RECORDS</div>
-        <button class="btn btn-ghost adminSubsecToggle" type="button" aria-label="Collapse section">▾</button>
+        <section class="admin-record-card">
+          <div class="sectionTitle">Coaches</div>
+          <label class="field"><span>Coach</span><select id="adminCoachSelect" class="select" disabled></select></label>
+          <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" placeholder="e.g., Jamie Rivera" disabled></label>
+          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" placeholder="At least 4 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <div class="muted record-id-preview" id="adminCoachIdPreview"></div>
+          <div class="admin-actions">
+            <button id="adminCoachAddBtn" class="btn btn-brand" type="button" disabled>Add coach</button>
+            <button id="adminCoachUpdateBtn" class="btn btn-ghost" type="button" disabled>Save coach</button>
+            <button id="adminCoachRemoveBtn" class="btn btn-danger" type="button" disabled>Archive coach</button>
+          </div>
+        </section>
       </div>
-      <div class="adminSubsecBody" style="margin-top:10px">
-        <div class="muted" style="margin-bottom:10px;">Archived records remain available to historical results and can be restored.</div>
-        <label class="field">
-          <span>Archived Team</span>
-          <select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select>
-        </label>
-        <button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button" style="margin-top:8px">Restore Team</button>
-        <div class="divider"></div>
-        <label class="field">
-          <span>Archived Player or Coach</span>
-          <select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select>
-        </label>
-        <button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button" style="margin-top:8px">Restore Member</button>
-        <div class="divider"></div>
-        <label class="field">
-          <span>Archived Situation</span>
-          <select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select>
-        </label>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
-          <button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore Situation</button>
-          <button id="adminRefreshArchivedBtn" class="btn btn-ghost" type="button">Refresh</button>
-        </div>
-      </div>
-    </div>
+    </section>
 
+    <section class="admin-view hidden" data-admin-view="situations">
+      <div class="admin-section-heading">
+        <div><h3>Situation management</h3><p>Edit published situations or review changes submitted by coaches.</p></div>
+      </div>
+      <div id="adminSituationEditorMount"></div>
+      <section class="admin-record-card proposal-review-card">
+        <div class="sectionTitle">Coach submissions</div>
+        <label class="field"><span>Proposal</span><select id="adminProposalSelect" class="select"><option value="">— No pending proposals —</option></select></label>
+        <div id="adminProposalDetails" class="proposal-details muted">Select a proposal to review its details.</div>
+        <label class="field"><span>Review note</span><textarea id="adminProposalNotes" class="textarea" rows="3" placeholder="Required when rejecting a proposal"></textarea></label>
+        <div class="admin-actions">
+          <button id="adminProposalApproveBtn" class="btn btn-brand" type="button" disabled>Approve and publish</button>
+          <button id="adminProposalRejectBtn" class="btn btn-danger" type="button" disabled>Reject</button>
+        </div>
+      </section>
+    </section>
+
+    <section class="admin-view hidden" data-admin-view="recovery">
+      <div class="admin-section-heading"><div><h3>Recovery</h3><p>Reactivate accidentally archived records without losing their IDs or historical results.</p></div></div>
+      <div class="admin-account-grid">
+        <section class="admin-record-card"><label class="field"><span>Archived team</span><select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select></label><button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button">Restore team</button></section>
+        <section class="admin-record-card"><label class="field"><span>Archived player or coach</span><select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select></label><button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button">Restore account</button></section>
+        <section class="admin-record-card"><label class="field"><span>Archived situation</span><select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select></label><button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore situation</button></section>
+      </div>
+    </section>
   </div>
-</div>
 
   </aside>
 </main>
 
-<!-- Password modal -->
-<div id="pwModal">
-  <div class="box">
-    <div style="font-weight:800;margin-bottom:8px">Enter Coach Password</div>
-    <input id="pwInput" type="password" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px">
-    <div id="pwMsg" style="color:#ef4444;margin-top:6px;min-height:1.2em"></div>
-    <div class="row" style="justify-content:flex-end;margin-top:10px">
-      <button id="pwOk" class="btn-green">Unlock</button>
-      <button id="pwCancel" class="btn-slate">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Admin password modal -->
-<div id="adminPwModal" style="position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:1000">
-  <div class="box" style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;min-width:280px;box-shadow:0 10px 30px rgba(0,0,0,.25)">
-    <div style="font-weight:800;margin-bottom:8px">Enter Admin Password</div>
-    <input id="adminPwInput" type="password" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:8px">
-    <div id="adminPwMsg" style="color:#ef4444;margin-top:6px;min-height:1.2em"></div>
-    <div class="row" style="justify-content:flex-end;margin-top:10px">
-      <button id="adminPwOk" class="btn-green">Unlock</button>
-      <button id="adminPwCancel" class="btn-slate">Cancel</button>
-    </div>
-  </div>
-</div>
-
-<!-- Player Info Modal -->
-
-  <!-- Player Modal -->
-  <div id="playerModalOverlay" class="modalOverlay hidden" style="display:none;">
-    <div class="modalPanel">
-      <div class="modalHeader">
-        <div style="font-weight:800;">Player</div>
-        <button id="playerModalCloseX" class="btn btn-ghost" type="button">Close</button>
+<!-- Unified account login modal -->
+<div id="playerModalOverlay" class="modalOverlay auth-modal hidden" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="playerModalTitle" aria-hidden="true">
+  <div class="modalPanel auth-modal-panel">
+    <div class="modalHeader">
+      <div>
+        <div id="playerModalTitle" class="modal-title">Login</div>
+        <div class="muted">Choose your account type to continue.</div>
       </div>
-
-      <div class="modalBody"></div>
+      <button id="playerModalCloseX" class="btn btn-ghost" type="button">Close</button>
     </div>
-  </div>
 
-<!-- Coach Review Modal (Option B) -->
-<div id="coachReviewModal" class="diq-modal hidden" role="dialog" aria-modal="true" aria-label="Coach Review">
-  <div class="diq-modal-backdrop"></div>
-  <div class="diq-modal-panel">
-    <div class="diq-modal-head">
-      <div style="font-weight:900;">Coach Review</div>
-      <button id="coachReviewModalClose" class="btn btn-ghost" type="button">Close</button>
+    <div class="auth-role-tabs" role="tablist" aria-label="Account type">
+      <button id="authPlayerTab" class="auth-role-tab is-active" type="button" role="tab" data-auth-role="player" aria-selected="true">Player</button>
+      <button id="authCoachTab" class="auth-role-tab" type="button" role="tab" data-auth-role="coach" aria-selected="false">Coach</button>
+      <button id="authAdminTab" class="auth-role-tab" type="button" role="tab" data-auth-role="admin" aria-selected="false">Admin</button>
     </div>
-    <div id="coachReviewModalMeta" class="muted" style="margin-top:6px;"></div>
-    <div id="coachReviewModalOutput" style="margin-top:10px;"></div>
-    <div id="coachReviewModalPlayback" style="margin-top:10px;"></div>
+
+    <div class="modalBody auth-modal-body">
+      <section id="authPlayerView" class="auth-role-view" data-auth-view="player" role="tabpanel" aria-labelledby="authPlayerTab"></section>
+
+      <section id="pwModal" class="auth-role-view hidden" data-auth-view="coach" role="tabpanel" aria-labelledby="authCoachTab">
+        <div class="auth-account-grid">
+          <label class="field"><span>Team</span><select id="coachLoginTeamSelect" class="select"><option value="">— Select team —</option></select></label>
+          <label class="field"><span>Coach</span><select id="coachLoginNameSelect" class="select" disabled><option value="">— Select coach —</option></select></label>
+        </div>
+        <div class="auth-credentials-row">
+          <label class="field"><span>Password</span><input id="pwInput" class="input" type="password" autocomplete="current-password" placeholder="Password"></label>
+          <button id="pwOk" class="btn-green auth-submit-btn" type="button">Log in</button>
+        </div>
+        <div id="pwMsg" class="operation-status is-error" aria-live="polite"></div>
+      </section>
+
+      <section id="adminPwModal" class="auth-role-view hidden" data-auth-view="admin" role="tabpanel" aria-labelledby="authAdminTab">
+        <div class="auth-credentials-row auth-admin-credentials">
+          <label class="field"><span>Password</span><input id="adminPwInput" class="input" type="password" autocomplete="current-password" placeholder="Password"></label>
+          <button id="adminPwOk" class="btn-green auth-submit-btn" type="button">Log in</button>
+        </div>
+        <div id="adminPwMsg" class="operation-status is-error" aria-live="polite"></div>
+      </section>
+    </div>
   </div>
 </div>
 

@@ -22,9 +22,15 @@ export const POST: RequestHandler = async (event) => {
           String(body.playerId || ''),
           password,
         )
-      : role === 'coach' || role === 'admin'
-        ? await repository.authenticateStaff(role, password)
-        : null;
+      : role === 'coach'
+        ? await repository.authenticateCoach(
+            String(body.teamId || ''),
+            String(body.coachId || ''),
+            password,
+          )
+        : role === 'admin'
+          ? await repository.authenticateStaff('admin', password)
+          : null;
 
   if (!user) {
     return json({ error: 'Incorrect login information.' }, { status: 401 });

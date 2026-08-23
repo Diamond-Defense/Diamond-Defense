@@ -51,7 +51,7 @@ The suite covers:
 - established outputs from important helper functions; and
 - situation normalization and export behavior;
 - team and roster create/update/delete operations;
-- coach review code encoding and decoding;
+- database-backed coach activity and player-result review pagination;
 - a complete successful Phase 1 → Phase 2 game path; and
 - result recording, aggregation, and D1 persistence;
 - rejection of seed JSON and browser storage as runtime data sources;

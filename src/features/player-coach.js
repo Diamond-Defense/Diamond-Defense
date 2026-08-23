@@ -8,6 +8,7 @@ let DIQ_AUTH_USER = null;
 let _diqTeamSyncTimer = null;
 let _diqSituationSyncTimer = null;
 let _diqSituationSaveQueue = Promise.resolve();
+let _diqTeamSaveQueue = Promise.resolve();
 const _diqDirtyTeams = new Set();
 const _diqDirtyMembers = new Map();
 
@@ -68,6 +69,7 @@ async function authenticateStaff(role, password){
     });
     DIQ_AUTH_USER = result && result.user ? result.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    window._diqUpdateAuthNavigation?.();
     return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === role);
   }catch(error){
     if(error && error.status === 401) return false;
@@ -76,9 +78,99 @@ async function authenticateStaff(role, password){
   }
 }
 
-function queueTeamsDatabaseSync(){
+let COACH_LOGIN_TEAMS = [];
+
+function renderCoachLoginNames(){
+  const teamSelect = document.getElementById('coachLoginTeamSelect');
+  const coachSelect = document.getElementById('coachLoginNameSelect');
+  if(!teamSelect || !coachSelect) return;
+  const team = COACH_LOGIN_TEAMS.find(item=>item.id === teamSelect.value);
+  coachSelect.innerHTML = '<option value="">— Select coach —</option>';
+  ((team && team.roster) || []).forEach(coach=>{
+    const option = document.createElement('option');
+    option.value = coach.playerId;
+    option.textContent = coach.name || coach.playerId;
+    coachSelect.appendChild(option);
+  });
+  coachSelect.disabled = !team;
+}
+
+async function prepareCoachLogin(){
+  const teamSelect = document.getElementById('coachLoginTeamSelect');
+  if(!teamSelect) return;
+  try{
+    const result = await diqApiRequest('coaches/options', { cache:'no-store' });
+    COACH_LOGIN_TEAMS = Array.isArray(result && result.teams) ? result.teams : [];
+    const previous = teamSelect.value;
+    teamSelect.innerHTML = '<option value="">— Select team —</option>';
+    COACH_LOGIN_TEAMS.forEach(team=>{
+      const option = document.createElement('option');
+      option.value = team.id;
+      option.textContent = team.name || team.id;
+      teamSelect.appendChild(option);
+    });
+    if(COACH_LOGIN_TEAMS.some(team=>team.id === previous)) teamSelect.value = previous;
+    renderCoachLoginNames();
+  }catch(error){
+    const message = document.getElementById('pwMsg');
+    if(message) message.textContent = error?.message || 'Coach accounts could not be loaded.';
+  }
+}
+
+async function authenticateCoach(teamId, coachId, password){
+  try{
+    const result = await diqApiRequest('auth/login', {
+      method:'POST',
+      body:JSON.stringify({ role:'coach', teamId, coachId, password })
+    });
+    DIQ_AUTH_USER = result && result.user ? result.user : null;
+    window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    updateCoachHeaderButton();
+    return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'coach');
+  }catch(error){
+    if(error && error.status === 401) return false;
+    reportAuthenticationError('Coach login failed', error);
+    return null;
+  }
+}
+
+function updateCoachHeaderButton(){
+  const button = document.getElementById('coachBtn');
+  const identity = document.getElementById('coachIdentity');
+  const user = DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'coach' ? DIQ_AUTH_USER : null;
+  if(button){
+    button.textContent = 'Coach Tools';
+    button.dataset.authState = user ? 'logged-in' : 'logged-out';
+    button.title = user ? `Open tools for ${user.displayName}` : 'Coach tools';
+  }
+  if(identity){
+    identity.textContent = user
+      ? `${user.displayName}${user.teamName ? ` · ${user.teamName}` : ''}`
+      : 'Not logged in';
+  }
+  window._diqUpdateAuthNavigation?.();
+}
+
+async function logoutCoach(){
+  try{ await diqApiRequest('auth/logout', { method:'POST' }); }
+  catch(error){ reportDatabaseWriteError('Logout failed', error); return false; }
+  DIQ_AUTH_USER = null;
+  window.__DIQ_AUTH_USER__ = null;
+  updateCoachHeaderButton();
+  window._diqUpdateAuthNavigation?.();
+  return true;
+}
+
+document.getElementById('coachLoginTeamSelect')?.addEventListener('change', renderCoachLoginNames);
+window._diqPrepareCoachLogin = prepareCoachLogin;
+window._diqAuthenticateCoach = authenticateCoach;
+window._diqLogoutCoach = logoutCoach;
+window._diqUpdateCoachHeaderButton = updateCoachHeaderButton;
+
+function flushTeamsDatabaseSync(){
   clearTimeout(_diqTeamSyncTimer);
-  _diqTeamSyncTimer = setTimeout(async ()=>{
+  _diqTeamSyncTimer = null;
+  _diqTeamSaveQueue = _diqTeamSaveQueue.then(async ()=>{
     try{
       const teamIds = Array.from(_diqDirtyTeams);
       const memberEntries = Array.from(_diqDirtyMembers.entries());
@@ -125,8 +217,17 @@ function queueTeamsDatabaseSync(){
           delete member.password;
         }
       }
-    }catch(error){ reportDatabaseWriteError('Team save failed', error); }
-  }, 450);
+    }catch(error){
+      reportDatabaseWriteError('Team save failed', error);
+      throw error;
+    }
+  });
+  return _diqTeamSaveQueue;
+}
+
+function queueTeamsDatabaseSync(){
+  clearTimeout(_diqTeamSyncTimer);
+  _diqTeamSyncTimer = setTimeout(()=>{ void flushTeamsDatabaseSync(); }, 450);
 }
 
 function queueSituationDatabaseSync(situation){
@@ -165,6 +266,7 @@ window._diqApiRequest = diqApiRequest;
 window._diqAuthenticateStaff = authenticateStaff;
 window._diqQueueSituationSave = queueSituationDatabaseSync;
 window._diqDeleteSituation = deleteSituationFromDatabase;
+window._diqFlushTeamDatabaseSync = flushTeamsDatabaseSync;
 
 // Patch map (JS):
 // [A0] Boot / globals
@@ -173,8 +275,8 @@ window._diqDeleteSituation = deleteSituationFromDatabase;
 // [A3] Situation model + selection
 // [A4] Targets + tolerance + notes
 // [A5] Export / import (situations, results, teams)
-// [A6] Player login + results sharing
-// [A7] Coach tools + teams/roster editor + results viewer
+// [A6] Player login + database-backed results
+// [A7] Coach tools + database-backed results viewer + situation proposals
 // Keep begin/end markers intact for patching.
 /** @typedef {{ x:number, y:number }} Pt */
 /** @typedef {{ [posId:string]: Pt }} Starts */
@@ -757,86 +859,310 @@ function computeRosterPlayerId(teamObj, playerObj){
   const coachTeamUpdateBtn = document.getElementById("coachTeamUpdateBtn");
   const coachTeamRemoveBtn = document.getElementById("coachTeamRemoveBtn");
 
-  const coachReviewInput = document.getElementById("coachReviewInput");
-  const coachReviewLoadBtn = document.getElementById("coachReviewLoadBtn");
-  const coachReviewClearBtn = document.getElementById("coachReviewClearBtn");
-  const coachReviewOutput = document.getElementById("coachReviewOutput");
-  const coachReviewPlayback = document.getElementById("coachReviewPlayback");
+  const coachResultsWorkspace = document.getElementById('coachResultsWorkspace');
+  const coachResultsPlayerSelect = document.getElementById('coachResultsPlayerSelect');
+  const coachResultsSituationSelect = document.getElementById('coachResultsSituationSelect');
+  const coachResultsOutcomeSelect = document.getElementById('coachResultsOutcomeSelect');
+  const coachResultsDateFrom = document.getElementById('coachResultsDateFrom');
+  const coachResultsDateTo = document.getElementById('coachResultsDateTo');
+  const coachResultsStatus = document.getElementById('coachResultsStatus');
+  const coachResultsSummary = document.getElementById('coachResultsSummary');
+  const coachResultsList = document.getElementById('coachResultsList');
+  const coachResultsPagination = document.getElementById('coachResultsPagination');
+  let coachResultsPage = 1;
+  let coachResultsAppliedFilters = {};
+
+  function escapeHtml(value){
+    return String(value ?? '').replace(/[&<>"']/g, character => ({
+      '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+    })[character]);
+  }
+
+  function setCoachResultsStatus(message, state=''){
+    if(!coachResultsStatus) return;
+    coachResultsStatus.textContent = message || '';
+    coachResultsStatus.className = `operation-status${state ? ` is-${state}` : ''}`;
+  }
+
+  function populateCoachResultsPlayers(teamId){
+    if(!coachResultsPlayerSelect) return;
+    const selected = coachResultsPlayerSelect.value;
+    coachResultsPlayerSelect.innerHTML = '<option value="">All recent team activity</option>';
+    const team = findTeam(teamId);
+    (team?.roster || []).filter(player => player.role !== 'coach').forEach(player=>{
+      const option = document.createElement('option');
+      option.value = player.playerId;
+      option.textContent = `#${player.number || '—'} ${player.name}`;
+      coachResultsPlayerSelect.appendChild(option);
+    });
+    if(selected && [...coachResultsPlayerSelect.options].some(option=>option.value === selected)){
+      coachResultsPlayerSelect.value = selected;
+    }
+  }
+
+  function populateCoachResultsSituations(){
+    if(!coachResultsSituationSelect) return;
+    const selected = coachResultsSituationSelect.value;
+    coachResultsSituationSelect.innerHTML = '<option value="">All situations</option>';
+    (Array.isArray(SITUATIONS) ? SITUATIONS : []).forEach(situation=>{
+      const option = document.createElement('option');
+      option.value = String(situation.key || '');
+      option.textContent = situation.title
+        ? `${situation.title}`
+        : String(situation.key || 'Situation');
+      coachResultsSituationSelect.appendChild(option);
+    });
+    if(selected && [...coachResultsSituationSelect.options].some(option=>option.value === selected)){
+      coachResultsSituationSelect.value = selected;
+    }
+  }
+
+  function readCoachResultsFilters(){
+    return {
+      playerId:String(coachResultsPlayerSelect?.value || ''),
+      situationKey:String(coachResultsSituationSelect?.value || ''),
+      outcome:String(coachResultsOutcomeSelect?.value || ''),
+      dateFrom:String(coachResultsDateFrom?.value || ''),
+      dateTo:String(coachResultsDateTo?.value || ''),
+    };
+  }
+
+  function coachResultsQuery(page=coachResultsPage){
+    const query = new URLSearchParams({ page:String(page) });
+    Object.entries(coachResultsAppliedFilters).forEach(([key,value])=>{
+      if(value) query.set(key, String(value));
+    });
+    return query;
+  }
+
+  function renderCoachResultsSummary(summary={}){
+    if(!coachResultsSummary) return;
+    const formatPercent = value => Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '—';
+    const formatSeconds = value => Number.isFinite(Number(value)) ? `${Number(value).toFixed(1)}s` : '—';
+    const cards = [
+      ['Attempts', Number(summary.attempts || 0)],
+      ['Players', Number(summary.players || 0)],
+      ['Pass rate', formatPercent(summary.passRate)],
+      ['Passed', Number(summary.passed || 0)],
+      ['Failed', Number(summary.failed || 0)],
+      ['Abandoned', Number(summary.abandoned || 0)],
+      ['Average score', formatPercent(summary.averageScorePercent)],
+      ['Average completion', formatSeconds(summary.averageCompletionSeconds)],
+    ];
+    coachResultsSummary.innerHTML = cards.map(([label,value])=>`<div class="coach-summary-card">
+      <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>
+    </div>`).join('');
+  }
+
+  function resultBadge(value, state){
+    if(value === '—') return '<span class="coach-review-empty">—</span>';
+    return `<span class="coach-review-badge is-${state}">${escapeHtml(value)}</span>`;
+  }
+
+  function countText(value, kind){
+    if(value === '—') return '<span class="coach-review-empty">—</span>';
+    const [currentValue, totalValue] = String(value).split('/').map(Number);
+    let state = 'warning';
+    if(Number.isFinite(currentValue) && Number.isFinite(totalValue) && totalValue > 0){
+      if(kind === 'tries'){
+        state = currentValue <= 1 ? 'success' : currentValue >= totalValue ? 'fail' : 'warning';
+      }else{
+        const ratio = currentValue / totalValue;
+        state = ratio >= 1 ? 'success' : ratio >= 0.5 ? 'warning' : 'fail';
+      }
+    }
+    return `<span class="coach-review-count is-${state}">${escapeHtml(value)}</span>`;
+  }
+
+  function coachReviewValues(attempt){
+    const phaseOne = attempt.phase1 || {
+      ok:attempt.phase1Ok ?? (
+        Number(attempt.phase) === 1
+          ? Number(attempt.score) >= Number(attempt.total) && Number(attempt.total) > 0
+          : null
+      ),
+      scoreCorrect:attempt.phase1ScoreCorrect ?? attempt.score,
+      scoreTotal:attempt.phase1ScoreTotal ?? attempt.total,
+      triesUsed:attempt.phase1TriesUsed ?? (Number(attempt.phase) === 1 ? attempt.triesUsed : null),
+      elapsed:attempt.phase1Elapsed ?? (Number(attempt.phase) === 1 ? attempt.timeElapsed : null),
+    };
+    const stages = Array.isArray(attempt.sequenceStages) ? attempt.sequenceStages : [];
+    const lastStage = stages[stages.length - 1] || (Number(attempt.phase) === 2 ? {
+      success:attempt.sequenceSuccess ?? attempt.success,
+      triesUsed:attempt.triesUsed,
+      timeElapsed:attempt.timeElapsed,
+      picked:attempt.picked,
+    } : null);
+    const sequence = Array.isArray(lastStage?.picked) ? lastStage.picked : [];
+    const outcome = attempt.outcome
+      || (attempt.success === true ? 'passed' : attempt.success === false ? 'failed' : null);
+    return {
+      dateTime: new Date(attempt.createdAt || attempt.ts).toLocaleString(),
+      positionResult: outcome === 'abandoned' ? 'ABANDONED' : outcome === 'passed' ? 'PASS' : outcome === 'failed' ? 'FAIL' : '—',
+      positionScore: phaseOne?.scoreCorrect != null && phaseOne?.scoreTotal != null
+        ? `${phaseOne.scoreCorrect}/${phaseOne.scoreTotal}` : '—',
+      positionTries: phaseOne?.triesUsed != null ? `${phaseOne.triesUsed}/${MAX_TRIES}` : '—',
+      positionTime: phaseOne?.elapsed != null ? `${phaseOne.elapsed}s` : '—',
+      sequenceResult: lastStage ? (lastStage.success ? 'PASS' : 'FAIL') : '—',
+      sequenceTries: lastStage?.triesUsed != null ? `${lastStage.triesUsed}/${MAX_TRIES}` : '—',
+      sequenceTime: lastStage?.timeElapsed != null ? `${lastStage.timeElapsed}s` : '—',
+      selectedSequence: sequence.length ? sequence.join(' → ') : '—',
+    };
+  }
+
+  function renderCoachResultsPage(report){
+    if(!coachResultsList || !coachResultsPagination) return;
+    const attempts = Array.isArray(report.attempts) ? report.attempts : [];
+    const selectedPlayer = String(report?.playerId || '');
+    const heading = document.getElementById('coachResultsTitle');
+    const subtitle = document.getElementById('coachResultsSubtitle');
+    if(heading) heading.textContent = selectedPlayer ? 'Player Results' : 'Team Activity';
+    if(subtitle) subtitle.textContent = selectedPlayer
+      ? 'Recent saved attempts for the selected player.'
+      : 'The latest matching saved result for each player.';
+    renderCoachResultsSummary(report.summary || {});
+    coachResultsList.replaceChildren();
+    if(!attempts.length){
+      coachResultsList.innerHTML = '<div class="coach-results-empty">No saved player results were found.</div>';
+    }else{
+      const rows = attempts.map(attempt=>{
+        const values = coachReviewValues(attempt);
+        const positionState = values.positionResult === 'PASS'
+          ? 'success'
+          : values.positionResult === 'ABANDONED' ? 'warning' : 'fail';
+        const sequenceState = values.sequenceResult === 'PASS' ? 'success' : 'fail';
+        return `<tr>
+          <td class="coach-review-datetime">${escapeHtml(values.dateTime)}</td>
+          ${selectedPlayer ? '' : `<td><span class="coach-review-primary">#${escapeHtml(attempt.playerNumber || '—')} ${escapeHtml(attempt.playerName || '')}</span></td>`}
+          <td><span class="coach-review-primary">${escapeHtml(attempt.situationTitle || 'Situation')}</span></td>
+          <td>${resultBadge(values.positionResult, positionState)}</td>
+          <td>${countText(values.positionScore, 'score')}</td>
+          <td>${countText(values.positionTries, 'tries')}</td>
+          <td>${escapeHtml(values.positionTime)}</td>
+          <td>${resultBadge(values.sequenceResult, sequenceState)}</td>
+          <td>${countText(values.sequenceTries, 'tries')}</td>
+          <td>${escapeHtml(values.sequenceTime)}</td>
+          <td class="coach-review-sequence">${escapeHtml(values.selectedSequence)}</td>
+        </tr>`;
+      }).join('');
+      coachResultsList.innerHTML = `<div class="coach-review-table-wrap">
+        <table class="coach-review-table coach-results-table">
+          <thead><tr>
+            <th>Date &amp; Time</th>${selectedPlayer ? '' : '<th>Player</th>'}<th>Situation</th><th>Result</th>
+            <th>Score</th><th>Tries</th><th>Positioning Time</th><th>Sequence Result</th>
+            <th>Seq Tries</th><th>Seq Time</th><th>Selected Sequence</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+    coachResultsPagination.innerHTML = `
+      <button class="btn btn-ghost" type="button" data-page="previous" ${report.hasPrevious ? '' : 'disabled'}>← Previous</button>
+      <span>Page ${report.page} of ${report.totalPages} · ${report.total} result${report.total === 1 ? '' : 's'}</span>
+      <button class="btn btn-ghost" type="button" data-page="next" ${report.hasNext ? '' : 'disabled'}>Next →</button>`;
+    coachResultsPagination.querySelector('[data-page="previous"]')?.addEventListener('click', ()=>{ coachResultsPage -= 1; void loadCoachDatabaseReport(); });
+    coachResultsPagination.querySelector('[data-page="next"]')?.addEventListener('click', ()=>{ coachResultsPage += 1; void loadCoachDatabaseReport(); });
+  }
 
   async function loadCoachDatabaseReport(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(!user || !user.teamId || !coachReviewOutput) return;
-    coachReviewOutput.replaceChildren();
-    const loading = document.createElement('div');
-    loading.className = 'muted';
-    loading.textContent = 'Loading saved team results…';
-    coachReviewOutput.appendChild(loading);
+    if(!user || !user.teamId || !coachResultsList) return;
+    populateCoachResultsPlayers(user.teamId);
+    populateCoachResultsSituations();
+    setCoachResultsStatus('Loading saved team results…', 'pending');
     try{
-      const report = await diqApiRequest(`reports/team/${encodeURIComponent(user.teamId)}`, { cache:'no-store' });
-      const attempts = Array.isArray(report && report.attempts) ? report.attempts : [];
-      const wrapper = document.createElement('div');
-      wrapper.className = 'coachTblWrap';
-
-      const heading = document.createElement('div');
-      heading.className = 'sectionTitle';
-      heading.textContent = `Saved Team Results (${attempts.length})`;
-      wrapper.appendChild(heading);
-
-      const refresh = document.createElement('button');
-      refresh.type = 'button';
-      refresh.className = 'btn btn-ghost';
-      refresh.textContent = 'Refresh saved results';
-      refresh.addEventListener('click', ()=>{ void loadCoachDatabaseReport(); });
-      wrapper.appendChild(refresh);
-
-      if(!attempts.length){
-        const empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.style.marginTop = '8px';
-        empty.textContent = 'No player attempts have been saved for this team yet.';
-        wrapper.appendChild(empty);
-      }else{
-        const table = document.createElement('table');
-        table.className = 'coachTbl';
-        const head = document.createElement('thead');
-        const headRow = document.createElement('tr');
-        ['Player','Situation','Phase','Result','Tries','Time','Played'].forEach(label=>{
-          const th = document.createElement('th');
-          th.textContent = label;
-          headRow.appendChild(th);
-        });
-        head.appendChild(headRow);
-        table.appendChild(head);
-        const body = document.createElement('tbody');
-        attempts.forEach(attempt=>{
-          const row = document.createElement('tr');
-          const result = attempt.phase === 1
-            ? `${attempt.score ?? '—'}/${attempt.total ?? '—'}`
-            : (attempt.success ? 'Correct' : 'Retry');
-          [
-            `#${attempt.playerNumber || '—'} ${attempt.playerName || ''}`,
-            attempt.situationTitle || attempt.situationKey || '—',
-            attempt.stage ? `${attempt.phase}.${attempt.stage}` : String(attempt.phase || '—'),
-            result,
-            String(attempt.triesUsed ?? '—'),
-            `${attempt.timeElapsed ?? '—'}s`,
-            attempt.ts ? new Date(attempt.ts).toLocaleString() : '—'
-          ].forEach(value=>{
-            const td = document.createElement('td');
-            td.textContent = value;
-            row.appendChild(td);
-          });
-          body.appendChild(row);
-        });
-        table.appendChild(body);
-        wrapper.appendChild(table);
-      }
-      coachReviewOutput.replaceChildren(wrapper);
+      const query = coachResultsQuery();
+      const report = await diqApiRequest(`reports/team/${encodeURIComponent(user.teamId)}?${query}`, { cache:'no-store' });
+      renderCoachResultsPage(report);
+      setCoachResultsStatus('');
     }catch(error){
-      loading.textContent = error?.message || 'Unable to load saved team results.';
+      setCoachResultsStatus(error?.message || 'Unable to load saved team results.', 'error');
     }
   }
   window._diqLoadCoachDatabaseReport = loadCoachDatabaseReport;
+
+  async function exportCoachDatabaseReport(){
+    const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
+    if(!user?.teamId) return;
+    setCoachResultsStatus('Preparing CSV export…', 'pending');
+    try{
+      const query = coachResultsQuery(1);
+      query.delete('page');
+      const response = await fetch(diqApiUrl(`reports/team/${encodeURIComponent(user.teamId)}/export?${query}`), {
+        credentials:'same-origin',
+        headers:{ Accept:'text/csv' },
+      });
+      if(!response.ok){
+        let message = `CSV export failed (${response.status}).`;
+        try{
+          const body = await response.json();
+          if(body?.error) message = body.error;
+        }catch(_error){}
+        throw new Error(message);
+      }
+      const disposition = response.headers.get('content-disposition') || '';
+      const filename = disposition.match(/filename="([^"]+)"/i)?.[1]
+        || 'diamond-defense-results.csv';
+      downloadText(filename, await response.text(), 'text/csv;charset=utf-8');
+      setCoachResultsStatus('CSV export downloaded.', 'success');
+    }catch(error){
+      setCoachResultsStatus(error?.message || 'Unable to export saved results.', 'error');
+    }
+  }
+
+  function applyCoachResultsFilters(){
+    const filters = readCoachResultsFilters();
+    if(filters.dateFrom && filters.dateTo && filters.dateFrom > filters.dateTo){
+      setCoachResultsStatus('The From date must be before the Through date.', 'error');
+      return;
+    }
+    coachResultsAppliedFilters = filters;
+    coachResultsPage = 1;
+    void loadCoachDatabaseReport();
+  }
+
+  function clearCoachResultsFilters(){
+    if(coachResultsPlayerSelect) coachResultsPlayerSelect.value = '';
+    if(coachResultsSituationSelect) coachResultsSituationSelect.value = '';
+    if(coachResultsOutcomeSelect) coachResultsOutcomeSelect.value = '';
+    if(coachResultsDateFrom) coachResultsDateFrom.value = '';
+    if(coachResultsDateTo) coachResultsDateTo.value = '';
+    coachResultsAppliedFilters = {};
+    coachResultsPage = 1;
+    void loadCoachDatabaseReport();
+  }
+
+  function setCoachWorkspaceMode(mode){
+    const reviewsActive = mode !== 'proposals';
+    document.querySelectorAll('[data-coach-tab]').forEach(button=>{
+      const active = button.getAttribute('data-coach-tab') === (reviewsActive ? 'reviews' : 'proposals');
+      button.classList.toggle('is-active', active);
+      button.setAttribute('aria-selected', String(active));
+    });
+    document.querySelector('[data-coach-view="reviews"]')?.classList.toggle('hidden', !reviewsActive);
+    document.getElementById('coachSituationEditorMount')?.classList.toggle('hidden', reviewsActive);
+    document.querySelector('.field-card')?.classList.toggle('hidden', reviewsActive);
+    coachResultsWorkspace?.classList.toggle('hidden', !reviewsActive);
+    if(reviewsActive){
+      coachResultsPage = 1;
+      void loadCoachDatabaseReport();
+    }else{
+      window._diqSituationEditorOpened?.('coach');
+      window.dispatchEvent(new Event('resize'));
+    }
+  }
+  window._diqSetCoachWorkspaceMode = setCoachWorkspaceMode;
+
+  document.querySelectorAll('[data-coach-tab]').forEach(button=>{
+    button.addEventListener('click', ()=>setCoachWorkspaceMode(button.getAttribute('data-coach-tab')));
+  });
+  coachResultsPlayerSelect?.addEventListener('change', ()=>{
+    applyCoachResultsFilters();
+  });
+  document.getElementById('coachResultsRefreshBtn')?.addEventListener('click', ()=>void loadCoachDatabaseReport());
+  document.getElementById('coachResultsApplyBtn')?.addEventListener('click', applyCoachResultsFilters);
+  document.getElementById('coachResultsClearBtn')?.addEventListener('click', clearCoachResultsFilters);
+  document.getElementById('coachResultsExportBtn')?.addEventListener('click', ()=>void exportCoachDatabaseReport());
 
   const coachCollapseAllBtn = document.getElementById("coachCollapseAllBtn");
   const coachExpandAllBtn = document.getElementById("coachExpandAllBtn");
@@ -851,13 +1177,9 @@ function computeRosterPlayerId(teamObj, playerObj){
   const coachPlayerUpdateBtn = document.getElementById("coachPlayerUpdateBtn");
   const coachPlayerRemoveBtn = document.getElementById("coachPlayerRemoveBtn");
 
-  const teamsDownloadBtn = document.getElementById("teamsDownloadBtn");
-  const teamsCopyBtn = document.getElementById("teamsCopyBtn");
 
   const teamsCsvFile = document.getElementById("teamsCsvFile");
   const teamsCsvUploadBtn = document.getElementById("teamsCsvUploadBtn");
-  const teamsCsvTemplateBtn = document.getElementById("teamsCsvTemplateBtn");
-  const teamsCsvSelectedBtn = document.getElementById("teamsCsvSelectedBtn");
 
   const teamsCsvExportBtn = document.getElementById("teamsCsvExportBtn");
 function setRosterControlsEnabled(enabled){
@@ -1050,16 +1372,6 @@ function setRosterControlsEnabled(enabled){
     t.roster = (t.roster || []).filter(p => p.playerId !== playerId);
   }
 
-  function downloadJson(filename, obj){
-    const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);
-  }
-
   function downloadText(filename, text, mime='text/plain'){
     const blob = new Blob([String(text ?? '')], { type: mime });
     const a = document.createElement("a");
@@ -1223,20 +1535,6 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
     });
   }
 
-  if(teamsDownloadBtn){
-    teamsDownloadBtn.addEventListener("click", ()=>{
-      downloadJson("teams.json", TEAMS);
-    });
-  }
-  if(teamsCopyBtn){
-    teamsCopyBtn.addEventListener("click", ()=>{
-      const txt = JSON.stringify(TEAMS, null, 2);
-      copyTextToClipboard(txt)
-        .then(()=> alert("Teams JSON copied."))
-        .catch(()=>{ alert("Clipboard copy failed. Use Download teams.json instead."); });
-    });
-  }
-
   // Teams CSV upload (Excel-friendly)
   if(teamsCsvUploadBtn && teamsCsvFile){
     teamsCsvUploadBtn.addEventListener("click", ()=> teamsCsvFile.click());
@@ -1269,23 +1567,6 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       reader.readAsText(f);
     });
   }
-  if(teamsCsvTemplateBtn){
-    teamsCsvTemplateBtn.addEventListener("click", ()=>{
-      downloadTeamsCsvTemplate();
-    });
-  }
-
-  if(teamsCsvSelectedBtn){
-    teamsCsvSelectedBtn.addEventListener("click", ()=>{
-      const teamId = (coachTeamSelect && coachTeamSelect.value) ? String(coachTeamSelect.value||'') : (playerTeamSelect && playerTeamSelect.value) ? String(playerTeamSelect.value||'') : '';
-      if(!teamId) return alert('Select a team first.');
-      const csv = downloadSelectedTeamCsvV3(teamId);
-      if(!csv) return alert('Could not export selected team.');
-      const safeTeam = (findTeam(teamId) && findTeam(teamId).name) ? findTeam(teamId).name : 'team';
-      downloadText(`diamondiq_${slugify(safeTeam)}_v3.csv`, csv, 'text/csv');
-    });
-  }
-
   if(teamsCsvExportBtn){
     teamsCsvExportBtn.addEventListener("click", ()=>{
       downloadTeamsCsvExport();
@@ -1311,15 +1592,41 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
   const playerNameSelect = document.getElementById("playerNameSelect");
   const playerPassInput = document.getElementById("playerPass");
   const playerLoginBtn = document.getElementById("playerLoginBtn");
-  const playerLogoutBtn = document.getElementById("playerLogoutBtn");
-  const playerLoginStatus = document.getElementById("playerLoginStatus");
   const playerIdLine = document.getElementById("playerIdLine");
   const playerIdText = document.getElementById("playerIdText");
+  const authRoleTabs = Array.from(document.querySelectorAll('[data-auth-role]'));
+  const authRoleViews = Array.from(document.querySelectorAll('[data-auth-view]'));
+  const authPlayerView = document.getElementById('authPlayerView');
 
-  const playerShareResultsBtn = document.getElementById("playerShareResultsBtn");
-
-  const playerCopyReviewCodeBtn = document.getElementById("playerCopyReviewCodeBtn");
-const playerShareHint = document.getElementById("playerShareHint");
+  function setAuthRole(role){
+    const safeRole = ['player','coach','admin'].includes(role) ? role : 'player';
+    authRoleTabs.forEach(tab=>{
+      const selected = tab.dataset.authRole === safeRole;
+      tab.classList.toggle('is-active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    });
+    authRoleViews.forEach(view=>{
+      view.classList.toggle('hidden', view.dataset.authView !== safeRole);
+    });
+    const title = document.getElementById('playerModalTitle');
+    if(title) title.textContent = 'Login';
+    const playerPassword = document.getElementById('playerPass');
+    const coachPassword = document.getElementById('pwInput');
+    const adminPassword = document.getElementById('adminPwInput');
+    if(safeRole === 'coach') void window._diqPrepareCoachLogin?.();
+    queueMicrotask(()=>{
+      const focusTarget = safeRole === 'player'
+        ? (playerTeamSelect?.value ? playerPassword : playerTeamSelect)
+        : safeRole === 'coach'
+          ? document.getElementById('coachLoginTeamSelect')
+          : adminPassword;
+      focusTarget?.focus?.();
+    });
+    if(safeRole !== 'player' && playerPassword) playerPassword.value = '';
+    if(safeRole !== 'coach' && coachPassword) coachPassword.value = '';
+    if(safeRole !== 'admin' && adminPassword) adminPassword.value = '';
+  }
 
   function getCurrentPlayerFromMeta(){
     // The server session is authoritative; PLAYER_META is an in-memory UI projection.
@@ -1384,33 +1691,25 @@ const playerShareHint = document.getElementById("playerShareHint");
   function setPlayerUIForLoggedIn(){
     const cur = getCurrentPlayerFromMeta();
     if(cur){
-      playerLoginStatus.textContent = `Logged in: ${cur.team.name} • #${cur.player.number} ${cur.player.name}`;
       const _ps = document.getElementById('playerSidebarStatus'); if(_ps) _ps.textContent = 'logged in';
       playerIdLine.style.display = "block";
       playerIdText.textContent = cur.player.playerId;
 
       playerLoginBtn.style.display = "none";
-      playerLogoutBtn.style.display = "inline-flex";
 
-      playerShareResultsBtn.disabled = false;
 // set selects to match meta
       const teamId = cur.team.id;
       playerTeamSelect.value = teamId;
       refreshPlayerNameDropdown();
       playerNameSelect.value = cur.player.playerId;
 
-      playerShareHint.textContent = cur.team.coachEmail ? `Coach email: ${cur.team.coachEmail}` : "No coach email configured for this team (ask coach to add one).";
     }else{
-      playerLoginStatus.textContent = "Not logged in";
       const _ps = document.getElementById('playerSidebarStatus'); if(_ps) _ps.textContent = 'not logged in';
       playerIdLine.style.display = "none";
       playerIdText.textContent = "";
 
       playerLoginBtn.style.display = "inline-flex";
-      playerLogoutBtn.style.display = "none";
 
-      playerShareResultsBtn.disabled = true;
-playerShareHint.textContent = "";
     }
   }
 
@@ -1456,28 +1755,45 @@ playerShareHint.textContent = "";
 
   }
 
-  function mountPlayerSidebar(){
+  let playerModalLastFocus = null;
+
+  function mountPlayerModal(){
     const card = document.getElementById("playerSidebarCard");
-    const mount = document.getElementById("playerSidebarMount");
-    if(!card || !mount || !playerModalOverlay) return;
+    const body = authPlayerView;
+    if(!card || !body || !playerModalOverlay) return;
 
-    // Move the existing Player modal body into the sidebar mount (avoid duplicate IDs)
-    const body = playerModalOverlay.querySelector(".modalBody");
-    if(body && mount.childNodes.length === 0){
-      while(body.firstChild) mount.appendChild(body.firstChild);
+    // Reuse the established player controls inside the modal without duplicating IDs.
+    const legacyHeader = card.querySelector(".cardTitleRow");
+    if(legacyHeader) legacyHeader.remove();
+    while(card.firstChild){
+      body.appendChild(card.firstChild);
     }
+    card.remove();
 
-    // Disable the overlay/modal UX (we're using the sidebar now)
+    playerModalOverlay.setAttribute("role", "dialog");
+    playerModalOverlay.setAttribute("aria-modal", "true");
+    playerModalOverlay.setAttribute("aria-labelledby", "playerModalTitle");
+    playerModalOverlay.setAttribute("aria-hidden", "true");
     playerModalOverlay.style.display = "none";
     playerModalOverlay.classList.add("hidden");
 
-    const closeBtn = document.getElementById("playerSidebarCloseBtn");
-    if(closeBtn){
-      closeBtn.addEventListener("click", ()=> card.classList.add("hidden"));
+    if(playerModalCloseX){
+      playerModalCloseX.addEventListener("click", closePlayerModal);
     }
-  
-  updatePlayerHeaderButton();
-}
+    authRoleTabs.forEach(tab=>{
+      tab.addEventListener('click', ()=>setAuthRole(tab.dataset.authRole || 'player'));
+    });
+    playerModalOverlay.addEventListener("click", event=>{
+      if(event.target === playerModalOverlay) closePlayerModal();
+    });
+    document.addEventListener("keydown", event=>{
+      if(event.key === "Escape" && !playerModalOverlay.classList.contains("hidden")){
+        closePlayerModal();
+      }
+    });
+
+    updatePlayerHeaderButton();
+  }
 
 function isPlayerLoggedInNow(){
   const cur = getCurrentPlayerFromMeta();
@@ -1487,39 +1803,101 @@ function isPlayerLoggedInNow(){
   window.isPlayerLoggedInNow = isPlayerLoggedInNow;
 
 function updatePlayerHeaderButton(){
-    const btn = document.getElementById('playerBtn');
-    if(!btn) return;
-
-    let logged = false;
-    try{
-      if(typeof isPlayerLoggedInNow === 'function') logged = !!isPlayerLoggedInNow();
-      else if(window.PLAYER && window.PLAYER.playerId) logged = true;
-    }catch(_e){ logged = false; }
-
-    btn.textContent = logged ? 'Player Info' : 'Player Login';
-    btn.classList.remove('btn-orange','btn-yellow','btn-green');
-    btn.classList.add(logged ? 'btn-green' : 'btn-orange');
-    btn.setAttribute('aria-pressed', logged ? 'true' : 'false');
-    btn.title = logged ? 'View Player Info' : 'Player Login';
+    window._diqUpdateAuthNavigation?.();
   }
 
-  function openPlayerSidebar(){
-    const card = document.getElementById("playerSidebarCard");
-    if(!card) return;
+  function openPlayerModal(role='player'){
+    if(!playerModalOverlay) return;
     refreshPlayerLoginUI();
-    card.classList.remove("hidden");
+    setAuthRole(role);
+    playerModalLastFocus = document.activeElement;
+    playerModalOverlay.classList.remove("hidden");
+    playerModalOverlay.style.display = "flex";
+    playerModalOverlay.setAttribute("aria-hidden", "false");
+    document.body.classList.add("player-modal-open");
+    queueMicrotask(()=>{
+      const activeView = document.querySelector(`[data-auth-view="${role}"]`);
+      const focusTarget = activeView?.querySelector('select:not(:disabled), input:not(:disabled), button:not(:disabled)');
+      focusTarget?.focus?.();
+    });
   }
 
-  function closePlayerSidebar(){
-    const card = document.getElementById("playerSidebarCard");
-    if(!card) return;
-    card.classList.add("hidden");
+  function closePlayerModal(){
+    if(!playerModalOverlay) return;
+    playerModalOverlay.classList.add("hidden");
+    playerModalOverlay.style.display = "none";
+    playerModalOverlay.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("player-modal-open");
+    if(playerModalLastFocus && typeof playerModalLastFocus.focus === "function"){
+      playerModalLastFocus.focus();
+    }
+    playerModalLastFocus = null;
   }
+
+  function authButtonLabel(user){
+    if(!user) return 'Login';
+    if(user.role === 'player'){
+      const number = String(user.jerseyNumber || '').trim();
+      return `${number ? `#${number} ` : ''}${user.displayName} · Log out`;
+    }
+    if(user.role === 'coach') return `${user.displayName} · Log out`;
+    return 'Administrator · Log out';
+  }
+
+  function updateAuthNavigation(){
+    const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
+    const btn = document.getElementById('playerBtn');
+    const tools = document.getElementById('staffToolsBtn');
+    const staff = user?.role === 'coach' || user?.role === 'admin';
+    if(btn){
+      btn.textContent = authButtonLabel(user);
+      btn.classList.remove('btn-orange','btn-yellow','btn-green');
+      btn.classList.add(user ? 'btn-green' : 'btn-orange');
+      btn.dataset.authState = user ? 'logged-in' : 'logged-out';
+      btn.title = user ? `Log out ${user.displayName || user.role}` : 'Log in';
+    }
+    if(tools){
+      tools.classList.toggle('hidden', !staff);
+      tools.setAttribute('aria-hidden', String(!staff));
+      tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Admin Tools' : '';
+    }
+    window._diqApplyGameAccess?.();
+  }
+
+  async function logoutCurrentAccount(){
+    if((DIQ_AUTH_USER || window.__DIQ_AUTH_USER__)?.role === 'player'){
+      await abandonCurrentPlayAttempt('logout');
+    }
+    try{ await diqApiRequest('auth/logout', { method:'POST' }); }
+    catch(error){ reportDatabaseWriteError('Logout failed', error); return false; }
+    window._diqSituationEditorClosed?.('coach');
+    window._diqSetEditorMode?.(null);
+    window._diqSetAdminMode?.(false);
+    DIQ_AUTH_USER = null;
+    window.__DIQ_AUTH_USER__ = null;
+    PLAYER_META = { team:"", name:"", number:"" };
+    PLAYER_BASE_ID = 'anonymous';
+    RESULTS = emptyResults();
+    closePlayerModal();
+    refreshPlayerLoginUI();
+    updateCoachHeaderButton();
+    updateAuthNavigation();
+    return true;
+  }
+
+  window._diqOpenAuthModal = openPlayerModal;
+  window._diqCloseAuthModal = closePlayerModal;
+  window._diqSetAuthRole = setAuthRole;
+  window._diqUpdateAuthNavigation = updateAuthNavigation;
+  window._diqLogoutCurrentAccount = logoutCurrentAccount;
 
   if(playerBtn) playerBtn.addEventListener("click", ()=>{
-    const card = document.getElementById("playerSidebarCard");
-    if(card && !card.classList.contains("hidden")) closePlayerSidebar();
-    else openPlayerSidebar();
+    if(DIQ_AUTH_USER || window.__DIQ_AUTH_USER__){
+      void logoutCurrentAccount();
+      return;
+    }
+    if(playerModalOverlay && !playerModalOverlay.classList.contains("hidden")) closePlayerModal();
+    else openPlayerModal('player');
   });
 
   if(playerTeamSelect){
@@ -1560,704 +1938,22 @@ function updatePlayerHeaderButton(){
 
     refreshPlayerLoginUI();
     updatePlayerHeaderButton();
-    alert("Logged in.");
+    closePlayerModal();
   
   // Ensure dropdowns are populated once the sidebar is mounted
   try{ refreshTeamsUIAll(); }catch(_e){}
 }
 
   async function doPlayerLogout(){
-    if(!confirm("Logout?")) return;
-    try{ await diqApiRequest('auth/logout', { method:'POST' }); }
-    catch(error){ reportDatabaseWriteError('Logout failed', error); return; }
-    DIQ_AUTH_USER = null;
-    window.__DIQ_AUTH_USER__ = null;
-    PLAYER_META = { team:"", name:"", number:"" };
-    PLAYER_BASE_ID = 'anonymous';
-    RESULTS = emptyResults();
-
-    refreshPlayerLoginUI();
-    updatePlayerHeaderButton();
+    await logoutCurrentAccount();
   }
 
   if(playerLoginBtn) playerLoginBtn.addEventListener("click", doPlayerLogin);
-  if(playerLogoutBtn) playerLogoutBtn.addEventListener("click", doPlayerLogout);
-
-  function formatCoachFriendlySummary(payload){
-    const lines = [];
-    lines.push("Diamond Defense Results");
-    lines.push("------------------");
-    lines.push(`Player ID: ${payload.playerId || ""}`);
-    if(payload.playerMeta){
-      lines.push(`Player: ${payload.playerMeta.name || ""} #${payload.playerMeta.number || ""}`);
-      lines.push(`Team: ${payload.playerMeta.team || ""}`);
-    }
-    if(payload.generatedAt) lines.push(`Generated: ${payload.generatedAt}`);
-    lines.push("");
-
-    const by = payload.bySituation || {};
-    const keys = Object.keys(by);
-    lines.push(`Situations recorded: ${keys.length}`);
-    lines.push("");
-
-    keys.sort().forEach(k=>{
-      const r = by[k];
-      const title = r.title || k;
-      const p1 = r.phase1 || {};
-      const p2 = r.phase2 || {};
-      lines.push(`${k} — ${title}`);
-      if(p1.attempts != null){
-        lines.push(`  Phase 1: attempts=${p1.attempts}, best=${p1.bestPct ?? "—"}%, correct=${p1.lastCorrect ? "yes" : "no"}`);
-      }
-      if(p2.attempts != null){
-        lines.push(`  Phase 2: attempts=${p2.attempts}, correct=${p2.lastCorrect ? "yes" : "no"}`);
-      }
-      if(r.lastPlayedAt){
-        lines.push(`  Last played: ${r.lastPlayedAt}`);
-      }
-      lines.push("");
-    });
-
-    return lines.join("\n");
-  }
-
-  function mailtoEncode(s){
-    return encodeURIComponent(String(s ?? '')).replace(/%0D%0A/g,'%0A');
-  }
-
-  function _fmtSecs(v){
-    const n = Number(v);
-    if(!Number.isFinite(n)) return '—';
-    return (Math.round(n*10)/10).toFixed(1)+'s';
-  }
-  function _fmtIsoLocal(ts){
-    if(!ts) return '—';
-    try{ return new Date(ts).toLocaleString(); }catch(e){ return String(ts); }
-  }
-  function _padRight(s, w){
-    s = String(s==null?'':s);
-    return s.length >= w ? s.slice(0, w-1)+'…' : (s + ' '.repeat(w - s.length));
-  }
-
-  // Option A: Quick Summary + Situations Table (plain-text email friendly)
-  function buildQuickCoachReportOptionA(cur){
-    const teamName = (cur && cur.team && cur.team.name) ? cur.team.name : (PLAYER_META.team || '—');
-    const playerName = (cur && cur.player && cur.player.name) ? cur.player.name : (PLAYER_META.name || '—');
-    const playerNum  = (cur && cur.player && cur.player.number!=null) ? cur.player.number : (PLAYER_META.number || '—');
-
-    const exportedAtStr = new Date().toLocaleString();
-    const attempts = (RESULTS && Array.isArray(RESULTS.log)) ? RESULTS.log.length : 0;
-
-    const by = (RESULTS && RESULTS.bySituation && typeof RESULTS.bySituation === 'object') ? RESULTS.bySituation : {};
-    const keys = Object.keys(by);
-    keys.sort((a,b)=>{
-      const ta = (by[a] && by[a].lastTs) ? Date.parse(by[a].lastTs) : 0;
-      const tb = (by[b] && by[b].lastTs) ? Date.parse(by[b].lastTs) : 0;
-      return tb - ta || String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
-    });
-
-    const rows = keys.map(k=>{
-      const s = by[k] || {};
-      const title = s.title || '';
-      const p1 = s.bestPhase1 ? `${s.bestPhase1.score}/${s.bestPhase1.total} • t${s.bestPhase1.triesUsed ?? '—'} • ${_fmtSecs(s.bestPhase1.timeElapsed)}` : '—';
-      const p2s1 = s.lastPhase2Stage1 ? `${s.lastPhase2Stage1.success ? '✅' : '❌'} • t${s.lastPhase2Stage1.triesUsed ?? '—'} • ${_fmtSecs(s.lastPhase2Stage1.timeElapsed)}` : '—';
-      const p2s2 = s.lastPhase2Stage2 ? `${s.lastPhase2Stage2.success ? '✅' : '❌'} • t${s.lastPhase2Stage2.triesUsed ?? '—'} • ${_fmtSecs(s.lastPhase2Stage2.timeElapsed)}` : '—';
-      const att = s.attempts != null ? String(s.attempts) : '0';
-      const last = s.lastTs ? _fmtIsoLocal(s.lastTs) : '—';
-      return { key:String(k), title:String(title), p1, p2s1, p2s2, attempts:att, last };
-    });
-
-    const subject = `Diamond Defense Results — ${teamName} — #${playerNum} ${playerName}`;
-
-    const header = [
-      _padRight('Key', 10),
-      _padRight('Title', 22),
-      _padRight('Phase 1', 20),
-      _padRight('P2 Seq', 18),
-      _padRight('P2 S2', 18),
-      _padRight('Att', 4),
-      'Last'
-    ].join(' | ');
-    const sep = '-'.repeat(header.length);
-
-    const table = rows.length ? rows.map(r=>[
-      _padRight(r.key, 10),
-      _padRight(r.title, 22),
-      _padRight(r.p1, 20),
-      _padRight(r.p2s1, 18),
-      _padRight(r.p2s2, 18),
-      _padRight(r.attempts, 4),
-      r.last
-    ].join(' | ')).join('\n') : '(No attempts recorded yet.)';
-
-    const body =
-`Diamond Defense — Quick Report
-
-Player: ${teamName} — #${playerNum} ${playerName}
-Date: ${exportedAtStr}
-Attempts recorded: ${attempts}
-
-Situations:
-${header}
-${sep}
-${table}
-
-Notes:
-- (Coach can add notes here after reviewing.)`;
-
-    return { subject, body };
-  }
-  // Option B: Coach Review Code (paste into Coach Tools)
-  function _b64urlEncode(str){
-    const utf8 = encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (m,p)=> String.fromCharCode(parseInt(p,16)));
-    return btoa(utf8).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-  }
-  function _b64urlDecode(b64url){
-    let b64 = String(b64url || '').replace(/-/g,'+').replace(/_/g,'/');
-    while(b64.length % 4) b64 += '=';
-    const bin = atob(b64);
-    const esc = bin.split('').map(c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join('');
-    return decodeURIComponent(esc);
-  }
-
-  function buildCoachReviewPayload(dayKey){
-    const cur = getCurrentPlayerFromMeta();
-    if(!cur) return null;
-
-    const teamName = (cur.team && cur.team.name) ? cur.team.name : (PLAYER_META.team || '—');
-    const playerName = (cur.player && cur.player.name) ? cur.player.name : (PLAYER_META.name || '—');
-    const playerNum  = (cur.player && cur.player.number!=null) ? cur.player.number : (PLAYER_META.number || '—');
-
-    const rows = buildDailyAttemptRows(dayKey);
-    return {
-      v: 1,
-      exportedAt: new Date().toISOString(),
-      dayKey,
-      team: { name: teamName, id: cur.team && cur.team.teamId ? cur.team.teamId : undefined },
-      player: { name: playerName, number: playerNum, id: cur.player && cur.player.playerId ? cur.player.playerId : undefined },
-      attempts: rows
-    };
-  }
-
-  function encodeCoachReviewCode(payload){
-    const json = JSON.stringify(payload);
-    return `DIQ1:${_b64urlEncode(json)}`;
-  }
-
-  function decodeCoachReviewCode(code){
-    const raw = String(code || '').trim();
-    if(!raw) throw new Error('Empty code');
-    const cleaned = raw.replace(/\s+/g,''); // allow pasted with line breaks
-    if(!cleaned.startsWith('DIQ1:')) throw new Error('Not a DIQ1 code');
-    const json = _b64urlDecode(cleaned.slice(5));
-    const obj = JSON.parse(json);
-    if(!obj || obj.v !== 1) throw new Error('Unsupported version');
-    return obj;
-  }
-
-  function copyTextToClipboard(txt){
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      return navigator.clipboard.writeText(txt);
-    }
-    const ta = document.createElement('textarea');
-    ta.value = txt;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    try{ document.execCommand('copy'); }catch(e){}
-    document.body.removeChild(ta);
-    return Promise.resolve();
-  }
-
-  // Coach Review render + playback (Phase 2 sequence)
-  let _coachPlayTimer = null;
-  function _stopCoachPlayback(pbId){
-    if(_coachPlayTimer){ clearInterval(_coachPlayTimer); _coachPlayTimer = null; }
-    const wrap = document.getElementById(pbId || 'coachReviewModalPlayback') || document.getElementById('coachReviewPlayback');
-    if(wrap) wrap.innerHTML = '';
-  }
-
-  function renderCoachReview(obj){
-    const esc = (s)=> String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-    const teamName = obj.team && obj.team.name ? obj.team.name : '—';
-    const playerName = obj.player && obj.player.name ? obj.player.name : '—';
-    const playerNum = obj.player && obj.player.number!=null ? obj.player.number : '—';
-    const dayKey = obj.dayKey || '—';
-
-    const attempts = Array.isArray(obj.attempts) ? obj.attempts : [];
-    const attemptedSituations = new Set(attempts.map(r=>r.situationKey).filter(Boolean));
-
-    // Mini summary in sidebar
-    const mini = document.getElementById('coachReviewMini');
-    const miniText = document.getElementById('coachReviewMiniText');
-    if(mini && miniText){
-      mini.style.display = 'block';
-      miniText.innerHTML = `
-        <div><span class="muted">Team:</span> <b>${esc(teamName)}</b></div>
-        <div><span class="muted">Player:</span> <b>#${esc(playerNum)} ${esc(playerName)}</b></div>
-        <div><span class="muted">Date:</span> <b>${esc(dayKey)}</b></div>
-        <div><span class="muted">Attempts:</span> <b>${esc(attempts.length)}</b> &nbsp; <span class="muted">Situations:</span> <b>${esc(attemptedSituations.size)}</b></div>
-      `;
-    }
-
-    // Group by situation
-    const grouped = {};
-    for(const r of attempts){
-      const k = r.situationKey || '(unknown)';
-      if(!grouped[k]) grouped[k] = { title: r.situationTitle || '', desc: r.situationDesc || '', outs: (r.outs==null?'':r.outs), runnersOn: (r.runnersOn||null), rows: [] };
-      if(r.situationTitle) grouped[k].title = r.situationTitle;
-      grouped[k].rows.push(r);
-    }
-    const keys = Object.keys(grouped).sort((a,b)=>a.localeCompare(b, undefined, {numeric:true, sensitivity:'base'}));
-
-    const meta = document.getElementById('coachReviewModalMeta');
-    const out = document.getElementById('coachReviewModalOutput');
-    if(meta) meta.textContent = `${teamName} — #${playerNum} ${playerName} — ${dayKey} — Attempts ${attempts.length}`;
-    if(out) out.innerHTML = '';
-    _stopCoachPlayback('coachReviewModalPlayback');
-
-    if(!out) return;
-
-    if(keys.length === 0){
-      out.innerHTML = '<div class="tiny muted">No attempts in this code.</div>';
-      return;
-    }
-
-    let bodyRows = '';
-    const playMap = [];
-    for(const k of keys){
-      const g = grouped[k];
-      {
-      const desc = g.desc ? ` • ${esc(g.desc)}` : '';
-      const outsTxt = (g.outs!=='' && g.outs!=null) ? ` • Outs: ${esc(g.outs)}` : '';
-      const runnersTxt = (()=>{ 
-        const ro = g.runnersOn || {};
-        const any = !!(ro.first || ro.second || ro.third);
-        if(!g.runnersOn) return '';
-        if(!any) return ' • Runners: —';
-        const parts = [];
-        if(ro.first) parts.push('1B');
-        if(ro.second) parts.push('2B');
-        if(ro.third) parts.push('3B');
-        return ` • Runners: ${esc(parts.join(','))}`;
-      })();
-      bodyRows += `<tr class="grp"><td colspan="11">${esc(k)} — ${esc(g.title || '')}${desc}${outsTxt}${runnersTxt}</td></tr>`;
-    }
-      for(const r of g.rows){                        let playBtn = `<span class="text-slate-400 text-xs">—</span>`;
-        if(Array.isArray(r.playbackPicked) && r.playbackPicked.length){
-          const playIndex = playMap.length;
-          playMap.push({ attempt: { picked: r.playbackPicked.slice() }, label: `${r.situationKey} #${r.attemptNo || ''}` });
-          playBtn = `<button class="btn btn-white btn-xs" data-play-index="${playIndex}">Play</button>`;
-        }
-
-const posBadgeCls = (r.posResult==='SUCCESS') ? 'score-green' : (r.posResult==='FAIL' ? 'score-red' : 'score-yellow');
-        const posBadge = (r.posResult && r.posResult!=='—')
-          ? `<span class="badge badge-mini ${posBadgeCls}">${esc(r.posResult)}</span>`
-          : `<span class="text-slate-400 text-xs">—</span>`;
-
-        let posScoreBadge = `<span class="text-slate-400 text-xs">—</span>`;
-        const pc = (r.posScoreCorrect==null?null:Number(r.posScoreCorrect));
-        const pt = (r.posScoreTotal==null?null:Number(r.posScoreTotal));
-        if(r.posScore && pc!=null && pt!=null && !Number.isNaN(pc) && !Number.isNaN(pt) && pt>0){
-          const cls = (pc>=pt) ? 'score-green' : (pc>0 ? 'score-yellow' : 'score-red');
-          posScoreBadge = `<span class="badge badge-mini ${cls}">${esc(r.posScore)}</span>`;
-        }
-
-        const triesBadge = (num)=>{
-          if(num==null || Number.isNaN(num)) return `<span class="text-slate-400 text-xs">—</span>`;
-          const n = Math.max(0, Math.floor(num));
-          let cls = 'score-yellow';
-          if(n <= 1) cls = 'score-green';
-          else if(n >= MAX_TRIES) cls = 'score-red';
-          return `<span class="badge badge-mini ${cls}">${n}/${MAX_TRIES}</span>`;
-        };
-
-        const posTriesBadge = triesBadge(r.posTriesUsedNum==null?null:Number(r.posTriesUsedNum));
-        const seqTriesBadge = triesBadge(r.seqTriesUsedNum==null?null:Number(r.seqTriesUsedNum));
-
-        let seqBadge = `<span class="text-slate-400 text-xs">—</span>`;
-        const seqVal = (r.seqResult || '').trim();
-        if(seqVal && seqVal !== '—'){
-          // If any FAIL in the summary, mark red. If both SUCCESS and no FAIL, green. Otherwise yellow.
-          const up = seqVal.toUpperCase();
-          let cls = 'score-yellow';
-          if(up.includes('FAIL')) cls = 'score-red';
-          else if(up.includes('SUCCESS') && !up.includes('FAIL')) cls = 'score-green';
-          seqBadge = `<span class="badge badge-mini ${cls}">${esc(seqVal)}</span>`;
-        }
-
-        bodyRows += `
-          <tr>
-            <td class="coachMono">${esc(r.time || '')}</td>
-            <td class="coachMono num">${esc(r.attemptNo || '')}</td>
-
-            <td class="coachMono">${posBadge}</td>
-            <td class="coachMono num">${posScoreBadge}</td>
-            <td class="coachMono num">${posTriesBadge}</td>
-            <td class="coachMono num">${esc(r.posElapsed || '')}</td>
-
-            <td class="coachMono">${seqBadge}</td>
-            <td class="coachMono num">${seqTriesBadge}</td>
-            <td class="coachMono num">${esc(r.seqElapsed || '')}</td>
-
-            <td class="coachMono">${esc(r.details || '')}</td>
-            <td class="num">${playBtn}</td>
-          </tr>
-        `;
-
-      }
-    }
-
-    out.innerHTML = `
-      <div class="coachTblWrap">
-        <table class="coachTbl">
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th class="num">#</th>
-              <th>Position Result</th>
-              <th class="num">Pos Score</th>
-              <th class="num">Pos Tries</th>
-              <th class="num">Pos Time</th>
-              <th>Sequence Result</th>
-              <th class="num">Seq Tries</th>
-              <th class="num">Seq Time</th>
-              <th>Selected Sequence</th>
-              <th class="num">Playback</th>
-            </tr>
-          </thead>
-          <tbody>${bodyRows}</tbody>
-        </table>
-      </div>
-    `;
-
-    out.querySelectorAll('button[data-play-index]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const i = Number(btn.getAttribute('data-play-index'));
-        const item = playMap[i];
-        if(!item) return;
-        startCoachPlayback(item.attempt, item.label, 'coachReviewModalPlayback');
-      });
-    });
-  }
-
-// Coach Review autoload helper (URL hash: #coachReview=...)
-function _diqTryAutoloadCoachReview(){
-  if(!_pendingCoachReviewCode) return false;
-  try{
-    if(coachReviewInput) coachReviewInput.value = _pendingCoachReviewCode;
-    const obj = decodeCoachReviewCode(_pendingCoachReviewCode);
-    renderCoachReview(obj);
-    if(typeof openCoachReviewModal === 'function') openCoachReviewModal();
-    if(typeof toast === 'function') toast('Coach Review report loaded from link.');
-    return true;
-  }catch(e){
-    alert("Could not load Coach Review Code from link: " + (e && e.message ? e.message : e));
-    return false;
-  }finally{
-    _pendingCoachReviewCode = null;
-  }
-}
-window._diqCoachReviewAutoload = _diqTryAutoloadCoachReview;
-
-
-  function startCoachPlayback(attempt, label, pbId){
-    const pb = document.getElementById(pbId || 'coachReviewModalPlayback') || document.getElementById('coachReviewPlayback');
-    if(!pb) return;
-    _stopCoachPlayback(pbId);
-
-    const tokens = Array.isArray(attempt.picked) ? attempt.picked.slice() : [];
-    if(tokens.length === 0){
-      pb.innerHTML = '<div class="tiny muted">No sequence data to play.</div>';
-      return;
-    }
-
-    let idx = 0;
-
-    const render = ()=>{
-      const pills = tokens.map((t, i)=>{
-        const cls = (i === idx) ? 'tokenPill active' : 'tokenPill';
-        return `<span class="${cls}">${String(t)}</span>`;
-      }).join(' ');
-
-      pb.innerHTML = `
-        <div class="card" style="padding:10px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;">
-            <div style="font-weight:900;">Playback <span class="muted coachMono" style="font-weight:700; font-size:12px;">${String(label||'')}</span></div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button id="coachPlayPrev" class="btn btn-ghost" type="button">Prev</button>
-              <button id="coachPlayToggle" class="btn btn-ghost" type="button">${_coachPlayTimer ? 'Pause' : 'Play'}</button>
-              <button id="coachPlayNext" class="btn btn-ghost" type="button">Next</button>
-              <button id="coachPlayStop" class="btn btn-ghost" type="button">Stop</button>
-            </div>
-          </div>
-          <div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:8px;">${pills}</div>
-        </div>
-      `;
-
-      const prev = pb.querySelector('#coachPlayPrev');
-      const next = pb.querySelector('#coachPlayNext');
-      const stop = pb.querySelector('#coachPlayStop');
-      const tog  = pb.querySelector('#coachPlayToggle');
-
-      if(prev) prev.onclick = ()=>{ idx = Math.max(0, idx-1); render(); };
-      if(next) next.onclick = ()=>{ idx = Math.min(tokens.length-1, idx+1); render(); };
-      if(stop) stop.onclick = ()=>{ _stopCoachPlayback(pbId); };
-
-      if(tog){
-        tog.onclick = ()=>{
-          if(_coachPlayTimer){
-            clearInterval(_coachPlayTimer); _coachPlayTimer = null;
-            tog.textContent = 'Play';
-          }else{
-            tog.textContent = 'Pause';
-            _coachPlayTimer = setInterval(()=>{
-              idx += 1;
-              if(idx >= tokens.length){
-                clearInterval(_coachPlayTimer); _coachPlayTimer = null;
-                idx = tokens.length-1;
-                render();
-              }else{
-                render();
-              }
-            }, 650);
-          }
-        };
-      }
-    };
-
-    render();
-
-    // Autoplay once started via Play button for a "replay" feel
-    _coachPlayTimer = setInterval(()=>{
-      idx += 1;
-      if(idx >= tokens.length){
-        clearInterval(_coachPlayTimer); _coachPlayTimer = null;
-        idx = tokens.length-1;
-        render();
-      }else{
-        render();
-      }
-    }, 650);
-  }
-
-  function _dayKeyLocal(d){
-    const dt = (d instanceof Date) ? d : new Date(d);
-    const y = dt.getFullYear();
-    const m = String(dt.getMonth()+1).padStart(2,'0');
-    const da = String(dt.getDate()).padStart(2,'0');
-    return `${y}-${m}-${da}`;
-  }
-  function _timeLocal(ts){
-    try{
-      const dd = new Date(ts);
-      return dd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
-    }catch(e){ return '—'; }
-  }
-  function _safe(s){ return String(s==null?'':s); }
-
-  function buildDailyAttemptRows(dayKey){
-  // Build per-situation, per-attempt rows for the given day (one row per full attempt)
-  const rows = [];
-  if(!RESULTS?.log?.length) return rows;
-
-  const start = new Date(`${dayKey}T00:00:00`);
-  const end   = new Date(`${dayKey}T23:59:59.999`);
-
-  const evts = RESULTS.log
-    .filter(e=>{
-      const ts = new Date(e.ts || 0);
-      return ts >= start && ts <= end;
-    })
-    .sort((a,b)=> (new Date(a.ts||0).getTime()) - (new Date(b.ts||0).getTime()));
-
-  const byKey = {}; // situationKey -> { title, desc, outs, runnersOn, attempts:[], attemptNo:number }
-
-  const fmtTime = (ts)=>{
-    try{ return new Date(ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}); }
-    catch{ return ''; }
-  };
-
-  const seqStr = (arr)=>{
-    if(!Array.isArray(arr) || !arr.length) return '';
-    return arr.join(' → ');
-  };
-
-  for(const e of evts){
-    // Coach Review rows are anchored on Phase 2 attempts (which may include Phase 1 outcome)
-    if(e.phase !== 2) continue;
-    if(!e.situationKey) continue;
-
-    const k = e.situationKey;
-    if(!byKey[k]){
-      byKey[k] = {
-        title: _safe(e.situationTitle),
-        desc: _safe(e.situationDesc),
-        outs: (e.outs==null?'':_safe(e.outs)),
-        runnersOn: (e.runnersOn==null?null:e.runnersOn),
-        attempts: [],
-        attemptNo: 0
-      };
-    }
-
-    const g = byKey[k];
-
-    if(Number(e.stage) === 1){
-      // Stage 1 record begins a new attempt
-      g.attemptNo += 1;
-
-      const attempt = {
-        situationKey: k,
-        situationTitle: g.title,
-        situationDesc: g.desc,
-        outs: g.outs,
-        runnersOn: g.runnersOn,
-
-        ts: e.ts || 0,
-        time: fmtTime(e.ts || 0),
-        attemptNo: g.attemptNo,
-
-        // Phase 1 (tokens/chips)
-        posOk: (e.phase1Ok==null?null:!!e.phase1Ok),
-        posTriesUsed: (e.phase1TriesUsed==null?'' : _safe(e.phase1TriesUsed)),
-
-        posTriesUsedNum: (e.phase1TriesUsed==null?null:Number(e.phase1TriesUsed)),
-        posElapsed: (e.phase1Elapsed==null?'' : _safe(e.phase1Elapsed) + 's'),
-
-        posScoreCorrect: (e.phase1ScoreCorrect==null?'' : _safe(e.phase1ScoreCorrect)),
-        posScoreTotal: (e.phase1ScoreTotal==null?'' : _safe(e.phase1ScoreTotal)),
-
-        // Phase 2 (sequence/relay) stage 1 + stage 2
-        seq1Ok: (e.success==null?null:!!e.success),
-        seq2Ok: null,
-        seqTriesUsed: (e.triesUsed==null?'' : _safe(e.triesUsed)),
-        seqTriesUsedNum: (e.triesUsed==null?null:Number(e.triesUsed)),
-        seqElapsed: (e.timeElapsed==null?'' : _safe(e.timeElapsed) + 's'),
-
-        seq1: Array.isArray(e.picked) ? e.picked.slice() : [],
-        seq2: []
-      };
-
-      g.attempts.push(attempt);
-      continue;
-    }
-
-    if(Number(e.stage) === 2){
-      // Stage 2 record attaches to the last attempt for this situationKey
-      const last = g.attempts[g.attempts.length-1];
-      if(last){
-        last.seq2Ok = (e.success==null?null:!!e.success);
-        last.seq2 = Array.isArray(e.picked) ? e.picked.slice() : [];
-      }
-      continue;
-    }
-  }
-
-  // Flatten into rows
-  Object.keys(byKey).sort().forEach(k=>{
-    byKey[k].attempts.forEach(a=>{
-      const s1 = seqStr(a.seq1);
-      const s2 = seqStr(a.seq2);
-      let detail = s1;
-      if(s2) detail = `${s1}  |  S2: ${s2}`;
-
-      // Sequence result summary
-      let seqSummary = '—';
-      if(a.seq1Ok==null) seqSummary = '—';
-      else if(a.seq2Ok==null) seqSummary = (a.seq1Ok ? 'SUCCESS' : 'FAIL');
-      else seqSummary = `S1:${a.seq1Ok?'SUCCESS':'FAIL'} / S2:${a.seq2Ok?'SUCCESS':'FAIL'}`;
-
-      rows.push({
-        situationKey: a.situationKey,
-        situationTitle: a.situationTitle,
-        situationDesc: a.situationDesc,
-        outs: a.outs,
-        runnersOn: a.runnersOn,
-
-        ts: a.ts,
-        time: a.time,
-        attemptNo: a.attemptNo,
-
-        // Phase 1 columns
-        posResult: (a.posOk==null?'—':(a.posOk?'SUCCESS':'FAIL')),
-        posTries: a.posTriesUsed,
-        posTriesUsedNum: a.posTriesUsedNum,
-        posTriesDisplay: (a.posTriesUsedNum==null||Number.isNaN(a.posTriesUsedNum)) ? '' : `${a.posTriesUsedNum}/${MAX_TRIES}`,
-        posElapsed: a.posElapsed,
-        posScore: (a.posScoreCorrect!=='' && a.posScoreTotal!=='') ? `${a.posScoreCorrect}/${a.posScoreTotal}` : '',
-        posScoreCorrect: a.posScoreCorrect,
-        posScoreTotal: a.posScoreTotal,
-
-        // Phase 2 columns
-        seqResult: seqSummary,
-        seqTries: a.seqTriesUsed,
-        seqTriesUsedNum: a.seqTriesUsedNum,
-        seqTriesDisplay: (a.seqTriesUsedNum==null||Number.isNaN(a.seqTriesUsedNum)) ? '' : `${a.seqTriesUsedNum}/${MAX_TRIES}`,
-        seqElapsed: a.seqElapsed,
-
-        details: detail,
-
-        playbackPicked: a.seq1
-      });
-    });
+  if(playerPassInput) playerPassInput.addEventListener("keydown", event=>{
+    if(event.key === "Enter") void doPlayerLogin();
   });
 
-  return rows;
-}
-
-function shareResultsByEmail(){
-    const cur = getCurrentPlayerFromMeta();
-    if(!cur) return alert("Login first.");
-
-    const coachEmail = String(cur.team.coachEmail || "").trim();
-    if(!coachEmail){
-      alert("No coach email configured for your team. Ask your coach to add one in TEAMS.");
-      return;
-    }
-
-    const dayKey = _dayKeyLocal(new Date());
-    const payload = buildCoachReviewPayload(dayKey);
-    const code = encodeCoachReviewCode(payload);
-
-    const teamName = (cur.team && cur.team.name) ? cur.team.name : (PLAYER_META.team || '—');
-    const playerName = (cur.player && cur.player.name) ? cur.player.name : (PLAYER_META.name || '—');
-    const playerNum  = (cur.player && cur.player.number!=null) ? cur.player.number : (PLAYER_META.number || '—');
-
-    const subject = `Diamond Defense Results ${teamName} #${playerNum} ${playerName} - ${dayKey}`;
-
-    const body =
-`Hi Coach,
-
-Here are the Diamond Defense Results ${teamName} #${playerNum} ${playerName} - ${dayKey}
-
-Coach Review Code:
-${code}
-
-(Use Coach Tools → Coach Review to paste this code.)`; 
-const mailto = `mailto:${encodeURIComponent(coachEmail)}?subject=${mailtoEncode(subject)}&body=${mailtoEncode(body)}`;
-    window.location.href = mailto;
-  }
-
-  if(playerShareResultsBtn){
-    playerShareResultsBtn.addEventListener("click", shareResultsByEmail);
-  }
-
-
-
-  if(playerCopyReviewCodeBtn){
-    playerCopyReviewCodeBtn.addEventListener('click', async ()=>{
-      const cur = getCurrentPlayerFromMeta();
-      if(!cur) return alert("Login first.");
-      const dayKey = _dayKeyLocal(new Date());
-      const payload = buildCoachReviewPayload(dayKey);
-      const code = encodeCoachReviewCode(payload);
-      await copyTextToClipboard(code);
-      toast("Coach Review Code copied.");
-    });
-  }
+  mountPlayerModal();
 
   function emptyResults(){
     return { playerBaseId: PLAYER_BASE_ID, playerId: getPlayerId(), log: [], bySituation: {} };
@@ -2294,52 +1990,240 @@ const mailto = `mailto:${encodeURIComponent(coachEmail)}?subject=${mailtoEncode(
       PLAYER_META = { team:"", name:"", number:"" };
       RESULTS = emptyResults();
     }
+    updateCoachHeaderButton();
+    window._diqUpdateAuthNavigation?.();
   }
 
 
 let RESULTS = emptyResults();
 
-function recordAttempt(entry){
-  try{
-    if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player'){
-      if(typeof toast === 'function') toast('Log in before saving a result.');
-      return;
-    }
-    const e = Object.assign({ playerId: getPlayerId(), ts: new Date().toISOString() }, entry || {});
-    RESULTS.log.push(e);
+let _activePlayAttempt = null;
 
-    const key = e.situationKey;
-    if(key){
-      const prev = RESULTS.bySituation[key] || {};
-      const next = Object.assign({}, prev);
-      next.key = key;
-      next.title = e.situationTitle || prev.title || '';
-      next.attempts = (prev.attempts || 0) + 1;
-      next.lastTs = e.ts;
-
-      // Phase 1 best score
-      if(e.phase === 1 && Number.isFinite(e.score) && Number.isFinite(e.total)){
-        const best = prev.bestPhase1 || null;
-        const cand = { score: e.score, total: e.total, triesUsed: e.triesUsed, timeElapsed: e.timeElapsed, ts: e.ts };
-        if(!best || cand.score > best.score || (cand.score === best.score && (cand.triesUsed||999) < (best.triesUsed||999))){
-          next.bestPhase1 = cand;
-        }else{
-          next.bestPhase1 = best;
-        }
-      }
-
-      // Phase 2 stage results
-      if(e.phase === 2 && (e.stage === 1 || e.stage === 2)){
-        const field = (e.stage === 2) ? 'lastPhase2Stage2' : 'lastPhase2Stage1';
-        next[field] = { success: !!e.success, triesUsed: e.triesUsed, timeElapsed: e.timeElapsed, picked: e.picked || [], ts: e.ts };
-      }
-
-      RESULTS.bySituation[key] = next;
-    }
-    diqApiRequest('attempts', { method:'POST', body:JSON.stringify(e) })
-      .catch(error=>reportDatabaseWriteError('Attempt save failed', error));
-  }catch(err){}
+function newAttemptRunId(){
+  try{ return crypto.randomUUID(); }
+  catch(_error){ return `run-${Date.now()}-${Math.random().toString(36).slice(2)}`; }
 }
+
+function copyAttemptValue(value){
+  try{ return JSON.parse(JSON.stringify(value)); }
+  catch(_error){ return value; }
+}
+
+function currentAttemptPositions(){
+  try{
+    return typeof getOnscreenStarts === 'function'
+      ? copyAttemptValue(getOnscreenStarts())
+      : {};
+  }catch(_error){ return {}; }
+}
+
+function recordAttempt(entry, options={}){
+  if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player'){
+    if(typeof toast === 'function' && !options.quiet) toast('Log in before saving a result.');
+    return Promise.resolve(null);
+  }
+  const e = Object.assign({ playerId:getPlayerId(), ts:new Date().toISOString() }, entry || {});
+  RESULTS.log.push(e);
+
+  const key = e.situationKey;
+  if(key){
+    const prev = RESULTS.bySituation[key] || {};
+    const next = Object.assign({}, prev);
+    next.key = key;
+    next.title = e.situationTitle || prev.title || '';
+    next.attempts = (prev.attempts || 0) + 1;
+    next.lastTs = e.ts;
+
+    const phaseOne = e.phase1 || (e.phase === 1 ? {
+      scoreCorrect:e.score,
+      scoreTotal:e.total,
+      triesUsed:e.triesUsed,
+      elapsed:e.timeElapsed,
+    } : null);
+    if(phaseOne && Number.isFinite(Number(phaseOne.scoreCorrect)) && Number.isFinite(Number(phaseOne.scoreTotal))){
+      const best = prev.bestPhase1 || null;
+      const cand = {
+        score:Number(phaseOne.scoreCorrect),
+        total:Number(phaseOne.scoreTotal),
+        triesUsed:Number(phaseOne.triesUsed || 0),
+        timeElapsed:Number(phaseOne.elapsed || 0),
+        ts:e.ts,
+      };
+      if(!best || cand.score > best.score || (cand.score === best.score && cand.triesUsed < best.triesUsed)){
+        next.bestPhase1 = cand;
+      }else next.bestPhase1 = best;
+    }
+
+    const stages = Array.isArray(e.sequenceStages) ? e.sequenceStages : [];
+    stages.forEach(stage=>{
+      if(stage.stage !== 1 && stage.stage !== 2) return;
+      next[stage.stage === 2 ? 'lastPhase2Stage2' : 'lastPhase2Stage1'] = {
+        success:!!stage.success,
+        triesUsed:stage.triesUsed,
+        timeElapsed:stage.timeElapsed,
+        picked:stage.picked || [],
+        ts:e.ts,
+      };
+    });
+    RESULTS.bySituation[key] = next;
+  }
+
+  const request = diqApiRequest('attempts', {
+    method:'POST',
+    body:JSON.stringify(e),
+    keepalive:options.keepalive === true,
+  });
+  request.catch(error=>{
+    if(!options.quiet) reportDatabaseWriteError('Attempt save failed', error);
+    else console.error('[Database] Attempt save failed:', error);
+  });
+  return request;
+}
+
+function beginPlayAttempt(situation){
+  if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player') return null;
+  if(_activePlayAttempt && !_activePlayAttempt.finalized){
+    void abandonCurrentPlayAttempt('new_attempt_started');
+  }
+  const startedAt = new Date().toISOString();
+  _activePlayAttempt = {
+    formatVersion:2,
+    runId:newAttemptRunId(),
+    startedAt,
+    situationKey:String(situation?.key || ''),
+    situationTitle:String(situation?.title || ''),
+    situationRevision:Number.isInteger(Number(situation?.revision)) ? Number(situation.revision) : null,
+    situationSnapshot:{
+      key:String(situation?.key || ''),
+      title:String(situation?.title || ''),
+      description:String(situation?.desc || ''),
+      revision:Number.isInteger(Number(situation?.revision)) ? Number(situation.revision) : null,
+      outs:situation?.outs ?? null,
+      runnersOn:copyAttemptValue(situation?.runnersOn || null),
+      playSeq:copyAttemptValue(situation?.playSeq || []),
+      playSeq2:copyAttemptValue(situation?.playSeq2 || []),
+    },
+    initialPositions:currentAttemptPositions(),
+    phase1Checks:[],
+    sequenceChecks:[],
+    sequenceStages:[],
+    phase1:null,
+    finalized:false,
+  };
+  return _activePlayAttempt.runId;
+}
+
+function trackPhaseOneCheck(check){
+  if(!_activePlayAttempt || _activePlayAttempt.finalized) return;
+  _activePlayAttempt.phase1Checks.push({
+    checkedAt:new Date().toISOString(),
+    scoreCorrect:Number(check?.scoreCorrect || 0),
+    scoreTotal:Number(check?.scoreTotal || POS_IDS.length),
+    triesUsed:Number(check?.triesUsed || 0),
+    remainingTries:Number(check?.remainingTries || 0),
+    positions:currentAttemptPositions(),
+  });
+}
+
+function completePhaseOneAttempt(summary, hasSequence){
+  if(!_activePlayAttempt || _activePlayAttempt.finalized || !summary) return Promise.resolve(null);
+  _activePlayAttempt.phase1 = {
+    ok:summary.ok === true,
+    scoreCorrect:Number(summary.scoreCorrect || 0),
+    scoreTotal:Number(summary.scoreTotal || POS_IDS.length),
+    triesUsed:Number(summary.triesUsed || 0),
+    elapsed:Number.isFinite(Number(summary.elapsed)) ? Number(summary.elapsed) : null,
+    completedAt:new Date().toISOString(),
+  };
+  if(hasSequence) return Promise.resolve(null);
+  return finalizePlayAttempt(summary.ok ? 'passed' : 'failed', 'positioning_complete');
+}
+
+function trackSequenceCheck(check){
+  if(!_activePlayAttempt || _activePlayAttempt.finalized) return;
+  _activePlayAttempt.sequenceChecks.push({
+    checkedAt:new Date().toISOString(),
+    stage:Number(check?.stage || 1),
+    picked:copyAttemptValue(check?.picked || []),
+    expected:copyAttemptValue(check?.expected || []),
+    success:check?.success === true,
+    triesUsed:Number(check?.triesUsed || 0),
+  });
+}
+
+function completeSequenceStage(stage){
+  if(!_activePlayAttempt || _activePlayAttempt.finalized) return;
+  _activePlayAttempt.sequenceStages.push({
+    stage:Number(stage?.stage || 1),
+    success:stage?.success === true,
+    triesUsed:Number(stage?.triesUsed || 0),
+    timeElapsed:Number.isFinite(Number(stage?.timeElapsed)) ? Number(stage.timeElapsed) : null,
+    picked:copyAttemptValue(stage?.picked || []),
+    expected:copyAttemptValue(stage?.expected || []),
+    completedAt:new Date().toISOString(),
+  });
+}
+
+function finalizePlayAttempt(outcome, reason='', options={}){
+  const active = _activePlayAttempt;
+  if(!active || active.finalized) return Promise.resolve(null);
+  active.finalized = true;
+  _activePlayAttempt = null;
+
+  const completedAt = new Date().toISOString();
+  const stages = copyAttemptValue(active.sequenceStages || []);
+  const lastStage = stages[stages.length - 1] || null;
+  const phaseOne = copyAttemptValue(active.phase1);
+  const record = {
+    formatVersion:2,
+    runId:active.runId,
+    outcome,
+    abandonReason:outcome === 'abandoned' ? String(reason || 'interrupted') : null,
+    startedAt:active.startedAt,
+    completedAt,
+    ts:completedAt,
+    situationKey:active.situationKey,
+    situationTitle:active.situationTitle,
+    situationRevision:active.situationRevision,
+    situationSnapshot:copyAttemptValue(active.situationSnapshot),
+    initialPositions:copyAttemptValue(active.initialPositions),
+    finalPositions:currentAttemptPositions(),
+    phase:lastStage ? 2 : 1,
+    stage:lastStage?.stage,
+    score:phaseOne?.scoreCorrect,
+    total:phaseOne?.scoreTotal,
+    success:outcome === 'passed',
+    triesUsed:lastStage ? lastStage.triesUsed : (phaseOne?.triesUsed || 0),
+    timeElapsed:lastStage ? lastStage.timeElapsed : (phaseOne?.elapsed || 0),
+    phase1:phaseOne,
+    phase1Ok:phaseOne?.ok ?? null,
+    phase1TriesUsed:phaseOne?.triesUsed ?? null,
+    phase1Elapsed:phaseOne?.elapsed ?? null,
+    phase1ScoreCorrect:phaseOne?.scoreCorrect ?? null,
+    phase1ScoreTotal:phaseOne?.scoreTotal ?? null,
+    phase1Checks:copyAttemptValue(active.phase1Checks || []),
+    sequenceChecks:copyAttemptValue(active.sequenceChecks || []),
+    sequenceStages:stages,
+    sequenceSuccess:lastStage?.success ?? null,
+    picked:copyAttemptValue(lastStage?.picked || []),
+  };
+  return recordAttempt(record, options);
+}
+
+function abandonCurrentPlayAttempt(reason='interrupted', options={}){
+  return finalizePlayAttempt('abandoned', reason, options);
+}
+
+window._diqBeginPlayAttempt = beginPlayAttempt;
+window._diqTrackPhaseOneCheck = trackPhaseOneCheck;
+window._diqCompletePhaseOneAttempt = completePhaseOneAttempt;
+window._diqTrackSequenceCheck = trackSequenceCheck;
+window._diqCompleteSequenceStage = completeSequenceStage;
+window._diqFinalizePlayAttempt = finalizePlayAttempt;
+window._diqAbandonCurrentPlayAttempt = abandonCurrentPlayAttempt;
+window.addEventListener('pagehide', ()=>{
+  void abandonCurrentPlayAttempt('page_closed', { keepalive:true, quiet:true });
+});
 // --- end results ---
 
 const Fcopy = o => JSON.parse(JSON.stringify(o));
@@ -2974,27 +2858,15 @@ function endPhase2(success = true) {
     return;
   }
 
-  // Record Phase 2 attempt (per-stage) before we potentially transition/exit
+  // Preserve each sequence stage inside the one play-attempt record.
   try{
-    recordAttempt({
-      phase: 2,
+    completeSequenceStage({
       stage: phase2Stage,
-      situationKey: currentSituation ? currentSituation.key : null,
-      situationTitle: currentSituation ? currentSituation.title : '',
-      situationDesc: currentSituation ? (currentSituation.desc || '') : '',
-      outs: currentSituation ? (currentSituation.outs ?? null) : null,
-      runnersOn: currentSituation ? (currentSituation.runnersOn || null) : null,
-      // Phase 1 outcome (tokens)
-      phase1Ok: _phase1Summary ? !!_phase1Summary.ok : null,
-      phase1TriesUsed: _phase1Summary ? _phase1Summary.triesUsed : null,
-      phase1Elapsed: _phase1Summary ? _phase1Summary.elapsed : null,
-      phase1ScoreCorrect: _phase1Summary ? _phase1Summary.scoreCorrect : null,
-      phase1ScoreTotal: _phase1Summary ? _phase1Summary.scoreTotal : null,
-
       success: !!success,
       triesUsed: (typeof phase2TriesLeft === 'number') ? (PHASE2_MAX_TRIES - phase2TriesLeft) : null,
       timeElapsed: (typeof _timerSecs === 'number') ? Math.max(0, TIMER_START_SECS - _timerSecs) : null,
-      picked: Array.isArray(phase2Picks) ? phase2Picks.slice() : []
+      picked: Array.isArray(phase2Picks) ? phase2Picks.slice() : [],
+      expected: Array.isArray(seqOrder) ? seqOrder.slice() : [],
     });
   }catch(e){}
 
@@ -3032,6 +2904,12 @@ function endPhase2(success = true) {
       return;
     }
   }
+
+  const attemptPassed = !!success && (!_phase1Summary || _phase1Summary.ok === true);
+  void finalizePlayAttempt(
+    attemptPassed ? 'passed' : 'failed',
+    success ? 'sequence_complete' : 'sequence_failed',
+  );
 
 // Stop interaction for a real Phase 2 end
   phase2Active = false;
@@ -3418,82 +3296,18 @@ function wireOnce(){
   if(coachCollapseAllBtn) coachCollapseAllBtn.addEventListener('click', ()=> setAllCoachSubsecsCollapsed(true));
   if(coachExpandAllBtn) coachExpandAllBtn.addEventListener('click', ()=> setAllCoachSubsecsCollapsed(false));
 
-  // Coach Review (paste code → modal table + playback)
-  const coachReviewModal = document.getElementById('coachReviewModal');
-  const coachReviewModalClose = document.getElementById('coachReviewModalClose');
-  const coachReviewOpenBtn = document.getElementById('coachReviewOpenBtn');
-  const coachReviewCopyCodeBtn = document.getElementById('coachReviewCopyCodeBtn');
-
-  function openCoachReviewModal(){
-    if(!coachReviewModal) return;
-    coachReviewModal.classList.remove('hidden');
-  }
-  function closeCoachReviewModal(){
-    if(!coachReviewModal) return;
-    coachReviewModal.classList.add('hidden');
-    _stopCoachPlayback('coachReviewModalPlayback');
-  }
-
-  if(coachReviewModalClose) coachReviewModalClose.addEventListener('click', closeCoachReviewModal);
-  if(coachReviewModal){
-    const backdrop = coachReviewModal.querySelector('.diq-modal-backdrop');
-    if(backdrop) backdrop.addEventListener('click', closeCoachReviewModal);
-    document.addEventListener('keydown', (e)=>{
-      if(e.key === 'Escape' && !coachReviewModal.classList.contains('hidden')) closeCoachReviewModal();
-    });
-  }
-
-  if(coachReviewLoadBtn){
-    coachReviewLoadBtn.addEventListener('click', ()=>{
-      try{
-        const obj = decodeCoachReviewCode(coachReviewInput ? coachReviewInput.value : '');
-        renderCoachReview(obj);
-        openCoachReviewModal();
-      }catch(e){
-        alert("Could not load Coach Review Code: " + (e && e.message ? e.message : e));
-      }
-    });
-}
-  if(coachReviewClearBtn){
-    coachReviewClearBtn.addEventListener('click', ()=>{
-      if(coachReviewInput) coachReviewInput.value = '';
-      const mini = document.getElementById('coachReviewMini');
-      if(mini) mini.style.display = 'none';
-      const miniText = document.getElementById('coachReviewMiniText');
-      if(miniText) miniText.innerHTML = '';
-      if(coachReviewOutput) coachReviewOutput.innerHTML = '';
-      if(coachReviewPlayback) coachReviewPlayback.innerHTML = '';
-      const mout = document.getElementById('coachReviewModalOutput');
-      if(mout) mout.innerHTML = '';
-      const mpb = document.getElementById('coachReviewModalPlayback');
-      if(mpb) mpb.innerHTML = '';
-      closeCoachReviewModal();
-    });
-  }
-  if(coachReviewOpenBtn){
-    coachReviewOpenBtn.addEventListener('click', ()=> openCoachReviewModal());
-  }
-  if(coachReviewCopyCodeBtn){
-    coachReviewCopyCodeBtn.addEventListener('click', async ()=>{
-      try{
-        const txt = (coachReviewInput && coachReviewInput.value) ? coachReviewInput.value.trim() : '';
-        if(!txt) return alert('No code to copy.');
-        await copyTextToClipboard(txt);
-        toast('Coach Review Code copied.');
-      }catch(e){}
-    });
-  }
-
   // --- everything from your “/* Wiring */” block goes here ---
   if (sitSelect) sitSelect.addEventListener('change', e=> setSituation(e.target.value));
   if (randomSitBtn) randomSitBtn.addEventListener('click', pickRandomSituation);
+  if (gameLoginGateBtn) gameLoginGateBtn.addEventListener('click', ()=>window._diqOpenAuthModal?.('player'));
 
-  if (resetBtn)  resetBtn.addEventListener('click', resetPlayers);
+  if (resetBtn)  resetBtn.addEventListener('click', ()=>resetPlayers('reset'));
   if (checkBtn)  checkBtn.addEventListener('click', checkPositions);
 
   if (startBtn)  startBtn.addEventListener('click', ()=>{
     if (!currentSituation) return;
 
+    beginPlayAttempt(currentSituation);
     _roundHasStarted = true;
     _phase2Ended = false;
     allowSeqPanel = false;
@@ -3612,26 +3426,6 @@ function lockCorrectPrefix(k){
   phase2Picks = lockIds.slice();
   rerenderPickMarkers();
 
-  // Coach Review (paste code → table + playback)
-  if(coachReviewLoadBtn){
-    coachReviewLoadBtn.addEventListener('click', ()=>{
-      try{
-        const obj = decodeCoachReviewCode(coachReviewInput ? coachReviewInput.value : '');
-        renderCoachReview(obj);
-      }catch(e){
-        alert("Could not load Coach Review Code: " + (e && e.message ? e.message : e));
-      }
-    });
-  }
-  if(coachReviewClearBtn){
-    coachReviewClearBtn.addEventListener('click', ()=>{
-      if(coachReviewInput) coachReviewInput.value = '';
-      if(coachReviewOutput) coachReviewOutput.innerHTML = '';
-      if(coachReviewPlayback) coachReviewPlayback.innerHTML = '';
-      _stopCoachPlayback();
-    });
-  }
-
 wireSeqBuilderOnce();
 }
 
@@ -3661,6 +3455,13 @@ wireSeqBuilderOnce();
 
     // Success requires exact match: same length AND same ordered picks.
     const exact = !tooMany && isExactSequenceMatch(phase2Picks, seqOrder);
+    trackSequenceCheck({
+      stage:phase2Stage,
+      picked:phase2Picks.slice(),
+      expected:seqOrder.slice(),
+      success:exact,
+      triesUsed:Math.min(PHASE2_MAX_TRIES, PHASE2_MAX_TRIES - phase2TriesLeft + (exact ? 0 : 1)),
+    });
     if (exact){
       endPhase2(true);
       return;
@@ -3771,11 +3572,17 @@ wireSeqBuilderOnce();
     resetPlayers();
 
     if (coachUnlocked){
+      window._diqSituationEditorClosed?.('coach');
+      document.querySelector('.field-card')?.classList.remove('hidden');
+      coachResultsWorkspace?.classList.add('hidden');
       setCoachMode(false);
       coachCard.classList.add('hidden');
       setChipsLocked(!gameActive||remainingTries===0);
       getAllRings().forEach(el=>el.style.display='none');
       syncBallToHit();
+    } else if(window.__DIQ_AUTH_USER__?.role === 'coach'){
+      setCoachMode(true, { role:'coach' });
+      setCoachWorkspaceMode('reviews');
     } else {
       openPwModal();
     }
@@ -3786,6 +3593,9 @@ wireSeqBuilderOnce();
   const coachCardCloseBtn = document.getElementById('coachCardCloseBtn');
   if (coachCardCloseBtn) coachCardCloseBtn.addEventListener('click', ()=>{
     if (coachUnlocked){
+      window._diqSituationEditorClosed?.('coach');
+      document.querySelector('.field-card')?.classList.remove('hidden');
+      coachResultsWorkspace?.classList.add('hidden');
       setCoachMode(false);
       if (coachCard) coachCard.classList.add('hidden');
       setChipsLocked(!gameActive||remainingTries===0);
@@ -3794,6 +3604,15 @@ wireSeqBuilderOnce();
     } else {
       if (coachCard) coachCard.classList.add('hidden');
     }
+  });
+
+  const coachLogoutBtn = document.getElementById('coachLogoutBtn');
+  if(coachLogoutBtn) coachLogoutBtn.addEventListener('click', async ()=>{
+    window._diqSituationEditorClosed?.('coach');
+    document.querySelector('.field-card')?.classList.remove('hidden');
+    coachResultsWorkspace?.classList.add('hidden');
+    setCoachMode(false);
+    await window._diqLogoutCurrentAccount?.();
   });
 
 
@@ -3814,12 +3633,11 @@ wireSeqBuilderOnce();
     if (!adminPwModal) return;
     adminPwMsg.textContent = '';
     adminPwInput.value = '';
-    adminPwModal.style.display = 'flex';
+    window._diqOpenAuthModal?.('admin');
     setTimeout(()=>adminPwInput.focus(), 0);
   }
   function closeAdminPwModal(){
-    if (!adminPwModal) return;
-    adminPwModal.style.display = 'none';
+    window._diqCloseAuthModal?.();
   }
   function setAdminMode(on){
     adminUnlocked = !!on;
@@ -3829,6 +3647,8 @@ wireSeqBuilderOnce();
     }
     if (adminCard) adminCard.classList.toggle('hidden', !adminUnlocked);
     if (adminStatus) adminStatus.textContent = adminUnlocked ? 'unlocked' : 'locked';
+    if(adminUnlocked) void window._diqAdminPanelOpened?.();
+    else window._diqAdminPanelClosed?.();
   }
   window._diqSetAdminMode = setAdminMode;
   async function tryUnlockAdmin(){
@@ -3840,7 +3660,7 @@ wireSeqBuilderOnce();
     }
     if (valid){
       closeAdminPwModal();
-      setAdminMode(true);
+      window._diqUpdateAuthNavigation?.();
     } else {
       adminPwMsg.textContent = 'Incorrect password.';
     }
@@ -3852,11 +3672,11 @@ wireSeqBuilderOnce();
 
   if (adminBtn) adminBtn.addEventListener('click', ()=>{
     closeGuideRail?.();
-    const toolsMenu = adminBtn.closest('details');
-    if (toolsMenu) toolsMenu.open = false;
     if (adminUnlocked){
       setAdminMode(false);
       if (adminCard) adminCard.classList.add('hidden');
+    } else if(window.__DIQ_AUTH_USER__?.role === 'admin'){
+      setAdminMode(true);
     } else {
       openAdminPwModal();
     }

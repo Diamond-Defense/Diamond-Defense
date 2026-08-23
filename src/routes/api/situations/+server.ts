@@ -15,7 +15,7 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['coach', 'admin']);
+  const user = await requireUser(event, ['admin']);
   const situation = (await event.request.json()) as Situation;
   if (!situation?.key || !situation?.title) {
     return json({ error: 'Situation key and title are required.' }, { status: 400 });

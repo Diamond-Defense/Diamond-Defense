@@ -36,6 +36,8 @@ Status: implemented.
 - Replace whole-team synchronization with record-level APIs.
 - Add create, edit, archive, and restore operations for teams and situations.
 - Add player, coach, membership, and password-reset operations.
+- Replace the shared coach password with individual team-linked coach accounts.
+- Add coach situation proposals with administrator approval or rejection.
 - Add validation, role authorization, audit timestamps, and revision checks.
 - Preserve records referenced by results through archival rather than deletion.
 
@@ -45,22 +47,37 @@ or downloading JSON.
 
 ## Phase 4: complete results and reporting
 
-- Record completed, failed, and abandoned attempts.
-- Preserve team, player, situation revision, positions, retries, score, outcome,
+Status: complete. Attempts, filtered coach reports, summaries, and protected
+CSV exports use D1/SQLite as their source of truth.
+
+- Completed: record one idempotent database row for each started play-through.
+- Completed: record passed, failed, and abandoned outcomes, including resets,
+  situation changes, logout, and page closure.
+- Completed: preserve team/player/situation snapshots, situation revision,
+  positioning checks, final positions, sequence checks, retries, score, outcome,
   and timing.
-- Add coach filters by team, player, situation, outcome, and date.
-- Add player progress and team summary reports.
-- Add CSV export, query indexes, and authorization coverage.
+- Completed: paginate recent team activity and individual player history.
+- Completed: coach reports are scoped to the coach's team and filter by player,
+  situation, outcome, and date; administrators can query a selected team.
+- Completed: player and team summary values are calculated from filtered
+  database history rather than browser-local data.
+- Completed: CSV export uses the same filters and authorization rules as the
+  visible report.
+- Completed: reporting indexes and API/browser authorization coverage.
 
 Acceptance criteria: coaches can review trustworthy historical results without
 browser-local data, and players cannot access another player's or team's report.
 
 ## Phase 5: sanitized environment refresh
 
-- Production-to-preview and production-to-local data-only export/import.
-- Target backup and typed confirmation.
-- Session removal and non-production password replacement.
-- Optional player anonymization.
-- Target migration-history preservation and post-import validation.
+Status: implemented.
+
+- Completed: production-to-preview and production-to-local data-only export/import.
+- Completed: target backup and exact typed confirmation.
+- Completed: session/audit removal, email sanitization, and non-production
+  password replacement.
+- Completed: optional player display-name and username anonymization while
+  retaining stable relationship IDs.
+- Completed: target migration-history preservation and post-import validation.
 
 Refresh remains a manual maintenance action and is never part of deployment.

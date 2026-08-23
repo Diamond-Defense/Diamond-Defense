@@ -23,8 +23,10 @@
     "db:seed:local": "node scripts/wrangler-command.mjs d1 execute diamond-defense --local --persist-to .wrangler/state --file=database/seed.sql",
     "db:migrate:preview": "node scripts/wrangler-command.mjs d1 migrations apply diamond-defense-preview --remote --env preview",
     "db:migrate:production": "node scripts/wrangler-command.mjs d1 migrations apply diamond-defense-production --remote --env production",
-    "db:export:preview": "node scripts/wrangler-command.mjs d1 export diamond-defense-preview --remote --output=preview-database-export.sql",
-    "db:export:production": "node scripts/wrangler-command.mjs d1 export diamond-defense-production --remote --output=production-database-export.sql",
+    "db:export:preview": "node scripts/wrangler-command.mjs d1 export diamond-defense-preview --remote --env preview --output=preview-database-export.sql",
+    "db:export:production": "node scripts/wrangler-command.mjs d1 export diamond-defense-production --remote --env production --output=production-database-export.sql",
+    "db:refresh:preview": "node scripts/refresh-database.mjs --target preview",
+    "db:refresh:local": "node scripts/refresh-database.mjs --target local",
     "admin:password": "node scripts/update-admin-password.mjs",
     "verify": "node scripts/verify.mjs",
     "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"

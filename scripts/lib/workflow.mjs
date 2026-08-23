@@ -29,7 +29,7 @@ export function parseWranglerJson(output) {
   }
 }
 
-export async function applyLocalMigrations(database, statePath) {
+export async function applyLocalMigrations(database, statePath, runOptions = {}) {
   await runWrangler(
     [
       'd1',
@@ -40,7 +40,7 @@ export async function applyLocalMigrations(database, statePath) {
       '--persist-to',
       statePath,
     ],
-    { cwd: PROJECT_ROOT, env: { CI: 'true' } },
+    { ...runOptions, cwd: PROJECT_ROOT, env: { ...runOptions.env, CI: 'true' } },
   );
 }
 

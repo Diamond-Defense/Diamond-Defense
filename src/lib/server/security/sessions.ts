@@ -9,6 +9,8 @@ export interface AuthenticatedUser {
   displayName: string;
   role: 'player' | 'coach' | 'admin';
   teamId: string | null;
+  teamName: string | null;
+  jerseyNumber: string | null;
 }
 
 interface SessionRow {
@@ -17,6 +19,8 @@ interface SessionRow {
   display_name: string;
   role: AuthenticatedUser['role'];
   team_id: string | null;
+  team_name: string | null;
+  jersey_number: string | null;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -78,10 +82,12 @@ export async function currentUser(
   const token = cookies.get(SESSION_COOKIE);
   if (!token) return null;
   const row = await database.one<SessionRow>(
-    `SELECT u.id, u.username, u.display_name, u.role, tm.team_id
+    `SELECT u.id, u.username, u.display_name, u.role, tm.team_id,
+            t.name AS team_name, tm.jersey_number
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
+       LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
       WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.active = 1
       ORDER BY tm.team_id
       LIMIT 1`,
@@ -94,5 +100,7 @@ export async function currentUser(
     displayName: row.display_name,
     role: row.role,
     teamId: row.team_id,
+    teamName: row.team_name,
+    jerseyNumber: row.jersey_number,
   };
 }

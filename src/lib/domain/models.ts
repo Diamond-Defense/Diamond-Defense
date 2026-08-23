@@ -61,9 +61,15 @@ export interface Team {
 
 export interface Attempt {
   id?: string;
+  runId?: string;
   playerId: string;
   situationKey: string;
+  situationRevision?: number | null;
   phase: 1 | 2;
+  outcome?: 'passed' | 'failed' | 'abandoned';
+  abandonReason?: string | null;
+  startedAt?: string;
+  completedAt?: string;
   score?: number;
   total?: number;
   success?: boolean;

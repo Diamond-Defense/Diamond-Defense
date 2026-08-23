@@ -11,7 +11,7 @@ export const prerender = false;
 
 export const PUT: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['coach', 'admin']);
+  const user = await requireUser(event, ['admin']);
   const situation = (await event.request.json()) as Situation;
   situation.key = event.params.key;
   try {
@@ -28,7 +28,7 @@ export const PUT: RequestHandler = async (event) => {
 
 export const DELETE: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['coach', 'admin']);
+  const user = await requireUser(event, ['admin']);
   try {
     const record = await new SqliteSituationRepository(databaseFor(event)).setActive(
       event.params.key,

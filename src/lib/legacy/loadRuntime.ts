@@ -1,6 +1,6 @@
 import playerCoachSource from '../../features/player-coach.js?raw';
 import gameEngineSource from '../../game/engine.js?raw';
-import adminSource from '../../admin/admin.js?raw';
+import adminSource from '../../admin/admin-tools.js?raw';
 
 const runtimeSources = [playerCoachSource, gameEngineSource, adminSource];
 

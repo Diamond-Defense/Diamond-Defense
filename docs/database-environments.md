@@ -51,10 +51,10 @@ npm run db:export:production
 Export files are ignored by Git and may contain sensitive information. Store
 them securely and remove them when no longer required.
 
-## Production refresh roadmap
+## Production refresh
 
-Planned maintenance commands will support sanitized production-to-preview and
-production-to-local refreshes. They will exclude sessions, replace non-production
-passwords, optionally anonymize users, preserve target migration history, back
-up the target, and require destructive-operation confirmation. They are not yet
-implemented and are intentionally not part of deployment.
+Guarded production-to-preview and production-to-local refresh commands are now
+available. They back up the target, exclude sessions and audit history, replace
+passwords and contact emails, optionally anonymize player display data, preserve
+target migration history, and validate the result. They remain intentionally
+separate from deployment. See [Production data refresh](database-refresh.md).

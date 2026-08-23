@@ -45,7 +45,9 @@ Detailed documentation:
 
 - [Local development](docs/development.md)
 - [Database environments and migrations](docs/database-environments.md)
+- [Production data refresh](docs/database-refresh.md)
 - [Database administration API](docs/database-administration.md)
+- [Complete result recording](docs/result-recording.md)
 - [Cloudflare deployment](docs/deployment.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
 
@@ -59,6 +61,8 @@ Detailed documentation:
 | `npm run deploy:cloudflare -- --dry-run` | Show the branch deployment target without changing Cloudflare |
 | `npm run deploy:cloudflare` | Verify, migrate, and deploy `main` or `preview` |
 | `npm run admin:password` | Update the local administrator password |
+| `npm run db:refresh:preview -- --dry-run` | Safely inspect a production-to-preview refresh |
+| `npm run db:refresh:local -- --dry-run` | Safely inspect a production-to-local refresh |
 
 `npm run dev:vite` remains available for UI-only troubleshooting, but it does
 not provide the local Cloudflare D1 runtime and is not the supported full-app
@@ -77,7 +81,7 @@ The development seed currently contains:
 
 ```text
 Player: 13U Black / Bob Smith / 1234
-Coach: coach
+Coach: 13U Black / Diamond Defense Coach / coach
 Admin: admin
 ```
 
@@ -130,11 +134,20 @@ from normal remote deployment.
 ## Current database state
 
 Situations, teams, login sessions, attempts, and reports use D1/SQLite as the
-only runtime source of truth. The JSON files at the repository root are retained
+only runtime source of truth. Each started player run is saved once with an
+idempotent run ID and a passed, failed, or abandoned outcome. The record keeps
+the positioning checks, sequence stages, timing, and historical team/player/
+situation snapshots needed for reliable reports. The JSON files at the repository root are retained
 only as explicit seed/import inputs; the running application does not request
 them. Browser storage is limited to non-authoritative UI preferences. Team,
 member, situation, password, archive, restore, revision, and audit operations
 now use the [record-level administration API](docs/database-administration.md).
-See the [database roadmap](docs/database-roadmap.md) for reporting and
-environment-refresh work that follows.
-
+Bulk team/account changes use the validated, preview-first
+[team CSV import workflow](docs/team-csv-import.md).
+Coaches use individual, team-linked accounts and submit situation drafts for
+administrator approval; only administrators publish the shared playbook.
+Coach reporting supports filtered team/player history, database summaries, and
+authenticated CSV downloads as described in the
+[coach reporting guide](docs/coach-reporting.md). See the
+[production data refresh guide](docs/database-refresh.md) for the guarded
+preview/local copy workflow.

@@ -12,7 +12,19 @@ export const PUT: RequestHandler = async (event) => {
   const user = await requireTeamManager(event, event.params.teamId);
   try {
     const body = (await event.request.json()) as { password?: string };
-    await new SqliteTeamRepository(databaseFor(event)).resetPassword(event.params.userId, body.password, user.id);
+    const repository = new SqliteTeamRepository(databaseFor(event));
+    const existing = await repository.getMember(
+      event.params.teamId,
+      event.params.userId,
+      true,
+    );
+    if (existing?.role === 'coach' && user.role !== 'admin') {
+      return json(
+        { error: 'Only an administrator can reset coach passwords.' },
+        { status: 403 },
+      );
+    }
+    await repository.resetPassword(event.params.userId, body.password, user.id);
     return json({ ok: true });
   } catch (error) {
     return repositoryErrorResponse(error);
