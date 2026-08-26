@@ -20,6 +20,7 @@ The refresh command:
 8. Removes all sessions and audit-log rows.
 9. Replaces every account password with one non-production password and
    replaces contact email addresses with the reserved `example.invalid` domain.
+   Replacement hashes use Cloudflare's supported 100,000 PBKDF2 iterations.
 10. Verifies imported row counts, password replacement, email sanitization,
     empty sessions/audit tables, and unchanged migration history.
 

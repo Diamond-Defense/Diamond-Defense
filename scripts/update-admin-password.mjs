@@ -11,7 +11,7 @@ import {
 const DEFAULT_DATABASE = 'diamond-defense';
 const ADMIN_ID = 'staff-admin';
 const PASSWORD_ENV = 'DIAMOND_DEFENSE_NEW_ADMIN_PASSWORD';
-const ITERATIONS = 120000;
+const ITERATIONS = 100000;
 const MINIMUM_PASSWORD_LENGTH = 12;
 
 function usage() {
@@ -19,12 +19,15 @@ function usage() {
 
 Usage:
   npm run admin:password
-  npm run admin:password -- --remote
+  npm run admin:password:preview
+  npm run admin:password:production
 
 Options:
   --local              Update the local D1 database (default)
-  --remote             Update the production D1 database
+  --remote             Update the selected remote D1 database
   --database <name>    Database name or binding (default: ${DEFAULT_DATABASE})
+  --env <name>         Wrangler environment for a remote database
+  --create-if-missing  Create the administrator account when it does not exist
   --yes                Skip the typed remote-database confirmation
   --help                Show this help
 
@@ -38,6 +41,8 @@ export function parseArguments(argumentsList) {
     database: DEFAULT_DATABASE,
     location: 'local',
     yes: false,
+    environment: null,
+    createIfMissing: false,
     help: false,
   };
 
@@ -49,6 +54,8 @@ export function parseArguments(argumentsList) {
       options.location = 'remote';
     } else if (argument === '--yes') {
       options.yes = true;
+    } else if (argument === '--create-if-missing') {
+      options.createIfMissing = true;
     } else if (argument === '--help' || argument === '-h') {
       options.help = true;
     } else if (argument === '--database') {
@@ -57,6 +64,12 @@ export function parseArguments(argumentsList) {
         throw new Error('--database requires a database name or binding.');
       }
       options.database = database;
+    } else if (argument === '--env') {
+      const environment = argumentsList[++index];
+      if (!environment || environment.startsWith('--')) {
+        throw new Error('--env requires a Wrangler environment name.');
+      }
+      options.environment = environment;
     } else {
       throw new Error(`Unknown option: ${argument}`);
     }
@@ -91,11 +104,22 @@ function sqlString(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-export function buildUpdateSql(record, updatedAt = new Date().toISOString()) {
-  return [
+export function buildUpdateSql(
+  record,
+  updatedAt = new Date().toISOString(),
+  createIfMissing = false,
+) {
+  const statements = [];
+  if (createIfMissing) {
+    statements.push(
+      `INSERT INTO users (id, username, display_name, role, password_hash, password_salt, password_iterations, active, created_at, updated_at) SELECT ${sqlString(ADMIN_ID)}, 'admin', 'Diamond Defense Admin', 'admin', ${sqlString(record.hash)}, ${sqlString(record.salt)}, ${Number(record.iterations)}, 1, ${sqlString(updatedAt)}, ${sqlString(updatedAt)} WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = ${sqlString(ADMIN_ID)});`,
+    );
+  }
+  statements.push(
     `UPDATE users SET password_hash = ${sqlString(record.hash)}, password_salt = ${sqlString(record.salt)}, password_iterations = ${Number(record.iterations)}, updated_at = ${sqlString(updatedAt)} WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
     `DELETE FROM sessions WHERE user_id = ${sqlString(ADMIN_ID)};`,
-  ].join('\n');
+  );
+  return statements.join('\n');
 }
 
 function promptHidden(label) {
@@ -191,7 +215,7 @@ function wranglerCommand() {
   return process.platform === 'win32' ? 'wrangler.cmd' : 'wrangler';
 }
 
-function runWrangler(database, location, sql) {
+function runWrangler(database, location, sql, environment = null) {
   const argumentsList = [
     'd1',
     'execute',
@@ -202,6 +226,7 @@ function runWrangler(database, location, sql) {
     '--json',
     '--yes',
   ];
+  if (environment) argumentsList.push('--env', environment);
 
   const childEnvironment = { ...process.env };
   delete childEnvironment[PASSWORD_ENV];
@@ -268,10 +293,12 @@ async function updatePassword(options) {
     options.database,
     options.location,
     `SELECT id, role FROM users WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
+    options.environment,
   );
-  if (firstResults(lookup).length !== 1) {
+  const administratorExists = firstResults(lookup).length === 1;
+  if (!administratorExists && !options.createIfMissing) {
     throw new Error(
-      `The ${ADMIN_ID} account was not found. Apply the migrations and seed data first.`,
+      `The ${ADMIN_ID} account was not found. Apply the migrations and initialize the account first.`,
     );
   }
 
@@ -280,13 +307,15 @@ async function updatePassword(options) {
   await runWrangler(
     options.database,
     options.location,
-    buildUpdateSql(record),
+    buildUpdateSql(record, new Date().toISOString(), options.createIfMissing),
+    options.environment,
   );
 
   const verification = await runWrangler(
     options.database,
     options.location,
     `SELECT password_hash, password_salt, password_iterations FROM users WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
+    options.environment,
   );
   const stored = firstResults(verification)[0];
   if (
@@ -298,7 +327,7 @@ async function updatePassword(options) {
   }
 
   console.log(
-    `Administrator password updated in the ${options.location} ${options.database} database.`,
+    `Administrator account ${administratorExists ? 'updated' : 'created'} in the ${options.location} ${options.database} database.`,
   );
   console.log('Existing administrator sessions were signed out.');
 }

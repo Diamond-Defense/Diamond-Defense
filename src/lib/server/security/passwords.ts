@@ -1,6 +1,8 @@
 import { Buffer } from 'node:buffer';
 import { pbkdf2, randomBytes, timingSafeEqual } from 'node:crypto';
 
+export const MAX_PASSWORD_ITERATIONS = 100000;
+
 function derivePasswordBytes(
   password: string,
   salt: Buffer,
@@ -29,7 +31,7 @@ export async function derivePasswordHash(
 
 export async function createPasswordHash(
   password: string,
-  iterations = 120000,
+  iterations = MAX_PASSWORD_ITERATIONS,
 ): Promise<{ hash: string; salt: string; iterations: number }> {
   const salt = randomBytes(16).toString('base64');
   return {
@@ -45,6 +47,11 @@ export async function verifyPassword(
   salt: string,
   iterations: number,
 ): Promise<boolean> {
+  if (!Number.isInteger(iterations) || iterations < 1 || iterations > MAX_PASSWORD_ITERATIONS) {
+    throw new Error(
+      `Unsupported password record: PBKDF2 iterations must be between 1 and ${MAX_PASSWORD_ITERATIONS}.`,
+    );
+  }
   const actual = Buffer.from(
     await derivePasswordHash(password, salt, iterations),
     'base64',

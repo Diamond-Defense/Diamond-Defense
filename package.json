@@ -28,6 +28,8 @@
     "db:refresh:preview": "node scripts/refresh-database.mjs --target preview",
     "db:refresh:local": "node scripts/refresh-database.mjs --target local",
     "admin:password": "node scripts/update-admin-password.mjs",
+    "admin:password:preview": "node scripts/update-admin-password.mjs --remote --database diamond-defense-preview --env preview",
+    "admin:password:production": "node scripts/update-admin-password.mjs --remote --database diamond-defense-production --env production --create-if-missing",
     "verify": "node scripts/verify.mjs",
     "deploy:cloudflare": "node scripts/deploy-cloudflare.mjs"
   },

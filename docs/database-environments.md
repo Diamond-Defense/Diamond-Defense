@@ -32,6 +32,11 @@ a problem, create a new migration rather than editing one that may already be
 recorded. Prefer additive, backward-compatible migrations so the previously
 deployed application remains functional if a deployment fails after migration.
 
+Password hashes use PBKDF2 with 100,000 iterations, the maximum supported by
+Cloudflare Workers. Migration `0005_password_iteration_limit.sql` prevents new
+or updated accounts from storing an unsupported iteration count. Existing
+legacy hashes must be reset with the environment-specific password command.
+
 ## Seed policy
 
 Local startup conditionally installs seed data only into an empty database.

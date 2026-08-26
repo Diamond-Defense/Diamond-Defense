@@ -2,7 +2,7 @@ import { pbkdf2Sync, randomBytes } from 'node:crypto';
 
 export const REFRESH_PASSWORD_ENV = 'DIAMOND_DEFENSE_REFRESH_PASSWORD';
 export const REFRESH_CONFIRMATION_ENV = 'DIAMOND_DEFENSE_REFRESH_CONFIRMATION';
-export const PASSWORD_ITERATIONS = 120000;
+export const PASSWORD_ITERATIONS = 100000;
 export const MINIMUM_PASSWORD_LENGTH = 12;
 
 export const IMPORT_TABLES = [

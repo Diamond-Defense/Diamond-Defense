@@ -7,7 +7,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const teams = JSON.parse(await readFile(resolve(root, 'teams.json'), 'utf8'));
 const situations = JSON.parse(await readFile(resolve(root, 'situations.json'), 'utf8'));
 const createdAt = new Date().toISOString();
-const iterations = 120000;
+const iterations = 100000;
 const adminPassword = process.env.DIAMOND_DEFENSE_ADMIN_PASSWORD || 'admin';
 const coachPassword = process.env.DIAMOND_DEFENSE_COACH_PASSWORD || 'coach';
 

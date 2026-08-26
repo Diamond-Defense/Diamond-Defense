@@ -37,8 +37,8 @@ test('creates a verifiable password record without retaining plaintext', () => {
   const password = 'a safe nonproduction password';
   const salt = Buffer.alloc(16, 7);
   const record = createPasswordRecord(password, salt);
-  assert.equal(record.hash, pbkdf2Sync(password, salt, 120000, 32, 'sha256').toString('base64'));
-  assert.equal(record.iterations, 120000);
+  assert.equal(record.hash, pbkdf2Sync(password, salt, 100000, 32, 'sha256').toString('base64'));
+  assert.equal(record.iterations, 100000);
   assert.throws(() => createPasswordRecord('too short'), /at least 12/);
 });
 
@@ -100,6 +100,7 @@ test('generated replacement SQL executes against the portable SQLite schema', as
     '0002_record_administration.sql',
     '0003_coach_accounts_and_situation_review.sql',
     '0004_complete_attempt_lifecycle.sql',
+    '0005_password_iteration_limit.sql',
   ]) {
     database.exec(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     database.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(name);
@@ -109,7 +110,7 @@ test('generated replacement SQL executes against the portable SQLite schema', as
       (id, username, display_name, role, password_hash, password_salt,
        password_iterations, active, created_at, updated_at)
     VALUES ('old-user', 'old-user', 'Old User', 'player', 'old', 'old',
-            120000, 1, '2026-01-01', '2026-01-01');
+            100000, 1, '2026-01-01', '2026-01-01');
     INSERT INTO sessions (token_hash, user_id, expires_at, created_at)
     VALUES ('old-session', 'old-user', '2027-01-01', '2026-01-01');
     INSERT INTO audit_log
@@ -118,7 +119,7 @@ test('generated replacement SQL executes against the portable SQLite schema', as
   `);
 
   const executableExport = `
-    INSERT INTO "users" ("id","username","display_name","role","password_hash","password_salt","password_iterations","active","created_at","updated_at","revision","archived_at","archived_by") VALUES('new-player','new-player','Real Player','player','production-hash','production-salt',120000,1,'2026-02-01','2026-02-01',1,NULL,NULL);
+    INSERT INTO "users" ("id","username","display_name","role","password_hash","password_salt","password_iterations","active","created_at","updated_at","revision","archived_at","archived_by") VALUES('new-player','new-player','Real Player','player','production-hash','production-salt',100000,1,'2026-02-01','2026-02-01',1,NULL,NULL);
     INSERT INTO "teams" ("id","name","coach_email","created_at","updated_at","revision","active","archived_at","archived_by") VALUES('team-one','Team One','real@example.com','2026-02-01','2026-02-01',1,1,NULL,NULL);
     INSERT INTO "situations" ("key","title","description","payload_json","revision","active","created_by","created_at","updated_at","archived_at","archived_by") VALUES('BD-01','Situation 1','Test','{}',1,1,NULL,'2026-02-01','2026-02-01',NULL,NULL);
   `;
@@ -144,6 +145,6 @@ test('generated replacement SQL executes against the portable SQLite schema', as
   assert.equal(database.prepare('SELECT coach_email FROM teams').get().coach_email, 'team-one@example.invalid');
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM audit_log').get().count, 0);
-  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 4);
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 5);
   database.close();
 });

@@ -61,6 +61,8 @@ Detailed documentation:
 | `npm run deploy:cloudflare -- --dry-run` | Show the branch deployment target without changing Cloudflare |
 | `npm run deploy:cloudflare` | Verify, migrate, and deploy `main` or `preview` |
 | `npm run admin:password` | Update the local administrator password |
+| `npm run admin:password:preview` | Update the preview administrator password |
+| `npm run admin:password:production` | Update the production administrator password |
 | `npm run db:refresh:preview -- --dry-run` | Safely inspect a production-to-preview refresh |
 | `npm run db:refresh:local -- --dry-run` | Safely inspect a production-to-local refresh |
 
@@ -100,20 +102,25 @@ npm run admin:password
 Preview D1:
 
 ```sh
-npm run admin:password -- --remote --database diamond-defense-preview
+npm run admin:password:preview
 ```
 
 Production D1:
 
 ```sh
-npm run admin:password -- --remote --database diamond-defense-production
+npm run admin:password:production
 ```
 
 The script hides interactive entry, requires at least 12 characters, generates
-a fresh PBKDF2 salt and hash, verifies the database update, and invalidates
-existing administrator sessions. For automation, provide
+a fresh PBKDF2 salt and hash using Cloudflare's supported 100,000-iteration
+limit, verifies the database update, and invalidates existing administrator
+sessions. For automation, provide
 `DIAMOND_DEFENSE_NEW_ADMIN_PASSWORD` through the CI secret store; the script
 removes it from the environment before launching Wrangler.
+
+The production command also creates `staff-admin` when a newly migrated
+production database has no administrator yet. Preview and local commands remain
+update-only so an unexpectedly empty database is not silently initialized.
 
 ## Database sources
 
