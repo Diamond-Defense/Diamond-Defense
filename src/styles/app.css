@@ -1967,6 +1967,7 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .admin-csv-ready{padding:10px;border:1px solid rgba(68,232,170,.24);border-radius:9px;background:rgba(68,232,170,.08);color:#77f3c0;font-weight:750}.admin-csv-issues{display:grid;gap:6px}.admin-csv-issues>strong{color:#edfaff}.admin-csv-issues>div{display:grid;grid-template-columns:62px 1fr;gap:8px;padding:8px 9px;border-radius:8px;font-size:12px}.admin-csv-issues>div.is-error{border:1px solid rgba(255,72,112,.25);background:rgba(255,72,112,.08);color:#ff9bb2}.admin-csv-issues>div.is-warning{border:1px solid rgba(255,211,105,.25);background:rgba(255,183,61,.08);color:#ffd369}.admin-csv-issues p{margin:0}.admin-csv-issues span{font-weight:850}
 .admin-csv-table-wrap{max-height:280px;overflow:auto;border:1px solid rgba(92,180,255,.18);border-radius:10px}.admin-csv-table{width:100%;border-collapse:collapse;color:#e8f7ff;font-size:11px}.admin-csv-table th,.admin-csv-table td{padding:8px;border-bottom:1px solid rgba(92,180,255,.12);text-align:left}.admin-csv-table th{position:sticky;top:0;background:#0c2949;color:#9fb8ce;text-transform:uppercase;font-size:9px}.admin-csv-table code{color:#a6d9ef;font-size:10px}.admin-csv-action{font-weight:900;text-transform:uppercase;font-size:9px}.admin-csv-action.is-create,.admin-csv-action.is-restore{color:#77f3c0}.admin-csv-action.is-update{color:#6deeff}.admin-csv-action.is-archive{color:#ff9bb2}.admin-csv-action.is-unchanged{color:#8099ae}
 .admin-csv-confirm{display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid rgba(255,92,130,.3);border-radius:9px;background:rgba(255,72,112,.07);color:#ffb2c4;font-size:12px;line-height:1.4}.admin-csv-confirm input{margin-top:2px;accent-color:#ff4870}
+.admin-csv-review-confirm{display:flex;align-items:flex-start;gap:9px;padding:10px;border:1px solid rgba(67,231,244,.28);border-radius:9px;background:rgba(67,231,244,.07);color:#b9f9ff;font-size:12px;line-height:1.4}.admin-csv-review-confirm input{margin-top:2px;accent-color:#43e7f4}
 @media(max-width:720px){.admin-csv-dropzone{align-items:stretch;flex-direction:column}.admin-csv-summary{grid-template-columns:repeat(3,1fr)}}
 .admin-record-grid{display:grid;grid-template-columns:minmax(170px,.8fr) minmax(220px,1fr) minmax(220px,1fr);gap:12px}
 .admin-account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
@@ -1980,6 +1981,14 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .operation-status.is-pending{display:block;background:rgba(67,231,244,.08);color:#9ff6ff;border:1px solid rgba(67,231,244,.2)}
 .operation-status.is-success{display:block;background:rgba(68,232,170,.09);color:#77f3c0;border:1px solid rgba(68,232,170,.24)}
 .operation-status.is-error{display:block;background:rgba(255,72,112,.09);color:#ff9bb2;border:1px solid rgba(255,72,112,.26)}
+.field-error{display:block;color:#ff9bb2;font-size:11px;font-weight:700;line-height:1.35}
+:is(#adminCard,.admin-workspace) :is(input,select,textarea)[aria-invalid="true"]{border-color:#ff587d;box-shadow:0 0 0 3px rgba(255,72,112,.12)}
+:is(#adminCard,.admin-workspace)[aria-busy="true"] button{pointer-events:none}
+.admin-confirm-dialog{position:fixed;inset:0;z-index:1600;display:grid;place-items:center;padding:18px}
+.admin-confirm-dialog.hidden{display:none}
+.admin-confirm-backdrop{position:absolute;inset:0;background:rgba(1,7,18,.82);backdrop-filter:blur(5px)}
+.admin-confirm-panel{position:relative;width:min(440px,100%);display:grid;gap:18px;padding:20px;border:1px solid rgba(255,92,130,.38);border-radius:16px;background:#081c36;box-shadow:0 24px 70px rgba(0,0,0,.52),0 0 28px rgba(255,72,112,.1)}
+.admin-confirm-panel h3{margin:0;color:#f6fbff;font-size:19px}.admin-confirm-panel p{margin:8px 0 0;color:#aac3d7;line-height:1.5}.admin-confirm-panel .admin-actions{justify-content:flex-end}
 .proposal-details{padding:10px;border-radius:9px;background:rgba(2,14,31,.65);line-height:1.5}
 .proposal-history{display:grid;gap:6px}
 .proposal-history-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 10px;border:1px solid rgba(92,180,255,.15);border-radius:9px;color:#a9c9df;background:rgba(4,20,41,.55)}
@@ -2079,3 +2088,40 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
   .tgt.selected{animation:none}
   .chip,.field-notice,button{transition:none}
 }
+
+/* Situation authoring and proposal review */
+.situation-workflow-banner{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;padding:13px 15px;margin-bottom:12px;border:1px solid rgba(67,231,244,.24);border-radius:13px;background:linear-gradient(135deg,rgba(18,63,101,.56),rgba(7,25,50,.8))}
+.situation-workflow-banner>div{display:grid;gap:4px}.situation-workflow-banner p{margin:0;color:#a9c9df;font-size:13px;line-height:1.45}
+.workflow-role-badge,.dirty-state-badge{display:inline-flex;width:max-content;align-items:center;border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}
+.workflow-role-badge{color:#061225;background:#43e7f4}.dirty-state-badge{color:#9fc1d9;border:1px solid rgba(159,193,217,.24);background:rgba(6,22,43,.82)}
+.dirty-state-badge.is-dirty{color:#07172c;border-color:#ffd66b;background:#ffd66b;box-shadow:0 0 14px rgba(255,214,107,.2)}
+.dirty-state-badge.is-clean{color:#6ff0bb;border-color:rgba(68,232,170,.32);background:rgba(68,232,170,.08)}
+.situation-editor-steps{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px;margin-bottom:12px}
+.situation-editor-steps button{min-height:38px;padding:7px;color:#a9c9df;border:1px solid rgba(92,180,255,.2);border-radius:9px;background:rgba(5,24,48,.72);font-size:11px;font-weight:800}
+.situation-editor-steps button:hover,.situation-editor-steps button.is-current{color:#061225;border-color:#8ff5ff;background:#43e7f4}
+.situation-editor-section,.proposal-summary,.situation-validation-panel,.proposal-comparison{padding:13px;margin:10px 0;border:1px solid rgba(92,180,255,.19);border-radius:12px;background:rgba(5,24,48,.58)}
+.situation-editor-section .sectionTitle,.proposal-summary .sectionTitle,.situation-validation-panel .sectionTitle{margin-bottom:8px}
+.situation-validation-panel{border-color:rgba(255,214,107,.35);background:rgba(255,214,107,.06)}
+.validation-issue-list{display:grid;gap:6px;margin-top:9px}.validation-issue{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 9px;border-radius:8px;background:rgba(4,18,37,.72)}
+.validation-issue.is-error{border-left:3px solid #ff4870}.validation-issue.is-warning{border-left:3px solid #ffd66b}.validation-issue button{padding:4px 7px;font-size:11px}
+.position-completeness{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}
+.position-check{display:grid;grid-template-columns:auto 1fr;gap:3px 7px;text-align:left;padding:7px 8px;border:1px solid rgba(92,180,255,.17);border-radius:9px;color:#cbe9fa;background:rgba(4,20,41,.68)}
+.position-check.is-selected{border-color:#43e7f4;box-shadow:0 0 0 2px rgba(67,231,244,.1)}.position-check strong{grid-row:1/3;align-self:center;color:#fff}
+.position-check-summary{font-size:10px;color:#89a8bd}.position-check-summary .is-complete{color:#6ff0bb}.position-check-summary .is-missing{color:#ff9bb2}
+.proposal-change-summary{display:flex;flex-wrap:wrap;gap:6px;line-height:1.5}.change-chip{display:inline-flex;padding:4px 8px;border:1px solid rgba(67,231,244,.2);border-radius:999px;color:#9ff6ff;background:rgba(67,231,244,.07);font-size:11px;font-weight:800}
+.situation-review-section>.situation-validation-panel,.situation-review-section>.proposal-summary{margin:10px 0 0}
+.situation-review-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid rgba(92,180,255,.18)}
+.situation-review-actions .btn-brand{margin-left:auto}
+.proposal-status{display:inline-flex;padding:3px 7px;border-radius:999px;font-size:10px;font-weight:900;text-transform:uppercase}.proposal-status.is-pending{color:#07172c;background:#ffd66b}.proposal-status.is-approved{color:#07172c;background:#6ff0bb}.proposal-status.is-rejected{color:#fff;background:#d93861}.proposal-status.is-withdrawn{color:#b7cce0;background:#28435f}
+.proposal-history-row>span{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.proposal-comparison-heading{margin-bottom:10px}.proposal-diff-list{display:grid;gap:8px}
+.proposal-diff-row{display:grid;grid-template-columns:auto minmax(100px,.6fr) minmax(0,1fr) minmax(0,1fr);gap:9px;align-items:start;padding:9px;border:1px solid rgba(92,180,255,.15);border-radius:9px;background:rgba(3,17,35,.7)}
+.proposal-diff-row>label{font-weight:800;color:#cbe9fa}.proposal-diff-value{min-width:0;word-break:break-word;color:#9fc1d9;font-size:12px}.proposal-diff-value.is-proposed{color:#dffbff;background:rgba(67,231,244,.06);border-radius:6px;padding:4px 6px}
+.proposal-diff-empty{padding:12px;color:#9fc1d9;text-align:center;border:1px dashed rgba(92,180,255,.2);border-radius:9px}
+.situation-preview-bar{position:fixed;z-index:1000;left:50%;top:12px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:9px 12px;border:1px solid rgba(67,231,244,.45);border-radius:12px;color:#eaffff;background:rgba(3,17,35,.94);box-shadow:0 12px 32px rgba(0,0,0,.35),0 0 18px rgba(67,231,244,.12)}
+body.situation-player-preview #sidePanel,body.situation-player-preview #coachCard,body.situation-player-preview #adminCard,body.situation-player-preview #adminWorkspace{display:none!important}
+body.situation-player-preview #fieldCard{display:block!important;grid-column:1/-1}
+body.situation-player-preview .topbar{opacity:.35;pointer-events:none}
+
+@media(max-width:1100px){.situation-editor-steps{grid-template-columns:repeat(3,minmax(0,1fr))}.proposal-diff-row{grid-template-columns:auto 1fr}.proposal-diff-row>label{grid-column:2}.proposal-diff-value{grid-column:2}}
+@media(max-width:620px){.situation-workflow-banner{flex-direction:column}.situation-editor-steps{grid-template-columns:repeat(2,minmax(0,1fr))}.position-completeness{grid-template-columns:1fr}.proposal-diff-row{grid-template-columns:auto 1fr}.situation-preview-bar{width:calc(100vw - 24px);box-sizing:border-box;justify-content:space-between}.situation-review-actions .btn{width:100%;justify-content:center}.situation-review-actions .btn-brand{margin-left:0}}

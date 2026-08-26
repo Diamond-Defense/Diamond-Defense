@@ -691,6 +691,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#adminCsvSummary')).toContainText('Changes');
     await expect(page.locator('#adminCsvSummary')).toContainText('1');
     await expect(page.locator('.admin-csv-action.is-create')).toHaveText('create');
+    await expect(page.locator('#adminCsvCommitBtn')).toBeDisabled();
+    await page.locator('#adminCsvReviewConfirm').check();
     await expect(page.locator('#adminCsvCommitBtn')).toBeEnabled();
     await page.locator('#adminCsvCancelBtn').click();
     await expect(page.locator('#adminCsvPreview')).toBeHidden();
@@ -758,6 +760,14 @@ test.describe('Diamond Defense regression behavior', () => {
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     const teamName = `Browser Admin ${suffix}`;
     const teamId = teamName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    await page.locator('#adminTeamName').fill('');
+    await page.locator('#adminTeamEmail').fill('not-an-email');
+    await page.locator('#adminTeamAddBtn').click();
+    await expect(page.locator('#adminTeamName')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#adminTeamEmail')).toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#adminOperationStatus')).toHaveText(
+      'Correct the highlighted team fields.',
+    );
     await page.locator('#adminTeamName').fill(teamName);
     await page.locator('#adminTeamEmail').fill('browser-admin@example.com');
     const createResponse = page.waitForResponse((response) =>
@@ -781,14 +791,20 @@ test.describe('Diamond Defense regression behavior', () => {
     }));
     await expect(page.locator('#adminOperationStatus')).toHaveText('Team saved.');
 
-    const cleanupStatus = await page.evaluate(async ({ id, revision }) => {
-      const response = await fetch(`./api/admin/teams/${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: { 'If-Match': String(revision) },
-      });
-      return response.status;
-    }, { id: teamId, revision: updated.revision });
-    expect(cleanupStatus).toBe(200);
+    await page.locator('#adminTeamRemoveBtn').click();
+    await expect(page.locator('#adminConfirmDialog')).toBeVisible();
+    await expect(page.locator('#adminConfirmTitle')).toHaveText('Archive team');
+    await page.locator('#adminConfirmCancelBtn').click();
+    await expect(page.locator('#adminConfirmDialog')).toBeHidden();
+
+    const archiveResponse = page.waitForResponse((response) =>
+      response.url().endsWith(`/api/admin/teams/${teamId}`)
+      && response.request().method() === 'DELETE',
+    );
+    await page.locator('#adminTeamRemoveBtn').click();
+    await page.locator('#adminConfirmActionBtn').click();
+    expect((await archiveResponse).status()).toBe(200);
+    await expect(page.locator('#adminOperationStatus')).toHaveText('Team archived.');
   });
 
   test('current pure helpers retain their established output', async ({ page }) => {
@@ -799,7 +815,6 @@ test.describe('Diamond Defense regression behavior', () => {
       looseSlug: slugifyLoose(`Coach's Team`),
       clampedLow: clampInt(-4, 0, 2),
       clampedHigh: clampInt(9, 0, 2),
-      filename: safeSituationJsonFilename('Double / Cut: Play?'),
     }));
 
     expect(output).toEqual({
@@ -807,11 +822,10 @@ test.describe('Diamond Defense regression behavior', () => {
       looseSlug: 'coachs-team',
       clampedLow: 0,
       clampedHigh: 2,
-      filename: 'Double Cut Play.json',
     });
   });
 
-  test('situation normalization and export retain all current situations', async ({ page }) => {
+  test('situation normalization retains the current data contract', async ({ page }) => {
     await openCleanApp(page);
 
     const result = await page.evaluate(() => {
@@ -824,8 +838,6 @@ test.describe('Diamond Defense regression behavior', () => {
         hitType: 'unknown',
         hit: { x: 0.5, y: 0.25 },
       }, 0);
-      const exported = JSON.parse(buildAllSituationsExport());
-
       return {
         normalized: {
           key: normalized.key,
@@ -834,8 +846,6 @@ test.describe('Diamond Defense regression behavior', () => {
           hitType: normalized.hitType,
           hit: normalized.hit,
         },
-        exportCount: exported.length,
-        exportKeys: exported.map((situation) => situation.key),
       };
     });
 
@@ -846,8 +856,6 @@ test.describe('Diamond Defense regression behavior', () => {
       hitType: 'line',
       hit: { x: 1600, y: 533 },
     });
-    expect(result.exportCount).toBeGreaterThanOrEqual(22);
-    expect(new Set(result.exportKeys).size).toBe(result.exportCount);
   });
 
   test('team and roster operations add, update, and remove records', async ({ page }) => {
@@ -972,6 +980,33 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
     await expect(page.locator('.field-card')).toBeVisible();
     await expect(page.locator('#coachSituationEditorMount')).toBeVisible();
+    await expect(page.locator('#situationWorkflowRole')).toHaveText('Coach draft');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('[data-editor-step]')).toHaveCount(6);
+    await expect(page.locator('.situation-editor-actions #previewSituationBtn')).toHaveCount(0);
+    await expect(page.locator('.situation-editor-actions #submitSituationBtn')).toHaveCount(0);
+    await expect(page.locator('#situationReviewSection #situationValidationPanel')).toHaveCount(1);
+    await expect(page.locator('#situationReviewSection #coachProposalRationale')).toHaveCount(1);
+    await expect(page.locator('#situationReviewSection #previewSituationBtn')).toHaveCount(1);
+    await expect(page.locator('#situationReviewSection #submitSituationBtn')).toHaveCount(1);
+    await expect(page.locator('#downloadCurrentBtn')).toHaveCount(0);
+    await expect(page.locator('.position-check')).toHaveCount(9);
+    await expect(page.locator('#seqPosGrid .pos-btn', { hasText: /^LF$/ })).toBeDisabled();
+    await page.locator('[data-editor-step="sbTargetsSubsec"]').click();
+    await page.locator('.position-check', { hasText: /^RF/ }).click();
+    await expect(page.locator('#tolTargetSel')).toHaveValue('RF');
+    await page.locator('#newTitleInput').fill('Coach draft title');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#submitSituationBtn')).toBeDisabled();
+    await page.locator('#coachProposalRationale').fill('Clarifies the player-facing coaching objective.');
+    await page.locator('#previewSituationBtn').click();
+    await expect(page.locator('body')).toHaveClass(/situation-player-preview/);
+    await expect(page.locator('.field-card')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Return to editor' })).toBeVisible();
+    await page.getByRole('button', { name: 'Return to editor' }).click();
+    await expect(page.locator('body')).not.toHaveClass(/situation-player-preview/);
+    await page.locator('#saveSituationBtn').click();
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
   });
 
   test('a correct phase-one placement proceeds through the phase-two sequence', async ({ page }) => {

@@ -63,6 +63,7 @@ Detailed documentation:
 | `npm run admin:password` | Update the local administrator password |
 | `npm run admin:password:preview` | Update the preview administrator password |
 | `npm run admin:password:production` | Update the production administrator password |
+| `npm run db:seed:situations:production` | Add/update production playbook situations without account data |
 | `npm run db:refresh:preview -- --dry-run` | Safely inspect a production-to-preview refresh |
 | `npm run db:refresh:local -- --dry-run` | Safely inspect a production-to-local refresh |
 
@@ -137,6 +138,15 @@ src/routes/api/                      Authenticated API endpoints
 Do not edit `database/seed.sql` manually. Update its source data and regenerate
 it with `npm run db:seed:generate`. Seed execution is intentionally separate
 from normal remote deployment.
+
+For preview or production, use the situation-only seed. It is generated from
+`situations.json` and never contains teams, users, memberships, or passwords:
+
+```sh
+npm run db:seed:situations:generate
+npm run db:seed:situations:preview
+npm run db:seed:situations:production
+```
 
 ## Current database state
 

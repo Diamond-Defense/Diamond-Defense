@@ -22,6 +22,8 @@ interface SubmissionRow {
   base_revision: number | null;
   status: SituationSubmissionStatus;
   review_notes: string;
+  rationale: string;
+  accepted_fields_json: string;
   submitted_by: string;
   submitter_name: string;
   reviewed_by: string | null;
@@ -39,6 +41,8 @@ export interface SituationSubmissionRecord {
   baseRevision: number | null;
   status: SituationSubmissionStatus;
   reviewNotes: string;
+  rationale: string;
+  acceptedFields: string[];
   submittedBy: string;
   submitterName: string;
   reviewedBy: string | null;
@@ -74,6 +78,8 @@ function mapRow(row: SubmissionRow): SituationSubmissionRecord {
       row.base_revision == null ? null : Number(row.base_revision),
     status: row.status,
     reviewNotes: row.review_notes,
+    rationale: row.rationale,
+    acceptedFields: JSON.parse(row.accepted_fields_json || '[]') as string[],
     submittedBy: row.submitted_by,
     submitterName: row.submitter_name,
     reviewedBy: row.reviewed_by,
@@ -90,7 +96,8 @@ export class SqliteSituationSubmissionRepository {
   private baseSelect(): string {
     return `SELECT ss.id, ss.situation_key, ss.submission_type,
                    ss.payload_json, ss.base_revision, ss.status,
-                   ss.review_notes, ss.submitted_by,
+                   ss.review_notes, ss.rationale, ss.accepted_fields_json,
+                   ss.submitted_by,
                    submitter.display_name AS submitter_name,
                    ss.reviewed_by,
                    reviewer.display_name AS reviewer_name,
@@ -134,8 +141,15 @@ export class SqliteSituationSubmissionRepository {
   async submit(
     situationInput: Situation,
     userId: string,
+    rationaleInput = '',
   ): Promise<SituationSubmissionRecord> {
     const situation = validateSubmissionSituation(situationInput);
+    const rationale = String(rationaleInput || '').trim();
+    if (!rationale || rationale.length > 1000) {
+      throw new RecordValidationError(
+        'Add a proposal reason of 1–1000 characters.',
+      );
+    }
     const published = await new SqliteSituationRepository(this.database).get(
       situation.key,
       true,
@@ -161,14 +175,16 @@ export class SqliteSituationSubmissionRepository {
     await this.database.execute(
       `INSERT INTO situation_submissions
         (id, situation_key, submission_type, payload_json, base_revision,
-         status, review_notes, submitted_by, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, 'pending', '', ?6, ?7, ?7)`,
+         status, review_notes, rationale, accepted_fields_json,
+         submitted_by, created_at, updated_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, 'pending', '', ?6, '[]', ?7, ?8, ?8)`,
       [
         id,
         situation.key,
         published ? 'update' : 'create',
         JSON.stringify(situation),
         published ? published.revision : null,
+        rationale,
         userId,
         now,
       ],
@@ -224,6 +240,7 @@ export class SqliteSituationSubmissionRepository {
     decision: 'approve' | 'reject',
     notes: string,
     adminUserId: string,
+    acceptedFieldsInput: string[] = [],
   ): Promise<{
     submission: SituationSubmissionRecord;
     published: SituationRecord | null;
@@ -242,6 +259,12 @@ export class SqliteSituationSubmissionRepository {
       );
     }
 
+    const selectableFields = [
+      'title', 'desc', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
+      'hitType', 'batterAdvance', 'playSeq', 'seqNote',
+    ];
+    const acceptedFields = Array.from(new Set(acceptedFieldsInput))
+      .filter((field) => selectableFields.includes(field));
     let published: SituationRecord | null = null;
     if (decision === 'approve') {
       const situations = new SqliteSituationRepository(this.database);
@@ -264,8 +287,26 @@ export class SqliteSituationSubmissionRepository {
             'The published situation changed after this proposal was submitted. Reject it and ask the coach to submit a fresh revision.',
           );
         }
+        if (!acceptedFields.length) {
+          throw new RecordValidationError(
+            'Select at least one proposed change to publish.',
+          );
+        }
+        const {
+          revision: _revision,
+          active: _active,
+          archivedAt: _archivedAt,
+          ...currentSituation
+        } = current;
+        const merged = { ...currentSituation } as Situation;
+        for (const field of acceptedFields) {
+          (merged as unknown as Record<string, unknown>)[field] =
+            structuredClone(
+              (before.situation as unknown as Record<string, unknown>)[field],
+            );
+        }
         published = await situations.update(
-          before.situation,
+          merged,
           current.revision,
           adminUserId,
         );
@@ -276,7 +317,7 @@ export class SqliteSituationSubmissionRepository {
     await this.database.execute(
       `UPDATE situation_submissions
           SET status = ?2, review_notes = ?3, reviewed_by = ?4,
-              reviewed_at = ?5, updated_at = ?5
+              reviewed_at = ?5, updated_at = ?5, accepted_fields_json = ?6
         WHERE id = ?1 AND status = 'pending'`,
       [
         id,
@@ -284,6 +325,11 @@ export class SqliteSituationSubmissionRepository {
         reviewNotes,
         adminUserId,
         now,
+        JSON.stringify(
+          decision === 'approve'
+            ? before.submissionType === 'create' ? selectableFields : acceptedFields
+            : [],
+        ),
       ],
     );
     const submission = await this.get(id);

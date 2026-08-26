@@ -264,7 +264,10 @@ test.describe('record-level administration API', () => {
 
     const submissionResponse = await coachRequest.post('/api/situation-submissions', {
       headers: { Origin: origin },
-      data: proposal,
+      data: {
+        situation: proposal,
+        rationale: 'Add a new relay situation for team practice.',
+      },
     });
     expect(submissionResponse.status()).toBe(201);
     const submission = (await submissionResponse.json()).record;
@@ -273,6 +276,7 @@ test.describe('record-level administration API', () => {
       submissionType: 'create',
       status: 'pending',
       submittedBy: coachId,
+      rationale: 'Add a new relay situation for team practice.',
     }));
 
     const ownSubmissions = await coachRequest.get('/api/situation-submissions');
@@ -294,8 +298,56 @@ test.describe('record-level administration API', () => {
       revision: 1,
     }));
 
+    const coachUpdateRequest = await playwrightRequest.newContext({ baseURL });
+    expect((await coachUpdateRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'coach', teamId, coachId, password },
+    })).ok()).toBeTruthy();
+    const selectiveUpdate = {
+      ...proposal,
+      title: 'Selectively Approved Title',
+      desc: 'This description should remain unpublished.',
+    };
+    const updateResponse = await coachUpdateRequest.post('/api/situation-submissions', {
+      headers: { Origin: origin },
+      data: {
+        situation: selectiveUpdate,
+        rationale: 'Clarify the title without changing player instructions.',
+      },
+    });
+    expect(updateResponse.status()).toBe(201);
+    const updateSubmission = (await updateResponse.json()).record;
+    expect(updateSubmission).toEqual(expect.objectContaining({
+      submissionType: 'update',
+      baseRevision: 1,
+    }));
+    await coachUpdateRequest.dispose();
+
+    const selectiveApproval = await request.put(
+      `/api/admin/situation-submissions/${updateSubmission.id}`,
+      {
+        headers: { Origin: origin },
+        data: {
+          decision: 'approve',
+          notes: 'Title approved; description retained.',
+          acceptedFields: ['title'],
+        },
+      },
+    );
+    expect(selectiveApproval.ok()).toBeTruthy();
+    const selectiveResult = await selectiveApproval.json();
+    expect(selectiveResult.submission).toEqual(expect.objectContaining({
+      status: 'approved',
+      acceptedFields: ['title'],
+    }));
+    expect(selectiveResult.published).toEqual(expect.objectContaining({
+      title: 'Selectively Approved Title',
+      desc: proposal.desc,
+      revision: 2,
+    }));
+
     expect((await request.delete(`/api/situations/${situationKey}`, {
-      headers: writeHeaders(origin, approvalResult.published.revision),
+      headers: writeHeaders(origin, selectiveResult.published.revision),
     })).ok()).toBeTruthy();
     expect((await request.delete(`/api/admin/teams/${teamId}`, {
       headers: writeHeaders(origin, team.revision),

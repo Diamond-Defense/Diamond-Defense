@@ -26,6 +26,9 @@ export const PUT: RequestHandler = async (event) => {
       decision,
       String(body.notes || ''),
       user.id,
+      Array.isArray(body.acceptedFields)
+        ? body.acceptedFields.map((field) => String(field))
+        : [],
     );
     return json({ ok: true, ...result });
   } catch (error) {

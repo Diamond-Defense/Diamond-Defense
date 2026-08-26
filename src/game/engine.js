@@ -374,9 +374,6 @@ const hitTypeSel=document.getElementById('hitTypeSel');
 const testHitBtn=document.getElementById('testHitBtn');
 const advanceSel=document.getElementById('advanceSel');
 
-const downloadCurrentBtn=document.getElementById('downloadCurrentBtn');
-const downloadAllBtn=document.getElementById('downloadAllBtn');
-
 const pwModal=document.getElementById('pwModal');
 const pwInput=document.getElementById('pwInput');
 const pwOk=document.getElementById('pwOk');
@@ -1474,6 +1471,41 @@ function queueCurrentSituationDatabaseSync(){
   if(snapshot) window._diqMarkSituationDirty?.(snapshot, situationEditorRole);
 }
 window._diqGetCurrentSituationSnapshot = ()=>databaseSituationSnapshot(currentSituation);
+window._diqGetPublishedSituationSnapshot = (key)=>{
+  const published = SITUATIONS_ORIG_BY_KEY?.[key || currentSituation?.key];
+  return published ? Fcopy(published) : null;
+};
+window._diqGetSelectedEditorPosition = ()=>tolTargetSel?.value || POS_IDS[0];
+
+window._diqResetSelectedPosition = ()=>{
+  if(!currentSituation) return false;
+  const id = tolTargetSel?.value || POS_IDS[0];
+  const original = SITUATIONS_ORIG_BY_KEY?.[currentSituation.key];
+  const start = original?.starts?.[id] || DEFAULT_STARTS[id];
+  const target = original?.targets?.[id] || {
+    x:start.x,
+    y:start.y,
+    tol:DEFAULT_TOL,
+    notes:'',
+  };
+  const preSnap = coachUnlocked ? sbSnapshot() : null;
+  setStartFor(currentSituation.key, id, start);
+  currentSituation.starts = currentSituation.starts || {};
+  currentSituation.starts[id] = Fcopy(start);
+  const token = tokens.get(id);
+  if(token){
+    token.pos = Fcopy(start);
+    placeToken(id);
+  }
+  setTargetFor(currentSituation.key, id, target, target.tol || DEFAULT_TOL);
+  currentSituation.targets[id].notes = String(target.notes || target.note || '');
+  buildTargets();
+  syncTolInputsFromModel(id);
+  syncTolNotesFromModel(id);
+  try{ if(preSnap) sbPushUndo(preSnap); }catch(_error){}
+  queueCurrentSituationDatabaseSync();
+  return true;
+};
 
 function setTargetFor(sKey,id,pt,tol=DEFAULT_TOL){
   const s = SITUATIONS.find(x=>x.key===sKey); if(!s) return;
@@ -1755,12 +1787,19 @@ function addNewSituation(){
   queueCurrentSituationDatabaseSync();
 }
 
-function deleteCurrentSituation(){
+async function deleteCurrentSituation(){
   if (!currentSituation) return;
   const key = currentSituation.key;
   const idx = (SITUATIONS||[]).findIndex(s=>s.key===key);
   if (idx < 0) return;
-  const ok = confirm(`Archive situation "${currentSituation.title||key}"? It can be restored from Admin tools.`);
+  const message = `Archive situation "${currentSituation.title||key}"? Players will no longer see it, but it can be restored from Admin Tools.`;
+  const ok = typeof window._diqConfirmAdminAction === 'function'
+    ? await window._diqConfirmAdminAction({
+        title: 'Archive situation',
+        message,
+        confirmLabel: 'Archive situation',
+      })
+    : confirm(message);
   if (!ok) return;
 
   try{ window._diqDeleteSituation && window._diqDeleteSituation(key, currentSituation.revision); }catch(_e){}
@@ -2115,62 +2154,6 @@ function sbRedo(){
   sbApplySnap(next);
 }
 
-function getHitForExport(sit){ return sit && sit.hit ? { x:Math.round(sit.hit.x), y:Math.round(sit.hit.y) } : undefined; }
-function getStartsForExport(key){
-  const src=(startsMap && startsMap[key]) ? startsMap[key] : DEFAULT_STARTS;
-  const out={}; POS_IDS.forEach(id=>{ const p=src[id] || DEFAULT_STARTS[id]; out[id]={ x:Math.round(p.x), y:Math.round(p.y) }; });
-  return out;
-}
-function composeSituationForExport(base, starts, targets, hit){
-  const extra = { ...base };
-  delete extra.starts;
-  delete extra.targets;
-  delete extra.hit;
-
-  const payload = { ...extra, starts, targets };
-  if (hit) payload.hit = hit;
-
-  if (base.hitType) payload.hitType = base.hitType;
-  if (typeof base.batterAdvance === 'number') {
-    payload.batterAdvance = clampInt(base.batterAdvance, 0, 4);
-  }
-
-  if (Array.isArray(base.playSeq) && base.playSeq.length) {
-    payload.playSeq = base.playSeq.slice();
-  }
-  if (typeof base.seqNote === 'string' && base.seqNote.trim()) {
-    payload.seqNote = base.seqNote;
-  }
-
-  return payload;
-}
-
-function buildCurrentSituationExport(){
-  const s=currentSituation || SITUATIONS[0]; if(!s) return '[]';
-  const one=composeSituationForExport(s, getOnscreenStarts(), getRenderedTargets(), getHitForExport(s));
-  return JSON.stringify([one],null,2);
-}
-function buildAllSituationsExport(){
-  const arr=(SITUATIONS||[]).map(s=>{
-    const isCurrent=currentSituation && (s.key===currentSituation.key);
-    const starts=isCurrent?getOnscreenStarts():getStartsForExport(s.key);
-    let targets=isCurrent?getRenderedTargets():{};
-    if (!isCurrent){
-      Object.entries(s.targets||{}).forEach(([id,pt])=>{
-        targets[id] = {
-          x: Math.round(pt.x),
-          y: Math.round(pt.y),
-          tol: Math.round(pt.tol || DEFAULT_TOL),
-          notes: pt.notes || ''
-        };
-      });
-    }
-    const hit=getHitSaved(s.key) || getHitForExport(s);
-    return composeSituationForExport(s,starts,targets,hit);
-  });
-  return JSON.stringify(arr,null,2);
-}
-
 function buildResultsExportPayload(){
   return {
     type: 'diamondiq_results_v1',
@@ -2243,25 +2226,6 @@ function _fmtMs(ms){
 function _fmtIso(ts){
   if(!ts) return '—';
   try{ return new Date(ts).toLocaleString(); }catch(e){ return String(ts); }
-}
-
-function download(filename,content){
-  const blob=new Blob([content], {type:'application/json'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
-}
-
-function safeSituationJsonFilename(titleOrKey){
-  let base = String(titleOrKey || '').trim();
-  if(!base) base = 'situation';
-  // Remove characters illegal in Windows filenames and trim length
-  base = base.replace(/[\\/:*?\"<>|]+/g,'').replace(/\s+/g,' ').trim();
-  if(!base) base = 'situation';
-  base = base.slice(0, 80);
-  // Avoid double extension
-  if(!/\.json$/i.test(base)) base += '.json';
-  return base;
 }
 
 /// @diq:begin [A10.1] One-button refresh (saves Coach Tools + rebuilds UI)

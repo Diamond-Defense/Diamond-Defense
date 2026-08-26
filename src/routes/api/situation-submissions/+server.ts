@@ -31,9 +31,17 @@ export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const user = await requireUser(event, ['coach']);
   try {
+    const body = (await event.request.json()) as
+      | Situation
+      | { situation?: Situation; rationale?: unknown };
+    const wrapped = 'situation' in body && body.situation;
     const record = await new SqliteSituationSubmissionRepository(
       databaseFor(event),
-    ).submit((await event.request.json()) as Situation, user.id);
+    ).submit(
+      (wrapped ? body.situation : body) as Situation,
+      user.id,
+      wrapped ? String(body.rationale || '') : 'Situation update submitted for review.',
+    );
     return json({ ok: true, record }, { status: 201 });
   } catch (error) {
     return repositoryErrorResponse(error);

@@ -236,16 +236,31 @@
 
 
   <div class="diq-body">
+    <section id="situationWorkflowBanner" class="situation-workflow-banner" aria-live="polite">
+      <div>
+        <span id="situationWorkflowRole" class="workflow-role-badge">Coach draft</span>
+        <strong id="situationWorkflowHeading">Draft proposal</strong>
+        <p id="situationWorkflowCopy">Players continue using the published version until an administrator approves this proposal.</p>
+      </div>
+      <span id="situationDirtyBadge" class="dirty-state-badge is-clean">Saved</span>
+    </section>
+    <nav id="situationEditorSteps" class="situation-editor-steps" aria-label="Situation editor sections">
+      <button type="button" data-editor-step="sbDetailsSection">1. Details</button>
+      <button type="button" data-editor-step="sbRunnersSubsec">2. Game state</button>
+      <button type="button" data-editor-step="sbTargetsSubsec">3. Alignment &amp; targets</button>
+      <button type="button" data-editor-step="sbBallHitSubsec">4. Ball hit</button>
+      <button type="button" data-editor-step="seqSubsec">5. Sequence</button>
+      <button type="button" data-editor-step="situationReviewSection">6. Review</button>
+    </nav>
     <div class="situation-editor-actions">
       <button id="newSituationBtn" class="btn-slate">New situation</button>
-      <button id="submitSituationBtn" class="btn btn-brand" type="button">Submit for review</button>
-      <button id="publishSituationBtn" class="btn btn-brand hidden" type="button">Publish changes</button>
       <button id="deleteSituationBtn" class="btn btn-danger hidden" title="Archive the published situation">Archive situation</button>
       <button id="saveSituationBtn" class="btn-slate">Discard changes</button>
-      <button id="downloadCurrentBtn" class="btn-slate" type="button">Download</button>
     </div>
     <div id="situationWorkflowStatus" class="operation-status" role="status" aria-live="polite"></div>
     <div id="coachProposalHistory" class="proposal-history"></div>
+    <section id="sbDetailsSection" class="situation-editor-section" data-editor-section="details">
+      <div class="sectionTitle">Situation details</div>
     <div class="row"><label class="hint">Title:</label>
       <input id="newTitleInput" type="text" style="flex:1;min-width:120px">
     </div><div class="row">
@@ -259,6 +274,7 @@
         <option value="2">2 outs</option>
       </select>
     </div>
+    </section>
     <div class="subsec diq-collapsible diq-collapsed" id="sbRunnersSubsec" data-diq-collapsible="1">
           <div class="title">Runners on Base<span class="diq-chevron">▾</span></div>
 
@@ -273,8 +289,10 @@
 
           
         <div class="diq-body">
+          <div id="positionCompleteness" class="position-completeness" aria-live="polite"></div>
 <div class="row" style="gap:10px; align-items:center; margin-top:6px">
             <button id="resetStartsBtn" class="btn-slate" title="Reset player chips to default locations">↺ Reset Player Starts</button>
+      <button id="resetSelectedPositionBtn" class="btn-slate" type="button" title="Reset only the currently selected position">Reset selected position</button>
       <button id="sbUndoBtn" class="btn-slate" type="button" title="Undo last edit" disabled>↩ Undo</button>
       <button id="sbRedoBtn" class="btn-slate" type="button" title="Redo" disabled>↪ Redo</button>
       <span id="situationMsg" class="hint" style="margin-left:auto"></span>
@@ -290,7 +308,7 @@
               <input id="tolRange" type="range" min="5" max="400" step="1" value="69" style="flex:1">
             </div>
           </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px">
-            <label class="hint" style="font-weight:800">Target Note <span style="font-weight:600; opacity:.8">(optional)</span></label>
+            <label class="hint" style="font-weight:800">Target note <span style="font-weight:600; opacity:.8">(required for review)</span></label>
             <textarea id="tolNotes" rows="3" placeholder="Enter coaching notes for this target…" style="width:100%; min-height:72px; resize:vertical"></textarea>
 </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbBallHitSubsec" data-diq-collapsible="1">
           <div class="title">Ball Hit<span class="diq-chevron">▾</span></div>
@@ -330,10 +348,31 @@
               <option value="SS,2B,1B">SS → 2B → 1B (6-4-3 DP)</option>
             </select>
             <button id="seqClearBtn" class="btn-slate btn-small">Clear sequence</button>
+            <button id="previewSequenceBtn" class="btn btn-ghost btn-small" type="button">Preview animation</button>
             <span class="hint">Total steps: <b id="seqCountHud">3</b></span>
           </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px; margin-top:6px">
             <textarea id="seqNoteInput" rows="3" placeholder="Optional coach note shown to players on the Play Sequence card…" class="mono" style="width:100%"></textarea>
-          </div></div></div></div></div></div>
+          </div></div></div>
+          <section id="situationReviewSection" class="situation-editor-section situation-review-section">
+            <div class="sectionTitle">Review</div>
+            <div id="situationReviewSummary" class="proposal-change-summary"></div>
+            <section id="situationValidationPanel" class="situation-validation-panel hidden" aria-labelledby="situationValidationTitle">
+              <div class="sectionTitle" id="situationValidationTitle">Completeness check</div>
+              <div id="situationValidationSummary" class="muted"></div>
+              <div id="situationValidationIssues" class="validation-issue-list"></div>
+            </section>
+            <section id="coachProposalSummary" class="proposal-summary hidden">
+              <div class="sectionTitle">Proposal summary</div>
+              <div id="coachProposalChangeSummary" class="proposal-change-summary muted">No changes yet.</div>
+              <label class="field"><span>Reason for this proposal</span><textarea id="coachProposalRationale" class="textarea" rows="3" maxlength="1000" placeholder="Explain what should change and why it will help players."></textarea></label>
+            </section>
+            <div class="situation-review-actions">
+              <button id="previewSituationBtn" class="btn btn-ghost" type="button">Preview as player</button>
+              <button id="submitSituationBtn" class="btn btn-brand" type="button">Submit for review</button>
+              <button id="publishSituationBtn" class="btn btn-brand hidden" type="button">Publish changes</button>
+            </div>
+          </section>
+        </div></div></div>
 
       </div>
 
@@ -357,6 +396,20 @@
     </nav>
 
     <div id="adminOperationStatus" class="operation-status" role="status" aria-live="polite"></div>
+
+    <div id="adminConfirmDialog" class="admin-confirm-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="adminConfirmTitle" aria-describedby="adminConfirmMessage">
+      <div class="admin-confirm-backdrop" data-admin-confirm-cancel></div>
+      <div class="admin-confirm-panel" tabindex="-1">
+        <div>
+          <h3 id="adminConfirmTitle">Confirm action</h3>
+          <p id="adminConfirmMessage"></p>
+        </div>
+        <div class="admin-actions">
+          <button id="adminConfirmCancelBtn" class="btn btn-ghost" type="button">Cancel</button>
+          <button id="adminConfirmActionBtn" class="btn btn-danger" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
 
     <section class="admin-view" data-admin-view="teams">
       <div class="admin-section-heading">
@@ -386,6 +439,10 @@
           <div id="adminCsvSummary" class="admin-csv-summary"></div>
           <div id="adminCsvIssues"></div>
           <div id="adminCsvOperations"></div>
+          <label id="adminCsvReviewConfirmLabel" class="admin-csv-review-confirm hidden">
+            <input id="adminCsvReviewConfirm" type="checkbox">
+            <span>I reviewed the listed changes and want to apply this exact preview.</span>
+          </label>
           <label id="adminCsvArchiveConfirmLabel" class="admin-csv-confirm hidden">
             <input id="adminCsvArchiveConfirm" type="checkbox">
             <span>I reviewed the archive actions and understand those accounts or teams will no longer be able to log in.</span>
@@ -400,8 +457,8 @@
       <div class="admin-record-card">
         <div class="admin-record-grid">
           <label class="field"><span>Team</span><select id="adminTeamSelect" class="select"></select></label>
-          <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" placeholder="e.g., 13U Black"></label>
-          <label class="field"><span>Contact email</span><input id="adminTeamEmail" class="input" type="email" placeholder="coach@example.com"></label>
+          <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., 13U Black"></label>
+          <label class="field"><span>Contact email</span><input id="adminTeamEmail" class="input" type="email" maxlength="254" autocomplete="email" placeholder="coach@example.com"></label>
         </div>
         <div class="admin-actions">
           <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add team</button>
@@ -414,9 +471,9 @@
         <section class="admin-record-card">
           <div class="sectionTitle">Players</div>
           <label class="field"><span>Player</span><select id="adminRosterSelect" class="select" disabled></select></label>
-          <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" placeholder="e.g., John Smith" disabled></label>
-          <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" inputmode="numeric" placeholder="e.g., 12" disabled></label>
-          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" placeholder="At least 4 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., John Smith" disabled></label>
+          <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" maxlength="12" inputmode="numeric" autocomplete="off" placeholder="e.g., 12" disabled></label>
+          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" minlength="4" maxlength="1024" autocomplete="new-password" placeholder="At least 4 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
           <div class="muted record-id-preview" id="adminPlayerIdPreview"></div>
           <div class="admin-actions">
             <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add player</button>
@@ -428,8 +485,8 @@
         <section class="admin-record-card">
           <div class="sectionTitle">Coaches</div>
           <label class="field"><span>Coach</span><select id="adminCoachSelect" class="select" disabled></select></label>
-          <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" placeholder="e.g., Jamie Rivera" disabled></label>
-          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" placeholder="At least 4 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., Jamie Rivera" disabled></label>
+          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" minlength="4" maxlength="1024" autocomplete="new-password" placeholder="At least 4 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
           <div class="muted record-id-preview" id="adminCoachIdPreview"></div>
           <div class="admin-actions">
             <button id="adminCoachAddBtn" class="btn btn-brand" type="button" disabled>Add coach</button>
@@ -449,6 +506,18 @@
         <div class="sectionTitle">Coach submissions</div>
         <label class="field"><span>Proposal</span><select id="adminProposalSelect" class="select"><option value="">— No pending proposals —</option></select></label>
         <div id="adminProposalDetails" class="proposal-details muted">Select a proposal to review its details.</div>
+        <div id="adminProposalConflict" class="operation-status hidden" role="status"></div>
+        <section id="adminProposalComparison" class="proposal-comparison hidden" aria-label="Published and proposed changes">
+          <div class="proposal-comparison-heading">
+            <div class="sectionTitle">Published versus proposed</div>
+            <div class="muted">Select which proposed changes to publish.</div>
+          </div>
+          <div id="adminProposalDiffList" class="proposal-diff-list"></div>
+          <div class="admin-actions">
+            <button id="adminProposalSelectAllBtn" class="btn btn-ghost btn-small" type="button">Select all</button>
+            <button id="adminProposalClearAllBtn" class="btn btn-ghost btn-small" type="button">Clear all</button>
+          </div>
+        </section>
         <label class="field"><span>Review note</span><textarea id="adminProposalNotes" class="textarea" rows="3" placeholder="Required when rejecting a proposal"></textarea></label>
         <div class="admin-actions">
           <button id="adminProposalApproveBtn" class="btn btn-brand" type="button" disabled>Approve and publish</button>

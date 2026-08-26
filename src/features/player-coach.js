@@ -2403,7 +2403,8 @@ function phase2UpdateHud(){
 function sanitizeSeq(arr){
   return (arr || [])
     .map(s => String(s||'').toUpperCase().trim())
-    .filter(s => POS_IDS.includes(s));
+    .filter(s => POS_IDS.includes(s))
+    .filter((id, index, sequence) => sequence.indexOf(id) === index);
 }
 
 /** Write to model + repaint builder */
@@ -2413,6 +2414,13 @@ function setPlaySeq(next){
   renderSeqBuilder();
   if(typeof queueCurrentSituationDatabaseSync === 'function') queueCurrentSituationDatabaseSync();
 }
+window._diqSetPlaySequence = (next)=>setPlaySeq(next);
+window._diqPreviewSequence = ()=>{
+  const sequence = sanitizeSeq(currentSituation?.playSeq || []);
+  if(sequence.length < 2) return false;
+  void animateSequenceThrows(sequence);
+  return true;
+};
 
 
 
@@ -2429,6 +2437,8 @@ function buildSeqPosGrid(){
     btn.textContent = id;
     const group = (['P','C'].includes(id) ? 'Battery' : (['1B','2B','SS','3B'].includes(id) ? 'Infield' : 'Outfield'));
     btn.dataset.group = group;
+    btn.disabled = sanitizeSeq(currentSituation?.playSeq || []).includes(id);
+    if(btn.disabled) btn.title = `${id} is already in the sequence`;
     btn.addEventListener('click', ()=>{
       const next = (currentSituation.playSeq || []).slice();
       next.push(id);
@@ -2486,6 +2496,13 @@ function renderSeqBuilder(){
   seqList.innerHTML = '';
   seq.forEach((id, i)=> seqList.appendChild(makeSeqItem(id, i)));
   if (seqCountHud) seqCountHud.textContent = String(seq.length);
+  if (seqPosGrid) {
+    seqPosGrid.querySelectorAll('.pos-btn').forEach((button) => {
+      const used = seq.includes(String(button.textContent || '').trim());
+      button.disabled = used;
+      button.title = used ? `${button.textContent} is already in the sequence` : '';
+    });
+  }
 
   // Keep Phase 2 HUD in sync
   if (typeof updateHud === 'function'){
@@ -3790,15 +3807,6 @@ wireSeqBuilderOnce();
       if(typeof queueCurrentSituationDatabaseSync === 'function') queueCurrentSituationDatabaseSync();
     });
   }
-
-  if (downloadCurrentBtn) downloadCurrentBtn.addEventListener('click', ()=>{
-    refreshSituationAll(); // ensure UI → model before exporting
-    download(safeSituationJsonFilename((currentSituation && (currentSituation.title||currentSituation.key)) || 'situation-current'), buildCurrentSituationExport());
-  });
-  if (downloadAllBtn)     downloadAllBtn.addEventListener('click', ()=>{
-    refreshSituationAll();
-    download('situations-all.json', buildAllSituationsExport());
-  });
 
       // Results export buttons (avoid relying on id->window globals)
   const copyResultsBtn = document.getElementById('copyResultsBtn');

@@ -87,12 +87,29 @@ administrators. After authentication it displays the current account and acts
 as Log out. A separate Tools button is shown only to coaches and administrators
 and automatically opens the panel allowed for that account role.
 
-The coach and administrator panels share the same situation editor. Saving as a
-coach creates a pending proposal containing the full draft and the revision of
-the published situation it was based on. The published record does not change.
-An administrator can approve and publish the proposal or reject it with a note.
-Approval fails with a revision conflict if the published situation changed
-after the coach submitted the draft.
+The coach and administrator panels share the same six-step situation editor:
+details, game state, alignment and targets, ball hit, play sequence, and final
+review. The editor tracks unsaved changes, checks all nine positions for a
+start, target, tolerance, and coaching note, validates field coordinates and
+sequence steps, and provides both sequence-animation and player-view previews.
+The final Review step is the working approval area: it contains the
+completeness check, change summary, coach rationale, player preview, and the
+role-appropriate submit or publish action. New, archive, and discard remain at
+the top because they affect the entire editing session. Situation JSON files
+are no longer downloaded from this editor; database backup and seed tooling
+remain the supported administrative paths.
+
+Submitting as a coach creates a pending proposal containing the full draft, a
+required rationale, and the revision of the published situation it was based
+on. The published record does not change. Proposal history shows pending,
+approved, rejected, and withdrawn states with administrator notes.
+
+An administrator sees a published-versus-proposed comparison and can publish
+the complete proposal or select individual changed fields for an update. The
+accepted field list is retained with the review record. Rejection requires a
+note. Approval is blocked with a revision conflict if the published situation
+changed after the coach submitted the draft; the coach must then submit a fresh
+revision.
 
 ## Admin interface
 

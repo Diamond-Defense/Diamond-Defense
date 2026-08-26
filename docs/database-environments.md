@@ -46,6 +46,17 @@ are never seeded by the deployment command.
 Remote seed/import operations are one-time, deliberate administrative actions.
 Review all users and passwords before importing them into production.
 
+The production-safe playbook seed is `database/situations-seed.sql`. Generate
+and apply it with:
+
+```sh
+npm run db:seed:situations:generate
+npm run db:seed:situations:production
+```
+
+It creates or updates situations only. It does not import development teams,
+players, coaches, memberships, or passwords.
+
 ## Exports
 
 ```sh

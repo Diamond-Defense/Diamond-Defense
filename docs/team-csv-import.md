@@ -11,8 +11,9 @@ after an administrator reviews the preview and selects **Import changes**.
 3. Drop the completed CSV into the import area or choose the file.
 4. Review change counts, row-level validation messages, and the exact stable
    IDs that will be created, updated, restored, archived, or left unchanged.
-5. If archives are present, acknowledge the archive warning.
-6. Select **Import changes**.
+5. Confirm that you reviewed the exact preview.
+6. If archives are present, separately acknowledge the archive warning.
+7. Select **Import changes**.
 
 Canceling a preview does not modify the database. If database records change
 between preview and confirmation, the import is rejected and must be previewed

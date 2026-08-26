@@ -30,17 +30,130 @@
   const proposalSelect = byId('adminProposalSelect');
   const proposalDetails = byId('adminProposalDetails');
   const proposalNotes = byId('adminProposalNotes');
+  const proposalConflict = byId('adminProposalConflict');
+  const proposalComparison = byId('adminProposalComparison');
+  const proposalDiffList = byId('adminProposalDiffList');
+  const confirmDialog = byId('adminConfirmDialog');
+  const confirmPanel = confirmDialog?.querySelector('.admin-confirm-panel');
+  const confirmTitle = byId('adminConfirmTitle');
+  const confirmMessage = byId('adminConfirmMessage');
+  const confirmAction = byId('adminConfirmActionBtn');
+  const confirmCancel = byId('adminConfirmCancelBtn');
+  if (confirmDialog?.parentElement !== document.body) {
+    document.body.appendChild(confirmDialog);
+  }
 
   let teams = [];
   let archivedSituations = [];
+  let publishedSituations = [];
   let proposals = [];
   let activeTab = 'teams';
+  let operationInProgress = false;
+  let confirmationResolver = null;
 
   function setStatus(message = '', state = '') {
     if (!statusEl) return;
     statusEl.textContent = message;
     statusEl.className = `operation-status${state ? ` is-${state}` : ''}`;
   }
+
+  function clearFieldError(input) {
+    if (!input) return;
+    input.removeAttribute('aria-invalid');
+    input.closest('.field')?.querySelector('.field-error')?.remove();
+  }
+
+  function setFieldError(input, message) {
+    if (!input) return false;
+    clearFieldError(input);
+    input.setAttribute('aria-invalid', 'true');
+    const error = document.createElement('span');
+    error.className = 'field-error';
+    error.textContent = message;
+    input.closest('.field')?.appendChild(error);
+    return false;
+  }
+
+  function focusFirstInvalid() {
+    const invalid = adminWorkspace?.querySelector('[aria-invalid="true"]')
+      || adminCard.querySelector('[aria-invalid="true"]');
+    invalid?.focus();
+  }
+
+  function validateTeamFields() {
+    const name = String(teamName?.value || '').trim();
+    const email = String(teamEmail?.value || '').trim();
+    clearFieldError(teamName);
+    clearFieldError(teamEmail);
+    let valid = true;
+    if (!name) valid = setFieldError(teamName, 'Enter a team name.');
+    else if (name.length > 100) {
+      valid = setFieldError(teamName, 'Team names must be 100 characters or fewer.');
+    }
+    if (email && (teamEmail?.validity?.typeMismatch || email.length > 254)) {
+      valid = setFieldError(teamEmail, 'Enter a valid contact email address.');
+    }
+    if (!valid) focusFirstInvalid();
+    return valid;
+  }
+
+  function validateMemberFields(role, { requirePassword = false } = {}) {
+    const nameInput = role === 'coach' ? coachName : playerName;
+    const numberInput = role === 'coach' ? null : playerNumber;
+    const passwordInput = role === 'coach' ? coachPassword : playerPassword;
+    const name = String(nameInput?.value || '').trim();
+    const number = String(numberInput?.value || '').trim();
+    const password = String(passwordInput?.value || '');
+    [nameInput, numberInput, passwordInput].forEach(clearFieldError);
+    let valid = true;
+    if (!name) valid = setFieldError(nameInput, `Enter the ${role}'s name.`);
+    else if (name.length > 100) {
+      valid = setFieldError(nameInput, 'Names must be 100 characters or fewer.');
+    }
+    if (numberInput && !number) {
+      valid = setFieldError(numberInput, 'Enter the player number.');
+    } else if (numberInput && number.length > 12) {
+      valid = setFieldError(numberInput, 'Player numbers must be 12 characters or fewer.');
+    }
+    if (requirePassword && password.length < 4) {
+      valid = setFieldError(passwordInput, 'Enter a password with at least 4 characters.');
+    } else if (password && password.length < 4) {
+      valid = setFieldError(passwordInput, 'A new password must contain at least 4 characters.');
+    }
+    if (!valid) focusFirstInvalid();
+    return valid;
+  }
+
+  function closeConfirmation(confirmed) {
+    confirmDialog?.classList.add('hidden');
+    const resolve = confirmationResolver;
+    confirmationResolver = null;
+    resolve?.(confirmed);
+  }
+
+  function requestConfirmation({ title, message, confirmLabel = 'Confirm' }) {
+    if (!confirmDialog) return Promise.resolve(window.confirm(message));
+    if (confirmationResolver) closeConfirmation(false);
+    if (confirmTitle) confirmTitle.textContent = title;
+    if (confirmMessage) confirmMessage.textContent = message;
+    if (confirmAction) confirmAction.textContent = confirmLabel;
+    confirmDialog.classList.remove('hidden');
+    window.setTimeout(() => confirmPanel?.focus(), 0);
+    return new Promise((resolve) => {
+      confirmationResolver = resolve;
+    });
+  }
+
+  confirmAction?.addEventListener('click', () => closeConfirmation(true));
+  confirmCancel?.addEventListener('click', () => closeConfirmation(false));
+  confirmDialog?.querySelector('[data-admin-confirm-cancel]')?.addEventListener(
+    'click',
+    () => closeConfirmation(false),
+  );
+  confirmDialog?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') closeConfirmation(false);
+  });
+  window._diqConfirmAdminAction = requestConfirmation;
 
   function option(value, text) {
     const item = document.createElement('option');
@@ -197,6 +310,8 @@
 
   function renderSelectedTeam() {
     const team = selectedTeam();
+    [teamName, teamEmail, playerName, playerNumber, playerPassword, coachName, coachPassword]
+      .forEach(clearFieldError);
     if (teamName) teamName.value = team?.name || '';
     if (teamEmail) teamEmail.value = team?.coachEmail || '';
     setEnabled(
@@ -252,7 +367,7 @@
     );
     if (proposalDetails) {
       proposalDetails.textContent = proposal
-        ? `${proposal.submitterName} submitted a ${proposal.submissionType} for ${proposal.situationKey} on ${new Date(proposal.createdAt).toLocaleString()}. Base revision: ${proposal.baseRevision ?? 'new situation'}.`
+        ? `${proposal.submitterName} submitted a ${proposal.submissionType} for ${proposal.situationKey} on ${new Date(proposal.createdAt).toLocaleString()}. Base revision: ${proposal.baseRevision ?? 'new situation'}.${proposal.rationale ? ` Reason: ${proposal.rationale}` : ''}`
         : 'Select a proposal to review its details.';
     }
     if (proposalNotes) proposalNotes.value = '';
@@ -260,6 +375,7 @@
       [byId('adminProposalApproveBtn'), byId('adminProposalRejectBtn')],
       Boolean(proposal),
     );
+    renderProposalComparison(proposal || null);
   }
 
   function renderProposals() {
@@ -290,6 +406,9 @@
       }),
     ]);
     teams = Array.isArray(teamResult?.teams) ? teamResult.teams : [];
+    publishedSituations = (situationResult?.situations || []).filter(
+      (item) => item.active !== false,
+    );
     archivedSituations = (situationResult?.situations || []).filter(
       (item) => item.active === false,
     );
@@ -304,6 +423,13 @@
   }
 
   async function perform(label, action, successMessage, preferredTeamId = '') {
+    if (operationInProgress) {
+      setStatus('Another database operation is already in progress.', 'pending');
+      return false;
+    }
+    operationInProgress = true;
+    adminCard.setAttribute('aria-busy', 'true');
+    adminWorkspace?.setAttribute('aria-busy', 'true');
     try {
       setStatus(label, 'pending');
       await action();
@@ -315,6 +441,10 @@
       console.error(error);
       setStatus(error?.message || 'The database operation failed.', 'error');
       return false;
+    } finally {
+      operationInProgress = false;
+      adminCard.removeAttribute('aria-busy');
+      adminWorkspace?.removeAttribute('aria-busy');
     }
   }
 
@@ -329,11 +459,8 @@
     const password = String(
       role === 'coach' ? coachPassword?.value || '' : playerPassword?.value || '',
     );
-    if (!name || (role === 'player' && !number) || password.length < 4) {
-      return setStatus(
-        `${role === 'coach' ? 'Coach' : 'Player'} name${role === 'player' ? ', number,' : ' and'} a password of at least 4 characters are required.`,
-        'error',
-      );
+    if (!validateMemberFields(role, { requirePassword: true })) {
+      return setStatus('Correct the highlighted account fields.', 'error');
     }
     const id = memberId(role, name, number);
     const ok = await perform(
@@ -368,6 +495,9 @@
     const password = String(
       role === 'coach' ? coachPassword?.value || '' : playerPassword?.value || '',
     );
+    if (!validateMemberFields(role)) {
+      return setStatus('Correct the highlighted account fields.', 'error');
+    }
     const body = { name, number, role };
     if (password) body.password = password;
     await perform(
@@ -390,8 +520,12 @@
     const team = selectedTeam();
     const member = selectedMember(role);
     if (!team || !member) return;
-    if (!confirm(`Archive ${member.name}? Historical results will be preserved.`))
-      return;
+    const confirmed = await requestConfirmation({
+      title: `Archive ${role}`,
+      message: `Archive ${member.name}? The account will no longer be able to log in, but historical results will be preserved.`,
+      confirmLabel: `Archive ${role}`,
+    });
+    if (!confirmed) return;
     await perform(
       `Archiving ${role} account…`,
       () =>
@@ -431,6 +565,8 @@
   playerName?.addEventListener('input', updatePlayerPreview);
   playerNumber?.addEventListener('input', updatePlayerPreview);
   coachName?.addEventListener('input', updateCoachPreview);
+  [teamName, teamEmail, playerName, playerNumber, playerPassword, coachName, coachPassword]
+    .forEach((input) => input?.addEventListener('input', () => clearFieldError(input)));
   proposalSelect?.addEventListener('change', renderProposalDetails);
   byId('adminGenPassBtn')?.addEventListener('click', () => {
     if (playerPassword) playerPassword.value = generatePassword();
@@ -447,7 +583,9 @@
 
   byId('adminTeamAddBtn')?.addEventListener('click', () => {
     const name = String(teamName?.value || '').trim();
-    if (!name) return setStatus('Team name is required.', 'error');
+    if (!validateTeamFields()) {
+      return setStatus('Correct the highlighted team fields.', 'error');
+    }
     const id = slugifyLoose(name);
     void perform(
       'Creating team…',
@@ -468,6 +606,9 @@
   byId('adminTeamUpdateBtn')?.addEventListener('click', () => {
     const team = selectedTeam();
     if (!team) return setStatus('Select a team to update.', 'error');
+    if (!validateTeamFields()) {
+      return setStatus('Correct the highlighted team fields.', 'error');
+    }
     void perform(
       'Saving team…',
       () =>
@@ -484,10 +625,15 @@
     );
   });
 
-  byId('adminTeamRemoveBtn')?.addEventListener('click', () => {
+  byId('adminTeamRemoveBtn')?.addEventListener('click', async () => {
     const team = selectedTeam();
-    if (!team || !confirm(`Archive ${team.name}? Historical results will be preserved.`))
-      return;
+    if (!team) return;
+    const confirmed = await requestConfirmation({
+      title: 'Archive team',
+      message: `Archive ${team.name}? Its accounts will no longer be available for normal use, but historical results will be preserved.`,
+      confirmLabel: 'Archive team',
+    });
+    if (!confirmed) return;
     void perform(
       'Archiving team…',
       () =>
@@ -589,6 +735,12 @@
     if (decision === 'reject' && !notes) {
       return setStatus('Add a review note before rejecting.', 'error');
     }
+    const acceptedFields = Array.from(
+      proposalDiffList?.querySelectorAll('input[data-proposal-field]:checked') || [],
+    ).map((input) => input.dataset.proposalField);
+    if (decision === 'approve' && proposal.submissionType === 'update' && !acceptedFields.length) {
+      return setStatus('Select at least one proposed change to publish.', 'error');
+    }
     const ok = await perform(
       decision === 'approve' ? 'Publishing proposal…' : 'Rejecting proposal…',
       () =>
@@ -596,7 +748,7 @@
           `admin/situation-submissions/${encodeURIComponent(proposal.id)}`,
           {
             method: 'PUT',
-            body: JSON.stringify({ decision, notes }),
+            body: JSON.stringify({ decision, notes, acceptedFields }),
           },
         ),
       decision === 'approve'
@@ -627,6 +779,8 @@
   const csvIssues = byId('adminCsvIssues');
   const csvOperations = byId('adminCsvOperations');
   const csvCommit = byId('adminCsvCommitBtn');
+  const csvReviewConfirm = byId('adminCsvReviewConfirm');
+  const csvReviewConfirmLabel = byId('adminCsvReviewConfirmLabel');
   const csvArchiveConfirm = byId('adminCsvArchiveConfirm');
   const csvArchiveConfirmLabel = byId('adminCsvArchiveConfirmLabel');
   let csvSource = '';
@@ -643,7 +797,9 @@
     if (csvFile) csvFile.value = '';
     if (csvFileName) csvFileName.textContent = 'or choose a file up to 512 KB';
     csvPreviewPanel?.classList.add('hidden');
+    csvReviewConfirmLabel?.classList.add('hidden');
     csvArchiveConfirmLabel?.classList.add('hidden');
+    if (csvReviewConfirm) csvReviewConfirm.checked = false;
     if (csvArchiveConfirm) csvArchiveConfirm.checked = false;
     if (csvSummary) csvSummary.replaceChildren();
     if (csvIssues) csvIssues.replaceChildren();
@@ -655,6 +811,7 @@
     const hasArchives = Number(csvPreview?.summary?.archives || 0) > 0;
     csvCommit.disabled = !csvPreview?.valid
       || Number(csvPreview?.summary?.changes || 0) < 1
+      || !csvReviewConfirm?.checked
       || (hasArchives && !csvArchiveConfirm?.checked);
   }
 
@@ -688,7 +845,10 @@
         : '';
     }
     const hasArchives = Number(preview.summary.archives || 0) > 0;
+    const hasChanges = preview.valid && Number(preview.summary.changes || 0) > 0;
+    csvReviewConfirmLabel?.classList.toggle('hidden', !hasChanges);
     csvArchiveConfirmLabel?.classList.toggle('hidden', !hasArchives);
+    if (csvReviewConfirm) csvReviewConfirm.checked = false;
     if (csvArchiveConfirm) csvArchiveConfirm.checked = false;
     updateCsvCommitState();
     setStatus(
@@ -735,6 +895,7 @@
     csvDropzone.classList.remove('is-dragging');
     void previewCsvFile(event.dataTransfer?.files?.[0]);
   });
+  csvReviewConfirm?.addEventListener('change', updateCsvCommitState);
   csvArchiveConfirm?.addEventListener('change', updateCsvCommitState);
   byId('adminCsvCancelBtn')?.addEventListener('click', clearCsvPreview);
   csvCommit?.addEventListener('click', async () => {
@@ -783,17 +944,273 @@
   });
 
   // One situation editor is physically shared by the coach and admin panels.
+  const POSITION_IDS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
+  const FIELD_WIDTH = 3200;
+  const FIELD_HEIGHT = 2133;
+  const EDITABLE_FIELDS = [
+    ['title', 'Title'], ['desc', 'Description'], ['outs', 'Outs'],
+    ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
+    ['targets', 'Targets, tolerances, and notes'], ['hit', 'Ball landing spot'],
+    ['hitType', 'Hit type'], ['batterAdvance', 'Batter advance'],
+    ['playSeq', 'Play sequence'], ['seqNote', 'Sequence coaching note'],
+  ];
   const situationEditor = byId('situationBuilderSubsec');
   const coachEditorMount = byId('coachSituationEditorMount');
   const adminEditorMount = byId('adminSituationEditorMount');
   const submitSituation = byId('submitSituationBtn');
   const publishSituation = byId('publishSituationBtn');
   const archiveSituation = byId('deleteSituationBtn');
+  const previewSituation = byId('previewSituationBtn');
+  const previewSequence = byId('previewSequenceBtn');
+  const resetSelectedPosition = byId('resetSelectedPositionBtn');
   const editorTitle = byId('situationBuilderTitle');
   const workflowStatus = byId('situationWorkflowStatus');
+  const workflowRole = byId('situationWorkflowRole');
+  const workflowHeading = byId('situationWorkflowHeading');
+  const workflowCopy = byId('situationWorkflowCopy');
+  const dirtyBadge = byId('situationDirtyBadge');
+  const validationPanel = byId('situationValidationPanel');
+  const validationSummary = byId('situationValidationSummary');
+  const validationIssues = byId('situationValidationIssues');
+  const positionCompleteness = byId('positionCompleteness');
+  const reviewSummary = byId('situationReviewSummary');
+  const coachSummary = byId('coachProposalSummary');
+  const coachChangeSummary = byId('coachProposalChangeSummary');
+  const coachRationale = byId('coachProposalRationale');
   const coachHistory = byId('coachProposalHistory');
   let editorRole = null;
   let editorDirty = false;
+  let editorBaseline = null;
+  let playerPreviewActive = false;
+
+  const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
+  const sameValue = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
+  const currentSnapshot = () => window._diqGetCurrentSituationSnapshot?.() || null;
+
+  function changedFields(snapshot, baseline = editorBaseline) {
+    if (!snapshot) return [];
+    if (!baseline) return EDITABLE_FIELDS.map(([field]) => field);
+    return EDITABLE_FIELDS
+      .filter(([field]) => !sameValue(snapshot[field], baseline[field]))
+      .map(([field]) => field);
+  }
+
+  function formatDiffValue(field, value) {
+    if (value == null || value === '') return '—';
+    if (field === 'runnersOn') {
+      const bases = [value.first && '1B', value.second && '2B', value.third && '3B'].filter(Boolean);
+      return bases.join(', ') || 'None';
+    }
+    if (field === 'playSeq') return Array.isArray(value) && value.length ? value.join(' → ') : 'Disabled';
+    if (field === 'starts' || field === 'targets') {
+      return `${Object.keys(value || {}).length} positions configured`;
+    }
+    if (field === 'hit') return Number.isFinite(value?.x) ? `${Math.round(value.x)}, ${Math.round(value.y)}` : 'Not set';
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  }
+
+  function renderProposalComparison(proposal) {
+    if (!proposalComparison || !proposalDiffList) return;
+    proposalDiffList.replaceChildren();
+    proposalConflict?.classList.add('hidden');
+    if (!proposal) {
+      proposalComparison.classList.add('hidden');
+      return;
+    }
+    proposalComparison.classList.remove('hidden');
+    const published = publishedSituations.find((item) => item.key === proposal.situationKey) || null;
+    const conflict = proposal.submissionType === 'update'
+      && (!published || Number(published.revision) !== Number(proposal.baseRevision));
+    if (proposalConflict) {
+      proposalConflict.classList.toggle('hidden', !conflict);
+      proposalConflict.className = `operation-status${conflict ? ' is-error' : ' hidden'}`;
+      proposalConflict.textContent = conflict
+        ? 'The published situation changed after this proposal was submitted. Approval is blocked until the coach submits a fresh revision.'
+        : '';
+    }
+    const changes = proposal.submissionType === 'create'
+      ? EDITABLE_FIELDS
+      : EDITABLE_FIELDS.filter(([field]) => !sameValue(published?.[field], proposal.situation?.[field]));
+    if (!changes.length) {
+      const empty = document.createElement('div');
+      empty.className = 'proposal-diff-empty';
+      empty.textContent = 'This proposal does not differ from the published situation.';
+      proposalDiffList.appendChild(empty);
+    }
+    changes.forEach(([field, label]) => {
+      const row = document.createElement('div');
+      row.className = 'proposal-diff-row';
+      const choose = document.createElement('input');
+      choose.type = 'checkbox';
+      choose.checked = true;
+      choose.disabled = proposal.submissionType === 'create' || conflict;
+      choose.dataset.proposalField = field;
+      const title = document.createElement('label');
+      title.textContent = label;
+      const current = document.createElement('div');
+      current.className = 'proposal-diff-value';
+      current.textContent = `Published: ${formatDiffValue(field, published?.[field])}`;
+      const proposed = document.createElement('div');
+      proposed.className = 'proposal-diff-value is-proposed';
+      proposed.textContent = `Proposed: ${formatDiffValue(field, proposal.situation?.[field])}`;
+      row.append(choose, title, current, proposed);
+      proposalDiffList.appendChild(row);
+    });
+    setEnabled([byId('adminProposalApproveBtn')], !conflict && changes.length > 0);
+  }
+
+  function validateSituation(snapshot) {
+    const issues = [];
+    const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
+    if (!String(snapshot?.title || '').trim()) add('Add a situation title.', 'sbDetailsSection');
+    if (!String(snapshot?.desc || '').trim()) add('Add a player-facing description.', 'sbDetailsSection');
+    POSITION_IDS.forEach((id) => {
+      const start = snapshot?.starts?.[id];
+      const target = snapshot?.targets?.[id];
+      if (!Number.isFinite(start?.x) || !Number.isFinite(start?.y)) {
+        add(`${id}: set a starting position.`, 'sbTargetsSubsec');
+      } else if (start.x < 0 || start.x > FIELD_WIDTH || start.y < 0 || start.y > FIELD_HEIGHT) {
+        add(`${id}: starting position is outside the field.`, 'sbTargetsSubsec');
+      }
+      if (!Number.isFinite(target?.x) || !Number.isFinite(target?.y)) {
+        add(`${id}: set a target position.`, 'sbTargetsSubsec');
+      } else if (target.x < 0 || target.x > FIELD_WIDTH || target.y < 0 || target.y > FIELD_HEIGHT) {
+        add(`${id}: target is outside the field.`, 'sbTargetsSubsec');
+      }
+      if (!Number.isFinite(Number(target?.tol)) || Number(target?.tol) < 5) {
+        add(`${id}: set a valid target tolerance.`, 'sbTargetsSubsec');
+      }
+      if (!String(target?.notes || target?.note || '').trim()) {
+        add(`${id}: add a coaching note.`, 'sbTargetsSubsec');
+      }
+    });
+    for (let i = 0; i < POSITION_IDS.length; i += 1) {
+      for (let j = i + 1; j < POSITION_IDS.length; j += 1) {
+        const left = snapshot?.targets?.[POSITION_IDS[i]];
+        const right = snapshot?.targets?.[POSITION_IDS[j]];
+        if (!left || !right) continue;
+        if (Math.hypot(left.x - right.x, left.y - right.y) < 35) {
+          add(`${POSITION_IDS[i]} and ${POSITION_IDS[j]} targets overlap. Confirm that is intentional.`, 'sbTargetsSubsec', 'warning');
+        }
+      }
+    }
+    if (!Number.isFinite(snapshot?.hit?.x) || !Number.isFinite(snapshot?.hit?.y)) {
+      add('Set the ball landing spot.', 'sbBallHitSubsec');
+    } else if (snapshot.hit.x < 0 || snapshot.hit.x > FIELD_WIDTH || snapshot.hit.y < 0 || snapshot.hit.y > FIELD_HEIGHT) {
+      add('The ball landing spot is outside the field.', 'sbBallHitSubsec');
+    }
+    const sequence = Array.isArray(snapshot?.playSeq) ? snapshot.playSeq : [];
+    if (sequence.length === 1) add('A play sequence needs at least two positions, or it should be empty.', 'seqSubsec');
+    if (new Set(sequence).size !== sequence.length) add('Remove duplicate positions from the play sequence.', 'seqSubsec');
+    if (sequence.some((id) => !POSITION_IDS.includes(id))) add('The play sequence contains an invalid position.', 'seqSubsec');
+    return issues;
+  }
+
+  function focusEditorSection(sectionId) {
+    const section = byId(sectionId);
+    if (!section) return;
+    section.classList.remove('diq-collapsed');
+    section.querySelector(':scope > .diq-body')?.removeAttribute('hidden');
+    document.querySelectorAll('[data-editor-step]').forEach((button) => {
+      button.classList.toggle('is-current', button.dataset.editorStep === sectionId);
+    });
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function renderPositionCompleteness(snapshot) {
+    if (!positionCompleteness) return;
+    positionCompleteness.replaceChildren();
+    const selected = window._diqGetSelectedEditorPosition?.();
+    POSITION_IDS.forEach((id) => {
+      const start = snapshot?.starts?.[id];
+      const target = snapshot?.targets?.[id];
+      const checks = [
+        ['start', Number.isFinite(start?.x) && Number.isFinite(start?.y)],
+        ['target', Number.isFinite(target?.x) && Number.isFinite(target?.y)],
+        ['tolerance', Number(target?.tol) >= 5],
+        ['note', Boolean(String(target?.notes || target?.note || '').trim())],
+      ];
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = `position-check${selected === id ? ' is-selected' : ''}`;
+      const name = document.createElement('strong');
+      name.textContent = id;
+      const summary = document.createElement('span');
+      summary.className = 'position-check-summary';
+      summary.innerHTML = checks.map(([label, complete]) => `<span class="${complete ? 'is-complete' : 'is-missing'}">${complete ? '✓' : '○'} ${label}</span>`).join(' · ');
+      button.append(name, summary);
+      button.addEventListener('click', () => {
+        const select = byId('tolTargetSel');
+        if (select) {
+          select.value = id;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          renderPositionCompleteness(currentSnapshot());
+        }
+      });
+      positionCompleteness.appendChild(button);
+    });
+  }
+
+  function renderChangeSummary(snapshot) {
+    const fields = changedFields(snapshot);
+    const labels = new Map(EDITABLE_FIELDS);
+    [reviewSummary, coachChangeSummary].forEach((container) => {
+      if (!container) return;
+      container.replaceChildren();
+      if (!fields.length) {
+        container.textContent = 'No changes from the published version.';
+        container.classList.add('muted');
+        return;
+      }
+      container.classList.remove('muted');
+      fields.forEach((field) => {
+        const chip = document.createElement('span');
+        chip.className = 'change-chip';
+        chip.textContent = labels.get(field) || field;
+        container.appendChild(chip);
+      });
+    });
+  }
+
+  function renderEditorState(snapshot = currentSnapshot(), showValidation = false) {
+    const issues = validateSituation(snapshot);
+    const errors = issues.filter((issue) => issue.severity === 'error');
+    renderPositionCompleteness(snapshot);
+    renderChangeSummary(snapshot);
+    if (dirtyBadge) {
+      dirtyBadge.textContent = editorDirty ? 'Unsaved changes' : 'No draft changes';
+      dirtyBadge.className = `dirty-state-badge ${editorDirty ? 'is-dirty' : 'is-clean'}`;
+    }
+    const rationaleReady = editorRole !== 'coach' || Boolean(String(coachRationale?.value || '').trim());
+    if (submitSituation) submitSituation.disabled = !editorDirty || errors.length > 0 || !rationaleReady;
+    if (publishSituation) publishSituation.disabled = !editorDirty || errors.length > 0;
+    if (validationPanel) validationPanel.classList.toggle('hidden', !showValidation && issues.length === 0);
+    if (validationSummary) {
+      validationSummary.textContent = errors.length
+        ? `${errors.length} required item${errors.length === 1 ? '' : 's'} must be fixed before continuing.`
+        : issues.length
+          ? `${issues.length} warning${issues.length === 1 ? '' : 's'} to review.`
+          : 'This situation is complete and ready.';
+    }
+    if (validationIssues) {
+      validationIssues.replaceChildren();
+      issues.forEach((issue) => {
+        const row = document.createElement('div');
+        row.className = `validation-issue is-${issue.severity}`;
+        const text = document.createElement('span');
+        text.textContent = issue.message;
+        const jump = document.createElement('button');
+        jump.type = 'button';
+        jump.className = 'btn btn-ghost btn-small';
+        jump.textContent = 'Fix';
+        jump.addEventListener('click', () => focusEditorSection(issue.section));
+        row.append(text, jump);
+        validationIssues.appendChild(row);
+      });
+    }
+    return { issues, errors };
+  }
 
   function setWorkflowStatus(message = '', state = '') {
     if (!workflowStatus) return;
@@ -801,30 +1218,31 @@
     workflowStatus.className = `operation-status${state ? ` is-${state}` : ''}`;
   }
 
+  function markEditorClean(snapshot = currentSnapshot()) {
+    editorDirty = false;
+    editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(snapshot?.key) || snapshot);
+    renderEditorState(snapshot);
+  }
+
   async function reloadPublishedSituation(preferredKey = '') {
     if (typeof loadSituationsFromJson !== 'function') return;
     await loadSituationsFromJson();
     loadStarts();
     loadHits();
-    const key =
-      (SITUATIONS || []).some((item) => item.key === preferredKey)
-        ? preferredKey
-        : SITUATIONS?.[0]?.key;
+    const key = (SITUATIONS || []).some((item) => item.key === preferredKey)
+      ? preferredKey : SITUATIONS?.[0]?.key;
     if (key) {
       populateSituations(key);
       setSituation(key);
+      markEditorClean(currentSnapshot());
     }
   }
 
   async function loadCoachProposalHistory() {
     if (!coachHistory || editorRole !== 'coach') return;
     try {
-      const result = await diqApiRequest('situation-submissions', {
-        cache: 'no-store',
-      });
-      const records = Array.isArray(result?.submissions)
-        ? result.submissions
-        : [];
+      const result = await diqApiRequest('situation-submissions', { cache: 'no-store' });
+      const records = Array.isArray(result?.submissions) ? result.submissions : [];
       coachHistory.replaceChildren();
       if (!records.length) {
         const empty = document.createElement('div');
@@ -837,7 +1255,15 @@
         const row = document.createElement('div');
         row.className = 'proposal-history-row';
         const text = document.createElement('span');
-        text.textContent = `${record.situation.title} · ${record.status}${record.reviewNotes ? ` — ${record.reviewNotes}` : ''}`;
+        const title = document.createElement('strong');
+        title.textContent = record.situation.title;
+        const status = document.createElement('span');
+        status.className = `proposal-status is-${record.status}`;
+        status.textContent = record.status;
+        const detail = document.createElement('span');
+        detail.className = 'muted';
+        detail.textContent = `${record.submissionType === 'create' ? 'New situation' : `Revision ${record.baseRevision}`} · ${new Date(record.createdAt).toLocaleDateString()}${record.reviewNotes ? ` · ${record.reviewNotes}` : ''}`;
+        text.append(title, status, detail);
         row.appendChild(text);
         if (record.status === 'pending') {
           const withdraw = document.createElement('button');
@@ -847,10 +1273,7 @@
           withdraw.addEventListener('click', async () => {
             try {
               setWorkflowStatus('Withdrawing proposal…', 'pending');
-              await diqApiRequest(
-                `situation-submissions/${encodeURIComponent(record.id)}`,
-                { method: 'DELETE' },
-              );
+              await diqApiRequest(`situation-submissions/${encodeURIComponent(record.id)}`, { method: 'DELETE' });
               setWorkflowStatus('Proposal withdrawn.', 'success');
               await loadCoachProposalHistory();
             } catch (error) {
@@ -866,20 +1289,39 @@
     }
   }
 
+  function ensureReadyToSave() {
+    const snapshot = currentSnapshot();
+    if (!snapshot) {
+      setWorkflowStatus('Select a situation first.', 'error');
+      return null;
+    }
+    const { errors } = renderEditorState(snapshot, true);
+    if (errors.length) {
+      setWorkflowStatus('Fix the required situation details before continuing.', 'error');
+      focusEditorSection(errors[0].section);
+      return null;
+    }
+    return snapshot;
+  }
+
   async function submitCurrentSituation() {
-    const snapshot = window._diqGetCurrentSituationSnapshot?.();
-    if (!snapshot) return setWorkflowStatus('Select a situation first.', 'error');
+    const snapshot = ensureReadyToSave();
+    if (!snapshot) return;
+    const rationale = String(coachRationale?.value || '').trim();
+    if (!rationale) {
+      setWorkflowStatus('Add a short reason for the proposal.', 'error');
+      coachRationale?.focus();
+      return;
+    }
     try {
       setWorkflowStatus('Submitting proposal for administrator review…', 'pending');
       await diqApiRequest('situation-submissions', {
         method: 'POST',
-        body: JSON.stringify(snapshot),
+        body: JSON.stringify({ situation: snapshot, rationale }),
       });
-      editorDirty = false;
-      setWorkflowStatus(
-        'Proposal submitted. The published situation has not changed.',
-        'success',
-      );
+      if (coachRationale) coachRationale.value = '';
+      markEditorClean(snapshot);
+      setWorkflowStatus('Proposal submitted. Players still use the published version.', 'success');
       await loadCoachProposalHistory();
       await reloadPublishedSituation(snapshot.key);
     } catch (error) {
@@ -888,15 +1330,12 @@
   }
 
   async function publishCurrentSituation() {
-    const snapshot = window._diqGetCurrentSituationSnapshot?.();
-    if (!snapshot) return setWorkflowStatus('Select a situation first.', 'error');
+    const snapshot = ensureReadyToSave();
+    if (!snapshot) return;
     const revision = Number(snapshot.revision);
     const creating = !Number.isInteger(revision) || revision < 1;
     try {
-      setWorkflowStatus(
-        creating ? 'Publishing new situation…' : 'Publishing situation changes…',
-        'pending',
-      );
+      setWorkflowStatus(creating ? 'Publishing new situation…' : 'Publishing situation changes…', 'pending');
       const result = await diqApiRequest(
         creating ? 'situations' : `situations/${encodeURIComponent(snapshot.key)}`,
         {
@@ -905,7 +1344,7 @@
           body: JSON.stringify(snapshot),
         },
       );
-      editorDirty = false;
+      markEditorClean(snapshot);
       setWorkflowStatus('Situation published.', 'success');
       await reloadPublishedSituation(result?.record?.key || snapshot.key);
       await loadAdminData(teamSelect?.value || '');
@@ -914,50 +1353,111 @@
     }
   }
 
+  function setPlayerPreview(active) {
+    playerPreviewActive = Boolean(active);
+    document.body.classList.toggle('situation-player-preview', playerPreviewActive);
+    document.querySelector('.situation-preview-bar')?.remove();
+    if (playerPreviewActive) {
+      const bar = document.createElement('div');
+      bar.className = 'situation-preview-bar';
+      const label = document.createElement('strong');
+      label.textContent = 'Player preview — unpublished changes';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'btn btn-brand btn-small';
+      close.textContent = 'Return to editor';
+      close.addEventListener('click', () => setPlayerPreview(false));
+      bar.append(label, close);
+      document.body.appendChild(bar);
+      window._diqSetEditorMode?.(null);
+    } else if (editorRole) {
+      window._diqSetEditorMode?.(editorRole);
+    }
+  }
+
   submitSituation?.addEventListener('click', () => void submitCurrentSituation());
   publishSituation?.addEventListener('click', () => void publishCurrentSituation());
+  previewSituation?.addEventListener('click', () => setPlayerPreview(true));
+  previewSequence?.addEventListener('click', () => {
+    if (!window._diqPreviewSequence?.()) setWorkflowStatus('Add at least two positions to preview the sequence.', 'error');
+  });
+  resetSelectedPosition?.addEventListener('click', async () => {
+    const id = window._diqGetSelectedEditorPosition?.() || 'selected position';
+    const confirmed = await requestConfirmation({
+      title: `Reset ${id}?`,
+      message: `This replaces the current ${id} start, target, tolerance, and note with the published values.`,
+      actionLabel: 'Reset position',
+    });
+    if (confirmed && window._diqResetSelectedPosition?.()) {
+      setWorkflowStatus(`${id} reset to the published values.`, 'success');
+      renderEditorState(currentSnapshot());
+    }
+  });
+  byId('adminProposalSelectAllBtn')?.addEventListener('click', () => {
+    proposalDiffList?.querySelectorAll('input[data-proposal-field]:not(:disabled)').forEach((input) => { input.checked = true; });
+  });
+  byId('adminProposalClearAllBtn')?.addEventListener('click', () => {
+    proposalDiffList?.querySelectorAll('input[data-proposal-field]:not(:disabled)').forEach((input) => { input.checked = false; });
+  });
+  document.querySelectorAll('[data-editor-step]').forEach((button) => {
+    button.addEventListener('click', () => focusEditorSection(button.dataset.editorStep));
+  });
+  coachRationale?.addEventListener('input', () => renderEditorState(currentSnapshot()));
+  byId('tolTargetSel')?.addEventListener('change', () => renderPositionCompleteness(currentSnapshot()));
+  byId('sitSelect')?.addEventListener('change', () => setTimeout(() => {
+    if (!editorRole) return;
+    editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(currentSnapshot()?.key) || currentSnapshot());
+    editorDirty = false;
+    renderEditorState(currentSnapshot());
+  }, 0));
+  byId('saveSituationBtn')?.addEventListener('click', () => setTimeout(() => markEditorClean(currentSnapshot()), 0));
 
-  window._diqMarkSituationDirty = (_snapshot, role) => {
+  window._diqMarkSituationDirty = (snapshot, role) => {
     if (!editorRole || role !== editorRole) return;
     editorDirty = true;
     setWorkflowStatus(
-      role === 'coach'
-        ? 'Draft changes are local until you submit them for review.'
-        : 'Changes are local until you publish them.',
+      role === 'coach' ? 'Draft changes are local until you submit them for review.' : 'Changes are local until you publish them.',
       'pending',
     );
+    renderEditorState(snapshot);
   };
 
   window._diqSituationEditorOpened = (role) => {
     if (!situationEditor || (role !== 'coach' && role !== 'admin')) return;
     editorRole = role;
+    situationEditor.classList.remove('diq-collapsed');
+    situationEditor.querySelector(':scope > .diq-body')?.removeAttribute('hidden');
     const mount = role === 'admin' ? adminEditorMount : coachEditorMount;
     if (mount && situationEditor.parentElement !== mount) mount.appendChild(situationEditor);
-    if (editorTitle) {
-      editorTitle.textContent =
-        role === 'coach' ? 'Situation proposal' : 'Published situation editor';
-    }
+    editorTitle.textContent = role === 'coach' ? 'Situation proposal' : 'Published situation editor';
+    if (workflowRole) workflowRole.textContent = role === 'coach' ? 'Coach draft' : 'Administrator';
+    if (workflowHeading) workflowHeading.textContent = role === 'coach' ? 'Draft proposal' : 'Published playbook editor';
+    if (workflowCopy) workflowCopy.textContent = role === 'coach'
+      ? 'Players continue using the published version until an administrator approves this proposal.'
+      : 'Changes become available to players only after you publish them.';
     submitSituation?.classList.toggle('hidden', role !== 'coach');
     publishSituation?.classList.toggle('hidden', role !== 'admin');
     archiveSituation?.classList.toggle('hidden', role !== 'admin');
     coachHistory?.classList.toggle('hidden', role !== 'coach');
-    setWorkflowStatus(
-      role === 'coach'
-        ? 'Your edits create a proposal; players continue using the published version until an administrator approves it.'
-        : 'Edits are not visible to players until you publish them.',
-    );
+    coachSummary?.classList.toggle('hidden', role !== 'coach');
+    editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(currentSnapshot()?.key) || currentSnapshot());
+    editorDirty = false;
+    setWorkflowStatus(role === 'coach'
+      ? 'Build a draft, review it, and submit it for administrator approval.'
+      : 'Edit the published playbook, validate it, and publish when ready.');
     window._diqSetEditorMode?.(role);
+    renderEditorState(currentSnapshot());
     if (role === 'coach') void loadCoachProposalHistory();
   };
 
   window._diqSituationEditorClosed = (role) => {
     if (editorRole !== role) return;
-    const key = window._diqGetCurrentSituationSnapshot?.()?.key || '';
+    const key = currentSnapshot()?.key || '';
+    if (playerPreviewActive) setPlayerPreview(false);
     editorRole = null;
     editorDirty = false;
-    if (coachEditorMount && situationEditor?.parentElement !== coachEditorMount) {
-      coachEditorMount.appendChild(situationEditor);
-    }
+    editorBaseline = null;
+    if (coachEditorMount && situationEditor?.parentElement !== coachEditorMount) coachEditorMount.appendChild(situationEditor);
     window._diqSetEditorMode?.(null);
     void reloadPublishedSituation(key);
   };
@@ -971,6 +1471,7 @@
     }
   };
   window._diqAdminPanelClosed = () => {
+    if (confirmationResolver) closeConfirmation(false);
     adminWorkspace?.classList.add('hidden');
     fieldCard?.classList.remove('hidden');
     window._diqSituationEditorClosed?.('admin');
