@@ -32,7 +32,7 @@ again.
 | `role` | `player` or `coach` |
 | `name` | Player or coach display name |
 | `number` | Required for players; blank for coaches |
-| `password` | Required for new accounts; blank preserves an existing password |
+| `password` | Temporary password of at least 8 characters; required for new accounts, blank preserves an existing password |
 
 Team rows may appear before or after their member rows. New teams referenced in
 the same file are created before their accounts.
@@ -44,7 +44,8 @@ the same file are created before their accounts.
 - Any validation error prevents the entire import; valid rows are not applied
   separately.
 - Imported passwords are hashed before storage and never returned in previews.
-- A password change invalidates existing sessions for that account.
+- A password change invalidates existing sessions and must be changed by the
+  account owner after the next login.
 - Import operations create one audit-log entry containing the non-sensitive
   change summary and record IDs.
 - Existing `[TEAMS]` / `[PLAYERS]` block CSV files remain accepted and display a

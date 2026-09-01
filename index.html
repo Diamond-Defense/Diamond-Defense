@@ -473,7 +473,7 @@
           <label class="field"><span>Player</span><select id="adminRosterSelect" class="select" disabled></select></label>
           <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., John Smith" disabled></label>
           <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" maxlength="12" inputmode="numeric" autocomplete="off" placeholder="e.g., 12" disabled></label>
-          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" minlength="4" maxlength="1024" autocomplete="new-password" placeholder="At least 4 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">The player must change this password after logging in.</small></label>
           <div class="muted record-id-preview" id="adminPlayerIdPreview"></div>
           <div class="admin-actions">
             <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add player</button>
@@ -486,7 +486,7 @@
           <div class="sectionTitle">Coaches</div>
           <label class="field"><span>Coach</span><select id="adminCoachSelect" class="select" disabled></select></label>
           <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., Jamie Rivera" disabled></label>
-          <label class="field"><span>New password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" minlength="4" maxlength="1024" autocomplete="new-password" placeholder="At least 4 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div></label>
+          <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">The coach must change this password after logging in.</small></label>
           <div class="muted record-id-preview" id="adminCoachIdPreview"></div>
           <div class="admin-actions">
             <button id="adminCoachAddBtn" class="btn btn-brand" type="button" disabled>Add coach</button>
@@ -577,6 +577,38 @@
           <button id="adminPwOk" class="btn-green auth-submit-btn" type="button">Log in</button>
         </div>
         <div id="adminPwMsg" class="operation-status is-error" aria-live="polite"></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Password and session management for the authenticated account -->
+<div id="accountSecurityOverlay" class="modalOverlay account-security-modal hidden" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="accountSecurityTitle" aria-hidden="true">
+  <div class="modalPanel account-security-panel">
+    <div class="modalHeader">
+      <div>
+        <div id="accountSecurityTitle" class="modal-title">Account security</div>
+        <div id="accountSecurityIdentity" class="muted"></div>
+      </div>
+      <button id="accountSecurityClose" class="btn btn-ghost" type="button">Close</button>
+    </div>
+    <div class="modalBody account-security-body">
+      <div id="temporaryPasswordNotice" class="account-security-notice hidden" role="status">
+        Your administrator issued a temporary password. Create a new password before continuing.
+      </div>
+      <form id="accountPasswordForm" class="account-password-form">
+        <label class="field"><span>Current password</span><input id="accountCurrentPassword" class="input" type="password" autocomplete="current-password" required></label>
+        <label class="field"><span>New password</span><input id="accountNewPassword" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required><small class="muted">Use at least 8 characters.</small></label>
+        <label class="field"><span>Confirm new password</span><input id="accountConfirmPassword" class="input" type="password" autocomplete="new-password" minlength="8" maxlength="1024" required></label>
+        <button id="accountChangePassword" class="btn-green" type="submit">Change password</button>
+      </form>
+      <div id="accountSecurityStatus" class="operation-status" role="status" aria-live="polite"></div>
+      <section class="account-session-card">
+        <div>
+          <strong>Active sessions</strong>
+          <p class="muted">Sessions last up to 7 days and expire after 12 hours without activity.</p>
+        </div>
+        <button id="accountLogoutAll" class="btn btn-ghost" type="button">Sign out everywhere</button>
       </section>
     </div>
   </div>

@@ -17,7 +17,7 @@ export const POST: RequestHandler = async (event) => {
   try {
     const database = databaseFor(event);
     const repository = new SqliteAuthRepository(database);
-    const user =
+    const authentication =
       role === 'player'
         ? await repository.authenticatePlayer(
             String(body.teamId || ''),
@@ -34,9 +34,27 @@ export const POST: RequestHandler = async (event) => {
             ? await repository.authenticateStaff('admin', password)
             : null;
 
-    if (!user) {
-      return json({ error: 'Incorrect login information.' }, { status: 401 });
+    if (!authentication || authentication.status === 'invalid') {
+      return json(
+        { code: 'INVALID_LOGIN', error: 'The selected account or password is incorrect.' },
+        { status: 401 },
+      );
     }
+    if (authentication.status === 'locked') {
+      const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((new Date(authentication.lockedUntil).getTime() - Date.now()) / 1000),
+      );
+      return json(
+        {
+          code: 'ACCOUNT_TEMPORARILY_LOCKED',
+          error: 'Too many unsuccessful login attempts. Try again in 15 minutes.',
+          retryAfterSeconds,
+        },
+        { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+      );
+    }
+    const user = authentication.user;
     await createSession(database, event.cookies, user.id, event.url.protocol === 'https:');
     return json({
       user: {
@@ -47,12 +65,16 @@ export const POST: RequestHandler = async (event) => {
         teamName: user.teamName,
         coachEmail: user.coachEmail,
         jerseyNumber: user.jerseyNumber,
+        mustChangePassword: user.mustChangePassword,
       },
     });
   } catch (error) {
     console.error('Authentication failed unexpectedly.', error);
     return json(
-      { error: 'Login service is temporarily unavailable. Please try again.' },
+      {
+        code: 'LOGIN_SERVICE_UNAVAILABLE',
+        error: 'The login service cannot reach account data right now. Please try again shortly.',
+      },
       { status: 503 },
     );
   }

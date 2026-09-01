@@ -87,7 +87,7 @@ export function teamCsvTemplate(): string {
   return [
     'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
     'team,upsert,13u-black,13U Black,coach@example.com,,,,,',
-    'member,upsert,13u-black,,,13u-black-jordan-12,player,Jordan Lee,12,4821',
+    'member,upsert,13u-black,,,13u-black-jordan-12,player,Jordan Lee,12,Temp-4821',
     'member,upsert,13u-black,,,13u-black-coach-rivera,coach,Coach Rivera,,change-me',
   ].join('\r\n');
 }
@@ -319,8 +319,8 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     if (role !== 'player' && role !== 'coach') { addIssue(issues, record.row, 'role must be player or coach.'); continue; }
     if (!name || name.length > 100) { addIssue(issues, record.row, 'name is required and must be 100 characters or fewer.'); continue; }
     if (role === 'player' && !number) { addIssue(issues, record.row, 'number is required for a player.'); continue; }
-    if (!before && password.length < 4) { addIssue(issues, record.row, 'A password of at least 4 characters is required for a new account.'); continue; }
-    if (password && password.length < 4) { addIssue(issues, record.row, 'Passwords must contain at least 4 characters.'); continue; }
+    if (!before && password.length < 8) { addIssue(issues, record.row, 'A temporary password of at least 8 characters is required for a new account.'); continue; }
+    if (password && password.length < 8) { addIssue(issues, record.row, 'Temporary passwords must contain at least 8 characters.'); continue; }
     if (before && before.role !== role) { addIssue(issues, record.row, 'An existing account role cannot be changed by CSV.'); continue; }
     if (role === 'player') {
       const owner = jerseyOwners.get(`${teamId}\u0000${number}`);
@@ -405,8 +405,9 @@ export async function commitTeamCsvImport(
       const credentials = await createPasswordHash(operation.password);
       commands.push({ sql: `INSERT INTO users
         (id, username, display_name, role, password_hash, password_salt,
-         password_iterations, active, revision, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8)`,
+         password_iterations, active, revision, created_at, updated_at,
+         must_change_password, password_changed_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8, 1, ?8)`,
         params: [operation.userId, `${operation.teamId}:${operation.userId}`, operation.name, operation.role, credentials.hash, credentials.salt, credentials.iterations, now] });
       commands.push({ sql: `INSERT INTO team_memberships
         (team_id, user_id, team_role, jersey_number, revision, active, created_at, updated_at)
@@ -426,7 +427,10 @@ export async function commitTeamCsvImport(
         const credentials = await createPasswordHash(operation.password);
         commands.push({ sql: `UPDATE users SET display_name = ?2, username = ?3, active = 1,
           archived_at = NULL, archived_by = NULL, password_hash = ?4, password_salt = ?5,
-          password_iterations = ?6, revision = revision + 1, updated_at = ?7 WHERE id = ?1`,
+          password_iterations = ?6, must_change_password = 1,
+          failed_login_attempts = 0, locked_until = NULL,
+          password_changed_at = ?7, revision = revision + 1,
+          updated_at = ?7 WHERE id = ?1`,
           params: [operation.userId, operation.name, `${operation.teamId}:${operation.userId}`, credentials.hash, credentials.salt, credentials.iterations, now] });
         commands.push({ sql: 'DELETE FROM sessions WHERE user_id = ?1', params: [operation.userId] });
       } else {

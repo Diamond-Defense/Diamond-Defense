@@ -63,6 +63,9 @@ test('builds password-free SQL scoped to the administrator account', () => {
   assert.match(sql, /WHERE id = 'staff-admin' AND role = 'admin'/);
   assert.match(sql, /DELETE FROM sessions WHERE user_id = 'staff-admin'/);
   assert.match(sql, /password_iterations = 100000/);
+  assert.match(sql, /must_change_password = 0/);
+  assert.match(sql, /failed_login_attempts = 0/);
+  assert.match(sql, /locked_until = NULL/);
 });
 
 test('can initialize a missing administrator without embedding plaintext', () => {

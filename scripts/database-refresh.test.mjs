@@ -101,6 +101,8 @@ test('generated replacement SQL executes against the portable SQLite schema', as
     '0003_coach_accounts_and_situation_review.sql',
     '0004_complete_attempt_lifecycle.sql',
     '0005_password_iteration_limit.sql',
+    '0006_situation_proposal_review.sql',
+    '0007_account_security.sql',
   ]) {
     database.exec(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     database.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(name);
@@ -145,6 +147,6 @@ test('generated replacement SQL executes against the portable SQLite schema', as
   assert.equal(database.prepare('SELECT coach_email FROM teams').get().coach_email, 'team-one@example.invalid');
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM audit_log').get().count, 0);
-  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 5);
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 7);
   database.close();
 });

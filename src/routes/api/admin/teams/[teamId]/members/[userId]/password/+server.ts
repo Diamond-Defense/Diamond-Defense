@@ -25,7 +25,7 @@ export const PUT: RequestHandler = async (event) => {
       );
     }
     await repository.resetPassword(event.params.userId, body.password, user.id);
-    return json({ ok: true });
+    return json({ ok: true, mustChangePassword: true });
   } catch (error) {
     return repositoryErrorResponse(error);
   }

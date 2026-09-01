@@ -64,9 +64,12 @@ used by new clients.
 
 ## Password resets
 
-New player or coach records require a password of at least four characters.
-Resetting a password creates a new PBKDF2 salt and hash and removes every active
-session for that user. Plain-text passwords are never returned by an API.
+New player or coach records require a temporary password of at least eight
+characters. Resetting a password creates a new PBKDF2 salt and hash, clears any
+temporary login lock, removes every active session for that user, and requires
+the user to choose a permanent password after the next login. Plain-text
+passwords are never returned by an API. See [Account security](account-security.md)
+for self-service changes, lockout behavior, and session expiration.
 
 ## Audit log
 

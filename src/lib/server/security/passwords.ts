@@ -2,6 +2,21 @@ import { Buffer } from 'node:buffer';
 import { pbkdf2, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export const MAX_PASSWORD_ITERATIONS = 100000;
+export const MINIMUM_ACCOUNT_PASSWORD_LENGTH = 8;
+export const MAXIMUM_ACCOUNT_PASSWORD_LENGTH = 1024;
+
+export function validateAccountPassword(passwordValue: unknown): string {
+  const password = String(passwordValue || '');
+  if (password.length < MINIMUM_ACCOUNT_PASSWORD_LENGTH) {
+    throw new Error(
+      `Passwords must contain at least ${MINIMUM_ACCOUNT_PASSWORD_LENGTH} characters.`,
+    );
+  }
+  if (password.length > MAXIMUM_ACCOUNT_PASSWORD_LENGTH) {
+    throw new Error('Passwords must contain 1024 characters or fewer.');
+  }
+  return password;
+}
 
 function derivePasswordBytes(
   password: string,

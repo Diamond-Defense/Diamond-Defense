@@ -1,8 +1,7 @@
 # Database conversion roadmap
 
-The environment/build workflow, D1-only runtime, and record-level administration
-are complete. Remaining phases expand reporting and add safe environment refresh
-tooling.
+The environment/build workflow, D1-only runtime, administration, reporting,
+environment refresh, and account-security lifecycle are implemented.
 
 ## Phase 1: environment and release workflow
 
@@ -81,3 +80,16 @@ Status: implemented.
 - Completed: target migration-history preservation and post-import validation.
 
 Refresh remains a manual maintenance action and is never part of deployment.
+
+## Phase 6: complete account management
+
+Status: implemented.
+
+- Self-service password changes for every authenticated role.
+- Administrator-issued temporary passwords for new and reset accounts.
+- Mandatory permanent-password setup before application access.
+- Five-attempt login throttling with a 15-minute lock.
+- Seven-day absolute and 12-hour idle session expiration.
+- Password-change, administrator-reset, and sign-out-everywhere session revocation.
+- Safe login messages that distinguish invalid credentials, temporary locks,
+  and unavailable account data without revealing whether an account exists.

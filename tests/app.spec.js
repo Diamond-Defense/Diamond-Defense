@@ -555,7 +555,7 @@ test.describe('Diamond Defense regression behavior', () => {
     const wrongPasswordDialog = page.waitForEvent('dialog');
     await page.locator('#playerLoginBtn').click();
     const rejectedLogin = await wrongPasswordDialog;
-    expect(rejectedLogin.message()).toBe('Incorrect password.');
+    expect(rejectedLogin.message()).toBe('The selected account or password is incorrect.');
     await rejectedLogin.dismiss();
     await expect(page.locator('#playerLoginStatus')).toHaveCount(0);
 
@@ -576,6 +576,36 @@ test.describe('Diamond Defense regression behavior', () => {
     );
     await expect(page.locator('#playerBtn')).toHaveText('#11 Bob Smith · Log out');
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
+    await page.locator('#accountSecurityBtn').click();
+    await expect(page.locator('#accountSecurityOverlay')).toBeVisible();
+    await expect(page.locator('#accountSecurityBtn')).toHaveAttribute('aria-expanded', 'true');
+    const accountDrawerLayout = await page.evaluate(() => {
+      const drawer = document.querySelector('#toolsDrawer');
+      const panel = document.querySelector('#accountSecurityOverlay');
+      const drawerRect = drawer.getBoundingClientRect();
+      return {
+        parentId: panel.parentElement.id,
+        panelPosition: getComputedStyle(panel).position,
+        drawerPosition: getComputedStyle(drawer).position,
+        drawerWidth: drawerRect.width,
+        viewportWidth: window.innerWidth,
+        fieldRight: document.querySelector('.field-card').getBoundingClientRect().right,
+        drawerLeft: drawerRect.left,
+        drawerBottom: drawerRect.bottom,
+        viewportHeight: window.innerHeight,
+        horizontalOverflow: drawer.scrollWidth - drawer.clientWidth,
+      };
+    });
+    expect(accountDrawerLayout.parentId).toBe('toolsDrawer');
+    expect(accountDrawerLayout.panelPosition).toBe('static');
+    expect(accountDrawerLayout.drawerPosition).toBe('fixed');
+    expect(accountDrawerLayout.drawerWidth).toBeLessThanOrEqual(accountDrawerLayout.viewportWidth / 3 + 1);
+    expect(accountDrawerLayout.fieldRight).toBeLessThanOrEqual(accountDrawerLayout.drawerLeft);
+    expect(accountDrawerLayout.drawerBottom).toBeLessThanOrEqual(accountDrawerLayout.viewportHeight);
+    expect(accountDrawerLayout.horizontalOverflow).toBeLessThanOrEqual(1);
+    await page.locator('#accountSecurityClose').click();
+    await expect(page.locator('#accountSecurityOverlay')).toBeHidden();
+    await expect(page.locator('#accountSecurityBtn')).toHaveAttribute('aria-expanded', 'false');
     await page.locator('#playerBtn').click();
     expect((await logoutResponse).ok()).toBe(true);
     await expect(page.locator('#playerBtn')).toHaveText('Login');
@@ -594,7 +624,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#coachLoginNameSelect').selectOption('staff-coach');
     await page.locator('#pwInput').fill('wrong');
     await page.locator('#pwOk').click();
-    await expect(page.locator('#pwMsg')).toHaveText('Incorrect password.');
+    await expect(page.locator('#pwMsg')).toHaveText('The selected account or password is incorrect.');
     await page.locator('#pwInput').fill('coach');
     await page.locator('#pwOk').click();
     await expect(page.locator('#playerModalOverlay')).toBeHidden();
@@ -638,7 +668,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#adminPwModal')).toBeVisible();
     await page.locator('#adminPwInput').fill('wrong');
     await page.locator('#adminPwOk').click();
-    await expect(page.locator('#adminPwMsg')).toHaveText('Incorrect password.');
+    await expect(page.locator('#adminPwMsg')).toHaveText('The selected account or password is incorrect.');
     await page.locator('#adminPwInput').fill('admin');
     await page.locator('#adminPwOk').click();
     await expect(page.locator('#playerModalOverlay')).toBeHidden();
@@ -657,6 +687,18 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(await page.locator('[data-admin-view="teams"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="recovery"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="situations"]').evaluate((view) => view.parentElement.id)).toBe('adminCard');
+    const existingTeamId = await page.locator('#adminTeamSelect option:not([value=""])').first().getAttribute('value');
+    await page.locator('#adminTeamSelect').selectOption(existingTeamId);
+    const existingPlayerId = await page.locator('#adminRosterSelect option:not([value=""])').first().getAttribute('value');
+    await page.locator('#adminRosterSelect').selectOption(existingPlayerId);
+    await expect(page.locator('#adminPlayerAddBtn')).toBeHidden();
+    await page.locator('#adminRosterSelect').selectOption('');
+    await expect(page.locator('#adminPlayerAddBtn')).toBeVisible();
+    const existingCoachId = await page.locator('#adminCoachSelect option:not([value=""])').first().getAttribute('value');
+    await page.locator('#adminCoachSelect').selectOption(existingCoachId);
+    await expect(page.locator('#adminCoachAddBtn')).toBeHidden();
+    await page.locator('#adminCoachSelect').selectOption('');
+    await expect(page.locator('#adminCoachAddBtn')).toBeVisible();
     const adminWorkspaceLayout = await page.evaluate(() => {
       const drawer = document.querySelector('#toolsDrawer');
       const admin = document.querySelector('#adminCard');

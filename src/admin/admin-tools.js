@@ -115,10 +115,10 @@
     } else if (numberInput && number.length > 12) {
       valid = setFieldError(numberInput, 'Player numbers must be 12 characters or fewer.');
     }
-    if (requirePassword && password.length < 4) {
-      valid = setFieldError(passwordInput, 'Enter a password with at least 4 characters.');
-    } else if (password && password.length < 4) {
-      valid = setFieldError(passwordInput, 'A new password must contain at least 4 characters.');
+    if (requirePassword && password.length < 8) {
+      valid = setFieldError(passwordInput, 'Enter a temporary password with at least 8 characters.');
+    } else if (password && password.length < 8) {
+      valid = setFieldError(passwordInput, 'A temporary password must contain at least 8 characters.');
     }
     if (!valid) focusFirstInvalid();
     return valid;
@@ -168,6 +168,12 @@
     });
   }
 
+  function setVisible(element, visible) {
+    if (!element) return;
+    element.classList.toggle('hidden', !visible);
+    element.setAttribute('aria-hidden', String(!visible));
+  }
+
   function selectedTeam() {
     const id = String(teamSelect?.value || '');
     return teams.find((team) => team.id === id) || null;
@@ -188,8 +194,8 @@
 
   function generatePassword() {
     return typeof genSimplePassword === 'function'
-      ? genSimplePassword()
-      : String(Math.floor(1000 + Math.random() * 9000));
+      ? genSimplePassword(12)
+      : `${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}A7`;
   }
 
   function memberId(role, name, number = '') {
@@ -265,6 +271,7 @@
   function renderPlayerForm() {
     const hasTeam = Boolean(selectedTeam());
     const member = selectedMember('player');
+    const addButton = byId('adminPlayerAddBtn');
     setEnabled(
       [
         playerSelect,
@@ -272,10 +279,11 @@
         playerNumber,
         playerPassword,
         byId('adminGenPassBtn'),
-        byId('adminPlayerAddBtn'),
+        addButton,
       ],
       hasTeam,
     );
+    setVisible(addButton, hasTeam && !member);
     setEnabled(
       [byId('adminPlayerUpdateBtn'), byId('adminPlayerRemoveBtn')],
       Boolean(member),
@@ -289,16 +297,18 @@
   function renderCoachForm() {
     const hasTeam = Boolean(selectedTeam());
     const member = selectedMember('coach');
+    const addButton = byId('adminCoachAddBtn');
     setEnabled(
       [
         coachSelect,
         coachName,
         coachPassword,
         byId('adminCoachGenPassBtn'),
-        byId('adminCoachAddBtn'),
+        addButton,
       ],
       hasTeam,
     );
+    setVisible(addButton, hasTeam && !member);
     setEnabled(
       [byId('adminCoachUpdateBtn'), byId('adminCoachRemoveBtn')],
       Boolean(member),
@@ -470,7 +480,7 @@
           method: 'POST',
           body: JSON.stringify({ userId: id, name, number, role, password }),
         }),
-      `${role === 'coach' ? 'Coach' : 'Player'} account created.`,
+      `${role === 'coach' ? 'Coach' : 'Player'} account created. The temporary password must be changed at first login.`,
       team.id,
     );
     if (ok) {
@@ -511,7 +521,9 @@
             body: JSON.stringify(body),
           },
         ),
-      `${role === 'coach' ? 'Coach' : 'Player'} account saved.`,
+      password
+        ? `${role === 'coach' ? 'Coach' : 'Player'} password reset. The temporary password must be changed at next login.`
+        : `${role === 'coach' ? 'Coach' : 'Player'} account saved.`,
       team.id,
     );
   }

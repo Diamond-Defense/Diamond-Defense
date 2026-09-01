@@ -1285,14 +1285,15 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   pointer-events:none;
   transition:opacity .18s ease,transform .18s ease,visibility .18s;
 }
-.tools-drawer:has(> .card:not(.hidden)){
+.tools-drawer:has(> :is(.card,#accountSecurityOverlay):not(.hidden)){
   visibility:visible;
   opacity:1;
   transform:translateX(0);
   pointer-events:auto;
 }
 .tools-drawer > #coachCard,
-.tools-drawer > #adminCard{
+.tools-drawer > #adminCard,
+.tools-drawer > #accountSecurityOverlay{
   width:100%;
   min-width:0;
   max-height:inherit;
@@ -1304,7 +1305,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 
 /* On desktop, tools and the strategy board share the viewport instead of overlapping. */
 @media (min-width:1200px){
-  .app:has(> .tools-drawer > .card:not(.hidden)) > :is(.field-card,.coach-results-workspace,.admin-workspace){
+  .app:has(> .tools-drawer > :is(.card,#accountSecurityOverlay):not(.hidden)) > :is(.field-card,.coach-results-workspace,.admin-workspace){
     width:calc(100% - var(--tools-drawer-width) - 14px);
   }
 }
@@ -2072,6 +2073,46 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .auth-admin-credentials{margin-top:0}
 .auth-modal .operation-status{margin:0}
 .auth-modal .operation-status:empty{display:none!important;min-height:0;padding:0;border:0}
+
+#accountSecurityOverlay.account-security-modal{
+  position:static;
+  inset:auto;
+  z-index:auto;
+  width:100%;
+  max-height:inherit;
+  box-sizing:border-box;
+  padding:0;
+  align-items:stretch;
+  justify-content:stretch;
+  background:transparent;
+  backdrop-filter:none;
+}
+.account-security-panel{
+  width:100%;
+  max-height:inherit;
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  box-sizing:border-box;
+  border:1px solid rgba(92,180,255,.22);
+  border-radius:16px;
+}
+.account-security-panel .modalHeader{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid rgba(92,180,255,.2)}
+.account-security-panel .modalBody{padding:16px;overflow-x:hidden;overflow-y:auto;overscroll-behavior:contain}
+.account-security-body{display:grid;gap:16px}
+.account-security-notice{padding:12px 14px;border:1px solid rgba(255,200,80,.45);border-radius:12px;background:rgba(255,200,80,.1);color:#ffe09a;font-weight:750;line-height:1.45}
+.account-password-form{display:grid;gap:12px}
+.account-password-form .field{display:grid;gap:5px}
+.account-password-form .field>span{font-size:12px;font-weight:800;color:#a9bfd3}
+.account-password-form .btn-green{justify-self:start}
+.account-session-card{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px;border:1px solid rgba(91,182,255,.22);border-radius:14px;background:rgba(6,23,46,.62)}
+.account-session-card p{margin:5px 0 0;line-height:1.4}
+body.account-security-required #accountSecurityClose{display:none}
+
+@media (max-width:620px){
+  .account-session-card{align-items:stretch;flex-direction:column}
+  .account-session-card .btn{width:100%}
+}
 
 @media(max-width:520px){
   .auth-modal .auth-account-grid,.auth-credentials-row{grid-template-columns:1fr}

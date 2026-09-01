@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as requestFactory } from '@playwright/test';
 
 test.describe('portable SQLite API', () => {
   test('serves seeded situations and password-free roster options', async ({ request }) => {
@@ -224,5 +224,132 @@ test.describe('portable SQLite API', () => {
     expect(csv).toContain('"Bob Smith"');
 
     expect((await request.get('/api/reports/team/12u-blue/export')).status()).toBe(403);
+  });
+
+  test('enforces temporary passwords, lockouts, password changes, and global sign-out', async ({ request, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const userId = `account-security-${Date.now()}`;
+    const temporaryPassword = 'Temporary-4821';
+    const permanentPassword = 'Permanent-5932';
+    const resetPassword = 'Reset-Password-8047';
+    const adminLogin = await request.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'admin', password: 'admin' },
+    });
+    expect(adminLogin.ok()).toBeTruthy();
+
+    const created = await request.post('/api/admin/teams/13u-black/members', {
+      headers: { Origin: origin },
+      data: {
+        userId,
+        name: 'Account Security Test',
+        number: '98',
+        role: 'player',
+        password: temporaryPassword,
+      },
+    });
+    expect(created.status()).toBe(201);
+    const createdRecord = (await created.json()).record;
+
+    const player = await requestFactory.newContext({ baseURL });
+    const secondDevice = await requestFactory.newContext({ baseURL });
+    try {
+      const temporaryLogin = await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: '13u-black',
+          playerId: userId,
+          password: temporaryPassword,
+        },
+      });
+      expect(temporaryLogin.ok()).toBeTruthy();
+      expect((await temporaryLogin.json()).user.mustChangePassword).toBe(true);
+      expect((await player.get('/api/results/me')).status()).toBe(403);
+
+      const changed = await player.put('/api/auth/password', {
+        headers: { Origin: origin },
+        data: { currentPassword: temporaryPassword, newPassword: permanentPassword },
+      });
+      expect(changed.ok()).toBeTruthy();
+      expect(await changed.json()).toMatchObject({
+        ok: true,
+        user: { mustChangePassword: false },
+      });
+      expect((await player.get('/api/results/me')).ok()).toBeTruthy();
+
+      const secondLogin = await secondDevice.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: '13u-black',
+          playerId: userId,
+          password: permanentPassword,
+        },
+      });
+      expect(secondLogin.ok()).toBeTruthy();
+
+      const logoutAll = await player.post('/api/auth/logout-all', {
+        headers: { Origin: origin },
+      });
+      expect(logoutAll.ok()).toBeTruthy();
+      expect((await player.get('/api/auth/session').then((response) => response.json())).user).toBeNull();
+      expect((await secondDevice.get('/api/auth/session').then((response) => response.json())).user).toBeNull();
+
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        const rejected = await player.post('/api/auth/login', {
+          headers: { Origin: origin },
+          data: {
+            role: 'player',
+            teamId: '13u-black',
+            playerId: userId,
+            password: 'Definitely-Wrong',
+          },
+        });
+        expect(rejected.status()).toBe(attempt === 5 ? 429 : 401);
+      }
+      const lockedCorrectLogin = await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: '13u-black',
+          playerId: userId,
+          password: permanentPassword,
+        },
+      });
+      expect(lockedCorrectLogin.status()).toBe(429);
+
+      const reset = await request.put(
+        `/api/admin/teams/13u-black/members/${encodeURIComponent(userId)}/password`,
+        {
+          headers: { Origin: origin },
+          data: { password: resetPassword },
+        },
+      );
+      expect(reset.ok()).toBeTruthy();
+      expect(await reset.json()).toMatchObject({ ok: true, mustChangePassword: true });
+
+      const resetLogin = await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: '13u-black',
+          playerId: userId,
+          password: resetPassword,
+        },
+      });
+      expect(resetLogin.ok()).toBeTruthy();
+      expect((await resetLogin.json()).user.mustChangePassword).toBe(true);
+    } finally {
+      await player.dispose();
+      await secondDevice.dispose();
+      const archived = await request.delete(
+        `/api/admin/teams/13u-black/members/${encodeURIComponent(userId)}`,
+        {
+          headers: { Origin: origin, 'If-Match': String(createdRecord.revision) },
+        },
+      );
+      expect(archived.ok()).toBeTruthy();
+    }
   });
 });

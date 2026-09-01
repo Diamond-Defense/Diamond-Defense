@@ -130,7 +130,7 @@ export function buildReplacementSql(exportSql, passwordRecord, options = {}) {
     'PRAGMA defer_foreign_keys=TRUE;',
     ...CLEANUP_TABLES.map((table) => `DELETE FROM "${table}";`),
     ...imports,
-    `UPDATE users SET password_hash = ${sqlString(passwordRecord.hash)}, password_salt = ${sqlString(passwordRecord.salt)}, password_iterations = ${Number(passwordRecord.iterations)};`,
+    `UPDATE users SET password_hash = ${sqlString(passwordRecord.hash)}, password_salt = ${sqlString(passwordRecord.salt)}, password_iterations = ${Number(passwordRecord.iterations)}, must_change_password = 0, failed_login_attempts = 0, locked_until = NULL, password_changed_at = CURRENT_TIMESTAMP;`,
     `UPDATE teams SET coach_email = CASE WHEN trim(coach_email) = '' THEN '' ELSE id || '@example.invalid' END;`,
   ];
 

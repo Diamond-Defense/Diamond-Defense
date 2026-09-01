@@ -1,5 +1,8 @@
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
-import { createPasswordHash } from '$lib/server/security/passwords';
+import {
+  createPasswordHash,
+  validateAccountPassword,
+} from '$lib/server/security/passwords';
 import { writeAudit } from './audit';
 import {
   RecordNotFoundError,
@@ -87,13 +90,11 @@ function validateEmail(value: unknown): string {
 
 function validatePassword(value: unknown, required: boolean): string {
   const password = String(value || '');
-  if (required && password.length < 4) {
-    throw new RecordValidationError('A password of at least 4 characters is required.');
+  if (!password && !required) return '';
+  try { return validateAccountPassword(password); }
+  catch (error) {
+    throw new RecordValidationError(error instanceof Error ? error.message : String(error));
   }
-  if (password && password.length < 4) {
-    throw new RecordValidationError('Passwords must contain at least 4 characters.');
-  }
-  return password;
 }
 
 function mapTeam(team: TeamRow, members: MemberRow[]): TeamOption {
@@ -234,8 +235,9 @@ export class SqliteTeamRepository {
     await this.database.execute(
       `INSERT INTO users
         (id, username, display_name, role, password_hash, password_salt,
-         password_iterations, active, revision, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8)`,
+         password_iterations, active, revision, created_at, updated_at,
+         must_change_password, password_changed_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8, 1, ?8)`,
       [userId, `${teamId}:${userId}`, name, role, credentials.hash, credentials.salt, credentials.iterations, now],
     );
     await this.database.execute(
@@ -321,18 +323,34 @@ export class SqliteTeamRepository {
     return updated!;
   }
 
-  async resetPassword(userId: string, passwordValue: unknown, actorUserId: string, audit = true): Promise<void> {
+  async resetPassword(
+    userId: string,
+    passwordValue: unknown,
+    actorUserId: string,
+    audit = true,
+    temporary = true,
+  ): Promise<void> {
     const password = validatePassword(passwordValue, true);
     const existing = await this.database.one<{ id: string }>('SELECT id FROM users WHERE id = ?1', [userId]);
     if (!existing) throw new RecordNotFoundError('User not found.');
     const credentials = await createPasswordHash(password);
     await this.database.execute(
       `UPDATE users SET password_hash = ?2, password_salt = ?3,
-                        password_iterations = ?4, revision = revision + 1, updated_at = ?5
+                        password_iterations = ?4, must_change_password = ?5,
+                        failed_login_attempts = 0, locked_until = NULL,
+                        password_changed_at = ?6, revision = revision + 1,
+                        updated_at = ?6
         WHERE id = ?1`,
-      [userId, credentials.hash, credentials.salt, credentials.iterations, new Date().toISOString()],
+      [
+        userId,
+        credentials.hash,
+        credentials.salt,
+        credentials.iterations,
+        temporary ? 1 : 0,
+        new Date().toISOString(),
+      ],
     );
     await this.database.execute('DELETE FROM sessions WHERE user_id = ?1', [userId]);
-    if (audit) await writeAudit(this.database, actorUserId, 'password_reset', 'user', userId, null, { reset: true });
+    if (audit) await writeAudit(this.database, actorUserId, 'password_reset', 'user', userId, null, { reset: true, temporary });
   }
 }

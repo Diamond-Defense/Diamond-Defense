@@ -58,8 +58,20 @@ function reportDatabaseWriteError(context, error){
 
 function reportAuthenticationError(context, error){
   console.error(`[Authentication] ${context}:`, error);
-  return 'Login service is temporarily unavailable. Please try again.';
+  if(error?.status === 429) return error.message || 'Too many unsuccessful attempts. Try again later.';
+  if(error?.status === 401) return error.message || 'The selected account or password is incorrect.';
+  if(error?.status >= 500 && error?.status !== 503) return 'Login service is temporarily unavailable. Please try again.';
+  return error?.message || 'Login service is temporarily unavailable. Please try again.';
 }
+
+let DIQ_LAST_AUTH_ERROR = '';
+
+function rememberAuthenticationError(context, error){
+  DIQ_LAST_AUTH_ERROR = reportAuthenticationError(context, error);
+  return DIQ_LAST_AUTH_ERROR;
+}
+
+window._diqLastAuthenticationError = ()=>DIQ_LAST_AUTH_ERROR;
 
 async function authenticateStaff(role, password){
   try{
@@ -69,12 +81,13 @@ async function authenticateStaff(role, password){
     });
     DIQ_AUTH_USER = result && result.user ? result.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    DIQ_LAST_AUTH_ERROR = '';
     window._diqUpdateAuthNavigation?.();
+    if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>window._diqOpenAccountSecurity?.({ required:true }));
     return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === role);
   }catch(error){
-    if(error && error.status === 401) return false;
-    reportAuthenticationError('Staff login failed', error);
-    return null;
+    rememberAuthenticationError('Staff login failed', error);
+    return error?.status === 401 ? false : null;
   }
 }
 
@@ -125,12 +138,13 @@ async function authenticateCoach(teamId, coachId, password){
     });
     DIQ_AUTH_USER = result && result.user ? result.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    DIQ_LAST_AUTH_ERROR = '';
     updateCoachHeaderButton();
+    if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>window._diqOpenAccountSecurity?.({ required:true }));
     return !!(DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'coach');
   }catch(error){
-    if(error && error.status === 401) return false;
-    reportAuthenticationError('Coach login failed', error);
-    return null;
+    rememberAuthenticationError('Coach login failed', error);
+    return error?.status === 401 ? false : null;
   }
 }
 
@@ -1288,9 +1302,12 @@ function setRosterControlsEnabled(enabled){
     return `${teamSlug}-${nameSlug}-${numSafe}`;
   }
 
-  function genSimplePassword(){
-    // 4-digit numeric
-    return String(Math.floor(1000 + Math.random()*9000));
+  function genSimplePassword(length=12){
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
+    const size = Math.max(8, Number(length) || 12);
+    const values = new Uint32Array(size);
+    crypto.getRandomValues(values);
+    return Array.from(values, value=>chars[value % chars.length]).join('');
   }
 
   function randomId(len){
@@ -1597,6 +1614,17 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
   const authRoleTabs = Array.from(document.querySelectorAll('[data-auth-role]'));
   const authRoleViews = Array.from(document.querySelectorAll('[data-auth-view]'));
   const authPlayerView = document.getElementById('authPlayerView');
+  const accountSecurityOverlay = document.getElementById('accountSecurityOverlay');
+  const accountSecurityClose = document.getElementById('accountSecurityClose');
+  const accountSecurityIdentity = document.getElementById('accountSecurityIdentity');
+  const temporaryPasswordNotice = document.getElementById('temporaryPasswordNotice');
+  const accountPasswordForm = document.getElementById('accountPasswordForm');
+  const accountCurrentPassword = document.getElementById('accountCurrentPassword');
+  const accountNewPassword = document.getElementById('accountNewPassword');
+  const accountConfirmPassword = document.getElementById('accountConfirmPassword');
+  const accountChangePassword = document.getElementById('accountChangePassword');
+  const accountSecurityStatus = document.getElementById('accountSecurityStatus');
+  const accountLogoutAll = document.getElementById('accountLogoutAll');
 
   function setAuthRole(role){
     const safeRole = ['player','coach','admin'].includes(role) ? role : 'player';
@@ -1848,7 +1876,8 @@ function updatePlayerHeaderButton(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
     const btn = document.getElementById('playerBtn');
     const tools = document.getElementById('staffToolsBtn');
-    const staff = user?.role === 'coach' || user?.role === 'admin';
+    const account = document.getElementById('accountSecurityBtn');
+    const staff = !user?.mustChangePassword && (user?.role === 'coach' || user?.role === 'admin');
     if(btn){
       btn.textContent = authButtonLabel(user);
       btn.classList.remove('btn-orange','btn-yellow','btn-green');
@@ -1861,7 +1890,76 @@ function updatePlayerHeaderButton(){
       tools.setAttribute('aria-hidden', String(!staff));
       tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Admin Tools' : '';
     }
+    if(account){
+      account.classList.toggle('hidden', !user);
+      account.setAttribute('aria-hidden', String(!user));
+      account.classList.toggle('account-action-required', Boolean(user?.mustChangePassword));
+      account.textContent = user?.mustChangePassword ? 'Change password' : 'Account';
+    }
     window._diqApplyGameAccess?.();
+  }
+
+  function setAccountSecurityStatus(message='', state=''){
+    if(!accountSecurityStatus) return;
+    accountSecurityStatus.textContent = message;
+    accountSecurityStatus.className = `operation-status${state ? ` is-${state}` : ''}`;
+  }
+
+  function clearAccountPasswordFields(){
+    if(accountCurrentPassword) accountCurrentPassword.value = '';
+    if(accountNewPassword) accountNewPassword.value = '';
+    if(accountConfirmPassword) accountConfirmPassword.value = '';
+  }
+
+  function openAccountSecurity(options={}){
+    const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
+    if(!user || !accountSecurityOverlay) return;
+    const required = options.required === true || user.mustChangePassword === true;
+    if(accountSecurityIdentity){
+      const role = String(user.role || 'account');
+      accountSecurityIdentity.textContent = `${user.displayName || user.id} · ${role.charAt(0).toUpperCase()}${role.slice(1)}`;
+    }
+    temporaryPasswordNotice?.classList.toggle('hidden', !required);
+    document.body.classList.toggle('account-security-required', required);
+    document.querySelector('#coachCard:not(.hidden) #coachCardCloseBtn')?.click();
+    document.querySelector('#adminCard:not(.hidden) #adminCardCloseBtn')?.click();
+    document.getElementById('playbookClose')?.click();
+    clearAccountPasswordFields();
+    setAccountSecurityStatus();
+    accountSecurityOverlay.classList.remove('hidden');
+    accountSecurityOverlay.style.display = 'flex';
+    accountSecurityOverlay.setAttribute('aria-hidden', 'false');
+    document.getElementById('accountSecurityBtn')?.setAttribute('aria-expanded', 'true');
+    queueMicrotask(()=>accountCurrentPassword?.focus());
+  }
+
+  function closeAccountSecurity(force=false){
+    const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
+    if(!force && user?.mustChangePassword) return;
+    if(!accountSecurityOverlay) return;
+    accountSecurityOverlay.classList.add('hidden');
+    accountSecurityOverlay.style.display = 'none';
+    accountSecurityOverlay.setAttribute('aria-hidden', 'true');
+    document.getElementById('accountSecurityBtn')?.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('account-security-required');
+    clearAccountPasswordFields();
+    setAccountSecurityStatus();
+  }
+
+  async function clearAuthenticatedClientState(){
+    window._diqSituationEditorClosed?.('coach');
+    window._diqSetEditorMode?.(null);
+    window._diqSetAdminMode?.(false);
+    DIQ_AUTH_USER = null;
+    window.__DIQ_AUTH_USER__ = null;
+    PLAYER_META = { team:'', name:'', number:'' };
+    PLAYER_BASE_ID = 'anonymous';
+    RESULTS = emptyResults();
+    closePlayerModal();
+    closeAccountSecurity(true);
+    refreshPlayerLoginUI();
+    updateCoachHeaderButton();
+    updateAuthNavigation();
   }
 
   async function logoutCurrentAccount(){
@@ -1870,26 +1968,71 @@ function updatePlayerHeaderButton(){
     }
     try{ await diqApiRequest('auth/logout', { method:'POST' }); }
     catch(error){ reportDatabaseWriteError('Logout failed', error); return false; }
-    window._diqSituationEditorClosed?.('coach');
-    window._diqSetEditorMode?.(null);
-    window._diqSetAdminMode?.(false);
-    DIQ_AUTH_USER = null;
-    window.__DIQ_AUTH_USER__ = null;
-    PLAYER_META = { team:"", name:"", number:"" };
-    PLAYER_BASE_ID = 'anonymous';
-    RESULTS = emptyResults();
-    closePlayerModal();
-    refreshPlayerLoginUI();
-    updateCoachHeaderButton();
-    updateAuthNavigation();
+    await clearAuthenticatedClientState();
     return true;
   }
+
+  async function changeCurrentPassword(event){
+    event?.preventDefault?.();
+    const currentPassword = String(accountCurrentPassword?.value || '');
+    const newPassword = String(accountNewPassword?.value || '');
+    const confirmation = String(accountConfirmPassword?.value || '');
+    if(!currentPassword) return setAccountSecurityStatus('Enter your current password.', 'error');
+    if(newPassword.length < 8) return setAccountSecurityStatus('The new password must contain at least 8 characters.', 'error');
+    if(newPassword !== confirmation) return setAccountSecurityStatus('The new passwords do not match.', 'error');
+    if(accountChangePassword) accountChangePassword.disabled = true;
+    setAccountSecurityStatus('Changing password…', 'pending');
+    try{
+      const result = await diqApiRequest('auth/password', {
+        method:'PUT',
+        body:JSON.stringify({ currentPassword, newPassword })
+      });
+      DIQ_AUTH_USER = result?.user || DIQ_AUTH_USER;
+      window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+      temporaryPasswordNotice?.classList.add('hidden');
+      document.body.classList.remove('account-security-required');
+      clearAccountPasswordFields();
+      updateAuthNavigation();
+      setAccountSecurityStatus(result?.message || 'Password changed. Other signed-in devices were logged out.', 'success');
+    }catch(error){
+      const message = error?.status === 401
+        ? 'The current password is incorrect.'
+        : error?.message || 'The password could not be changed. Try again.';
+      setAccountSecurityStatus(message, 'error');
+    }finally{
+      if(accountChangePassword) accountChangePassword.disabled = false;
+    }
+  }
+
+  async function logoutEverywhere(){
+    if(accountLogoutAll) accountLogoutAll.disabled = true;
+    setAccountSecurityStatus('Signing out all sessions…', 'pending');
+    try{
+      await diqApiRequest('auth/logout-all', { method:'POST' });
+      await clearAuthenticatedClientState();
+    }catch(error){
+      setAccountSecurityStatus(error?.message || 'Sessions could not be signed out.', 'error');
+      if(accountLogoutAll) accountLogoutAll.disabled = false;
+    }
+  }
+
+  accountSecurityClose?.addEventListener('click', ()=>closeAccountSecurity());
+  accountSecurityOverlay?.addEventListener('click', event=>{
+    if(event.target === accountSecurityOverlay) closeAccountSecurity();
+  });
+  accountPasswordForm?.addEventListener('submit', changeCurrentPassword);
+  accountLogoutAll?.addEventListener('click', logoutEverywhere);
+  document.addEventListener('keydown', event=>{
+    if(event.key === 'Escape' && !accountSecurityOverlay?.classList.contains('hidden')) closeAccountSecurity();
+  });
 
   window._diqOpenAuthModal = openPlayerModal;
   window._diqCloseAuthModal = closePlayerModal;
   window._diqSetAuthRole = setAuthRole;
   window._diqUpdateAuthNavigation = updateAuthNavigation;
   window._diqLogoutCurrentAccount = logoutCurrentAccount;
+  window._diqOpenAccountSecurity = openAccountSecurity;
+  window._diqCloseAccountSecurity = closeAccountSecurity;
 
   if(playerBtn) playerBtn.addEventListener("click", ()=>{
     if(DIQ_AUTH_USER || window.__DIQ_AUTH_USER__){
@@ -1924,10 +2067,9 @@ function updatePlayerHeaderButton(){
       });
       DIQ_AUTH_USER = result && result.user ? result.user : null;
       window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+      DIQ_LAST_AUTH_ERROR = '';
     }catch(error){
-      const message = error && error.status === 401
-        ? 'Incorrect password.'
-        : reportAuthenticationError('Player login failed', error);
+      const message = rememberAuthenticationError('Player login failed', error);
       return alert(message);
     }
 
@@ -1939,6 +2081,7 @@ function updatePlayerHeaderButton(){
     refreshPlayerLoginUI();
     updatePlayerHeaderButton();
     closePlayerModal();
+    if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>openAccountSecurity({ required:true }));
   
   // Ensure dropdowns are populated once the sidebar is mounted
   try{ refreshTeamsUIAll(); }catch(_e){}
@@ -1992,6 +2135,7 @@ function updatePlayerHeaderButton(){
     }
     updateCoachHeaderButton();
     window._diqUpdateAuthNavigation?.();
+    if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>openAccountSecurity({ required:true }));
   }
 
 
@@ -3672,14 +3816,14 @@ wireSeqBuilderOnce();
     if (!adminPwInput) return;
     const valid = await authenticateStaff('admin', adminPwInput.value);
     if (valid === null){
-      adminPwMsg.textContent = 'Login service is temporarily unavailable. Please try again.';
+      adminPwMsg.textContent = window._diqLastAuthenticationError?.() || 'Login service is temporarily unavailable. Please try again.';
       return;
     }
     if (valid){
       closeAdminPwModal();
       window._diqUpdateAuthNavigation?.();
     } else {
-      adminPwMsg.textContent = 'Incorrect password.';
+      adminPwMsg.textContent = window._diqLastAuthenticationError?.() || 'The selected account or password is incorrect.';
     }
   }
 

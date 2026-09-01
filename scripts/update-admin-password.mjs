@@ -112,11 +112,11 @@ export function buildUpdateSql(
   const statements = [];
   if (createIfMissing) {
     statements.push(
-      `INSERT INTO users (id, username, display_name, role, password_hash, password_salt, password_iterations, active, created_at, updated_at) SELECT ${sqlString(ADMIN_ID)}, 'admin', 'Diamond Defense Admin', 'admin', ${sqlString(record.hash)}, ${sqlString(record.salt)}, ${Number(record.iterations)}, 1, ${sqlString(updatedAt)}, ${sqlString(updatedAt)} WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = ${sqlString(ADMIN_ID)});`,
+      `INSERT INTO users (id, username, display_name, role, password_hash, password_salt, password_iterations, active, must_change_password, failed_login_attempts, password_changed_at, created_at, updated_at) SELECT ${sqlString(ADMIN_ID)}, 'admin', 'Diamond Defense Admin', 'admin', ${sqlString(record.hash)}, ${sqlString(record.salt)}, ${Number(record.iterations)}, 1, 0, 0, ${sqlString(updatedAt)}, ${sqlString(updatedAt)}, ${sqlString(updatedAt)} WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = ${sqlString(ADMIN_ID)});`,
     );
   }
   statements.push(
-    `UPDATE users SET password_hash = ${sqlString(record.hash)}, password_salt = ${sqlString(record.salt)}, password_iterations = ${Number(record.iterations)}, updated_at = ${sqlString(updatedAt)} WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
+    `UPDATE users SET password_hash = ${sqlString(record.hash)}, password_salt = ${sqlString(record.salt)}, password_iterations = ${Number(record.iterations)}, must_change_password = 0, failed_login_attempts = 0, locked_until = NULL, password_changed_at = ${sqlString(updatedAt)}, updated_at = ${sqlString(updatedAt)} WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
     `DELETE FROM sessions WHERE user_id = ${sqlString(ADMIN_ID)};`,
   );
   return statements.join('\n');
@@ -314,14 +314,17 @@ async function updatePassword(options) {
   const verification = await runWrangler(
     options.database,
     options.location,
-    `SELECT password_hash, password_salt, password_iterations FROM users WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
+    `SELECT password_hash, password_salt, password_iterations, must_change_password, failed_login_attempts, locked_until FROM users WHERE id = ${sqlString(ADMIN_ID)} AND role = 'admin';`,
     options.environment,
   );
   const stored = firstResults(verification)[0];
   if (
     stored?.password_hash !== record.hash ||
     stored?.password_salt !== record.salt ||
-    Number(stored?.password_iterations) !== record.iterations
+    Number(stored?.password_iterations) !== record.iterations ||
+    Number(stored?.must_change_password) !== 0 ||
+    Number(stored?.failed_login_attempts) !== 0 ||
+    stored?.locked_until != null
   ) {
     throw new Error('The database did not retain the new password hash.');
   }

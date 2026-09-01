@@ -57,7 +57,7 @@ test.describe('record-level administration API', () => {
         name: 'Phase Player',
         number: '7',
         role: 'player',
-        password: '1234',
+        password: 'Temp-1234',
       },
     });
     expect(memberResponse.status()).toBe(201);
@@ -240,7 +240,15 @@ test.describe('record-level administration API', () => {
       role: 'coach',
       teamId,
       teamName: 'Coach Workflow Team',
+      mustChangePassword: true,
     }));
+    const permanentPassword = 'coach-permanent-4821';
+    const passwordChange = await coachRequest.put('/api/auth/password', {
+      headers: { Origin: origin },
+      data: { currentPassword: password, newPassword: permanentPassword },
+    });
+    expect(passwordChange.ok()).toBeTruthy();
+    expect((await passwordChange.json()).user.mustChangePassword).toBe(false);
 
     const template = (await (await coachRequest.get('/api/situations')).json())[0];
     const proposal = { ...template, key: situationKey, title: 'Coach Proposed Situation' };
@@ -301,7 +309,7 @@ test.describe('record-level administration API', () => {
     const coachUpdateRequest = await playwrightRequest.newContext({ baseURL });
     expect((await coachUpdateRequest.post('/api/auth/login', {
       headers: { Origin: origin },
-      data: { role: 'coach', teamId, coachId, password },
+      data: { role: 'coach', teamId, coachId, password: permanentPassword },
     })).ok()).toBeTruthy();
     const selectiveUpdate = {
       ...proposal,
@@ -362,7 +370,7 @@ test.describe('record-level administration API', () => {
     const invalidTeamId = `csv-invalid-${suffix}`;
     const csv = [
       'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
-      `member,upsert,${teamId},,,${playerId},player,Sam Rivera,27,7391`,
+      `member,upsert,${teamId},,,${playerId},player,Sam Rivera,27,Temp-7391`,
       `team,upsert,${teamId},CSV Import Team,csv@example.com,,,,,`,
     ].join('\n');
 
@@ -393,7 +401,7 @@ test.describe('record-level administration API', () => {
       expect.objectContaining({ row: 2, kind: 'member', userId: playerId, action: 'create' }),
       expect.objectContaining({ row: 3, kind: 'team', teamId, action: 'create' }),
     ]));
-    expect(JSON.stringify(preview)).not.toContain('7391');
+    expect(JSON.stringify(preview)).not.toContain('Temp-7391');
     expect((await request.get('/api/admin/teams?includeArchived=true').then((response) => response.json()))
       .teams.some((team) => team.id === teamId)).toBe(false);
 
@@ -412,7 +420,7 @@ test.describe('record-level administration API', () => {
     const playerRequest = await playwrightRequest.newContext({ baseURL });
     const playerLogin = await playerRequest.post('/api/auth/login', {
       headers: { Origin: origin },
-      data: { role: 'player', teamId, playerId, password: '7391' },
+      data: { role: 'player', teamId, playerId, password: 'Temp-7391' },
     });
     expect(playerLogin.ok()).toBeTruthy();
     await playerRequest.dispose();
@@ -434,7 +442,7 @@ test.describe('record-level administration API', () => {
     const preservedPasswordRequest = await playwrightRequest.newContext({ baseURL });
     expect((await preservedPasswordRequest.post('/api/auth/login', {
       headers: { Origin: origin },
-      data: { role: 'player', teamId, playerId, password: '7391' },
+      data: { role: 'player', teamId, playerId, password: 'Temp-7391' },
     })).ok()).toBeTruthy();
     await preservedPasswordRequest.dispose();
 

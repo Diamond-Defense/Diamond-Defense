@@ -2,6 +2,9 @@ import type { Cookies } from '@sveltejs/kit';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 
 export const SESSION_COOKIE = 'diamond_defense_session';
+export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
+export const SESSION_IDLE_TIMEOUT_SECONDS = 12 * 60 * 60;
+const SESSION_TOUCH_INTERVAL_SECONDS = 5 * 60;
 
 export interface AuthenticatedUser {
   id: string;
@@ -11,6 +14,7 @@ export interface AuthenticatedUser {
   teamId: string | null;
   teamName: string | null;
   jerseyNumber: string | null;
+  mustChangePassword: boolean;
 }
 
 interface SessionRow {
@@ -21,6 +25,8 @@ interface SessionRow {
   team_id: string | null;
   team_name: string | null;
   jersey_number: string | null;
+  must_change_password: number;
+  last_seen_at: string;
 }
 
 function bytesToBase64Url(bytes: Uint8Array): string {
@@ -45,12 +51,14 @@ export async function createSession(
 ): Promise<void> {
   const token = bytesToBase64Url(crypto.getRandomValues(new Uint8Array(32)));
   const now = new Date();
-  const expires = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const expires = new Date(now.getTime() + SESSION_MAX_AGE_SECONDS * 1000);
   await database.execute('DELETE FROM sessions WHERE expires_at <= ?1', [
     now.toISOString(),
   ]);
   await database.execute(
-    'INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?1, ?2, ?3, ?4)',
+    `INSERT INTO sessions
+      (token_hash, user_id, expires_at, created_at, last_seen_at)
+     VALUES (?1, ?2, ?3, ?4, ?4)`,
     [await tokenHash(token), userId, expires.toISOString(), now.toISOString()],
   );
   cookies.set(SESSION_COOKIE, token, {
@@ -58,8 +66,17 @@ export async function createSession(
     httpOnly: true,
     secure,
     sameSite: 'lax',
-    maxAge: 14 * 24 * 60 * 60,
+    maxAge: SESSION_MAX_AGE_SECONDS,
   });
+}
+
+export async function destroyAllSessions(
+  database: SqliteDatabaseAdapter,
+  cookies: Cookies,
+  userId: string,
+): Promise<void> {
+  await database.execute('DELETE FROM sessions WHERE user_id = ?1', [userId]);
+  cookies.delete(SESSION_COOKIE, { path: '/' });
 }
 
 export async function destroySession(
@@ -81,19 +98,37 @@ export async function currentUser(
 ): Promise<AuthenticatedUser | null> {
   const token = cookies.get(SESSION_COOKIE);
   if (!token) return null;
+  const now = new Date();
+  const idleCutoff = new Date(
+    now.getTime() - SESSION_IDLE_TIMEOUT_SECONDS * 1000,
+  ).toISOString();
+  const hash = await tokenHash(token);
   const row = await database.one<SessionRow>(
     `SELECT u.id, u.username, u.display_name, u.role, tm.team_id,
-            t.name AS team_name, tm.jersey_number
+            t.name AS team_name, tm.jersey_number, u.must_change_password,
+            s.last_seen_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
        LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
-      WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND u.active = 1
+      WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND s.last_seen_at > ?3
+        AND u.active = 1
       ORDER BY tm.team_id
       LIMIT 1`,
-    [await tokenHash(token), new Date().toISOString()],
+    [hash, now.toISOString(), idleCutoff],
   );
-  if (!row) return null;
+  if (!row) {
+    await database.execute('DELETE FROM sessions WHERE token_hash = ?1', [hash]);
+    cookies.delete(SESSION_COOKIE, { path: '/' });
+    return null;
+  }
+  const lastSeen = new Date(row.last_seen_at).getTime();
+  if (!Number.isFinite(lastSeen) || now.getTime() - lastSeen >= SESSION_TOUCH_INTERVAL_SECONDS * 1000) {
+    await database.execute('UPDATE sessions SET last_seen_at = ?2 WHERE token_hash = ?1', [
+      hash,
+      now.toISOString(),
+    ]);
+  }
   return {
     id: row.id,
     username: row.username,
@@ -102,5 +137,6 @@ export async function currentUser(
     teamId: row.team_id,
     teamName: row.team_name,
     jerseyNumber: row.jersey_number,
+    mustChangePassword: Boolean(row.must_change_password),
   };
 }

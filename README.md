@@ -47,6 +47,7 @@ Detailed documentation:
 - [Database environments and migrations](docs/database-environments.md)
 - [Production data refresh](docs/database-refresh.md)
 - [Database administration API](docs/database-administration.md)
+- [Account security and sessions](docs/account-security.md)
 - [Complete result recording](docs/result-recording.md)
 - [Cloudflare deployment](docs/deployment.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
@@ -159,6 +160,8 @@ only as explicit seed/import inputs; the running application does not request
 them. Browser storage is limited to non-authoritative UI preferences. Team,
 member, situation, password, archive, restore, revision, and audit operations
 now use the [record-level administration API](docs/database-administration.md).
+Password changes, temporary administrator resets, login lockouts, and session
+expiration follow the [account security workflow](docs/account-security.md).
 Bulk team/account changes use the validated, preview-first
 [team CSV import workflow](docs/team-csv-import.md).
 Coaches use individual, team-linked accounts and submit situation drafts for

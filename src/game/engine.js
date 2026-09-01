@@ -115,7 +115,8 @@ const gameLoginGateBtn = document.getElementById('gameLoginGateBtn');
 const coachBtn=document.getElementById('coachBtn');
 
 function hasGameAccess(){
-  return Boolean(window.__DIQ_AUTH_USER__?.id);
+  const user = window.__DIQ_AUTH_USER__;
+  return Boolean(user?.id && !user.mustChangePassword);
 }
 
 function applyGameAccess(){
@@ -189,7 +190,11 @@ const ensureHeaderGrouping = () => {
     toolsDrawer.setAttribute('aria-label', 'Coach and admin tools');
     document.querySelector('.app')?.appendChild(toolsDrawer);
   }
-  [document.getElementById('coachCard'), document.getElementById('adminCard')]
+  [
+    document.getElementById('coachCard'),
+    document.getElementById('adminCard'),
+    document.getElementById('accountSecurityOverlay'),
+  ]
     .forEach(card => { if (card && card.parentElement !== toolsDrawer) toolsDrawer.appendChild(card); });
 
   if (!brand.querySelector('.brand-mark')) {
@@ -252,6 +257,23 @@ const ensureHeaderGrouping = () => {
   const playerButton = document.getElementById('playerBtn');
   if (playerButton) accountActions.appendChild(playerButton);
 
+  let accountSecurityButton = document.getElementById('accountSecurityBtn');
+  if (!accountSecurityButton) {
+    accountSecurityButton = document.createElement('button');
+    accountSecurityButton.id = 'accountSecurityBtn';
+    accountSecurityButton.className = 'btn-slate hidden';
+    accountSecurityButton.type = 'button';
+    accountSecurityButton.textContent = 'Account';
+    accountSecurityButton.title = 'Change password and manage sessions';
+    accountSecurityButton.setAttribute('aria-controls', 'accountSecurityOverlay');
+    accountSecurityButton.setAttribute('aria-expanded', 'false');
+    accountActions.appendChild(accountSecurityButton);
+  }
+  if (accountSecurityButton.dataset.wired !== '1') {
+    accountSecurityButton.dataset.wired = '1';
+    accountSecurityButton.addEventListener('click', () => window._diqOpenAccountSecurity?.());
+  }
+
   let playbookToggle = document.getElementById('playbookToggle');
   if (!playbookToggle) {
     playbookToggle = document.createElement('button');
@@ -287,6 +309,7 @@ const ensureHeaderGrouping = () => {
   if (staffToolsButton.dataset.wired !== '1') {
     staffToolsButton.dataset.wired = '1';
     staffToolsButton.addEventListener('click', () => {
+      window._diqCloseAccountSecurity?.();
       const role = window.__DIQ_AUTH_USER__?.role;
       if (role === 'coach') document.getElementById('coachBtn')?.click();
       else if (role === 'admin') document.getElementById('adminBtn')?.click();
@@ -302,6 +325,7 @@ const ensureHeaderGrouping = () => {
     playbookToggle.addEventListener('click', () => {
       const open = !playbookRail?.classList.contains('is-open');
       if (open) {
+        window._diqCloseAccountSecurity?.();
         document.querySelector('#coachCard:not(.hidden) #coachCardCloseBtn')?.click();
         document.querySelector('#adminCard:not(.hidden) #adminCardCloseBtn')?.click();
       }
@@ -1381,14 +1405,14 @@ async function tryUnlock(){
     ? await window._diqAuthenticateCoach(teamId, coachId, pwInput.value)
     : false;
   if(valid === null){
-    pwMsg.textContent='Login service is temporarily unavailable. Please try again.';
+    pwMsg.textContent=window._diqLastAuthenticationError?.() || 'Login service is temporarily unavailable. Please try again.';
     return;
   }
   if(valid){
     closePwModal();
     window._diqUpdateAuthNavigation?.();
   }else{
-    pwMsg.textContent='Incorrect password.';
+    pwMsg.textContent=window._diqLastAuthenticationError?.() || 'The selected account or password is incorrect.';
   }
 }
 
