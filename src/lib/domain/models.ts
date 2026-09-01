@@ -12,6 +12,7 @@ export const POSITION_IDS = [
 
 export type PositionId = (typeof POSITION_IDS)[number];
 export type HitType = 'line' | 'popup' | 'grounder';
+export type SituationDifficulty = 'beginner' | 'intermediate' | 'advanced';
 
 export interface Point {
   x: number;
@@ -33,6 +34,8 @@ export interface Situation {
   key: string;
   title: string;
   desc: string;
+  category: string;
+  difficulty: SituationDifficulty;
   outs: 0 | 1 | 2;
   runnersOn: RunnersOn;
   starts: Record<PositionId, Point>;

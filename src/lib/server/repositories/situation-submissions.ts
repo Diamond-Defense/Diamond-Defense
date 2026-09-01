@@ -55,6 +55,8 @@ export interface SituationSubmissionRecord {
 function validateSubmissionSituation(input: Situation): Situation {
   const key = String(input?.key || '').trim();
   const title = String(input?.title || '').trim();
+  const category = String(input?.category || '').trim();
+  const difficulty = String(input?.difficulty || '').trim().toLowerCase();
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(key)) {
     throw new RecordValidationError(
       'Situation key must use 2–80 letters, numbers, hyphens, or underscores.',
@@ -65,7 +67,17 @@ function validateSubmissionSituation(input: Situation): Situation {
       'Situation title is required and must be 120 characters or fewer.',
     );
   }
-  return { ...input, key, title };
+  if (!category || category.length > 60) {
+    throw new RecordValidationError(
+      'Situation category is required and must be 60 characters or fewer.',
+    );
+  }
+  if (!['beginner', 'intermediate', 'advanced'].includes(difficulty)) {
+    throw new RecordValidationError(
+      'Situation difficulty must be beginner, intermediate, or advanced.',
+    );
+  }
+  return { ...input, key, title, category, difficulty } as Situation;
 }
 
 function mapRow(row: SubmissionRow): SituationSubmissionRecord {
@@ -260,7 +272,7 @@ export class SqliteSituationSubmissionRepository {
     }
 
     const selectableFields = [
-      'title', 'desc', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
+      'title', 'desc', 'category', 'difficulty', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
       'hitType', 'batterAdvance', 'playSeq', 'seqNote',
     ];
     const acceptedFields = Array.from(new Set(acceptedFieldsInput))

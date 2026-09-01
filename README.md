@@ -48,6 +48,7 @@ Detailed documentation:
 - [Production data refresh](docs/database-refresh.md)
 - [Database administration API](docs/database-administration.md)
 - [Account security and sessions](docs/account-security.md)
+- [Role-aware navigation](docs/navigation.md)
 - [Complete result recording](docs/result-recording.md)
 - [Cloudflare deployment](docs/deployment.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
@@ -166,6 +167,8 @@ Bulk team/account changes use the validated, preview-first
 [team CSV import workflow](docs/team-csv-import.md).
 Coaches use individual, team-linked accounts and submit situation drafts for
 administrator approval; only administrators publish the shared playbook.
+Situation categories, difficulty levels, and player browsing follow the
+[Playbook metadata and browsing workflow](docs/playbook.md).
 Coach reporting supports filtered team/player history, database summaries, and
 authenticated CSV downloads as described in the
 [coach reporting guide](docs/coach-reporting.md). See the

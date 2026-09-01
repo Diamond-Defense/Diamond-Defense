@@ -74,8 +74,19 @@ const wrap=document.getElementById('wrap');
 const targetsLayer=document.getElementById('targetsLayer');
 const ballLayer=document.getElementById('ballLayer');
 
-const sitSelect=document.getElementById('sitSelect');
 const randomSitBtn = document.getElementById('randomSitBtn');
+const playbookBrowserToggle = document.getElementById('playbookBrowserToggle');
+const playbookBrowserOverlay = document.getElementById('playbookBrowserOverlay');
+const playbookBrowserClose = document.getElementById('playbookBrowserClose');
+const playbookSearch = document.getElementById('playbookSearch');
+const playbookCategory = document.getElementById('playbookCategory');
+const playbookDifficulty = document.getElementById('playbookDifficulty');
+const playbookRunners = document.getElementById('playbookRunners');
+const playbookClearFilters = document.getElementById('playbookClearFilters');
+const playbookRandomFiltered = document.getElementById('playbookRandomFiltered');
+const playbookBrowserList = document.getElementById('playbookBrowserList');
+const playbookBrowserEmpty = document.getElementById('playbookBrowserEmpty');
+const playbookResultCount = document.getElementById('playbookResultCount');
 const startBtn=document.getElementById('startBtn');
 const resetBtn=document.getElementById('resetBtn');
 const checkBtn=document.getElementById('checkBtn');
@@ -126,8 +137,6 @@ function applyGameAccess(){
   wrap?.setAttribute('aria-disabled', String(!allowed));
   gameLoginGate?.classList.toggle('hidden', allowed);
   if(randomSitBtn) randomSitBtn.disabled = !allowed;
-  if(sitSelect) sitSelect.disabled = !allowed;
-
   if(!allowed){
     if(gameActive || _roundHasStarted) resetPlayers();
     if(startBtn) startBtn.disabled = true;
@@ -174,6 +183,7 @@ const ensureHeaderGrouping = () => {
 
   const primary = ensureGroup('header-primary', shell);
   const brand = ensureGroup('brand-area', primary);
+  const utilityActions = ensureGroup('utility-actions', primary);
   const accountActions = ensureGroup('account-actions', primary);
   const toolbar = ensureGroup('game-toolbar', shell);
   const situationControls = ensureGroup('situation-controls', toolbar);
@@ -235,8 +245,8 @@ const ensureHeaderGrouping = () => {
   }
 
   [
+    document.getElementById('playbookBrowserToggle'),
     document.getElementById('randomSitBtn'),
-    document.getElementById('sitSelect'),
     document.getElementById('descHud'),
   ].forEach(el => { if (el) situationControls.appendChild(el); });
 
@@ -255,8 +265,45 @@ const ensureHeaderGrouping = () => {
   ].forEach(el => { if (el) statusStrip.appendChild(el); });
 
   const playerButton = document.getElementById('playerBtn');
-  if (playerButton) accountActions.appendChild(playerButton);
+  if (playerButton) {
+    playerButton.classList.add('account-menu-trigger');
+    playerButton.setAttribute('aria-haspopup', 'dialog');
+    playerButton.setAttribute('aria-controls', 'playerModalOverlay');
+    playerButton.setAttribute('aria-expanded', 'false');
+    if (!playerButton.querySelector('.account-menu-trigger-label')) {
+      const label = document.createElement('span');
+      label.id = 'accountMenuTriggerLabel';
+      label.className = 'account-menu-trigger-label';
+      label.textContent = playerButton.textContent || 'Login';
+      const chevron = document.createElement('span');
+      chevron.className = 'account-menu-chevron';
+      chevron.setAttribute('aria-hidden', 'true');
+      chevron.textContent = '⌄';
+      playerButton.replaceChildren(label, chevron);
+    }
+    accountActions.appendChild(playerButton);
+  }
 
+  let accountMenu = document.getElementById('accountMenu');
+  if (!accountMenu) {
+    accountMenu = document.createElement('div');
+    accountMenu.id = 'accountMenu';
+    accountMenu.className = 'account-menu hidden';
+    accountMenu.setAttribute('role', 'menu');
+    accountMenu.setAttribute('aria-label', 'Account options');
+    accountMenu.setAttribute('aria-hidden', 'true');
+
+    const identity = document.createElement('div');
+    identity.className = 'account-menu-identity';
+    identity.setAttribute('role', 'presentation');
+    const name = document.createElement('strong');
+    name.id = 'accountMenuName';
+    const meta = document.createElement('span');
+    meta.id = 'accountMenuMeta';
+    identity.append(name, meta);
+    accountMenu.appendChild(identity);
+    accountActions.appendChild(accountMenu);
+  }
   let accountSecurityButton = document.getElementById('accountSecurityBtn');
   if (!accountSecurityButton) {
     accountSecurityButton = document.createElement('button');
@@ -267,11 +314,34 @@ const ensureHeaderGrouping = () => {
     accountSecurityButton.title = 'Change password and manage sessions';
     accountSecurityButton.setAttribute('aria-controls', 'accountSecurityOverlay');
     accountSecurityButton.setAttribute('aria-expanded', 'false');
-    accountActions.appendChild(accountSecurityButton);
   }
+  accountSecurityButton.className = 'account-menu-action hidden';
+  accountSecurityButton.setAttribute('role', 'menuitem');
+  accountMenu.appendChild(accountSecurityButton);
   if (accountSecurityButton.dataset.wired !== '1') {
     accountSecurityButton.dataset.wired = '1';
-    accountSecurityButton.addEventListener('click', () => window._diqOpenAccountSecurity?.());
+    accountSecurityButton.addEventListener('click', () => {
+      window._diqCloseAccountMenu?.();
+      window._diqOpenAccountSecurity?.();
+    });
+  }
+
+  let accountLogoutButton = document.getElementById('accountLogoutBtn');
+  if (!accountLogoutButton) {
+    accountLogoutButton = document.createElement('button');
+    accountLogoutButton.id = 'accountLogoutBtn';
+    accountLogoutButton.className = 'account-menu-action is-danger';
+    accountLogoutButton.type = 'button';
+    accountLogoutButton.textContent = 'Log out';
+    accountLogoutButton.setAttribute('role', 'menuitem');
+    accountMenu.appendChild(accountLogoutButton);
+  }
+  if (accountLogoutButton.dataset.wired !== '1') {
+    accountLogoutButton.dataset.wired = '1';
+    accountLogoutButton.addEventListener('click', () => {
+      window._diqCloseAccountMenu?.();
+      void window._diqLogoutCurrentAccount?.();
+    });
   }
 
   let playbookToggle = document.getElementById('playbookToggle');
@@ -284,7 +354,7 @@ const ensureHeaderGrouping = () => {
     playbookToggle.setAttribute('aria-label', 'Guide');
     playbookToggle.setAttribute('aria-controls', 'playbookRail');
     playbookToggle.setAttribute('aria-expanded', 'false');
-    accountActions.appendChild(playbookToggle);
+    utilityActions.appendChild(playbookToggle);
   }
 
   let staffToolsButton = document.getElementById('staffToolsBtn');
@@ -293,28 +363,42 @@ const ensureHeaderGrouping = () => {
     staffToolsButton.id = 'staffToolsBtn';
     staffToolsButton.className = 'btn-slate hidden';
     staffToolsButton.type = 'button';
-    staffToolsButton.textContent = 'Tools';
     staffToolsButton.setAttribute('aria-controls', 'toolsDrawer');
-    accountActions.appendChild(staffToolsButton);
+    utilityActions.appendChild(staffToolsButton);
+  }
+  if (!staffToolsButton.querySelector('.staff-tools-label-full')) {
+    const fullLabel = document.createElement('span');
+    fullLabel.className = 'staff-tools-label-full';
+    fullLabel.textContent = 'Workspace';
+    const shortLabel = document.createElement('span');
+    shortLabel.className = 'staff-tools-label-short';
+    shortLabel.textContent = 'Tools';
+    staffToolsButton.replaceChildren(fullLabel, shortLabel);
   }
   let legacyRoleActions = accountActions.querySelector('.legacy-role-actions');
   if (!legacyRoleActions) {
     legacyRoleActions = document.createElement('div');
     legacyRoleActions.className = 'legacy-role-actions hidden';
     legacyRoleActions.setAttribute('aria-hidden', 'true');
-    accountActions.appendChild(legacyRoleActions);
+    utilityActions.appendChild(legacyRoleActions);
   }
   [document.getElementById('coachBtn'), document.getElementById('adminBtn')]
     .forEach(el => { if (el) legacyRoleActions.appendChild(el); });
   if (staffToolsButton.dataset.wired !== '1') {
     staffToolsButton.dataset.wired = '1';
     staffToolsButton.addEventListener('click', () => {
+      window._diqCloseAccountMenu?.();
       window._diqCloseAccountSecurity?.();
+      closePlaybookBrowser();
       const role = window.__DIQ_AUTH_USER__?.role;
       if (role === 'coach') document.getElementById('coachBtn')?.click();
       else if (role === 'admin') document.getElementById('adminBtn')?.click();
     });
   }
+  if (playbookToggle) utilityActions.appendChild(playbookToggle);
+  if (staffToolsButton) utilityActions.appendChild(staffToolsButton);
+  if (playerButton) accountActions.appendChild(playerButton);
+  if (accountMenu) accountActions.appendChild(accountMenu);
   window._diqUpdateAuthNavigation?.();
 
   const closePlaybook = () => {
@@ -325,7 +409,9 @@ const ensureHeaderGrouping = () => {
     playbookToggle.addEventListener('click', () => {
       const open = !playbookRail?.classList.contains('is-open');
       if (open) {
+        window._diqCloseAccountMenu?.();
         window._diqCloseAccountSecurity?.();
+        closePlaybookBrowser();
         document.querySelector('#coachCard:not(.hidden) #coachCardCloseBtn')?.click();
         document.querySelector('#adminCard:not(.hidden) #adminCardCloseBtn')?.click();
       }
@@ -408,6 +494,8 @@ const coachLoginNameSelect=document.getElementById('coachLoginNameSelect');
 
 const newTitleInput   = document.getElementById('newTitleInput');
 const newDescInput    = document.getElementById('newDescInput');
+const situationCategoryInput = document.getElementById('situationCategoryInput');
+const situationDifficultySelect = document.getElementById('situationDifficultySelect');
 const newSituationBtn  = document.getElementById('newSituationBtn');
 const saveSituationBtn = document.getElementById('saveSituationBtn');
 const deleteSituationBtn = document.getElementById('deleteSituationBtn');
@@ -1440,6 +1528,21 @@ function normalizeSituation(sRaw, i){
 
   // runners
   safe.runnersOn = normalizeRunnersOn(safe.runnersOn);
+  const runnerCount = Object.values(safe.runnersOn).filter(Boolean).length;
+  const derivedCategory = /\bsingle\b/i.test(`${safe.desc} ${safe.title}`)
+    ? 'Singles'
+    : /\bhit\b/i.test(`${safe.desc} ${safe.title}`)
+      ? 'Extra-base hits'
+      : 'General';
+  safe.category = String(safe.category || derivedCategory).trim() || 'General';
+  const derivedDifficulty = runnerCount >= 2 || (runnerCount >= 1 && safe.batterAdvance >= 2)
+    ? 'advanced'
+    : runnerCount >= 1 || safe.batterAdvance >= 2
+      ? 'intermediate'
+      : 'beginner';
+  safe.difficulty = ['beginner','intermediate','advanced'].includes(String(safe.difficulty).toLowerCase())
+    ? String(safe.difficulty).toLowerCase()
+    : derivedDifficulty;
 
   // Phase 2: sequence + note
   const rawSeq = Array.isArray(safe.playSeq) ? safe.playSeq : String(safe.playSeq || '')
@@ -1583,7 +1686,7 @@ function normalizeTargets(obj){
 function normalizeHit(obj){ if (!obj || typeof obj !== 'object') return {}; const p=normPoint(obj); return p ? {x:p.x,y:p.y} : {}; }
 function mapHitType(v){ const t=String(v||'').toLowerCase(); return (t==='line'||t==='popup'||t==='grounder')?t:'line'; }
 
-async function loadSituationsFromJson(){
+async function loadSituationsFromDatabase(){
   const arr = await diqApiRequest('situations', { cache:'no-store' });
   if(!Array.isArray(arr)) throw new Error('Situation API did not return an array.');
   if(arr.length === 0) throw new Error('The database contains no situations. Run the database seed command.');
@@ -1620,80 +1723,34 @@ function restoreSituationFromOrig(key){
 }
 
 
-// Merge situations from an imported JSON array. Existing keys are deep-merged (import wins).
-// Also updates startsMap/hitsMap so imported starts/hit are reflected immediately.
-function _diqDeepMerge(dst, src){
-  if(!dst || typeof dst!=='object' || Array.isArray(dst)) return deepClone(src);
-  if(!src || typeof src!=='object' || Array.isArray(src)) return deepClone(src);
-  const out = { ...dst };
-  Object.keys(src).forEach(k=>{
-    const sv = src[k];
-    const dv = dst[k];
-    if(sv && typeof sv==='object' && !Array.isArray(sv) && dv && typeof dv==='object' && !Array.isArray(dv)){
-      out[k] = _diqDeepMerge(dv, sv);
-    }else{
-      out[k] = deepClone(sv);
-    }
-  });
-  return out;
-}
-
-function mergeSituationsFromArray(rawArr){
-  if(!Array.isArray(rawArr)) throw new Error('Situations JSON must be an array.');
-  let added = 0, updated = 0;
-
-  rawArr.forEach((raw,i)=>{
-    const incoming = normalizeSituation(raw, i);
-    if(!incoming || !incoming.key) return;
-
-    const idx = (SITUATIONS||[]).findIndex(s=>s && s.key===incoming.key);
-    if(idx >= 0){
-      const merged = _diqDeepMerge(SITUATIONS[idx], incoming);
-      SITUATIONS[idx] = normalizeSituation(merged, idx);
-      // Keep currentSituation pointing at the live object
-      if(currentSituation && currentSituation.key === incoming.key){
-        currentSituation = SITUATIONS[idx];
-      }
-      updated++;
-    }else{
-      SITUATIONS.push(incoming);
-      added++;
-    }
-
-    // Imported starts/hit should apply immediately (local starts/hit override otherwise)
-    if(incoming.starts){
-      startsMap[incoming.key] = Fcopy(incoming.starts);
-    }else if(!startsMap[incoming.key]){
-      startsMap[incoming.key] = Fcopy(DEFAULT_STARTS);
-    }
-    if(incoming.hit && !isNaN(incoming.hit.x) && !isNaN(incoming.hit.y)){
-      setHitSaved(incoming.key, incoming.hit);
-    }
-  });
-
-  // Persist local overrides so reloading keeps the merged set consistent
-  try{ saveStarts(); }catch(_e){}
-  try{ saveHits(); }catch(_e){}
-
-  return { added, updated };
-}
-
-
 /* ===== [A8.1] Description HUD helpers (mobile-friendly) ===== */
+function situationDisplayCode(key){
+  const raw = String(key || '').replace(/^BD-/i, '');
+  if (!raw) return 'Situation';
+  const [number, ...suffix] = raw.split('-');
+  const main = /^\d+$/.test(number) ? number.padStart(2, '0') : number;
+  return `S${main}${suffix.length ? `.${suffix.join('.')}` : ''}`;
+}
+
+function situationDisplayLabel(situation){
+  if (!situation) return '';
+  const description = String(situation.desc || situation.title || situation.key || '').trim();
+  return `${situationDisplayCode(situation.key)} · ${description}`;
+}
+
 function updateDescriptionHudText(){
   const el = document.getElementById('descHud');
   if (!el || !currentSituation) return;
-  const txt = currentSituation.desc || '';
+  const txt = situationDisplayLabel(currentSituation);
   el.textContent = txt;
-  el.title = txt || '';
+  el.title = txt ? txt.replace(/^S/, 'Situation ').replace(' · ', ' — ') : '';
 }
 
 // @diq:end [A8]
 /// @diq:begin [A9] Situation lifecycle
 function updateCurrentOptionLabel(){
-  if (!sitSelect || !currentSituation) return;
-  const opt = sitSelect.querySelector(`option[value="${currentSituation.key}"]`);
-  if (opt) opt.textContent = currentSituation.title || currentSituation.key;
+  if (!currentSituation) return;
+  if (playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')) renderPlaybookBrowser();
 }
 
 function syncSituationInputsFromCurrent(){
@@ -1702,9 +1759,11 @@ function syncSituationInputsFromCurrent(){
   withInputMute(() => {
     if (newTitleInput) newTitleInput.value = currentSituation.title || currentSituation.key || '';
     if (newDescInput)  newDescInput.value  = currentSituation.desc  || '';
+    if (situationCategoryInput) situationCategoryInput.value = currentSituation.category || '';
+    if (situationDifficultySelect) situationDifficultySelect.value = currentSituation.difficulty || 'intermediate';
   });
 
-  if (descHud)     descHud.textContent     = currentSituation.desc  || '';
+  updateDescriptionHudText();
 
   const o = clampInt((currentSituation.outs ?? 0), 0, 2);
   setOuts(o, { quiet: true });
@@ -1766,6 +1825,8 @@ function makeBlankSituation(){
     key,
     title,
     desc,
+    category: 'Singles',
+    difficulty: 'beginner',
     starts: Fcopy(DEFAULT_STARTS),
     targets: (() => {
       const t = {};
@@ -1788,15 +1849,16 @@ function addNewSituation(){
   startsMap[s.key] = Fcopy(s.starts);
   saveStarts();
 
-  // Rebuild the dropdown (includes the new option) and switch to it immediately
+  // Refresh situation browsing and switch to the new situation immediately.
   populateSituations(s.key);
   setSituation(s.key);                 // currentSituation now points to the newly created situation
-  if (sitSelect) sitSelect.value = s.key;
 
   // Seed inputs without triggering 'input' listeners
   withInputMute(() => {
     if (newTitleInput) newTitleInput.value = s.title || '';
     if (newDescInput)  newDescInput.value  = s.desc  || '';
+    if (situationCategoryInput) situationCategoryInput.value = s.category;
+    if (situationDifficultySelect) situationDifficultySelect.value = s.difficulty;
   });
 
   // Put caret in Title for convenience
@@ -1877,32 +1939,116 @@ function resetStartsToDefaults(){
 }
 function pickRandomSituation(){
   if (!Array.isArray(SITUATIONS) || SITUATIONS.length === 0) return;
-  const cur = sitSelect && sitSelect.value || (currentSituation && currentSituation.key);
+  const cur = currentSituation && currentSituation.key;
   let keys = SITUATIONS.map(s=>s.key);
   if (cur && keys.length > 1) keys = keys.filter(k=>k !== cur);
   const key = keys[Math.floor(Math.random() * keys.length)];
-  if (sitSelect) sitSelect.value = key;
   setSituation(key);
 }
 
-function populateSituations(selectedKey){
-  const prev = sitSelect ? sitSelect.value : '';
-  if (sitSelect) sitSelect.innerHTML = '';
+function titleCase(value){
+  const text = String(value || '');
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
+}
 
-  (SITUATIONS||[]).forEach(s=>{
-    const o = document.createElement('option');
-    o.value = s.key;
-    o.textContent = s.title || s.key;
-    sitSelect.appendChild(o);
+function playbookRunnerLabel(situation){
+  const runners = runnersStateToArray(normalizeRunnersOn(situation?.runnersOn));
+  return runners.length ? runners.join(', ') : 'Bases empty';
+}
+
+function filteredPlaybookSituations(){
+  const query = String(playbookSearch?.value || '').trim().toLowerCase();
+  const category = String(playbookCategory?.value || '');
+  const difficulty = String(playbookDifficulty?.value || '');
+  const runners = String(playbookRunners?.value || '');
+  return (SITUATIONS || []).filter((situation) => {
+    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${situation.key}`.toLowerCase();
+    const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
+    return (!query || haystack.includes(query))
+      && (!category || situation.category === category)
+      && (!difficulty || situation.difficulty === difficulty)
+      && (!runners || (runners === 'on' ? hasRunners : !hasRunners));
   });
+}
 
-  const keyExists = k => (SITUATIONS||[]).some(s => s.key === k);
-  const want =
-    (selectedKey && keyExists(selectedKey)) ? selectedKey :
-    (keyExists(prev) ? prev :
-     (SITUATIONS[0] && SITUATIONS[0].key));
+function choosePlaybookSituation(key){
+  if (!key) return;
+  setSituation(key);
+  closePlaybookBrowser();
+}
 
-  if (want && sitSelect) sitSelect.value = want;
+function renderPlaybookBrowser(){
+  if (!playbookBrowserList) return;
+  const categories = [...new Set((SITUATIONS || []).map(s => s.category).filter(Boolean))].sort();
+  if (playbookCategory) {
+    const selected = playbookCategory.value;
+    playbookCategory.replaceChildren(new Option('All categories', ''));
+    categories.forEach(category => playbookCategory.appendChild(new Option(category, category)));
+    playbookCategory.value = categories.includes(selected) ? selected : '';
+  }
+  const filtered = filteredPlaybookSituations();
+  playbookBrowserList.replaceChildren();
+  filtered.forEach((situation) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'playbook-situation-card';
+    button.dataset.situationKey = situation.key;
+    if (situation.key === currentSituation?.key) button.classList.add('is-current');
+    const displayLabel = situationDisplayLabel(situation);
+    const runnerLabel = playbookRunnerLabel(situation);
+    const outLabel = `${situation.outs} ${situation.outs === 1 ? 'out' : 'outs'}`;
+    button.setAttribute('aria-label', `Select ${displayLabel}. ${runnerLabel}, ${outLabel}`);
+
+    const heading = document.createElement('span');
+    heading.className = 'playbook-card-heading';
+    const title = document.createElement('strong');
+    title.textContent = displayLabel;
+    const difficulty = document.createElement('span');
+    difficulty.className = `playbook-difficulty is-${situation.difficulty}`;
+    difficulty.textContent = titleCase(situation.difficulty);
+    heading.append(title, difficulty);
+
+    const description = document.createElement('span');
+    description.className = 'playbook-card-description';
+    description.textContent = `${runnerLabel} · ${outLabel}`;
+    const metadata = document.createElement('span');
+    metadata.className = 'playbook-card-metadata';
+    metadata.textContent = situation.category || 'Uncategorized';
+    button.append(heading, description, metadata);
+    button.addEventListener('click', () => choosePlaybookSituation(situation.key));
+    playbookBrowserList.appendChild(button);
+  });
+  if (playbookResultCount) playbookResultCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'situation' : 'situations'}`;
+  playbookBrowserEmpty?.classList.toggle('hidden', filtered.length > 0);
+  if (playbookRandomFiltered) playbookRandomFiltered.disabled = filtered.length === 0;
+}
+
+function openPlaybookBrowser(){
+  if (!playbookBrowserOverlay) return;
+  window._diqCloseAccountMenu?.();
+  window._diqCloseAccountSecurity?.();
+  closeGuideRail();
+  renderPlaybookBrowser();
+  playbookBrowserOverlay.classList.remove('hidden');
+  document.body.classList.add('playbook-browser-open');
+  playbookBrowserToggle?.setAttribute('aria-expanded', 'true');
+  requestAnimationFrame(() => playbookSearch?.focus());
+}
+
+function closePlaybookBrowser(){
+  playbookBrowserOverlay?.classList.add('hidden');
+  document.body.classList.remove('playbook-browser-open');
+  playbookBrowserToggle?.setAttribute('aria-expanded', 'false');
+}
+
+window._diqOpenPlaybookBrowser = openPlaybookBrowser;
+window._diqClosePlaybookBrowser = closePlaybookBrowser;
+
+function populateSituations(selectedKey){
+  if (playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')) renderPlaybookBrowser();
+  return (SITUATIONS || []).some((situation) => situation.key === selectedKey)
+    ? selectedKey
+    : (currentSituation?.key || SITUATIONS?.[0]?.key || '');
 }
 
 
@@ -1932,7 +2078,7 @@ function setSituation(key){
   resetBallAndRunnerForSituation();
 
   // Title + Description UI
-  if (descHud)  descHud.textContent  = currentSituation.desc  || '';
+  updateDescriptionHudText();
 
   const savedHit = getHitSaved(currentSituation.key); if (savedHit) currentSituation.hit = savedHit;
 
@@ -2020,6 +2166,7 @@ function setSituation(key){
   // Reset Situation Builder history when switching situations
   try{ sbEnsureKey(); sbUpdateButtons(); }catch(e){}
 
+  window._diqSituationChanged?.(databaseSituationSnapshot(currentSituation));
   setHowToPhase('p1');
 }
 
@@ -2264,6 +2411,12 @@ function refreshSituationAll(){
   if (newDescInput){
     currentSituation.desc = newDescInput.value.trim();
   }
+  if (situationCategoryInput){
+    currentSituation.category = situationCategoryInput.value.trim() || 'General';
+  }
+  if (situationDifficultySelect){
+    currentSituation.difficulty = situationDifficultySelect.value;
+  }
 
   // 2) Outs (HUD + dropdown sync)
   if (outsSelSituation){
@@ -2311,8 +2464,7 @@ function refreshSituationAll(){
   // 7) Rebuild UI pieces to reflect the saved model
   populateSituations(currentSituation.key);
 
-  if (descHud) descHud.textContent = currentSituation.desc || '';
-  if (typeof updateDescriptionHudText === 'function') updateDescriptionHudText();
+  updateDescriptionHudText();
 
   // Rebuild targets (applies new tolerance sizes), hit marker & ball
   buildTargets();
@@ -2647,13 +2799,13 @@ async function init(){
     observeHeader();
     sizeOverlays();
 
-    await loadSituationsFromJson();
+    await loadSituationsFromDatabase();
     await loadTeamsFromJson();
     await loadDatabaseSession();
     refreshTeamsUIAll();
     loadStarts(); loadHits();
     populateSituations();
-    const firstKey = (sitSelect && sitSelect.value) || (SITUATIONS[0] && SITUATIONS[0].key);
+    const firstKey = (SITUATIONS[0] && SITUATIONS[0].key);
     buildTokens(); updateChipScale(); setSituation(firstKey); setCoachMode(false);
     observeWrap(); scheduleLayout();
 

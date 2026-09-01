@@ -32,7 +32,8 @@
     <!-- @diq:end control:checkBtn -->
     <!-- @diq:begin control:continueBtn -->
 
-  <button id="randomSitBtn" class="btn-slate btn-small" title="Pick a random situation" disabled>Random</button><select id="sitSelect" aria-label="Situation" data-testid="sit-select" disabled><option value="BD-01">Situation #1</option><option value="BD-02">Situation #2</option><option value="BD-03">Situation #3</option><option value="BD-04">Situation #4</option><option value="BD-05">Situation #5</option><option value="BD-06">Situation #6</option><option value="BD-07">Situation #7</option><option value="BD-08">Situation #8</option><option value="BD-09">Situation #9</option><option value="BD-10-1">Situation #10-1</option><option value="BD-10-2">Situation #10-2</option><option value="BD-10-3">Situation #10-3</option><option value="BD-11">Situation #11</option><option value="BD-12">Situation #12</option><option value="BD-13">Situation #13</option><option value="BD-14">Situation #14</option><option value="BD-15">Situation #15</option><option value="BD-16">Situation #16</option><option value="BD-17">Situation #17</option><option value="BD-18">Situation #18</option><option value="BD-19">Situation #19</option><option value="BD-20">Situation #20</option></select><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
+  <button id="playbookBrowserToggle" class="btn-slate btn-small playbook-browser-toggle" type="button" aria-haspopup="dialog" aria-controls="playbookBrowserOverlay" aria-expanded="false">Playbook</button>
+  <button id="randomSitBtn" class="btn-slate btn-small" title="Choose a random situation" disabled>Random</button><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
     <span class="status-label">Outs</span><b><span id="outsVal">0</span></b>
   </span><button id="startBtn" class="btn-green" disabled>Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
     <span id="scoreBadge" class="badge badge-score score-red" data-testid="score-badge"><span class="status-label">Score</span><b><span id="scoreVal">0</span>/9</b></span>
@@ -144,11 +145,12 @@
 
         <div class="howto-body">
   <ol style="margin:6px 0 0 1.2em">
-    <li>Select a situation from the dropdown (or click <em>Random</em>).</li>
-    <li>Review the Description, Runners, and Outs shown in the header.</li>
-    <li>Press <em>Start Situation</em> to begin</li>
+    <li>Log in, then open <em>Playbook</em> to browse situations or use <em>Random</em> for a quick selection.</li>
+    <li>Confirm the selected situation’s S-number and title, then review Runners and Outs in the header.</li>
+    <li>Press <em>Start Situation</em> to begin.</li>
     <li>Drag the 9 player chips into the correct defensive positions.</li>
     <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
+    <li>Review the target-ring coaching notes, continue to the sequence, and choose the correct defensive throw order.</li>
   </ol>
   <div class="hint" style="margin-top:8px">
     Note: Correct chips will display within a highlighted target ring
@@ -266,6 +268,9 @@
     </div><div class="row">
       <label class="hint">Description:</label>
       <input id="newDescInput" type="text" style="flex:2;min-width:200px">
+    </div><div class="row situation-metadata-row">
+      <label class="field"><span>Category</span><input id="situationCategoryInput" type="text" maxlength="60" placeholder="e.g., Singles"></label>
+      <label class="field"><span>Difficulty</span><select id="situationDifficultySelect"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
     </div><div class="row">
       <label class="hint">Outs:</label>
       <select id="outsSelSituation">
@@ -538,6 +543,29 @@
 
   </aside>
 </main>
+
+<div id="playbookBrowserOverlay" class="playbook-browser-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="playbookBrowserTitle">
+  <section class="playbook-browser">
+    <div class="playbook-browser-header">
+      <div>
+        <span class="eyebrow">Practice library</span>
+        <h2 id="playbookBrowserTitle">Playbook</h2>
+        <p>Find a situation by game state, topic, or difficulty.</p>
+      </div>
+      <button id="playbookBrowserClose" class="btn btn-ghost" type="button">Close</button>
+    </div>
+    <div class="playbook-browser-filters">
+      <label class="field playbook-search"><span>Search</span><input id="playbookSearch" type="search" placeholder="Search situations" autocomplete="off"></label>
+      <label class="field"><span>Category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
+      <label class="field"><span>Difficulty</span><select id="playbookDifficulty"><option value="">All levels</option><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+      <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label>
+      <button id="playbookClearFilters" class="btn btn-ghost" type="button">Clear</button>
+    </div>
+    <div class="playbook-browser-summary"><strong id="playbookResultCount">0 situations</strong><button id="playbookRandomFiltered" class="btn-slate" type="button">Choose for me</button></div>
+    <div id="playbookBrowserList" class="playbook-browser-list"></div>
+    <div id="playbookBrowserEmpty" class="playbook-browser-empty hidden">No situations match these filters.</div>
+  </section>
+</div>
 
 <!-- Unified account login modal -->
 <div id="playerModalOverlay" class="modalOverlay auth-modal hidden" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="playerModalTitle" aria-hidden="true">

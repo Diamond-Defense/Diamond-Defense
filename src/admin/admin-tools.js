@@ -728,8 +728,8 @@
         }),
       'Situation restored.',
     ).then(async (ok) => {
-      if (ok && typeof loadSituationsFromJson === 'function') {
-        await loadSituationsFromJson();
+      if (ok && typeof loadSituationsFromDatabase === 'function') {
+        await loadSituationsFromDatabase();
         loadStarts();
         loadHits();
         populateSituations(key);
@@ -768,8 +768,8 @@
         : 'Proposal rejected.',
       teamSelect?.value || '',
     );
-    if (ok && decision === 'approve' && typeof loadSituationsFromJson === 'function') {
-      await loadSituationsFromJson();
+    if (ok && decision === 'approve' && typeof loadSituationsFromDatabase === 'function') {
+      await loadSituationsFromDatabase();
       loadStarts();
       loadHits();
       populateSituations(proposal.situationKey);
@@ -960,7 +960,8 @@
   const FIELD_WIDTH = 3200;
   const FIELD_HEIGHT = 2133;
   const EDITABLE_FIELDS = [
-    ['title', 'Title'], ['desc', 'Description'], ['outs', 'Outs'],
+    ['title', 'Title'], ['desc', 'Description'], ['category', 'Category'],
+    ['difficulty', 'Difficulty'], ['outs', 'Outs'],
     ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
     ['targets', 'Targets, tolerances, and notes'], ['hit', 'Ball landing spot'],
     ['hitType', 'Hit type'], ['batterAdvance', 'Batter advance'],
@@ -1077,6 +1078,10 @@
     const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
     if (!String(snapshot?.title || '').trim()) add('Add a situation title.', 'sbDetailsSection');
     if (!String(snapshot?.desc || '').trim()) add('Add a player-facing description.', 'sbDetailsSection');
+    if (!String(snapshot?.category || '').trim()) add('Choose a Playbook category.', 'sbDetailsSection');
+    if (!['beginner', 'intermediate', 'advanced'].includes(String(snapshot?.difficulty || ''))) {
+      add('Choose a valid difficulty.', 'sbDetailsSection');
+    }
     POSITION_IDS.forEach((id) => {
       const start = snapshot?.starts?.[id];
       const target = snapshot?.targets?.[id];
@@ -1237,8 +1242,8 @@
   }
 
   async function reloadPublishedSituation(preferredKey = '') {
-    if (typeof loadSituationsFromJson !== 'function') return;
-    await loadSituationsFromJson();
+    if (typeof loadSituationsFromDatabase !== 'function') return;
+    await loadSituationsFromDatabase();
     loadStarts();
     loadHits();
     const key = (SITUATIONS || []).some((item) => item.key === preferredKey)
@@ -1416,12 +1421,6 @@
   });
   coachRationale?.addEventListener('input', () => renderEditorState(currentSnapshot()));
   byId('tolTargetSel')?.addEventListener('change', () => renderPositionCompleteness(currentSnapshot()));
-  byId('sitSelect')?.addEventListener('change', () => setTimeout(() => {
-    if (!editorRole) return;
-    editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(currentSnapshot()?.key) || currentSnapshot());
-    editorDirty = false;
-    renderEditorState(currentSnapshot());
-  }, 0));
   byId('saveSituationBtn')?.addEventListener('click', () => setTimeout(() => markEditorClean(currentSnapshot()), 0));
 
   window._diqMarkSituationDirty = (snapshot, role) => {
@@ -1431,6 +1430,13 @@
       role === 'coach' ? 'Draft changes are local until you submit them for review.' : 'Changes are local until you publish them.',
       'pending',
     );
+    renderEditorState(snapshot);
+  };
+
+  window._diqSituationChanged = (snapshot) => {
+    if (!editorRole || !snapshot) return;
+    editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(snapshot.key) || snapshot);
+    editorDirty = false;
     renderEditorState(snapshot);
   };
 

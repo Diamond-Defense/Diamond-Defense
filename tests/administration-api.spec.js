@@ -139,7 +139,13 @@ test.describe('record-level administration API', () => {
     const templateResponse = await request.get('/api/situations');
     const template = (await templateResponse.json())[0];
     const key = `PHASE3-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-    const input = { ...template, key, title: 'Phase 3 Situation' };
+    const input = {
+      ...template,
+      key,
+      title: 'Phase 3 Situation',
+      category: 'Cutoffs and relays',
+      difficulty: 'advanced',
+    };
     delete input.revision;
     delete input.active;
     delete input.archivedAt;
@@ -150,7 +156,13 @@ test.describe('record-level administration API', () => {
     });
     expect(createResponse.status()).toBe(201);
     const created = (await createResponse.json()).record;
-    expect(created).toEqual(expect.objectContaining({ key, revision: 1, active: true }));
+    expect(created).toEqual(expect.objectContaining({
+      key,
+      revision: 1,
+      active: true,
+      category: 'Cutoffs and relays',
+      difficulty: 'advanced',
+    }));
 
     const updateResponse = await request.put(`/api/situations/${key}`, {
       headers: writeHeaders(origin, created.revision),

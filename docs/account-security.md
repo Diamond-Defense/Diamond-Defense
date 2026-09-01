@@ -12,8 +12,9 @@ schema used by local D1, Cloudflare preview, and Cloudflare production.
 - The next successful login is limited to the Account Security screen. Game,
   reporting, and administration APIs remain unavailable until the user chooses
   a permanent password.
-- A signed-in player, coach, or administrator can open **Account** in the header
-  and change their own password after providing the current password.
+- A signed-in player, coach, or administrator opens their name or player number
+  in the header, then selects **Account security** to change their own password
+  after providing the current password.
 - Changing a password requires at least 8 characters, rejects reuse of the
   current password, signs out other sessions, and creates a fresh session for
   the current browser.
@@ -55,4 +56,3 @@ npm run db:migrate:production
 Apply and verify preview first. Each environment maintains an independent
 migration ledger; applying the migration does not change existing passwords or
 force existing accounts to change them.
-

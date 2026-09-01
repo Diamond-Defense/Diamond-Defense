@@ -2,6 +2,7 @@ import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeSituationMetadata } from './lib/situation-seed.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const teams = JSON.parse(await readFile(resolve(root, 'teams.json'), 'utf8'));
@@ -46,9 +47,10 @@ if (firstTeam) {
   statements.push(`INSERT INTO team_memberships (team_id, user_id, team_role, jersey_number, created_at) VALUES (${quote(firstTeam.id)}, 'staff-coach', 'coach', '', ${quote(createdAt)}) ON CONFLICT(team_id, user_id) DO UPDATE SET team_role='coach';`);
 }
 
-for (const situation of situations) {
+for (const rawSituation of situations) {
+  const situation = normalizeSituationMetadata(rawSituation);
   const payload = JSON.stringify(situation);
-  statements.push(`INSERT INTO situations (key, title, description, payload_json, revision, active, created_at, updated_at) VALUES (${quote(situation.key)}, ${quote(situation.title ?? situation.key)}, ${quote(situation.desc ?? '')}, ${quote(payload)}, 1, 1, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(key) DO UPDATE SET title=excluded.title, description=excluded.description, payload_json=excluded.payload_json, revision=situations.revision+1, active=1, updated_at=excluded.updated_at;`);
+  statements.push(`INSERT INTO situations (key, title, description, category, difficulty, payload_json, revision, active, created_at, updated_at) VALUES (${quote(situation.key)}, ${quote(situation.title ?? situation.key)}, ${quote(situation.desc ?? '')}, ${quote(situation.category)}, ${quote(situation.difficulty)}, ${quote(payload)}, 1, 1, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(key) DO UPDATE SET title=excluded.title, description=excluded.description, category=excluded.category, difficulty=excluded.difficulty, payload_json=excluded.payload_json, revision=situations.revision+1, active=1, updated_at=excluded.updated_at;`);
 }
 
 const output = resolve(root, 'database/seed.sql');

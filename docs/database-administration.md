@@ -102,6 +102,12 @@ the top because they affect the entire editing session. Situation JSON files
 are no longer downloaded from this editor; database backup and seed tooling
 remain the supported administrative paths.
 
+Category and difficulty are stored as indexed columns on the `situations`
+table so the Playbook can filter database records efficiently. The field
+geometry, targets, notes, and ordered sequence remain together in the
+database's structured situation payload. Migration `0008_situation_metadata.sql`
+adds and initializes the searchable columns for existing databases.
+
 Submitting as a coach creates a pending proposal containing the full draft, a
 required rationale, and the revision of the published situation it was based
 on. The published record does not change. Proposal history shows pending,

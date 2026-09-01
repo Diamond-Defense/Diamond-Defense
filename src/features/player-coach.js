@@ -297,7 +297,8 @@ window._diqFlushTeamDatabaseSync = flushTeamsDatabaseSync;
 /** @typedef {{ [posId:string]: {x:number,y:number,tol:number} }} Targets */
 /** @typedef {{ first:boolean, second:boolean, third:boolean }} RunnersOn */
 /** @typedef {{
- *   key:string, title:string, desc:string,
+ *   key:string, title:string, desc:string, category:string,
+ *   difficulty:'beginner'|'intermediate'|'advanced',
  *   starts?:Starts, targets?:Targets,
  *   hit?:Pt, hitType?:'line'|'popup'|'grounder',
  *   batterAdvance?:number,
@@ -1836,6 +1837,7 @@ function updatePlayerHeaderButton(){
 
   function openPlayerModal(role='player'){
     if(!playerModalOverlay) return;
+    window._diqClosePlaybookBrowser?.();
     refreshPlayerLoginUI();
     setAuthRole(role);
     playerModalLastFocus = document.activeElement;
@@ -1866,24 +1868,89 @@ function updatePlayerHeaderButton(){
     if(!user) return 'Login';
     if(user.role === 'player'){
       const number = String(user.jerseyNumber || '').trim();
-      return `${number ? `#${number} ` : ''}${user.displayName} · Log out`;
+      return `${number ? `#${number} ` : ''}${user.displayName}`;
     }
-    if(user.role === 'coach') return `${user.displayName} · Log out`;
-    return 'Administrator · Log out';
+    if(user.role === 'coach') return user.displayName || 'Coach';
+    return 'Administrator';
+  }
+
+  function authMenuMeta(user){
+    if(!user) return '';
+    const role = user.role === 'admin' ? 'Administrator' : user.role === 'coach' ? 'Coach' : 'Player';
+    const details = [];
+    if(user.role === 'player' && user.jerseyNumber) details.push(`#${user.jerseyNumber}`);
+    if(user.teamName) details.push(user.teamName);
+    return [role, ...details].join(' · ');
+  }
+
+  function closeAccountMenu({ returnFocus = false } = {}){
+    const menu = document.getElementById('accountMenu');
+    const trigger = document.getElementById('playerBtn');
+    if(!menu) return;
+    menu.classList.add('hidden');
+    menu.setAttribute('aria-hidden', 'true');
+    trigger?.setAttribute('aria-expanded', 'false');
+    if(returnFocus) trigger?.focus?.();
+  }
+
+  function openAccountMenu(){
+    const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
+    const menu = document.getElementById('accountMenu');
+    const trigger = document.getElementById('playerBtn');
+    if(!user || !menu || !trigger) return;
+    if(user.mustChangePassword){
+      openAccountSecurity({ required:true });
+      return;
+    }
+    closeAccountSecurity();
+    window._diqClosePlaybookBrowser?.();
+    menu.classList.remove('hidden');
+    menu.setAttribute('aria-hidden', 'false');
+    trigger.setAttribute('aria-expanded', 'true');
+  }
+
+  function toggleAccountMenu(){
+    const menu = document.getElementById('accountMenu');
+    if(!menu || menu.classList.contains('hidden')) openAccountMenu();
+    else closeAccountMenu();
   }
 
   function updateAuthNavigation(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
     const btn = document.getElementById('playerBtn');
+    const btnLabel = document.getElementById('accountMenuTriggerLabel');
+    const menu = document.getElementById('accountMenu');
+    const menuName = document.getElementById('accountMenuName');
+    const menuMeta = document.getElementById('accountMenuMeta');
     const tools = document.getElementById('staffToolsBtn');
     const account = document.getElementById('accountSecurityBtn');
     const staff = !user?.mustChangePassword && (user?.role === 'coach' || user?.role === 'admin');
     if(btn){
-      btn.textContent = authButtonLabel(user);
+      if(btnLabel) btnLabel.textContent = authButtonLabel(user);
+      else btn.textContent = authButtonLabel(user);
       btn.classList.remove('btn-orange','btn-yellow','btn-green');
       btn.classList.add(user ? 'btn-green' : 'btn-orange');
       btn.dataset.authState = user ? 'logged-in' : 'logged-out';
-      btn.title = user ? `Log out ${user.displayName || user.role}` : 'Log in';
+      btn.title = user ? `Open account menu for ${user.displayName || user.role}` : 'Log in';
+      btn.setAttribute('aria-haspopup', user ? 'menu' : 'dialog');
+      btn.setAttribute('aria-controls', user ? 'accountMenu' : 'playerModalOverlay');
+      if(!user) btn.setAttribute('aria-expanded', 'false');
+    }
+    if(menu && !user){
+      menu.classList.add('hidden');
+      menu.setAttribute('aria-hidden', 'true');
+    }
+    if(menuName) menuName.textContent = user?.displayName || '';
+    if(menuMeta) menuMeta.textContent = authMenuMeta(user);
+    if(!user) closeAccountMenu();
+    if(tools){
+      const fullLabel = tools.querySelector('.staff-tools-label-full');
+      const shortLabel = tools.querySelector('.staff-tools-label-short');
+      const fullText = user?.role === 'coach' ? 'Coach workspace' : user?.role === 'admin' ? 'Admin workspace' : 'Workspace';
+      const shortText = user?.role === 'coach' ? 'Coach' : user?.role === 'admin' ? 'Admin' : 'Tools';
+      if(fullLabel) fullLabel.textContent = fullText;
+      if(shortLabel) shortLabel.textContent = shortText;
+      tools.setAttribute('aria-label', fullText);
     }
     if(tools){
       tools.classList.toggle('hidden', !staff);
@@ -1921,9 +1988,11 @@ function updatePlayerHeaderButton(){
     }
     temporaryPasswordNotice?.classList.toggle('hidden', !required);
     document.body.classList.toggle('account-security-required', required);
+    closeAccountMenu();
     document.querySelector('#coachCard:not(.hidden) #coachCardCloseBtn')?.click();
     document.querySelector('#adminCard:not(.hidden) #adminCardCloseBtn')?.click();
     document.getElementById('playbookClose')?.click();
+    window._diqClosePlaybookBrowser?.();
     clearAccountPasswordFields();
     setAccountSecurityStatus();
     accountSecurityOverlay.classList.remove('hidden');
@@ -1955,6 +2024,7 @@ function updatePlayerHeaderButton(){
     PLAYER_META = { team:'', name:'', number:'' };
     PLAYER_BASE_ID = 'anonymous';
     RESULTS = emptyResults();
+    closeAccountMenu();
     closePlayerModal();
     closeAccountSecurity(true);
     refreshPlayerLoginUI();
@@ -2031,16 +2101,33 @@ function updatePlayerHeaderButton(){
   window._diqSetAuthRole = setAuthRole;
   window._diqUpdateAuthNavigation = updateAuthNavigation;
   window._diqLogoutCurrentAccount = logoutCurrentAccount;
+  window._diqOpenAccountMenu = openAccountMenu;
+  window._diqCloseAccountMenu = closeAccountMenu;
   window._diqOpenAccountSecurity = openAccountSecurity;
   window._diqCloseAccountSecurity = closeAccountSecurity;
 
   if(playerBtn) playerBtn.addEventListener("click", ()=>{
     if(DIQ_AUTH_USER || window.__DIQ_AUTH_USER__){
-      void logoutCurrentAccount();
+      toggleAccountMenu();
       return;
     }
     if(playerModalOverlay && !playerModalOverlay.classList.contains("hidden")) closePlayerModal();
     else openPlayerModal('player');
+  });
+
+  document.addEventListener('click', event=>{
+    const menu = document.getElementById('accountMenu');
+    const actions = document.querySelector('.account-actions');
+    if(menu?.classList.contains('hidden') || actions?.contains(event.target)) return;
+    closeAccountMenu();
+  });
+
+  document.addEventListener('keydown', event=>{
+    const menu = document.getElementById('accountMenu');
+    if(event.key === 'Escape' && menu && !menu.classList.contains('hidden')){
+      event.preventDefault();
+      closeAccountMenu({ returnFocus:true });
+    }
   });
 
   if(playerTeamSelect){
@@ -2389,26 +2476,27 @@ function quadBezier(p0,p1,p2,t){return {x:(1-t)*(1-t)*p0.x+2*(1-t)*t*p1.x+t*t*p2
 // --- How To Play templates + renderer ---
 const HOWTO_PHASE1_HTML = `
   <ol style="margin:6px 0 0 1.2em">
-    <li>Select a situation from the dropdown (or click <em>Random</em>).</li>
-    <li>Review the Description, Runners, and Outs shown in the header.</li>
-    <li>Press <em>Start Situation</em> to begin</li>
+    <li>Log in, then open <em>Playbook</em> to browse situations or use <em>Random</em> for a quick selection.</li>
+    <li>Confirm the selected situation’s S-number and title, then review Runners and Outs in the header.</li>
+    <li>Press <em>Start Situation</em> to begin.</li>
     <li>Drag the 9 player chips into the correct defensive positions.</li>
     <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
+    <li>After the position review, select target rings to read their coaching notes.</li>
   </ol>
   <div class="hint" style="margin-top:8px">
-    Note: Correct chips will display within a highlighted target ring
+    Correct chips display within a highlighted target ring.
   </div>
 `;
 
 const HOWTO_PHASE2_HTML = `
   <ol style="margin:6px 0 0 1.2em">
-    <li>Select <em>Continue</em> to begin</li>
+    <li>Select <em>Continue</em> to begin the throw-sequence challenge.</li>
     <li>Select the players (chips) in the correct throw order to execute the play.</li>
     <li>Click chips to add them to your sequence; click again to unselect (unless a chip is already locked as correct).</li>
     <li>Press <em>Verify Sequence</em> to check your picks. You have 3 tries.</li>
   </ol>
   <div class="hint" style="margin-top:8px">
-    Note: Correct chips (in the proper order) will lock and remain highlighted.
+    Correct chips in the proper order lock and remain highlighted.
   </div>
 `;
 
@@ -3458,8 +3546,32 @@ function wireOnce(){
   if(coachExpandAllBtn) coachExpandAllBtn.addEventListener('click', ()=> setAllCoachSubsecsCollapsed(false));
 
   // --- everything from your “/* Wiring */” block goes here ---
-  if (sitSelect) sitSelect.addEventListener('change', e=> setSituation(e.target.value));
   if (randomSitBtn) randomSitBtn.addEventListener('click', pickRandomSituation);
+  if (playbookBrowserToggle) playbookBrowserToggle.addEventListener('click', openPlaybookBrowser);
+  if (playbookBrowserClose) playbookBrowserClose.addEventListener('click', closePlaybookBrowser);
+  if (playbookBrowserOverlay) playbookBrowserOverlay.addEventListener('click', (event)=>{
+    if(event.target === playbookBrowserOverlay) closePlaybookBrowser();
+  });
+  [playbookSearch, playbookCategory, playbookDifficulty, playbookRunners].forEach(control=>{
+    control?.addEventListener(control === playbookSearch ? 'input' : 'change', renderPlaybookBrowser);
+  });
+  if (playbookClearFilters) playbookClearFilters.addEventListener('click', ()=>{
+    if(playbookSearch) playbookSearch.value = '';
+    if(playbookCategory) playbookCategory.value = '';
+    if(playbookDifficulty) playbookDifficulty.value = '';
+    if(playbookRunners) playbookRunners.value = '';
+    renderPlaybookBrowser();
+  });
+  if (playbookRandomFiltered) playbookRandomFiltered.addEventListener('click', ()=>{
+    const filtered = filteredPlaybookSituations();
+    if(filtered.length) choosePlaybookSituation(filtered[Math.floor(Math.random() * filtered.length)].key);
+  });
+  document.addEventListener('keydown', (event)=>{
+    if(event.key === 'Escape' && playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')){
+      closePlaybookBrowser();
+      playbookBrowserToggle?.focus();
+    }
+  });
   if (gameLoginGateBtn) gameLoginGateBtn.addEventListener('click', ()=>window._diqOpenAuthModal?.('player'));
 
   if (resetBtn)  resetBtn.addEventListener('click', ()=>resetPlayers('reset'));
@@ -3946,9 +4058,24 @@ wireSeqBuilderOnce();
     newDescInput.addEventListener('input', () => {
       if (_muteCoachInputs || !currentSituation) return;
       currentSituation.desc = newDescInput.value;
-      if (descHud) descHud.textContent = currentSituation.desc || '';
       if (typeof updateDescriptionHudText === 'function') updateDescriptionHudText();
       if(typeof queueCurrentSituationDatabaseSync === 'function') queueCurrentSituationDatabaseSync();
+    });
+  }
+
+  if (situationCategoryInput) {
+    situationCategoryInput.addEventListener('input', () => {
+      if (_muteCoachInputs || !currentSituation) return;
+      currentSituation.category = situationCategoryInput.value.trim();
+      queueCurrentSituationDatabaseSync();
+    });
+  }
+
+  if (situationDifficultySelect) {
+    situationDifficultySelect.addEventListener('change', () => {
+      if (_muteCoachInputs || !currentSituation) return;
+      currentSituation.difficulty = situationDifficultySelect.value;
+      queueCurrentSituationDatabaseSync();
     });
   }
 

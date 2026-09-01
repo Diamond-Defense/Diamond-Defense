@@ -8,7 +8,12 @@ test.describe('portable SQLite API', () => {
 
     const situations = await request.get('/api/situations');
     expect(situations.ok()).toBeTruthy();
-    expect((await situations.json()).length).toBeGreaterThanOrEqual(22);
+    const situationRecords = await situations.json();
+    expect(situationRecords.length).toBeGreaterThanOrEqual(22);
+    expect(situationRecords[0]).toEqual(expect.objectContaining({
+      category: expect.any(String),
+      difficulty: expect.stringMatching(/^(beginner|intermediate|advanced)$/),
+    }));
 
     const teams = await request.get('/api/teams/options');
     expect(teams.ok()).toBeTruthy();

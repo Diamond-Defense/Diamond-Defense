@@ -286,7 +286,7 @@
       await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/restore`, {
         method:'POST', headers:{ 'If-Match':String(situation.revision) }
       });
-      await loadSituationsFromJson();
+      await loadSituationsFromDatabase();
       loadStarts(); loadHits();
       populateSituations(key); setSituation(key);
       await adminLoadArchivedRecords();

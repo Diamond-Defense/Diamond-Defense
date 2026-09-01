@@ -18,7 +18,14 @@ async function loginAsSeedPlayer(page) {
   await page.locator('#playerNameSelect').selectOption('13u-black-bob-smith-11');
   await page.locator('#playerPass').fill('1234');
   await page.locator('#playerLoginBtn').click();
-  await expect(page.locator('#playerBtn')).toHaveText('#11 Bob Smith · Log out');
+  await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
+}
+
+async function logoutCurrentUser(page) {
+  await page.locator('#playerBtn').click();
+  await expect(page.locator('#accountMenu')).toBeVisible();
+  await page.locator('#accountLogoutBtn').click();
+  await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
 }
 
 test.describe('Diamond Defense regression behavior', () => {
@@ -42,7 +49,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.evaluate(() => window.__DIQ_READY__);
 
     await expect
-      .poll(() => page.locator('#sitSelect option').count())
+      .poll(() => page.evaluate(async () => (await fetch('/api/situations')).json().then((records) => records.length)))
       .toBeGreaterThanOrEqual(22);
     expect(await page.locator('#playerTeamSelect option').allTextContents()).not.toContain('Browser Only');
     const pitcherStart = await page.evaluate(() => getStartFor('BD-01', 'P'));
@@ -78,7 +85,7 @@ test.describe('Diamond Defense regression behavior', () => {
     );
     await expect(field).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
-    expect(await page.locator('#sitSelect option').count()).toBeGreaterThanOrEqual(22);
+    expect(await page.evaluate(async () => (await fetch('/api/situations')).json().then((records) => records.length))).toBeGreaterThanOrEqual(22);
     await expect(page.locator('#wrap .chip')).toHaveCount(9);
     await expect(page.locator('#wrap .tgt')).toHaveCount(9);
     const appIcon = page.locator('.brand-mark img');
@@ -116,25 +123,83 @@ test.describe('Diamond Defense regression behavior', () => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
-    const values = await page.locator('#sitSelect option').evaluateAll((options) =>
-      options.map((option) => option.value),
-    );
+    const values = await page.evaluate(async () => (await fetch('/api/situations')).json().then((records) => records.map((situation) => situation.key)));
     expect(values).toContain('BD-01');
     expect(values).toContain('BD-20');
 
-    await page.locator('#sitSelect').selectOption('BD-02');
-    await expect(page.locator('#sitSelect')).toHaveValue('BD-02');
+    await page.getByRole('button', { name: 'Playbook', exact: true }).click();
+    await page.locator('.playbook-situation-card[data-situation-key="BD-02"]').click();
+    await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
     await expect(page.locator('#descHud')).not.toHaveText('');
     await expect(page.locator('#outsVal')).toHaveText(/^[0-2]$/);
+
+    await page.locator('#randomSitBtn').click();
+    await expect.poll(() => page.evaluate(() => currentSituation?.key)).not.toBe('BD-02');
+  });
+
+  test('Playbook browser filters database situations and selects one for practice', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openCleanApp(page);
+
+    await page.getByRole('button', { name: 'Playbook', exact: true }).click();
+    const browser = page.getByRole('dialog', { name: 'Playbook' });
+    await expect(browser).toBeVisible();
+    await expect(page.locator('#playbookResultCount')).toHaveText('22 situations');
+    const layout = await page.locator('.playbook-browser-list').evaluate((list) => {
+      const cards = [...list.querySelectorAll('.playbook-situation-card')].slice(0, 2);
+      const [first, second] = cards.map((card) => card.getBoundingClientRect());
+      return {
+        pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
+        cardsOverlap: Boolean(first && second && second.top < first.bottom),
+      };
+    });
+    expect(layout).toEqual({ pageOverflows: false, cardsOverlap: false });
+
+    await page.locator('#playbookDifficulty').selectOption('advanced');
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(9);
+    await page.locator('#playbookClearFilters').click();
+    await page.locator('#playbookCategory').selectOption('Extra-base hits');
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(8);
+
+    await page.locator('#playbookSearch').fill('Left-Center');
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(2);
+    await page.locator('.playbook-situation-card[data-situation-key="BD-14"]').click();
+    await expect(browser).toBeHidden();
+    await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-14');
+    await expect(page.locator('#descHud')).toHaveText('S14 · Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('S14 · Hit to Left-Center Field');
   });
 
   test('modern strategy-board shell keeps controls organized and help accessible', async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.setViewportSize({ width: 1920, height: 1080 });
     await openCleanApp(page);
 
     await expect(page.getByRole('heading', { name: 'Diamond Defense' })).toBeVisible();
     await expect(page.locator('.situation-controls')).toBeVisible();
     await expect(page.locator('.game-controls')).toBeVisible();
+    await expect(page.locator('#sitSelect')).toHaveCount(0);
+    await expect(page.locator('#playbookBrowserToggle')).toBeVisible();
+    await expect(page.locator('#randomSitBtn')).toBeVisible();
+    await expect(page.locator('#descHud')).toHaveText('S01 · Single to LF');
+    const commandLayout = await page.evaluate(() => {
+      const account = document.querySelector('.account-actions');
+      const utility = document.querySelector('.utility-actions');
+      const situation = document.querySelector('.situation-controls');
+      const ids = ['playerBtn', 'playbookBrowserToggle', 'randomSitBtn', 'playbookToggle', 'startBtn', 'resetBtn', 'checkBtn'];
+      const orderedIds = ['playbookBrowserToggle', 'randomSitBtn', 'descHud', 'startBtn', 'runnersBadge', 'playbookToggle', 'playerBtn'];
+      return {
+        situationOrder: [...situation.children].map((element) => element.id).filter(Boolean),
+        utilityOrder: [...utility.children].map((element) => element.id).filter(Boolean),
+        accountOrder: [...account.children].map((element) => element.id).filter(Boolean),
+        heights: ids.map((id) => Math.round(document.getElementById(id).getBoundingClientRect().height)),
+        xPositions: orderedIds.map((id) => Math.round(document.getElementById(id).getBoundingClientRect().left)),
+      };
+    });
+    expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn', 'descHud']);
+    expect(commandLayout.utilityOrder.slice(0, 2)).toEqual(['playbookToggle', 'staffToolsBtn']);
+    expect(commandLayout.accountOrder.slice(0, 2)).toEqual(['playerBtn', 'accountMenu']);
+    expect(new Set(commandLayout.heights).size).toBe(1);
+    expect(commandLayout.xPositions).toEqual([...commandLayout.xPositions].sort((left, right) => left - right));
     await expect(page.locator('.status-strip')).toBeVisible();
     await expect(page.locator('.board-heading')).toHaveCount(0);
     await expect(page.locator('.position-legend')).toHaveCount(0);
@@ -150,10 +215,12 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(guideButton).toHaveCSS('background-color', 'rgb(139, 124, 255)');
     await expect(page.locator('.playbook-rail-heading')).toContainText('Guide');
     await expect(page.locator('#howToCard .howto-body')).toBeVisible();
+    await expect(page.locator('#howToCard .howto-body')).toContainText('open Playbook');
+    await expect(page.locator('#howToCard .howto-body')).not.toContainText('dropdown');
     await page.getByRole('button', { name: 'Close Guide' }).click();
     await expect(page.locator('.playbook-rail')).not.toBeVisible();
 
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1280);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1920);
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
@@ -164,6 +231,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Coach Tools' })).toBeHidden();
     await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeHidden();
+    await expect(page.locator('#descHud')).toHaveText('S01 · Single to LF');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   });
 
@@ -533,7 +601,6 @@ test.describe('Diamond Defense regression behavior', () => {
     await openCleanApp(page);
 
     await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
-    await expect(page.locator('#sitSelect')).toBeDisabled();
     await expect(page.locator('#randomSitBtn')).toBeDisabled();
     await expect(page.locator('#gameLoginGate')).toBeVisible();
 
@@ -565,7 +632,6 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(playerModal).toBeHidden();
     await expect(page.locator('#playerIdText')).toHaveText('13u-black-bob-smith-11');
     await expect(page.getByRole('button', { name:'Start Situation' })).toBeEnabled();
-    await expect(page.locator('#sitSelect')).toBeEnabled();
     await expect(page.locator('#randomSitBtn')).toBeEnabled();
     await expect(page.locator('#gameLoginGate')).toBeHidden();
     await page.reload();
@@ -574,9 +640,14 @@ test.describe('Diamond Defense regression behavior', () => {
     const logoutResponse = page.waitForResponse((response) =>
       response.url().endsWith('/api/auth/logout') && response.request().method() === 'POST',
     );
-    await expect(page.locator('#playerBtn')).toHaveText('#11 Bob Smith · Log out');
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
+    await page.locator('#playerBtn').click();
+    await expect(page.locator('#accountMenu')).toBeVisible();
+    await expect(page.locator('#accountMenuName')).toHaveText('Bob Smith');
+    await expect(page.locator('#accountMenuMeta')).toHaveText('Player · #11 · 13U Black');
     await page.locator('#accountSecurityBtn').click();
+    await expect(page.locator('#accountMenu')).toBeHidden();
     await expect(page.locator('#accountSecurityOverlay')).toBeVisible();
     await expect(page.locator('#accountSecurityBtn')).toHaveAttribute('aria-expanded', 'true');
     const accountDrawerLayout = await page.evaluate(() => {
@@ -606,9 +677,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#accountSecurityClose').click();
     await expect(page.locator('#accountSecurityOverlay')).toBeHidden();
     await expect(page.locator('#accountSecurityBtn')).toHaveAttribute('aria-expanded', 'false');
-    await page.locator('#playerBtn').click();
+    await logoutCurrentUser(page);
     expect((await logoutResponse).ok()).toBe(true);
-    await expect(page.locator('#playerBtn')).toHaveText('Login');
+    await expect(page.locator('#accountMenu')).toBeHidden();
     await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
     await expect(page.locator('#gameLoginGate')).toBeVisible();
   });
@@ -631,8 +702,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
-    await expect(page.locator('#playerBtn')).toHaveText('Diamond Defense Coach · Log out');
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Diamond Defense Coach');
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
+    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Coach workspace');
     await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#coachCard')).toBeVisible();
     await expect(page.locator('#coachStatus')).toHaveText('unlocked');
@@ -661,7 +733,7 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(coachDrawerLayout.rightGap).toBeLessThanOrEqual(12);
     expect(coachDrawerLayout.bottom).toBeLessThanOrEqual(coachDrawerLayout.viewportHeight);
 
-    await page.locator('#playerBtn').click();
+    await logoutCurrentUser(page);
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
     await page.locator('#playerBtn').click();
     await page.locator('#authAdminTab').click();
@@ -675,8 +747,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
-    await expect(page.locator('#playerBtn')).toHaveText('Administrator · Log out');
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
+    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Admin workspace');
     await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#adminCard')).toBeVisible();
     await expect(page.locator('#adminStatus')).toHaveText('unlocked');
@@ -883,6 +956,8 @@ test.describe('Diamond Defense regression behavior', () => {
       return {
         normalized: {
           key: normalized.key,
+          category: normalized.category,
+          difficulty: normalized.difficulty,
           outs: normalized.outs,
           runnersOn: normalized.runnersOn,
           hitType: normalized.hitType,
@@ -893,6 +968,8 @@ test.describe('Diamond Defense regression behavior', () => {
 
     expect(result.normalized).toEqual({
       key: 'NORMALIZE-01',
+      category: 'General',
+      difficulty: 'advanced',
       outs: 2,
       runnersOn: { first: true, second: false, third: true },
       hitType: 'line',
@@ -961,7 +1038,7 @@ test.describe('Diamond Defense regression behavior', () => {
       return response.status;
     });
     expect(savedAttempt).toBe(201);
-    await page.locator('#playerBtn').click();
+    await logoutCurrentUser(page);
     await page.locator('#playerBtn').click();
     await page.locator('#authCoachTab').click();
     await page.locator('#coachLoginTeamSelect').selectOption('13u-black');
@@ -1024,6 +1101,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#coachSituationEditorMount')).toBeVisible();
     await expect(page.locator('#situationWorkflowRole')).toHaveText('Coach draft');
     await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('#situationCategoryInput')).not.toHaveValue('');
+    await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(beginner|intermediate|advanced)$/);
     await expect(page.locator('[data-editor-step]')).toHaveCount(6);
     await expect(page.locator('.situation-editor-actions #previewSituationBtn')).toHaveCount(0);
     await expect(page.locator('.situation-editor-actions #submitSituationBtn')).toHaveCount(0);

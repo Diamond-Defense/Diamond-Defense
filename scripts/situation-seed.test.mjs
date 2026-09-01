@@ -9,6 +9,8 @@ test('builds an idempotent situation-only seed', () => {
   );
 
   assert.match(sql, /INSERT INTO situations/);
+  assert.match(sql, /category, difficulty/);
+  assert.match(sql, /'Singles', 'beginner'/);
   assert.match(sql, /ON CONFLICT\(key\) DO UPDATE/);
   assert.match(sql, /Coach''s Choice/);
   assert.match(sql, /archived_at=NULL, archived_by=NULL/);
