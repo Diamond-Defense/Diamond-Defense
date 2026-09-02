@@ -2699,6 +2699,10 @@ function resetBallAndRunnerForSituation(){
 
 function resetPlayers(reason='reset'){
   const abandonReason = typeof reason === 'string' ? reason : 'reset';
+  if(abandonReason === 'reset' && playerHasPendingPractice()){
+    if(typeof toast === 'function') toast('Reset is unavailable during assigned practice. Complete this attempt to continue.');
+    return;
+  }
   void window._diqAbandonCurrentPlayAttempt?.(abandonReason);
   wipePhase2StateUI();
   _phase2Ended = false;

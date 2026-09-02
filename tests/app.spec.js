@@ -217,18 +217,40 @@ test.describe('Diamond Defense regression behavior', () => {
       );
       await page.locator('#startBtn').click();
       expect((await attemptStart).status()).toBe(201);
+      await expect(page.locator('#resetBtn')).toBeDisabled();
       await expect.poll(async () => {
         const assignment = await page.request.get(`/api/practice/assignments/${assignmentId}`);
         const body = await assignment.json();
         return body.assignment.situations[0].progressStatus;
       }).toBe('incomplete');
 
+      const abandonedAttempt = page.waitForResponse((response) => {
+        if(!response.url().endsWith('/api/attempts') || response.request().method() !== 'POST') return false;
+        try{ return response.request().postDataJSON()?.outcome === 'abandoned'; }
+        catch{ return false; }
+      });
+      await page.evaluate(() => window._diqAbandonCurrentPlayAttempt('page_closed'));
+      const abandonedResponse = await abandonedAttempt;
+      expect(abandonedResponse.ok()).toBeTruthy();
+      expect(await abandonedResponse.json()).toMatchObject({
+        lifecycleStatus: 'abandoned',
+        practiceProgressed: true,
+        practice: {
+          lockedAssignmentId: assignmentId,
+          nextSituation: { situationKey: 'BD-03' },
+        },
+      });
+      await expect(page.locator('#practiceAdvancePanel')).toBeVisible();
+      await expect(page.locator('#practiceAdvanceTitle')).toHaveText('Attempt ended');
+      await expect(page.locator('#resetBtn')).toBeDisabled();
+
       await page.reload();
       await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
       await page.evaluate(() => window.__DIQ_READY__);
       await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
-      await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
+      await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-03');
       await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
+      await expect(page.locator('#resetBtn')).toBeDisabled();
 
       await page.setViewportSize({ width: 390, height: 844 });
       await expect(page.locator('#practiceToggle')).toBeVisible();

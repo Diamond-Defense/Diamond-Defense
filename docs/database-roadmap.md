@@ -106,7 +106,8 @@ Status: implemented.
 - Not-started, incomplete, completed, overdue, active, and archived lifecycle
   handling. Each situation requires one completed play-through.
 - A durable single-assignment player lock, ordered situation progression,
-  resume-after-login behavior, and an explicit next-situation handoff.
+  strict one-run-per-situation enforcement, and an explicit next-situation
+  handoff after completed or interrupted attempts.
 - Free-play, Playbook, Random, and attempt-API restrictions until every pending
   assignment is completed or ended by authorized staff.
 - Close and cancel actions that immediately release players while retaining

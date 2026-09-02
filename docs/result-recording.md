@@ -18,9 +18,11 @@ Situations without a sequence are saved as soon as positioning ends. Situations
 with a sequence are saved after the last sequence stage, with all phases grouped
 inside the same database record.
 
-Incomplete starts are retained for assignment-resume and completion tracking,
-but are excluded from player results, coach reports, summaries, and CSV exports.
-An abandoned run is terminal and remains visible in result history.
+Incomplete starts are retained for assignment tracking but are excluded from
+player results, coach reports, summaries, and CSV exports. In assigned practice,
+the situation's run ID is claimed at start; an interruption finalizes that same
+run as abandoned and advances the player instead of granting a retry. An
+abandoned run is terminal and remains visible in result history.
 
 ## Saved detail
 

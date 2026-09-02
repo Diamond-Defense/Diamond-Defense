@@ -215,7 +215,14 @@ function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situation
       progressStatus: item.progress_status,
       startedAt: item.started_at,
       completedAt: item.completed_at,
-      situation: JSON.parse(item.payload_json) as Situation,
+      situation: {
+        ...(JSON.parse(item.payload_json) as Situation),
+        key: item.situation_key,
+        title: item.title,
+        category: item.category,
+        difficulty: item.difficulty as Situation['difficulty'],
+        revision: Number(item.situation_revision),
+      } as Situation,
     })),
   };
 }
@@ -589,6 +596,30 @@ export class SqlitePracticeAssignmentRepository {
     situationRevision?: number | null,
     runId?: string | null,
   ): Promise<void> {
+    const normalizedRunId = String(runId || '').trim();
+    if (!normalizedRunId) {
+      throw new RecordValidationError('Assigned practice requires an attempt identifier. Reload your practice and try again.');
+    }
+    const existingAttempt = await this.database.one<{ situation_revision: number }>(
+      `SELECT ast.situation_revision
+         FROM attempts a
+         JOIN assignment_situations ast
+           ON ast.assignment_id = a.assignment_id
+          AND ast.situation_key = a.situation_key
+        WHERE a.assignment_id = ?1 AND a.player_id = ?2
+          AND a.situation_key = ?3 AND a.run_id = ?4`,
+      [assignmentId, playerId, situationKey, normalizedRunId],
+    );
+    if (existingAttempt) {
+      if (
+        situationRevision != null
+        && Number.isInteger(Number(situationRevision))
+        && Number(situationRevision) !== Number(existingAttempt.situation_revision)
+      ) {
+        throw new RecordValidationError('This assignment uses a different revision of the situation. Reload your practice and try again.');
+      }
+      return;
+    }
     const row = await this.database.one<{ situation_revision: number }>(
       `SELECT ast.situation_revision
          FROM practice_assignments pa
@@ -599,9 +630,9 @@ export class SqlitePracticeAssignmentRepository {
           AND ap.situation_key = ast.situation_key
           AND ap.player_id = ar.player_id
         WHERE pa.id = ?1 AND ar.player_id = ?2 AND ast.situation_key = ?3
-          AND (
-            (pa.status = 'active' AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
-              AND ar.lock_active = 1 AND ap.progress_status <> 'completed'
+          AND pa.status = 'active' AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
+          AND ar.lock_active = 1 AND ap.progress_status = 'not_started'
+          AND (ap.attempt_run_id IS NULL OR ap.attempt_run_id = ?4)
               AND NOT EXISTS (
                 SELECT 1
                   FROM assignment_situations earlier_situation
@@ -616,14 +647,8 @@ export class SqlitePracticeAssignmentRepository {
                      OR (earlier_situation.sort_order = ast.sort_order
                        AND earlier_situation.situation_key < ast.situation_key)
                    )
-              ))
-            OR EXISTS (
-              SELECT 1 FROM attempts a
-               WHERE a.assignment_id = pa.id AND a.player_id = ar.player_id
-                 AND a.situation_key = ast.situation_key AND a.run_id = ?4
-            )
-          )`,
-      [assignmentId, playerId, situationKey, runId || ''],
+              )`,
+      [assignmentId, playerId, situationKey, normalizedRunId],
     );
     if (!row) throw new RecordValidationError('This situation is not available in your active practice assignment.');
     if (
@@ -632,6 +657,17 @@ export class SqlitePracticeAssignmentRepository {
       && Number(situationRevision) !== Number(row.situation_revision)
     ) {
       throw new RecordValidationError('This assignment uses a different revision of the situation. Reload your practice and try again.');
+    }
+    const claim = await this.database.execute(
+      `UPDATE assignment_progress
+          SET attempt_run_id = ?4, updated_at = ?5
+        WHERE assignment_id = ?1 AND player_id = ?2 AND situation_key = ?3
+          AND progress_status = 'not_started'
+          AND (attempt_run_id IS NULL OR attempt_run_id = ?4)`,
+      [assignmentId, playerId, situationKey, normalizedRunId, new Date().toISOString()],
+    );
+    if (claim.changes === 0) {
+      throw new RecordValidationError('This practice situation already has an attempt. Continue to the next situation.');
     }
   }
 

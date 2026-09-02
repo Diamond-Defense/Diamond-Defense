@@ -202,6 +202,7 @@ test.describe('portable SQLite API', () => {
     });
     expect(queued.situations[0].situationRevision).toBeGreaterThanOrEqual(1);
     expect(queued.situations[0].situation).toMatchObject({ key: 'BD-01' });
+    expect(queued.situations[0].situation.revision).toBe(queued.situations[0].situationRevision);
 
     const startPractice = await request.post(`/api/practice/assignments/${assignment.id}/start`, {
       headers: { Origin: origin },
@@ -328,7 +329,7 @@ test.describe('portable SQLite API', () => {
     expect((await resultsAfterCompletion.json()).log.filter((entry) => entry.runId === runId)).toHaveLength(1);
   });
 
-  test('guides, resumes, orders, and releases player practice without API bypasses', async ({ baseURL }) => {
+  test('guides, advances interrupted attempts, orders, and releases player practice without API bypasses', async ({ baseURL }) => {
     const origin = new URL(baseURL).origin;
     const coach = await requestFactory.newContext({ baseURL });
     const player = await requestFactory.newContext({ baseURL });
@@ -413,15 +414,16 @@ test.describe('portable SQLite API', () => {
         progressStatus: 'incomplete',
       });
 
-      await player.post('/api/auth/logout', { headers: { Origin: origin } });
-      await player.post('/api/auth/login', {
+      const blockedSecondRun = await player.post('/api/attempts', {
         headers: { Origin: origin },
-        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+        data: {
+          runId: `second-run-${Date.now()}`,
+          assignmentId: first.id,
+          situationKey: 'BD-02',
+          phase: 1,
+        },
       });
-      expect(await (await player.get('/api/practice/status')).json()).toMatchObject({
-        lockedAssignmentId: first.id,
-        nextSituation: { situationKey: 'BD-02', progressStatus: 'incomplete' },
-      });
+      expect(blockedSecondRun.status()).toBe(400);
 
       const firstFinal = await player.post('/api/attempts', {
         headers: { Origin: origin },
@@ -430,12 +432,14 @@ test.describe('portable SQLite API', () => {
           assignmentId: first.id,
           situationKey: 'BD-02',
           phase: 1,
-          outcome: 'passed',
+          outcome: 'abandoned',
+          abandonReason: 'page_closed',
           startedAt: firstStartedAt,
           completedAt: new Date().toISOString(),
         },
       });
       expect(await firstFinal.json()).toMatchObject({
+        lifecycleStatus: 'abandoned',
         practiceProgressed: true,
         practice: {
           pendingCount: 2,
@@ -443,6 +447,16 @@ test.describe('portable SQLite API', () => {
           lockedAssignmentId: first.id,
           nextSituation: { situationKey: 'BD-03' },
         },
+      });
+
+      await player.post('/api/auth/logout', { headers: { Origin: origin } });
+      await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+      });
+      expect(await (await player.get('/api/practice/status')).json()).toMatchObject({
+        lockedAssignmentId: first.id,
+        nextSituation: { situationKey: 'BD-03', progressStatus: 'not_started' },
       });
       expect((await player.post('/api/attempts', {
         headers: { Origin: origin },

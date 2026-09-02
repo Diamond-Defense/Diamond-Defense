@@ -60,7 +60,7 @@ export const POST: RequestHandler = async (event) => {
         saved.id,
         attempt.startedAt || timestamp,
       );
-      if (saved.lifecycleStatus === 'completed') {
+      if (saved.lifecycleStatus === 'completed' || saved.lifecycleStatus === 'abandoned') {
         practiceProgressed = await assignments.recordAttempt(
           attempt.assignmentId,
           user.id,

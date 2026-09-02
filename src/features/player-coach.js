@@ -1005,14 +1005,14 @@ function computeRosterPlayerId(teamObj, playerObj){
     DIQ_PRACTICE_ADVANCE_ACTION = null;
   }
 
-  function showPracticeAdvance(state){
+  function showPracticeAdvance(state, options={}){
     const panel = document.getElementById('practiceAdvancePanel');
     const title = document.getElementById('practiceAdvanceTitle');
     const message = document.getElementById('practiceAdvanceMessage');
     const button = document.getElementById('practiceAdvanceButton');
     if(!panel || !title || !message || !button) return;
     if(state.lockedAssignmentId && state.nextSituation){
-      title.textContent = 'Situation complete';
+      title.textContent = options.interrupted ? 'Attempt ended' : 'Situation complete';
       message.textContent = `Next: ${practiceSituationLabel(state.nextSituation)}`;
       button.textContent = 'Continue to next situation';
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'continue', assignmentId:state.lockedAssignmentId };
@@ -2760,8 +2760,8 @@ function recordAttempt(entry, options={}){
   });
   request.then(response=>{
     if(response?.practice) applyPracticeState(response.practice);
-    if(e.assignmentId && response?.lifecycleStatus === 'completed'){
-      if(response.practiceProgressed) showPracticeAdvance(DIQ_PRACTICE_STATE);
+    if(e.assignmentId && response?.lifecycleStatus !== 'incomplete'){
+      if(response.practiceProgressed) showPracticeAdvance(DIQ_PRACTICE_STATE, { interrupted:e.outcome === 'abandoned' });
       else{
         hidePracticeAdvance();
         if(typeof toast === 'function' && !options.quiet) toast('This practice was ended by your coach. Your result was saved, and free-play access was updated.');
@@ -4084,7 +4084,26 @@ function wireOnce(){
       return;
     }
 
-    beginPlayAttempt(currentSituation);
+    startBtn.disabled = true;
+    const attemptRunId = beginPlayAttempt(currentSituation);
+    const attemptStartSave = _activePlayAttempt?.runId === attemptRunId
+      ? _activePlayAttempt.startSave
+      : null;
+    if(attemptStartSave){
+      try{
+        await attemptStartSave;
+      }catch(_error){
+        if(_activePlayAttempt?.runId === attemptRunId){
+          _activePlayAttempt.finalized = true;
+          _activePlayAttempt = null;
+        }
+        await refreshPlayerPracticeState().catch(()=>null);
+        startBtn.disabled = typeof canPlayCurrentSituation === 'function'
+          ? !canPlayCurrentSituation()
+          : false;
+        return;
+      }
+    }
     _roundHasStarted = true;
     _phase2Ended = false;
     allowSeqPanel = false;
@@ -4105,7 +4124,7 @@ function wireOnce(){
     hideTargetPanel();
     if (!coachUnlocked) getAllRings().forEach(el=> el.style.display='none');
     startBtn.disabled = true;
-    if (resetBtn) resetBtn.disabled = false;
+    if (resetBtn) resetBtn.disabled = typeof playerHasPendingPractice === 'function' && playerHasPendingPractice();
     if (checkBtn) checkBtn.disabled = false;
     if (checkBtn){ checkBtn.classList.remove('hidden'); }
     setChipsLocked(false);
