@@ -144,6 +144,394 @@ test.describe('portable SQLite API', () => {
     }
   });
 
+  test('marks assigned practice incomplete at start and completes it by finalizing the same attempt', async ({ request, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const coachLogin = await request.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: {
+        role: 'coach',
+        teamId: '13u-black',
+        coachId: 'staff-coach',
+        password: 'coach',
+      },
+    });
+    expect(coachLogin.ok()).toBeTruthy();
+
+    const created = await request.post('/api/practice/assignments', {
+      headers: { Origin: origin },
+      data: {
+        title: `Infield practice ${Date.now()}`,
+        instructions: 'Complete this situation.',
+        dueAt: '2099-12-31',
+        playerIds: ['13u-black-bob-smith-11'],
+        situations: [{ situationKey: 'BD-01', requiredRepetitions: 9 }],
+        publish: true,
+      },
+    });
+    expect(created.status()).toBe(201);
+    const assignment = (await created.json()).assignment;
+    expect(assignment).toMatchObject({
+      teamId: '13u-black',
+      status: 'active',
+      recipientCount: 1,
+      situationCount: 1,
+    });
+
+    await request.post('/api/auth/logout', { headers: { Origin: origin } });
+    const playerLogin = await request.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: {
+        role: 'player',
+        teamId: '13u-black',
+        playerId: '13u-black-bob-smith-11',
+        password: '1234',
+      },
+    });
+    expect(playerLogin.ok()).toBeTruthy();
+
+    const queue = await request.get('/api/practice/assignments');
+    expect(queue.ok()).toBeTruthy();
+    const queueData = await queue.json();
+    const queued = queueData.assignments.find((item) => item.id === assignment.id);
+    expect(queued.recipients).toHaveLength(1);
+    expect(queued.situations[0]).toMatchObject({
+      situationKey: 'BD-01',
+      requiredRepetitions: 1,
+      completedRepetitions: 0,
+      progressStatus: 'not_started',
+    });
+    expect(queued.situations[0].situationRevision).toBeGreaterThanOrEqual(1);
+    expect(queued.situations[0].situation).toMatchObject({ key: 'BD-01' });
+
+    const startPractice = await request.post(`/api/practice/assignments/${assignment.id}/start`, {
+      headers: { Origin: origin },
+    });
+    expect(startPractice.ok()).toBeTruthy();
+    expect(await startPractice.json()).toMatchObject({
+      pendingCount: 1,
+      freePlayAllowed: false,
+      lockedAssignmentId: assignment.id,
+      nextSituation: { situationKey: 'BD-01' },
+    });
+
+    const invalidSituation = await request.post('/api/attempts', {
+      headers: { Origin: origin },
+      data: {
+        runId: `practice-wrong-${Date.now()}`,
+        assignmentId: assignment.id,
+        situationKey: 'BD-02',
+        phase: 1,
+        outcome: 'passed',
+        success: true,
+        triesUsed: 1,
+        timeElapsed: 5,
+      },
+    });
+    expect(invalidSituation.status()).toBe(400);
+
+    const runId = `practice-${assignment.id}`;
+    const startedAt = new Date().toISOString();
+    const started = await request.post('/api/attempts', {
+      headers: { Origin: origin },
+      data: {
+        runId,
+        assignmentId: assignment.id,
+        situationKey: 'BD-01',
+        situationRevision: queued.situations[0].situationRevision,
+        phase: 1,
+        startedAt,
+      },
+    });
+    expect(started.status()).toBe(201);
+    expect(await started.json()).toMatchObject({
+      created: true,
+      changed: true,
+      lifecycleStatus: 'incomplete',
+    });
+
+    const duplicateStart = await request.post('/api/attempts', {
+      headers: { Origin: origin },
+      data: {
+        runId,
+        assignmentId: assignment.id,
+        situationKey: 'BD-01',
+        situationRevision: queued.situations[0].situationRevision,
+        phase: 1,
+        startedAt,
+      },
+    });
+    expect(duplicateStart.status()).toBe(200);
+    expect(await duplicateStart.json()).toMatchObject({ created: false, changed: false });
+
+    const inProgressQueue = await request.get('/api/practice/assignments');
+    const inProgress = (await inProgressQueue.json()).assignments.find((item) => item.id === assignment.id);
+    expect(inProgress.recipients[0]).toMatchObject({ status: 'in_progress' });
+    expect(inProgress.situations[0]).toMatchObject({
+      completedRepetitions: 0,
+      progressStatus: 'incomplete',
+    });
+    const resultsBeforeCompletion = await request.get('/api/results/me');
+    expect((await resultsBeforeCompletion.json()).log.some((entry) => entry.runId === runId)).toBe(false);
+
+    const completedAt = new Date().toISOString();
+    const finalized = await request.post('/api/attempts', {
+      headers: { Origin: origin },
+      data: {
+        runId,
+        assignmentId: assignment.id,
+        situationKey: 'BD-01',
+        situationRevision: queued.situations[0].situationRevision,
+        phase: 1,
+        outcome: 'failed',
+        success: false,
+        triesUsed: 3,
+        timeElapsed: 8,
+        startedAt,
+        completedAt,
+      },
+    });
+    expect(finalized.status()).toBe(200);
+    expect(await finalized.json()).toMatchObject({
+      created: false,
+      changed: true,
+      lifecycleStatus: 'completed',
+    });
+
+    const duplicateFinal = await request.post('/api/attempts', {
+      headers: { Origin: origin },
+      data: {
+        runId,
+        assignmentId: assignment.id,
+        situationKey: 'BD-01',
+        situationRevision: queued.situations[0].situationRevision,
+        phase: 1,
+        outcome: 'failed',
+        success: false,
+        startedAt,
+        completedAt,
+      },
+    });
+    expect(duplicateFinal.status()).toBe(200);
+    expect(await duplicateFinal.json()).toMatchObject({ created: false, changed: false });
+
+    const completedQueue = await request.get('/api/practice/assignments');
+    const completedData = await completedQueue.json();
+    const completed = completedData.assignments.find((item) => item.id === assignment.id);
+    expect(completed).toMatchObject({ status: 'completed' });
+    expect(completed.recipients[0]).toMatchObject({ status: 'completed' });
+    expect(completed.situations[0]).toMatchObject({
+      completedRepetitions: 1,
+      passedRepetitions: 0,
+      progressStatus: 'completed',
+    });
+    const resultsAfterCompletion = await request.get('/api/results/me');
+    expect((await resultsAfterCompletion.json()).log.filter((entry) => entry.runId === runId)).toHaveLength(1);
+  });
+
+  test('guides, resumes, orders, and releases player practice without API bypasses', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const coach = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    const playerId = '13u-black-john-smith-12';
+    const createAssignment = async (title, situations, dueAt = null) => {
+      const response = await coach.post('/api/practice/assignments', {
+        headers: { Origin: origin },
+        data: { title, playerIds: [playerId], situations, dueAt, publish: true },
+      });
+      expect(response.status()).toBe(201);
+      return (await response.json()).assignment;
+    };
+    try {
+      expect((await coach.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'coach' },
+      })).ok()).toBeTruthy();
+      const first = await createAssignment(
+        `Guided order ${Date.now()}`,
+        [{ situationKey: 'BD-02' }, { situationKey: 'BD-03' }],
+        '2020-01-01',
+      );
+      const second = await createAssignment(
+        `Guided follow-up ${Date.now()}`,
+        [{ situationKey: 'BD-04' }],
+      );
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+      })).ok()).toBeTruthy();
+
+      const initialState = await player.get('/api/practice/status');
+      expect(await initialState.json()).toMatchObject({
+        pendingCount: 2,
+        overdueCount: 1,
+        freePlayAllowed: false,
+        lockedAssignmentId: null,
+      });
+      const blockedFreePlay = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId: `blocked-free-${Date.now()}`, situationKey: 'BD-01', phase: 1 },
+      });
+      expect(blockedFreePlay.status()).toBe(400);
+
+      const startedFirst = await player.post(`/api/practice/assignments/${first.id}/start`, {
+        headers: { Origin: origin },
+      });
+      const startedState = await startedFirst.json();
+      expect(startedState).toMatchObject({
+        lockedAssignmentId: first.id,
+        nextSituation: { situationKey: 'BD-02' },
+      });
+      expect((await player.post(`/api/practice/assignments/${second.id}/start`, {
+        headers: { Origin: origin },
+      })).status()).toBe(400);
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: `out-of-order-${Date.now()}`,
+          assignmentId: first.id,
+          situationKey: 'BD-03',
+          phase: 1,
+        },
+      })).status()).toBe(400);
+
+      const firstRun = `guided-first-${Date.now()}`;
+      const firstStartedAt = new Date().toISOString();
+      const firstStart = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: firstRun,
+          assignmentId: first.id,
+          situationKey: 'BD-02',
+          situationRevision: startedState.nextSituation.situationRevision,
+          phase: 1,
+          startedAt: firstStartedAt,
+        },
+      });
+      expect(firstStart.status()).toBe(201);
+      expect((await firstStart.json()).practice.nextSituation).toMatchObject({
+        situationKey: 'BD-02',
+        progressStatus: 'incomplete',
+      });
+
+      await player.post('/api/auth/logout', { headers: { Origin: origin } });
+      await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+      });
+      expect(await (await player.get('/api/practice/status')).json()).toMatchObject({
+        lockedAssignmentId: first.id,
+        nextSituation: { situationKey: 'BD-02', progressStatus: 'incomplete' },
+      });
+
+      const firstFinal = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: firstRun,
+          assignmentId: first.id,
+          situationKey: 'BD-02',
+          phase: 1,
+          outcome: 'passed',
+          startedAt: firstStartedAt,
+          completedAt: new Date().toISOString(),
+        },
+      });
+      expect(await firstFinal.json()).toMatchObject({
+        practiceProgressed: true,
+        practice: {
+          pendingCount: 2,
+          freePlayAllowed: false,
+          lockedAssignmentId: first.id,
+          nextSituation: { situationKey: 'BD-03' },
+        },
+      });
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: `repeat-completed-${Date.now()}`,
+          assignmentId: first.id,
+          situationKey: 'BD-02',
+          phase: 1,
+        },
+      })).status()).toBe(400);
+
+      const secondRun = `guided-second-${Date.now()}`;
+      const secondStart = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId: secondRun, assignmentId: first.id, situationKey: 'BD-03', phase: 1 },
+      });
+      expect(secondStart.status()).toBe(201);
+      const secondFinal = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: secondRun,
+          assignmentId: first.id,
+          situationKey: 'BD-03',
+          phase: 1,
+          outcome: 'failed',
+        },
+      });
+      expect(await secondFinal.json()).toMatchObject({
+        practiceProgressed: true,
+        practice: { pendingCount: 1, lockedAssignmentId: null, freePlayAllowed: false },
+      });
+
+      const secondAssignmentStart = await player.post(`/api/practice/assignments/${second.id}/start`, {
+        headers: { Origin: origin },
+      });
+      expect(secondAssignmentStart.ok()).toBeTruthy();
+      const interruptedRun = `coach-ended-${Date.now()}`;
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId: interruptedRun, assignmentId: second.id, situationKey: 'BD-04', phase: 1 },
+      })).status()).toBe(201);
+      expect((await coach.patch(`/api/practice/assignments/${second.id}`, {
+        headers: { Origin: origin }, data: { action: 'close' },
+      })).ok()).toBeTruthy();
+      const endedFinal = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: interruptedRun,
+          assignmentId: second.id,
+          situationKey: 'BD-04',
+          phase: 1,
+          outcome: 'passed',
+        },
+      });
+      expect(await endedFinal.json()).toMatchObject({
+        practiceProgressed: false,
+        practice: { pendingCount: 0, freePlayAllowed: true, lockedAssignmentId: null },
+      });
+
+      const freeRun = `already-started-free-${Date.now()}`;
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId: freeRun, situationKey: 'BD-05', phase: 1 },
+      })).status()).toBe(201);
+      const addedDuringPlay = await createAssignment(
+        `Added during free play ${Date.now()}`,
+        [{ situationKey: 'BD-06' }],
+      );
+      const allowedFinal = await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId: freeRun, situationKey: 'BD-05', phase: 1, outcome: 'passed' },
+      });
+      expect(allowedFinal.ok()).toBeTruthy();
+      expect(await allowedFinal.json()).toMatchObject({
+        practice: { pendingCount: 1, freePlayAllowed: false },
+      });
+      expect((await coach.patch(`/api/practice/assignments/${addedDuringPlay.id}`, {
+        headers: { Origin: origin }, data: { action: 'cancel' },
+      })).ok()).toBeTruthy();
+      expect(await (await player.get('/api/practice/status')).json()).toMatchObject({
+        pendingCount: 0,
+        freePlayAllowed: true,
+      });
+    } finally {
+      await coach.dispose();
+      await player.dispose();
+    }
+  });
+
   test('limits team reports to staff roles', async ({ request, baseURL }) => {
     const origin = new URL(baseURL).origin;
     const playerLogin = await request.post('/api/auth/login', {

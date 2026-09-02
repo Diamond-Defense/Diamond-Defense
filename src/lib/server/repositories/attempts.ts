@@ -1,4 +1,5 @@
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
+import { RecordValidationError } from './errors';
 
 interface AttemptRow {
   payload_json: string;
@@ -13,6 +14,8 @@ interface AttemptRow {
   player_name: string;
   player_number: string;
   created_at: string;
+  lifecycle_status: AttemptLifecycleStatus;
+  assignment_id: string | null;
 }
 
 interface CoachAttemptRow extends AttemptRow {
@@ -21,6 +24,7 @@ interface CoachAttemptRow extends AttemptRow {
 }
 
 export type AttemptOutcome = 'passed' | 'failed' | 'abandoned';
+export type AttemptLifecycleStatus = 'incomplete' | 'completed' | 'abandoned';
 
 export interface PhaseOneCheck {
   checkedAt: string;
@@ -61,6 +65,7 @@ export interface SequenceStageResult {
 
 export interface AttemptInput {
   situationKey: string;
+  assignmentId?: string;
   phase: 1 | 2;
   formatVersion?: 2;
   runId?: string;
@@ -69,6 +74,7 @@ export interface AttemptInput {
   completedAt?: string;
   abandonReason?: string | null;
   situationRevision?: number | null;
+  lifecycleStatus?: AttemptLifecycleStatus;
   phase1?: PhaseOneResult | null;
   phase1Checks?: PhaseOneCheck[];
   sequenceChecks?: SequenceCheck[];
@@ -120,7 +126,7 @@ function reportWhere(teamId: string, filters: AttemptReportFilters = {}): {
   params: unknown[];
 } {
   const params: unknown[] = [teamId];
-  const conditions = ['a.team_id = ?1'];
+  const conditions = ["a.team_id = ?1", "a.lifecycle_status <> 'incomplete'"];
   const add = (condition: (placeholder: string) => string, value: unknown) => {
     params.push(value);
     conditions.push(condition(`?${params.length}`));
@@ -159,6 +165,8 @@ function mapCoachAttempt(row: CoachAttemptRow): CoachAttempt {
     playerName: row.player_name,
     playerNumber: row.player_number,
     createdAt: row.created_at,
+    lifecycleStatus: row.lifecycle_status,
+    assignmentId: row.assignment_id ?? undefined,
   };
 }
 
@@ -176,6 +184,8 @@ function mapAttempt(row: AttemptRow): AttemptInput {
     playerName: row.player_name,
     playerNumber: row.player_number,
     createdAt: row.created_at,
+    lifecycleStatus: row.lifecycle_status,
+    assignmentId: row.assignment_id ?? undefined,
   };
 }
 
@@ -186,37 +196,143 @@ export class SqliteAttemptRepository {
     playerId: string,
     teamId: string,
     attempt: AttemptInput,
-  ): Promise<{ id: string; created: boolean }> {
+  ): Promise<{
+    id: string;
+    created: boolean;
+    changed: boolean;
+    lifecycleStatus: AttemptLifecycleStatus;
+  }> {
     const id = crypto.randomUUID();
     const runId = String(attempt.runId || '').trim() || id;
-    const completedAt = attempt.completedAt || attempt.ts || new Date().toISOString();
-    const startedAt = attempt.startedAt || completedAt;
-    const outcome: AttemptOutcome = attempt.outcome
-      ?? (attempt.success === true ? 'passed' : 'failed');
+    const now = new Date().toISOString();
+    const outcome: AttemptOutcome | null = attempt.outcome
+      ?? (typeof attempt.success === 'boolean' ? (attempt.success ? 'passed' : 'failed') : null);
+    const lifecycleStatus: AttemptLifecycleStatus = outcome == null
+      ? 'incomplete'
+      : outcome === 'abandoned' ? 'abandoned' : 'completed';
+    const completedAt = lifecycleStatus === 'incomplete'
+      ? null
+      : attempt.completedAt || attempt.ts || now;
+    const startedAt = attempt.startedAt || completedAt || now;
+
+    const assignedSituation = attempt.assignmentId
+      ? await this.database.one<{
+          revision: number;
+          title: string;
+        }>(
+          `SELECT ast.situation_revision AS revision, sv.title
+             FROM assignment_situations ast
+             JOIN situation_versions sv
+               ON sv.situation_key = ast.situation_key
+              AND sv.revision = ast.situation_revision
+            WHERE ast.assignment_id = ?1 AND ast.situation_key = ?2`,
+          [attempt.assignmentId, attempt.situationKey],
+        )
+      : null;
+    const currentSituation = assignedSituation || await this.database.one<{
+      revision: number;
+      title: string;
+    }>('SELECT revision, title FROM situations WHERE key = ?1', [attempt.situationKey]);
+    if (!currentSituation) throw new RecordValidationError('Situation not found.');
+    const situationRevision = Number(currentSituation.revision);
+    if (
+      attempt.situationRevision != null
+      && Number(attempt.situationRevision) !== situationRevision
+    ) {
+      throw new RecordValidationError('This attempt uses a different situation revision. Reload and try again.');
+    }
+    const identity = await this.database.one<{
+      team_name: string;
+      player_name: string;
+      player_number: string;
+    }>(
+      `SELECT COALESCE(t.name, '') AS team_name,
+              COALESCE(u.display_name, '') AS player_name,
+              COALESCE(tm.jersey_number, '') AS player_number
+         FROM users u
+         LEFT JOIN teams t ON t.id = ?2
+         LEFT JOIN team_memberships tm ON tm.team_id = ?2 AND tm.user_id = u.id
+        WHERE u.id = ?1`,
+      [playerId, teamId],
+    );
     const payload = {
       ...attempt,
       formatVersion: attempt.formatVersion ?? 2,
       runId,
-      outcome,
+      ...(outcome ? { outcome } : {}),
       startedAt,
-      completedAt,
+      ...(completedAt ? { completedAt } : {}),
       playerId,
-      ts: completedAt,
+      situationRevision,
+      lifecycleStatus,
+      ts: completedAt || startedAt,
     };
+
+    const existing = await this.database.one<{
+      id: string;
+      player_id: string;
+      team_id: string;
+      situation_key: string;
+      assignment_id: string | null;
+      lifecycle_status: AttemptLifecycleStatus;
+    }>(
+      `SELECT id, player_id, team_id, situation_key, assignment_id, lifecycle_status
+         FROM attempts WHERE run_id = ?1`,
+      [runId],
+    );
+    if (existing) {
+      if (
+        existing.player_id !== playerId
+        || existing.team_id !== teamId
+        || existing.situation_key !== attempt.situationKey
+        || (existing.assignment_id || null) !== (attempt.assignmentId || null)
+      ) {
+        throw new RecordValidationError('The attempt identifier is already in use. Start the situation again.');
+      }
+      if (existing.lifecycle_status !== 'incomplete' || lifecycleStatus === 'incomplete') {
+        return {
+          id: existing.id,
+          created: false,
+          changed: false,
+          lifecycleStatus: existing.lifecycle_status,
+        };
+      }
+      await this.database.execute(
+        `UPDATE attempts
+            SET phase = ?2, stage = ?3, score = ?4, total = ?5,
+                success = ?6, tries_used = ?7, elapsed_seconds = ?8,
+                payload_json = ?9, outcome = ?10, completed_at = ?11,
+                abandon_reason = ?12, lifecycle_status = ?13, updated_at = ?14
+          WHERE id = ?1 AND lifecycle_status = 'incomplete'`,
+        [
+          existing.id,
+          attempt.phase,
+          attempt.stage ?? null,
+          attempt.score ?? null,
+          attempt.total ?? null,
+          outcome === 'abandoned' ? 0 : outcome === 'passed' ? 1 : 0,
+          attempt.triesUsed ?? 0,
+          attempt.timeElapsed ?? 0,
+          JSON.stringify(payload),
+          outcome,
+          completedAt,
+          attempt.abandonReason || null,
+          lifecycleStatus,
+          now,
+        ],
+      );
+      return { id: existing.id, created: false, changed: true, lifecycleStatus };
+    }
+
     const result = await this.database.execute(
       `INSERT OR IGNORE INTO attempts
         (id, player_id, team_id, situation_key, phase, stage, score, total,
          success, tries_used, elapsed_seconds, payload_json, created_at, run_id,
          outcome, started_at, completed_at, abandon_reason, situation_revision,
-         situation_title, team_name, player_name, player_number)
+         situation_title, team_name, player_name, player_number, assignment_id,
+         lifecycle_status, updated_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-         ?14, ?15, ?16, ?17, ?18,
-         (SELECT revision FROM situations WHERE key = ?4),
-         COALESCE((SELECT title FROM situations WHERE key = ?4), ''),
-         COALESCE((SELECT name FROM teams WHERE id = ?3), ''),
-         COALESCE((SELECT display_name FROM users WHERE id = ?2), ''),
-         COALESCE((SELECT jersey_number FROM team_memberships
-                    WHERE team_id = ?3 AND user_id = ?2), ''))`,
+         ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)`,
       [
         id,
         playerId,
@@ -226,28 +342,46 @@ export class SqliteAttemptRepository {
         attempt.stage ?? null,
         attempt.score ?? null,
         attempt.total ?? null,
-        outcome === 'abandoned' ? 0 : outcome === 'passed' ? 1 : 0,
+        lifecycleStatus === 'incomplete' ? null : outcome === 'abandoned' ? 0 : outcome === 'passed' ? 1 : 0,
         attempt.triesUsed ?? 0,
         attempt.timeElapsed ?? 0,
         JSON.stringify(payload),
-        completedAt,
+        startedAt,
         runId,
         outcome,
         startedAt,
         completedAt,
         attempt.abandonReason || null,
+        situationRevision,
+        currentSituation.title,
+        identity?.team_name || '',
+        identity?.player_name || '',
+        identity?.player_number || '',
+        attempt.assignmentId || null,
+        lifecycleStatus,
+        now,
       ],
     );
-    return { id, created: result.changes > 0 };
+    if (result.changes > 0) return { id, created: true, changed: true, lifecycleStatus };
+    const raced = await this.database.one<{ id: string; lifecycle_status: AttemptLifecycleStatus }>(
+      'SELECT id, lifecycle_status FROM attempts WHERE run_id = ?1',
+      [runId],
+    );
+    return {
+      id: raced?.id || id,
+      created: false,
+      changed: false,
+      lifecycleStatus: raced?.lifecycle_status || lifecycleStatus,
+    };
   }
 
   async listForPlayer(playerId: string): Promise<AttemptInput[]> {
     const rows = await this.database.all<AttemptRow>(
       `SELECT payload_json, run_id, outcome, started_at, completed_at,
               abandon_reason, situation_revision, situation_title, team_name,
-              player_name, player_number, created_at
+              player_name, player_number, created_at, lifecycle_status, assignment_id
          FROM attempts
-        WHERE player_id = ?1 ORDER BY created_at`,
+        WHERE player_id = ?1 AND lifecycle_status <> 'incomplete' ORDER BY created_at`,
       [playerId],
     );
     return rows.map(mapAttempt);
@@ -264,9 +398,9 @@ export class SqliteAttemptRepository {
       `SELECT a.payload_json, a.run_id, a.outcome, a.started_at,
               a.completed_at, a.abandon_reason, a.situation_revision,
               a.situation_title, a.team_name, a.player_name, a.player_number,
-              a.created_at
+              a.created_at, a.lifecycle_status, a.assignment_id
          FROM attempts a
-        WHERE a.team_id = ?1
+        WHERE a.team_id = ?1 AND a.lifecycle_status <> 'incomplete'
         ORDER BY a.created_at DESC`,
       [teamId],
     );
@@ -295,7 +429,7 @@ export class SqliteAttemptRepository {
          SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
                 a.outcome, a.started_at, a.completed_at, a.abandon_reason,
                 a.situation_revision, a.situation_title, a.team_name,
-                a.player_name, a.player_number,
+                a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
                 ROW_NUMBER() OVER (
                   PARTITION BY a.player_id
                   ORDER BY a.created_at DESC, a.id DESC
@@ -305,7 +439,8 @@ export class SqliteAttemptRepository {
        )
        SELECT id, player_id, payload_json, created_at, run_id, outcome,
               started_at, completed_at, abandon_reason, situation_revision,
-              situation_title, team_name, player_name, player_number
+              situation_title, team_name, player_name, player_number,
+              lifecycle_status, assignment_id
          FROM ranked
         WHERE player_rank = 1
         ORDER BY created_at DESC, id DESC
@@ -336,7 +471,7 @@ export class SqliteAttemptRepository {
       `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
               a.outcome, a.started_at, a.completed_at, a.abandon_reason,
               a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number
+              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id
          FROM attempts a
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC
@@ -360,7 +495,7 @@ export class SqliteAttemptRepository {
       `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
               a.outcome, a.started_at, a.completed_at, a.abandon_reason,
               a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number
+              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id
         FROM attempts a
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC

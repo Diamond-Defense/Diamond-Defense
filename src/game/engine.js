@@ -130,13 +130,38 @@ function hasGameAccess(){
   return Boolean(user?.id && !user.mustChangePassword);
 }
 
+function playerHasPendingPractice(){
+  const user = window.__DIQ_AUTH_USER__;
+  const state = window.__DIQ_PRACTICE_STATE__;
+  return Boolean(user?.role === 'player' && Number(state?.pendingCount || 0) > 0);
+}
+
+function canPlayCurrentSituation(){
+  if(!hasGameAccess()) return false;
+  if(!playerHasPendingPractice()) return true;
+  const state = window.__DIQ_PRACTICE_STATE__;
+  return Boolean(
+    state?.lockedAssignmentId
+    && state?.nextSituation?.situationKey
+    && currentSituation?.key === state.nextSituation.situationKey
+  );
+}
+
+function requireFreePlayAccess(){
+  if(!playerHasPendingPractice()) return true;
+  if(typeof toast === 'function') toast('Complete all assigned practice before using free play.');
+  window._diqOpenPracticeWorkspace?.('player');
+  return false;
+}
+
 function applyGameAccess(){
   const allowed = hasGameAccess();
   const fieldCard = document.querySelector('.field-card');
   fieldCard?.classList.toggle('is-login-required', !allowed);
   wrap?.setAttribute('aria-disabled', String(!allowed));
   gameLoginGate?.classList.toggle('hidden', allowed);
-  if(randomSitBtn) randomSitBtn.disabled = !allowed;
+  if(randomSitBtn) randomSitBtn.disabled = !allowed || playerHasPendingPractice();
+  if(playbookBrowserToggle) playbookBrowserToggle.disabled = !allowed || playerHasPendingPractice();
   if(!allowed){
     if(gameActive || _roundHasStarted) resetPlayers();
     if(startBtn) startBtn.disabled = true;
@@ -146,7 +171,7 @@ function applyGameAccess(){
     if(verifySeqBtn) verifySeqBtn.disabled = true;
     setChipsLocked(true);
   }else{
-    if(startBtn && !gameActive && !_roundHasStarted) startBtn.disabled = false;
+    if(startBtn && !gameActive && !_roundHasStarted) startBtn.disabled = !canPlayCurrentSituation();
     if(continueBtn) continueBtn.disabled = false;
     if(verifySeqBtn) verifySeqBtn.disabled = false;
   }
@@ -357,6 +382,22 @@ const ensureHeaderGrouping = () => {
     utilityActions.appendChild(playbookToggle);
   }
 
+  let practiceToggle = document.getElementById('practiceToggle');
+  if (!practiceToggle) {
+    practiceToggle = document.createElement('button');
+    practiceToggle.id = 'practiceToggle';
+    practiceToggle.className = 'btn-slate hidden';
+    practiceToggle.type = 'button';
+    practiceToggle.textContent = 'Your Practice';
+    practiceToggle.setAttribute('aria-controls', 'practiceWorkspace');
+    practiceToggle.setAttribute('aria-hidden', 'true');
+    utilityActions.appendChild(practiceToggle);
+  }
+  if (practiceToggle.dataset.wired !== '1') {
+    practiceToggle.dataset.wired = '1';
+    practiceToggle.addEventListener('click', () => window._diqOpenPracticeWorkspace?.('player'));
+  }
+
   let staffToolsButton = document.getElementById('staffToolsBtn');
   if (!staffToolsButton) {
     staffToolsButton = document.createElement('button');
@@ -395,6 +436,7 @@ const ensureHeaderGrouping = () => {
       else if (role === 'admin') document.getElementById('adminBtn')?.click();
     });
   }
+  if (practiceToggle) utilityActions.appendChild(practiceToggle);
   if (playbookToggle) utilityActions.appendChild(playbookToggle);
   if (staffToolsButton) utilityActions.appendChild(staffToolsButton);
   if (playerButton) accountActions.appendChild(playerButton);
@@ -1938,11 +1980,13 @@ function resetStartsToDefaults(){
   }
 }
 function pickRandomSituation(){
+  if(!requireFreePlayAccess()) return;
   if (!Array.isArray(SITUATIONS) || SITUATIONS.length === 0) return;
   const cur = currentSituation && currentSituation.key;
   let keys = SITUATIONS.map(s=>s.key);
   if (cur && keys.length > 1) keys = keys.filter(k=>k !== cur);
   const key = keys[Math.floor(Math.random() * keys.length)];
+  window._diqClearActivePracticeAssignment?.();
   setSituation(key);
 }
 
@@ -1973,6 +2017,8 @@ function filteredPlaybookSituations(){
 
 function choosePlaybookSituation(key){
   if (!key) return;
+  if(!requireFreePlayAccess()) return;
+  window._diqClearActivePracticeAssignment?.();
   setSituation(key);
   closePlaybookBrowser();
 }
@@ -2025,6 +2071,7 @@ function renderPlaybookBrowser(){
 
 function openPlaybookBrowser(){
   if (!playbookBrowserOverlay) return;
+  if(!requireFreePlayAccess()) return;
   window._diqCloseAccountMenu?.();
   window._diqCloseAccountSecurity?.();
   closeGuideRail();
@@ -2043,6 +2090,11 @@ function closePlaybookBrowser(){
 
 window._diqOpenPlaybookBrowser = openPlaybookBrowser;
 window._diqClosePlaybookBrowser = closePlaybookBrowser;
+window._diqSelectPracticeSituation = (key, assignmentId, situationSnapshot) => {
+  if (!key || !assignmentId) return;
+  window._diqSetActivePracticeAssignment?.(assignmentId);
+  setSituation(key, situationSnapshot);
+};
 
 function populateSituations(selectedKey){
   if (playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')) renderPlaybookBrowser();
@@ -2054,10 +2106,25 @@ function populateSituations(selectedKey){
 
 
 
-function setSituation(key){
+function setSituation(key, situationSnapshot=null){
+  if(playerHasPendingPractice() && !situationSnapshot && currentSituation){
+    requireFreePlayAccess();
+    return;
+  }
+  if(playerHasPendingPractice() && situationSnapshot){
+    const state = window.__DIQ_PRACTICE_STATE__;
+    if(!state?.lockedAssignmentId || state?.nextSituation?.situationKey !== key){
+      if(typeof toast === 'function') toast('Continue with the next situation in your assigned practice.');
+      window._diqOpenPracticeWorkspace?.('player');
+      return;
+    }
+  }
   void window._diqAbandonCurrentPlayAttempt?.('situation_changed');
-  currentSituation = getSituationByKey(key) || SITUATIONS[0];
+  currentSituation = situationSnapshot
+    ? normalizeSituation(situationSnapshot, 0)
+    : getSituationByKey(key) || SITUATIONS[0];
   if (!currentSituation) return;
+  startsMap[currentSituation.key] = Fcopy(currentSituation.starts || DEFAULT_STARTS);
 
   renderSeqBuilder();
 
@@ -2661,7 +2728,7 @@ function resetPlayers(reason='reset'){
   remainingTries=0;
 
   // Re-enable Start / Reset buttons
-  startBtn.disabled=!hasGameAccess();
+  startBtn.disabled=!canPlayCurrentSituation();
   resetBtn.disabled=true;
 
   // ⬅️ Make sure Check Positions is visible and reset to its initial state
@@ -2806,7 +2873,12 @@ async function init(){
     loadStarts(); loadHits();
     populateSituations();
     const firstKey = (SITUATIONS[0] && SITUATIONS[0].key);
-    buildTokens(); updateChipScale(); setSituation(firstKey); setCoachMode(false);
+    const guidedNext = window.__DIQ_PRACTICE_STATE__?.lockedAssignmentId
+      ? window.__DIQ_PRACTICE_STATE__?.nextSituation
+      : null;
+    buildTokens(); updateChipScale();
+    setSituation(guidedNext?.situationKey || firstKey, guidedNext?.situation || null);
+    setCoachMode(false);
     observeWrap(); scheduleLayout();
 
     updateDescriptionHudText();

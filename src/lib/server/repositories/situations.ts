@@ -77,12 +77,22 @@ export class SqliteSituationRepository {
   async create(situationInput: Situation, userId: string): Promise<SituationRecord> {
     const situation = validateSituation(situationInput);
     const now = new Date().toISOString();
-    const result = await this.database.execute(
-      `INSERT OR IGNORE INTO situations
-        (key, title, description, category, difficulty, payload_json, revision, active, created_by, created_at, updated_at)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, ?7, ?8, ?8)`,
-      [situation.key, situation.title, situation.desc || '', situation.category, situation.difficulty, JSON.stringify(situation), userId, now],
-    );
+    const payload = JSON.stringify(situation);
+    const [result] = await this.database.batch([
+      {
+        sql: `INSERT OR IGNORE INTO situations
+          (key, title, description, category, difficulty, payload_json, revision, active, created_by, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1, 1, ?7, ?8, ?8)`,
+        params: [situation.key, situation.title, situation.desc || '', situation.category, situation.difficulty, payload, userId, now],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO situation_versions
+          (situation_key, revision, title, category, difficulty, payload_json, created_at)
+         SELECT key, revision, title, category, difficulty, payload_json, ?2
+           FROM situations WHERE key = ?1 AND revision = 1`,
+        params: [situation.key, now],
+      },
+    ]);
     if (!result.changes) throw new RecordValidationError('A situation with that key already exists.');
     const created = await this.get(situation.key, true);
     await writeAudit(this.database, userId, 'create', 'situation', situation.key, null, created);
@@ -93,12 +103,22 @@ export class SqliteSituationRepository {
     const situation = validateSituation(situationInput);
     const before = await this.get(situation.key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
-    const result = await this.database.execute(
-      `UPDATE situations SET title = ?2, description = ?3, category = ?4, difficulty = ?5,
-                             payload_json = ?6, revision = revision + 1, active = 1, updated_at = ?7
-        WHERE key = ?1 AND revision = ?8`,
-      [situation.key, situation.title, situation.desc || '', situation.category, situation.difficulty, JSON.stringify(situation), new Date().toISOString(), expectedRevision],
-    );
+    const now = new Date().toISOString();
+    const [result] = await this.database.batch([
+      {
+        sql: `UPDATE situations SET title = ?2, description = ?3, category = ?4, difficulty = ?5,
+                               payload_json = ?6, revision = revision + 1, active = 1, updated_at = ?7
+          WHERE key = ?1 AND revision = ?8`,
+        params: [situation.key, situation.title, situation.desc || '', situation.category, situation.difficulty, JSON.stringify(situation), now, expectedRevision],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO situation_versions
+          (situation_key, revision, title, category, difficulty, payload_json, created_at)
+         SELECT key, revision, title, category, difficulty, payload_json, ?3
+           FROM situations WHERE key = ?1 AND revision = ?2 + 1`,
+        params: [situation.key, expectedRevision, now],
+      },
+    ]);
     if (!result.changes) throw new RevisionConflictError();
     const updated = await this.get(situation.key, true);
     await writeAudit(this.database, userId, 'update', 'situation', situation.key, before, updated);
@@ -109,12 +129,21 @@ export class SqliteSituationRepository {
     const before = await this.get(key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
     const now = new Date().toISOString();
-    const result = await this.database.execute(
-      `UPDATE situations SET active = ?2, revision = revision + 1, updated_at = ?3,
-                             archived_at = ?4, archived_by = ?5
-        WHERE key = ?1 AND revision = ?6`,
-      [key, active ? 1 : 0, now, active ? null : now, active ? null : userId, expectedRevision],
-    );
+    const [result] = await this.database.batch([
+      {
+        sql: `UPDATE situations SET active = ?2, revision = revision + 1, updated_at = ?3,
+                               archived_at = ?4, archived_by = ?5
+          WHERE key = ?1 AND revision = ?6`,
+        params: [key, active ? 1 : 0, now, active ? null : now, active ? null : userId, expectedRevision],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO situation_versions
+          (situation_key, revision, title, category, difficulty, payload_json, created_at)
+         SELECT key, revision, title, category, difficulty, payload_json, ?3
+           FROM situations WHERE key = ?1 AND revision = ?2 + 1`,
+        params: [key, expectedRevision, now],
+      },
+    ]);
     if (!result.changes) throw new RevisionConflictError();
     const updated = await this.get(key, true);
     await writeAudit(this.database, userId, active ? 'restore' : 'archive', 'situation', key, before, updated);

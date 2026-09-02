@@ -50,6 +50,7 @@ Detailed documentation:
 - [Account security and sessions](docs/account-security.md)
 - [Role-aware navigation](docs/navigation.md)
 - [Complete result recording](docs/result-recording.md)
+- [Practice assignments and player queues](docs/practice-assignments.md)
 - [Cloudflare deployment](docs/deployment.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
 
@@ -172,5 +173,8 @@ Situation categories, difficulty levels, and player browsing follow the
 Coach reporting supports filtered team/player history, database summaries, and
 authenticated CSV downloads as described in the
 [coach reporting guide](docs/coach-reporting.md). See the
+[practice assignment guide](docs/practice-assignments.md) for coach-created
+practice queues, immediate incomplete-state tracking, immutable situation
+revisions, and database-backed player progress. See the
 [production data refresh guide](docs/database-refresh.md) for the guarded
 preview/local copy workflow.

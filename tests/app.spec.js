@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, request as requestFactory } from '@playwright/test';
 
 async function openCleanApp(page) {
   const pageErrors = [];
@@ -140,6 +140,7 @@ test.describe('Diamond Defense regression behavior', () => {
   test('Playbook browser filters database situations and selects one for practice', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openCleanApp(page);
+    await loginAsSeedPlayer(page);
 
     await page.getByRole('button', { name: 'Playbook', exact: true }).click();
     const browser = page.getByRole('dialog', { name: 'Playbook' });
@@ -170,6 +171,89 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('S14 · Hit to Left-Center Field');
   });
 
+  test('guides a player through required practice and restores free play when staff closes it', async ({ page, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const coach = await requestFactory.newContext({ baseURL });
+    let assignmentId = '';
+    try {
+      const coachLogin = await coach.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'coach' },
+      });
+      expect(coachLogin.ok()).toBeTruthy();
+      const title = `Guided UI ${Date.now()}`;
+      const created = await coach.post('/api/practice/assignments', {
+        headers: { Origin: origin },
+        data: {
+          title,
+          playerIds: ['13u-black-bob-smith-11'],
+          situations: [{ situationKey: 'BD-02' }, { situationKey: 'BD-03' }],
+          publish: true,
+        },
+      });
+      expect(created.status()).toBe(201);
+      assignmentId = (await created.json()).assignment.id;
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openCleanApp(page);
+      await loginAsSeedPlayer(page);
+
+      await expect(page.locator('#practiceToggle')).toBeVisible();
+      await expect(page.locator('#practiceToggle')).toHaveAttribute('aria-label', 'Your Practice, 1 pending');
+      await expect(page.locator('#practiceToggle .practice-toggle-count')).toHaveText('1');
+      await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
+      await expect(page.locator('#randomSitBtn')).toBeDisabled();
+
+      await page.locator('#practiceToggle').click();
+      const card = page.locator('.practice-assignment-card').filter({ hasText: title });
+      await expect(card).toBeVisible();
+      await card.getByRole('button', { name: 'Start practice' }).click();
+      await expect(page.locator('.field-card')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
+      await expect(page.locator('#startBtn')).toBeEnabled();
+
+      const attemptStart = page.waitForResponse((response) =>
+        response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+      );
+      await page.locator('#startBtn').click();
+      expect((await attemptStart).status()).toBe(201);
+      await expect.poll(async () => {
+        const assignment = await page.request.get(`/api/practice/assignments/${assignmentId}`);
+        const body = await assignment.json();
+        return body.assignment.situations[0].progressStatus;
+      }).toBe('incomplete');
+
+      await page.reload();
+      await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+      await page.evaluate(() => window.__DIQ_READY__);
+      await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
+      await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
+      await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.locator('#practiceToggle')).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+
+      const closed = await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin },
+        data: { action: 'close' },
+      });
+      expect(closed.ok()).toBeTruthy();
+      await page.evaluate(() => window._diqRefreshPracticeState());
+      await expect(page.locator('#playbookBrowserToggle')).toBeEnabled();
+      await expect(page.locator('#randomSitBtn')).toBeEnabled();
+      await expect(page.locator('#practiceToggle .practice-toggle-count')).toBeHidden();
+    } finally {
+      if (assignmentId) {
+        await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+          headers: { Origin: origin },
+          data: { action: 'archive' },
+        });
+      }
+      await coach.dispose();
+    }
+  });
+
   test('modern strategy-board shell keeps controls organized and help accessible', async ({ page }) => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await openCleanApp(page);
@@ -196,7 +280,11 @@ test.describe('Diamond Defense regression behavior', () => {
       };
     });
     expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn', 'descHud']);
-    expect(commandLayout.utilityOrder.slice(0, 2)).toEqual(['playbookToggle', 'staffToolsBtn']);
+    expect(commandLayout.utilityOrder.slice(0, 3)).toEqual([
+      'practiceToggle',
+      'playbookToggle',
+      'staffToolsBtn',
+    ]);
     expect(commandLayout.accountOrder.slice(0, 2)).toEqual(['playerBtn', 'accountMenu']);
     expect(new Set(commandLayout.heights).size).toBe(1);
     expect(commandLayout.xPositions).toEqual([...commandLayout.xPositions].sort((left, right) => left - right));
@@ -535,13 +623,28 @@ test.describe('Diamond Defense regression behavior', () => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
+    const startedResponse = page.waitForResponse((response) =>
+      response.url().endsWith('/api/attempts')
+        && response.request().method() === 'POST'
+        && !response.request().postDataJSON()?.outcome,
+    );
     await page.getByRole('button', { name: 'Start Situation' }).click();
+    const started = await startedResponse;
+    expect(started.status()).toBe(201);
+    const startedResult = await started.json();
+    expect(startedResult).toMatchObject({
+      created: true,
+      lifecycleStatus: 'incomplete',
+    });
     const savedResponse = page.waitForResponse((response) =>
-      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+      response.url().endsWith('/api/attempts')
+        && response.request().method() === 'POST'
+        && response.request().postDataJSON()?.outcome === 'abandoned',
     );
     await page.getByRole('button', { name: 'Reset' }).click();
     const response = await savedResponse;
-    expect(response.status()).toBe(201);
+    expect(response.status()).toBe(200);
+    expect((await response.json()).attemptId).toBe(startedResult.attemptId);
     const payload = response.request().postDataJSON();
     expect(payload).toMatchObject({
       formatVersion: 2,
@@ -580,11 +683,13 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.getByRole('button', { name: 'Check Positions' }).click();
     await page.getByRole('button', { name: 'Check Positions' }).click();
     const savedResponse = page.waitForResponse((response) =>
-      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+      response.url().endsWith('/api/attempts')
+        && response.request().method() === 'POST'
+        && response.request().postDataJSON()?.outcome === 'failed',
     );
     await page.getByRole('button', { name: 'Check Positions' }).click();
     const response = await savedResponse;
-    expect(response.status()).toBe(201);
+    expect(response.status()).toBe(200);
     const payload = response.request().postDataJSON();
     expect(payload).toMatchObject({
       formatVersion: 2,
@@ -1185,11 +1290,13 @@ test.describe('Diamond Defense regression behavior', () => {
       await chip.click();
     }
     const savedResponse = page.waitForResponse((response) =>
-      response.url().endsWith('/api/attempts') && response.request().method() === 'POST',
+      response.url().endsWith('/api/attempts')
+        && response.request().method() === 'POST'
+        && response.request().postDataJSON()?.outcome === 'passed',
     );
     await page.getByRole('button', { name: 'Verify Sequence' }).click();
     const completedResponse = await savedResponse;
-    expect(completedResponse.status()).toBe(201);
+    expect(completedResponse.status()).toBe(200);
     const completedAttempt = completedResponse.request().postDataJSON();
     expect(completedAttempt).toMatchObject({
       formatVersion: 2,

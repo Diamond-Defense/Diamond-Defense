@@ -110,8 +110,70 @@
     <div id="coachResultsList"></div>
     <div id="coachResultsPagination" class="coach-results-pagination"></div>
   </section>
+  <section id="practiceWorkspace" class="card practice-workspace hidden" aria-labelledby="practiceWorkspaceTitle">
+    <div class="practice-workspace-header">
+      <div>
+        <span id="practiceWorkspaceEyebrow" class="eyebrow">Assigned practice</span>
+        <h2 id="practiceWorkspaceTitle">Your Practice</h2>
+        <p id="practiceWorkspaceSubtitle">Complete the situations assigned by your coach.</p>
+      </div>
+      <button id="practiceWorkspaceClose" class="btn btn-ghost" type="button">Back to field</button>
+    </div>
+
+    <div id="playerPracticeView" class="practice-role-view">
+      <div id="playerPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
+      <div id="playerPracticeList" class="practice-assignment-list"></div>
+      <div id="playerPracticePagination" class="coach-results-pagination"></div>
+    </div>
+
+    <div id="coachPracticeView" class="practice-role-view hidden">
+      <div class="practice-coach-layout">
+        <form id="practiceAssignmentForm" class="practice-assignment-form">
+          <div class="practice-form-heading">
+            <div>
+              <span class="eyebrow">New assignment</span>
+              <h3>Build a practice queue</h3>
+            </div>
+            <button id="practiceSelectTeam" class="btn btn-ghost" type="button">Select team</button>
+          </div>
+          <div class="practice-form-grid">
+            <label class="field"><span>Assignment name</span><input id="practiceTitle" maxlength="120" placeholder="e.g., Cutoff and relay review" required></label>
+            <label class="field"><span>Due date (optional)</span><input id="practiceDueAt" type="date"></label>
+          </div>
+          <label class="field"><span>Instructions (optional)</span><textarea id="practiceInstructions" rows="2" maxlength="1000" placeholder="What should players focus on?"></textarea></label>
+          <fieldset class="practice-choice-group">
+            <legend>Players</legend>
+            <div id="practicePlayerChoices" class="practice-choice-list"></div>
+          </fieldset>
+          <fieldset class="practice-choice-group">
+            <legend>Situations and repetitions</legend>
+            <div id="practiceSituationChoices" class="practice-situation-choices"></div>
+          </fieldset>
+          <div id="coachPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
+          <div class="practice-form-actions">
+            <button id="practiceSaveDraft" class="btn btn-ghost" type="button">Save draft</button>
+            <button id="practicePublish" class="btn-green" type="submit">Publish assignment</button>
+          </div>
+        </form>
+        <section class="practice-manage-list" aria-labelledby="practiceManageTitle">
+          <div class="practice-list-heading">
+            <div><span class="eyebrow">Coach view</span><h3 id="practiceManageTitle">Assignments</h3></div>
+            <button id="practiceCoachRefresh" class="btn btn-ghost" type="button">Refresh</button>
+          </div>
+          <div id="coachPracticeList" class="practice-assignment-list"></div>
+          <div id="coachPracticePagination" class="coach-results-pagination"></div>
+        </section>
+      </div>
+    </div>
+  </section>
   <section id="adminWorkspace" class="card admin-workspace hidden" aria-label="Administrator workspace"></section>
   <section class="card field-card">
+    <div id="practiceAdvancePanel" class="practice-advance-panel hidden" role="status" aria-live="polite">
+      <span class="eyebrow">Assigned practice</span>
+      <strong id="practiceAdvanceTitle">Situation complete</strong>
+      <span id="practiceAdvanceMessage"></span>
+      <button id="practiceAdvanceButton" class="btn-green" type="button">Continue to next situation</button>
+    </div>
     <div id="gameLoginGate" class="game-login-gate hidden" role="status" aria-live="polite">
       <strong>Log in to play</strong>
       <span>Select a player, coach, or administrator account to use the strategy board.</span>
@@ -217,11 +279,16 @@
 
   <nav class="coach-tabs" aria-label="Coach tool sections">
     <button class="coach-tab is-active" type="button" data-coach-tab="reviews">Reviews</button>
+    <button class="coach-tab" type="button" data-coach-tab="assignments">Assignments</button>
     <button class="coach-tab" type="button" data-coach-tab="proposals">Situation Proposals</button>
   </nav>
   <section class="coach-view" data-coach-view="reviews">
     <h3>Player results</h3>
     <p>Saved team activity and detailed attempts are displayed in the main workspace.</p>
+  </section>
+  <section class="coach-view hidden" data-coach-view="assignments">
+    <h3>Practice assignments</h3>
+    <p>Create team or individual practice queues and monitor completion in the main workspace.</p>
   </section>
 
 <div id="coachSituationEditorMount" class="hidden" data-coach-view="proposals"><div class="subsec diq-collapsible" id="situationBuilderSubsec" data-diq-collapsible="1" data-shared-situation-editor="1">

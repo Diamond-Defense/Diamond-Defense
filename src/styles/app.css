@@ -1276,12 +1276,12 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 
 /* On desktop, tools and the strategy board share the viewport instead of overlapping. */
 @media (min-width:1200px){
-  .app:has(> .tools-drawer > :is(.card,#accountSecurityOverlay):not(.hidden)) > :is(.field-card,.coach-results-workspace,.admin-workspace){
+  .app:has(> .tools-drawer > :is(.card,#accountSecurityOverlay):not(.hidden)) > :is(.field-card,.coach-results-workspace,.practice-workspace,.admin-workspace){
     width:calc(100% - var(--tools-drawer-width) - 14px);
   }
 }
 
-.coach-tabs{display:grid;grid-template-columns:1fr 1.35fr;gap:8px;margin:14px 0}
+.coach-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:14px 0}
 .coach-tab{min-height:48px;border:1px solid rgba(92,180,255,.26);border-radius:12px;background:rgba(5,24,48,.62);color:#a9bfd3;font:inherit;font-weight:900;cursor:pointer}
 .coach-tab.is-active{color:#031526;border-color:#43e7f4;background:linear-gradient(180deg,#55ebf5,#35cfdf);box-shadow:0 0 18px rgba(67,231,244,.2)}
 .coach-view{padding:14px;border:1px solid rgba(92,180,255,.18);border-radius:13px;background:rgba(4,20,41,.55)}
@@ -1310,6 +1310,39 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 @media (max-width:1200px){.coach-results-filter{grid-template-columns:repeat(3,minmax(160px,1fr))}.coach-results-summary{grid-template-columns:repeat(4,minmax(100px,1fr))}}
 @media (max-width:850px){.coach-results-workspace{padding:16px}.coach-results-filter{grid-template-columns:1fr 1fr}.coach-results-summary{grid-template-columns:repeat(2,minmax(100px,1fr))}}
 @media (max-width:560px){.coach-results-filter{grid-template-columns:1fr}.coach-results-filter-actions{grid-column:auto}.coach-results-filter-actions button{flex:1 1 100%}}
+
+/* Coach-created assignments and player practice queues */
+.practice-workspace{width:100%;box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height) - 30px);padding:24px;overflow:auto}
+.practice-workspace-header,.practice-form-heading,.practice-list-heading,.practice-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.practice-workspace-header{padding-bottom:18px;margin-bottom:18px;border-bottom:1px solid rgba(92,180,255,.2)}
+.practice-workspace h2,.practice-workspace h3{margin:3px 0;color:#f2fbff}.practice-workspace p{color:#9bb6cb;line-height:1.45}
+.practice-coach-layout{display:grid;grid-template-columns:minmax(360px,.8fr) minmax(420px,1.2fr);gap:18px;align-items:start}
+.practice-assignment-form,.practice-manage-list{display:grid;gap:14px;padding:16px;border:1px solid rgba(92,180,255,.2);border-radius:15px;background:rgba(5,24,48,.68)}
+.practice-form-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,.45fr);gap:12px}
+.practice-assignment-form .field{display:grid;gap:6px}.practice-assignment-form .field>span,.practice-choice-group legend{color:#a9bfd3;font-size:12px;font-weight:850}
+.practice-assignment-form :is(input,textarea){width:100%;box-sizing:border-box;border:1px solid rgba(92,180,255,.3);border-radius:10px;background:#071b35;color:#effcff;padding:10px 11px;font:inherit;color-scheme:dark}
+.practice-choice-group{min-width:0;margin:0;padding:12px;border:1px solid rgba(92,180,255,.18);border-radius:12px}.practice-choice-group legend{padding:0 6px}
+.practice-choice-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.practice-choice-list label{display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;background:rgba(8,32,60,.68);color:#dceaf5;font-weight:750}.practice-choice-list input{width:auto;accent-color:#43e7f4}
+.practice-situation-choices{max-height:330px;display:grid;gap:6px;overflow:auto;overscroll-behavior:contain}
+.practice-situation-choice{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px;border:1px solid rgba(92,180,255,.14);border-radius:9px;background:rgba(6,25,49,.72)}
+.practice-situation-choice>input{width:auto;accent-color:#43e7f4}.practice-situation-choice>span{min-width:0;display:grid;gap:2px}.practice-situation-choice strong{overflow:hidden;color:#eaf9ff;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.practice-situation-choice small{color:#829fb6;font-size:10px}
+.practice-form-actions,.practice-card-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.practice-assignment-list{display:grid;gap:12px}.practice-assignment-card{display:grid;gap:12px;padding:16px;border:1px solid rgba(67,231,244,.24);border-radius:14px;background:linear-gradient(145deg,rgba(12,42,72,.82),rgba(5,22,44,.9));box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.practice-assignment-card.is-overdue{border-color:rgba(255,104,135,.42)}.practice-assignment-card.is-complete{border-color:rgba(75,232,171,.3)}
+.practice-card-heading h3{margin:5px 0 0;font-size:17px}.practice-due{flex:none;color:#a5c0d4;font-size:11px;font-weight:800}.is-overdue .practice-due{color:#ff9ab0}
+.practice-status{display:inline-flex;padding:3px 7px;border-radius:999px;background:#1b3856;color:#b8ccdc;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.practice-status.is-active,.practice-status.is-in_progress{color:#041a20;background:#43e7f4}.practice-status.is-completed{color:#06241c;background:#6ff0bb}.practice-status.is-draft,.practice-status.is-assigned{color:#281d04;background:#ffd66b}
+.practice-progress{height:7px;overflow:hidden;border-radius:999px;background:rgba(132,177,211,.16)}.practice-progress>span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#43e7f4,#6ff0bb);box-shadow:0 0 12px rgba(67,231,244,.35)}
+.practice-progress-copy,.practice-card-metrics{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#91abc0;font-size:11px}.practice-progress-copy strong,.practice-card-metrics strong{color:#e9f9ff}
+.practice-situation-list{display:grid;gap:5px}.practice-situation-list>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 9px;border-radius:8px;background:rgba(3,18,37,.58);color:#bad0df;font-size:11px}.practice-situation-list strong{color:#f2fbff;font-variant-numeric:tabular-nums}
+.practice-recipient-summary{display:flex;flex-wrap:wrap;gap:5px}.practice-recipient-summary span{padding:4px 7px;border:1px solid rgba(92,180,255,.16);border-radius:999px;color:#9db7ca;background:rgba(5,23,45,.64);font-size:10px}.practice-recipient-summary .is-completed{color:#77f3c0;border-color:rgba(68,232,170,.3)}.practice-recipient-summary .is-in_progress{color:#9ff6ff;border-color:rgba(67,231,244,.3)}
+.practice-empty{display:grid;gap:5px;padding:28px;text-align:center;border:1px dashed rgba(92,180,255,.24);border-radius:13px;color:#8fa9bd}.practice-empty strong{color:#e8f7ff}
+#practiceToggle{color:#9ff6ff;border-color:rgba(67,231,244,.42);background:rgba(25,112,148,.14)}
+#practiceToggle{display:inline-flex;align-items:center;gap:7px}.practice-toggle-count{display:inline-grid;min-width:18px;height:18px;place-items:center;padding:0 5px;border-radius:999px;color:#061225;background:#ffd66b;font-size:10px;font-weight:950;box-shadow:0 0 12px rgba(255,214,107,.28)}#practiceToggle.has-pending-practice{border-color:rgba(255,214,107,.52);color:#fff4c8}
+.practice-advance-panel{position:absolute;inset:50% auto auto 50%;z-index:58;display:grid;width:min(430px,calc(100% - 32px));box-sizing:border-box;gap:9px;justify-items:center;transform:translate(-50%,-50%);padding:22px;border:1px solid rgba(67,231,244,.48);border-radius:17px;color:#effcff;text-align:center;background:rgba(5,18,38,.96);box-shadow:0 20px 54px rgba(0,3,16,.6),0 0 32px rgba(67,231,244,.14);backdrop-filter:blur(14px)}.practice-advance-panel strong{font-size:21px}.practice-advance-panel>span:not(.eyebrow){color:#b0c7d9;line-height:1.45}.practice-advance-panel .btn-green{margin-top:4px}
+.practice-status.is-closed{color:#d9e7f1;background:#2b4964}.practice-status.is-cancelled{color:#ffd2dc;background:#693148}
+
+@media(max-width:1050px){.practice-coach-layout{grid-template-columns:1fr}.practice-manage-list{grid-row:1}}
+@media(max-width:700px){.practice-workspace{padding:14px}.practice-workspace-header{align-items:stretch;flex-direction:column}.practice-form-grid,.practice-choice-list{grid-template-columns:1fr}.practice-assignment-form,.practice-manage-list{padding:12px}.practice-card-heading{flex-direction:column}.practice-due{order:-1}.coach-tabs{grid-template-columns:1fr}.practice-form-actions>button{flex:1 1 0}}
 
 .context-bar{
   position:fixed;
@@ -2259,6 +2292,7 @@ body.playbook-browser-open{overflow:hidden}
 .situation-controls #playbookBrowserToggle,
 .situation-controls #randomSitBtn,
 .utility-actions #playbookToggle,
+.utility-actions #practiceToggle,
 .utility-actions #staffToolsBtn,
 .account-actions #playerBtn,
 .game-controls button{
@@ -2315,6 +2349,7 @@ body.playbook-browser-open{overflow:hidden}
   .situation-controls #playbookBrowserToggle,
   .situation-controls #randomSitBtn,
   .utility-actions #playbookToggle,
+  .utility-actions #practiceToggle,
   .utility-actions #staffToolsBtn,
   .account-actions #playerBtn,
   .game-controls button,

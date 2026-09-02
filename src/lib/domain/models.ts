@@ -65,11 +65,13 @@ export interface Team {
 export interface Attempt {
   id?: string;
   runId?: string;
+  assignmentId?: string;
   playerId: string;
   situationKey: string;
   situationRevision?: number | null;
   phase: 1 | 2;
   outcome?: 'passed' | 'failed' | 'abandoned';
+  lifecycleStatus?: 'incomplete' | 'completed' | 'abandoned';
   abandonReason?: string | null;
   startedAt?: string;
   completedAt?: string;

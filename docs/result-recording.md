@@ -1,8 +1,9 @@
 # Result recording
 
 Diamond Defense stores one `attempts` row for each situation a player starts.
-The browser creates a unique `runId`, and the database enforces uniqueness so a
-reset or page-unload retry cannot create a duplicate result.
+The row begins with an `incomplete` lifecycle status and is updated in place
+when that run finishes. The browser creates a unique `runId`, and the database
+enforces uniqueness so network retries cannot create a duplicate result.
 
 ## Terminal outcomes
 
@@ -16,6 +17,10 @@ reset or page-unload retry cannot create a duplicate result.
 Situations without a sequence are saved as soon as positioning ends. Situations
 with a sequence are saved after the last sequence stage, with all phases grouped
 inside the same database record.
+
+Incomplete starts are retained for assignment-resume and completion tracking,
+but are excluded from player results, coach reports, summaries, and CSV exports.
+An abandoned run is terminal and remains visible in result history.
 
 ## Saved detail
 
@@ -38,9 +43,9 @@ older result.
 
 Normal terminal actions submit through the authenticated API. Logout waits for
 the save before destroying the session. Page closure uses a keepalive request
-as a best-effort final delivery. Repeating that request
-is safe because `run_id` has a unique database index and duplicate submissions
-return success without inserting another row.
+as a best-effort final delivery. Repeating a start or final request is safe
+because `run_id` has a unique database index. Duplicate requests return success
+without adding a row or advancing assignment progress again.
 
 Automated coverage verifies passed, failed, abandoned, and duplicate-submission
 behavior against the same local D1 interface used by Cloudflare.

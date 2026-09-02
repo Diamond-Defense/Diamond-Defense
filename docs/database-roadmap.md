@@ -93,3 +93,30 @@ Status: implemented.
 - Password-change, administrator-reset, and sign-out-everywhere session revocation.
 - Safe login messages that distinguish invalid credentials, temporary locks,
   and unavailable account data without revealing whether an account exists.
+
+## Phase 7: assignments and practice queues
+
+Status: implemented.
+
+- Coach-created draft and published assignments scoped to the coach's team.
+- Snapshot recipients for team-wide and individual assignments.
+- Ordered published situations pinned to immutable situation revisions.
+- Player-only **Your Practice** navigation and paginated queues.
+- Server-authorized assignment access and attempt-linked progress.
+- Not-started, incomplete, completed, overdue, active, and archived lifecycle
+  handling. Each situation requires one completed play-through.
+- A durable single-assignment player lock, ordered situation progression,
+  resume-after-login behavior, and an explicit next-situation handoff.
+- Free-play, Playbook, Random, and attempt-API restrictions until every pending
+  assignment is completed or ended by authorized staff.
+- Close and cancel actions that immediately release players while retaining
+  historical results; in-flight attempts remain saveable without advancing an
+  ended assignment.
+- Coach completion summaries and responsive assignment management.
+
+Acceptance criteria: a player can only access their own active assignments;
+starting creates durable incomplete progress and locks the selected assignment;
+the server selects the next incomplete situation in order; completing the same
+attempt once advances progress; duplicate submissions do not advance progress
+twice; pending work cannot be bypassed through another UI or API route; coaches
+can see recipient completion without accessing another team's data.
