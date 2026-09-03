@@ -35,7 +35,7 @@
   <button id="playbookBrowserToggle" class="btn-slate btn-small playbook-browser-toggle" type="button" aria-haspopup="dialog" aria-controls="playbookBrowserOverlay" aria-expanded="false">Playbook</button>
   <button id="randomSitBtn" class="btn-slate btn-small" title="Choose a random situation" disabled>Random</button><span id="descHud" class="badge" title="Single to LF">Single to LF</span><span id="runnersBadge" class="badge"><span class="status-label">Runners</span><b><span id="runnersVal">—</span></b></span><span id="outsHud" class="badge badge-tries">
     <span class="status-label">Outs</span><b><span id="outsVal">0</span></b>
-  </span><button id="startBtn" class="btn-green" disabled>Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
+  </span><button id="startBtn" class="btn-green" disabled>Start Situation</button><button id="resetBtn" class="btn-orange" disabled="">Reset</button><button id="checkBtn" class="btn-green" disabled="" data-testid="check-btn">Check Positions</button><button id="watchSolutionBtn" class="btn-solution hidden" type="button">Watch Solution</button><button id="continueBtn" class="btn-green hidden" title="Continue to Phase 2">Continue ▶</button><button id="verifySeqBtn" class="btn-green hidden">Verify Sequence</button><div id="hud" class="hud">
     <span id="scoreBadge" class="badge badge-score score-red" data-testid="score-badge"><span class="status-label">Score</span><b><span id="scoreVal">0</span>/9</b></span>
     <span id="triesBadge" class="badge badge-tries tries-green"><span class="status-label">Tries</span><b><span id="triesVal">3/3</span></b></span>
     <span id="timerBadge" class="badge badge-timer" title="Time left in this phase">
@@ -230,7 +230,8 @@
     <li>Press <em>Start Situation</em> to begin.</li>
     <li>Drag the 9 player chips into the correct defensive positions.</li>
     <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
-    <li>Review the target-ring coaching notes, continue to the sequence, and choose the correct defensive throw order.</li>
+    <li>Select <em>Watch Solution</em> to see the correct movement and compare any missed positions.</li>
+    <li>Select a target ring for coaching notes, then continue to the throw-sequence challenge when one is included.</li>
   </ol>
   <div class="hint" style="margin-top:8px">
     Note: Correct chips will display within a highlighted target ring

@@ -3104,7 +3104,8 @@ const HOWTO_PHASE1_HTML = `
     <li>Press <em>Start Situation</em> to begin.</li>
     <li>Drag the 9 player chips into the correct defensive positions.</li>
     <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
-    <li>After the position review, select target rings to read their coaching notes.</li>
+    <li>Select <em>Watch Solution</em> to see every fielder move from the standard alignment to the correct position.</li>
+    <li>Faint tokens mark missed submitted positions. Select target rings for coaching notes, then continue when a throw sequence is included.</li>
   </ol>
   <div class="hint" style="margin-top:8px">
     Correct chips display within a highlighted target ring.
@@ -3891,6 +3892,7 @@ function sizeOverlays(){
 
   // 3) Re-position all chips from native coords
   POS_IDS.forEach(id => placeToken(id));
+  if(typeof positionSolutionGhosts === 'function') positionSolutionGhosts();
 
   // 4) Reposition + resize target rings from model
   if (currentSituation && currentSituation.targets){
@@ -4199,6 +4201,7 @@ function wireOnce(){
 
   if (resetBtn)  resetBtn.addEventListener('click', ()=>resetPlayers('reset'));
   if (checkBtn)  checkBtn.addEventListener('click', checkPositions);
+  if (watchSolutionBtn) watchSolutionBtn.addEventListener('click', ()=>window._diqWatchSolution?.());
 
   if (startBtn)  startBtn.addEventListener('click', async ()=>{
     if (!currentSituation) return;
@@ -4249,6 +4252,7 @@ function wireOnce(){
     _allTargetsCorrect = false;
 
     wipePhase2StateUI();
+    window._diqClearSolutionReview?.();
     if (continueBtn) continueBtn.classList.add('hidden');
 
     // --- Reset round UI ---
@@ -4410,6 +4414,7 @@ wireSeqBuilderOnce();
     if (!isPostRound()) return;
     _phase2Ended = false;
     hideFieldNotice?.();
+    window._diqClearSolutionReview?.();
 
     phase2Locked = new Set();
     phase2Picks  = [];

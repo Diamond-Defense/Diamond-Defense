@@ -722,6 +722,21 @@ test.describe('Diamond Defense regression behavior', () => {
     });
     expect(payload.phase1Checks).toHaveLength(3);
     expect(payload.sequenceStages).toHaveLength(0);
+    await expect(page.getByRole('button', { name: 'Watch Solution' })).toBeVisible();
+    await expect(page.locator('.tgt.selectable')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Watch Solution' }).click();
+    expect(await page.evaluate(() => ({
+      state: document.querySelector('#wrap')?.dataset.solutionState,
+      ghosts: document.querySelectorAll('.solution-ghost').length,
+    }))).toEqual({ state: 'animating', ghosts: 0 });
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
+    await expect(page.locator('.solution-ghost')).toHaveCount(9);
+    await expect(page.locator('.tgt.selectable')).toHaveCount(9);
+    expect(await page.evaluate(() => POS_IDS.every((position) => {
+      const token = tokens.get(position)?.pos;
+      const target = currentSituation?.targets?.[position];
+      return token && target && Math.hypot(token.x - target.x, token.y - target.y) < 0.01;
+    }))).toBe(true);
   });
 
   test('player login rejects a wrong password and accepts a roster password', async ({ page }) => {
@@ -1310,7 +1325,13 @@ test.describe('Diamond Defense regression behavior', () => {
 
     await page.getByRole('button', { name: 'Check Positions' }).click();
     await expect(page.locator('#scoreVal')).toHaveText('9');
+    await expect(page.getByRole('button', { name: 'Watch Solution' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue ▶' })).toBeHidden();
+    await expect(page.locator('.tgt.selectable')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Watch Solution' }).click();
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
     await expect(page.getByRole('button', { name: 'Continue ▶' })).toBeVisible();
+    await expect(page.locator('.solution-ghost')).toHaveCount(0);
     await expect(page.locator('#fieldNotice')).toContainText(
       'Select a target ring to view its coaching notes.',
     );

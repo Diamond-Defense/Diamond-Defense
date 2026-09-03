@@ -13,6 +13,12 @@ const MAX_TRIES = 3;
 
 let _allTargetsCorrect = false;
 
+// Visual-only solution review. Submitted positions remain in the saved attempt;
+// moving tokens here never changes the recorded Phase 1 score.
+let _solutionReview = null;
+let _solutionAnimationFrame = null;
+let _solutionAnimationRun = 0;
+
 // Phase 1 (chip placement) summary for the most recently completed round
 let _phase1Summary = null; // { ok:boolean, triesUsed:number, elapsed:number, ts:number }
 
@@ -90,6 +96,7 @@ const playbookResultCount = document.getElementById('playbookResultCount');
 const startBtn=document.getElementById('startBtn');
 const resetBtn=document.getElementById('resetBtn');
 const checkBtn=document.getElementById('checkBtn');
+const watchSolutionBtn=document.getElementById('watchSolutionBtn');
 const scoreVal=document.getElementById('scoreVal');
 const triesVal=document.getElementById('triesVal');
 const triesBadge = document.getElementById('triesBadge');
@@ -167,11 +174,13 @@ function applyGameAccess(){
     if(startBtn) startBtn.disabled = true;
     if(resetBtn) resetBtn.disabled = true;
     if(checkBtn) checkBtn.disabled = true;
+    if(watchSolutionBtn) watchSolutionBtn.disabled = true;
     if(continueBtn) continueBtn.disabled = true;
     if(verifySeqBtn) verifySeqBtn.disabled = true;
     setChipsLocked(true);
   }else{
     if(startBtn && !gameActive && !_roundHasStarted) startBtn.disabled = !canPlayCurrentSituation();
+    if(watchSolutionBtn) watchSolutionBtn.disabled = false;
     if(continueBtn) continueBtn.disabled = false;
     if(verifySeqBtn) verifySeqBtn.disabled = false;
   }
@@ -279,6 +288,7 @@ const ensureHeaderGrouping = () => {
     document.getElementById('startBtn'),
     document.getElementById('resetBtn'),
     document.getElementById('checkBtn'),
+    document.getElementById('watchSolutionBtn'),
     document.getElementById('continueBtn'),
     document.getElementById('verifySeqBtn'),
   ].forEach(el => { if (el) gameControls.appendChild(el); });
@@ -1512,6 +1522,7 @@ function setCoachMode(enabled, options={}){
   hideTargetPanel();
   void window._diqAbandonCurrentPlayAttempt?.('tools_opened');
   wipePhase2StateUI();
+  clearSolutionReview();
   if (continueBtn) continueBtn.classList.add('hidden');
 
 }
@@ -2120,6 +2131,7 @@ function setSituation(key, situationSnapshot=null){
     }
   }
   void window._diqAbandonCurrentPlayAttempt?.('situation_changed');
+  clearSolutionReview();
   currentSituation = situationSnapshot
     ? normalizeSituation(situationSnapshot, 0)
     : getSituationByKey(key) || SITUATIONS[0];
@@ -2579,6 +2591,7 @@ function checkPositions(){
 
   const t = currentSituation?.targets || {};
   let correct = 0;
+  const positionResults = [];
 
   // Before decrementing tries, determine if this is the last available try
   const isFinalTry = (!coachUnlocked && gameActive && remainingTries === 1);
@@ -2594,6 +2607,7 @@ function checkPositions(){
 
     const d = Math.hypot((cur?.x ?? 0) - target.x, (cur?.y ?? 0) - target.y);
     const isCorrect = d <= tol;
+    positionResults.push({ id, isCorrect });
 
     el.classList.toggle('good', isCorrect);
     el.classList.toggle('bad', !isCorrect);
@@ -2659,35 +2673,182 @@ function checkPositions(){
       setChipsLocked(true);
       gameActive = false;
 
-      // Allow clicking target rings to view notes (post-round)
-      enableTargetSelection();
-
-      // Show the instruction card once a round actually started
-      if (_roundHasStarted){
-        if (typeof showTargetInstruction === 'function') {
-          showTargetInstruction();
-        } else if (typeof showTargetPanel === 'function') {
-          showTargetPanel();
-        }
-        showFieldNotice();
-      }
-
-      // If a sequence exists, reveal Continue and switch How-to to Phase 2
+      // Preserve the submitted answer for comparison. Coaching notes and the
+      // sequence handoff unlock only after Watch Solution finishes.
       const hasSeq = (typeof getSeqForCurrent === 'function') && getSeqForCurrent().length > 0;
+      _solutionReview = {
+        situationKey: currentSituation?.key || '',
+        submittedPositions: getOnscreenStarts(),
+        incorrectIds: positionResults.filter((result)=>!result.isCorrect).map((result)=>result.id),
+        hasSeq,
+        animating:false,
+        watched:false,
+      };
+      disableTargetSelection();
+      hideTargetPanel();
+      hideFieldNotice();
       void window._diqCompletePhaseOneAttempt?.(_phase1Summary, hasSeq);
 
-      if (_roundHasStarted && continueBtn){
-        if (hasSeq) continueBtn.classList.remove('hidden');
-        else        continueBtn.classList.add('hidden');
-      }
-
-      // Swap the How-to card contents to Phase 2 rules when applicable
-      if (hasSeq && typeof setHowToPhase === 'function'){
-        setHowToPhase('p2');
-      }
+      if (continueBtn) continueBtn.classList.add('hidden');
+      if (_roundHasStarted && watchSolutionBtn) watchSolutionBtn.classList.remove('hidden');
     }
   }
 }
+
+function clearSolutionGhosts(){
+  wrap?.querySelectorAll('.solution-ghost').forEach((ghost)=>ghost.remove());
+}
+
+function positionSolutionGhosts(){
+  if(!_solutionReview) return;
+  wrap?.querySelectorAll('.solution-ghost').forEach((ghost)=>{
+    const position = _solutionReview.submittedPositions?.[ghost.dataset.id];
+    if(!position) return;
+    const css = unitToCss(position);
+    ghost.style.left = `${css.left}px`;
+    ghost.style.top = `${css.top}px`;
+  });
+}
+
+function renderSolutionGhosts(){
+  clearSolutionGhosts();
+  if(!_solutionReview || !wrap) return;
+  _solutionReview.incorrectIds.forEach((id)=>{
+    const position = _solutionReview.submittedPositions?.[id];
+    if(!position) return;
+    const ghost = document.createElement('div');
+    ghost.className = 'solution-ghost';
+    ghost.dataset.id = id;
+    ghost.textContent = id;
+    ghost.setAttribute('aria-hidden', 'true');
+    wrap.appendChild(ghost);
+  });
+  positionSolutionGhosts();
+}
+
+function cancelSolutionAnimation(){
+  _solutionAnimationRun += 1;
+  if(_solutionAnimationFrame !== null){
+    cancelAnimationFrame(_solutionAnimationFrame);
+    _solutionAnimationFrame = null;
+  }
+  if(_solutionReview) _solutionReview.animating = false;
+  wrap?.classList.remove('is-showing-solution');
+}
+
+function clearSolutionReview(){
+  cancelSolutionAnimation();
+  clearSolutionGhosts();
+  _solutionReview = null;
+  if(wrap) delete wrap.dataset.solutionState;
+  if(watchSolutionBtn){
+    watchSolutionBtn.classList.add('hidden');
+    watchSolutionBtn.disabled = false;
+    watchSolutionBtn.textContent = 'Watch Solution';
+    watchSolutionBtn.removeAttribute('aria-label');
+  }
+}
+
+function finishSolutionAnimation(run){
+  if(run !== _solutionAnimationRun || !_solutionReview) return;
+  _solutionAnimationFrame = null;
+  _solutionReview.animating = false;
+  _solutionReview.watched = true;
+  wrap?.classList.remove('is-showing-solution');
+  if(wrap) wrap.dataset.solutionState = 'ready';
+
+  POS_IDS.forEach((id)=>{
+    const target = currentSituation?.targets?.[id];
+    const rec = tokens.get(id);
+    if(!target || !rec) return;
+    rec.pos = { x:Number(target.x), y:Number(target.y) };
+    placeToken(id);
+  });
+
+  getAllRings().forEach((ring)=>{
+    ring.style.display = 'block';
+    ring.classList.remove('bad');
+    ring.classList.add('good', 'show-label');
+  });
+  renderSolutionGhosts();
+  enableTargetSelection();
+
+  if(watchSolutionBtn){
+    watchSolutionBtn.disabled = false;
+    watchSolutionBtn.textContent = 'Watch Solution';
+    watchSolutionBtn.setAttribute('aria-label', 'Watch Solution again');
+  }
+  if(_solutionReview.hasSeq && continueBtn){
+    continueBtn.classList.remove('hidden');
+    if(typeof setHowToPhase === 'function') setHowToPhase('p2');
+  }
+}
+
+function watchSolution(){
+  if(!_solutionReview || _solutionReview.situationKey !== currentSituation?.key) return;
+  if(_solutionReview.animating || (typeof isPostRound === 'function' && !isPostRound())) return;
+
+  cancelSolutionAnimation();
+  clearSolutionGhosts();
+  disableTargetSelection();
+  hideTargetPanel();
+  hideFieldNotice();
+  if(continueBtn) continueBtn.classList.add('hidden');
+  getAllRings().forEach((ring)=>{ ring.style.display = 'none'; });
+
+  const starts = {};
+  const targets = {};
+  POS_IDS.forEach((id)=>{
+    starts[id] = Fcopy(getStartFor(currentSituation.key,id));
+    const target = currentSituation?.targets?.[id];
+    targets[id] = target ? { x:Number(target.x), y:Number(target.y) } : Fcopy(starts[id]);
+    const rec = tokens.get(id);
+    if(!rec) return;
+    rec.pos = Fcopy(starts[id]);
+    placeToken(id);
+  });
+
+  _solutionReview.animating = true;
+  const run = ++_solutionAnimationRun;
+  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+  const duration = reduceMotion ? 0 : 4000;
+  wrap?.classList.add('is-showing-solution');
+  if(wrap) wrap.dataset.solutionState = 'animating';
+  if(watchSolutionBtn){
+    watchSolutionBtn.disabled = true;
+    watchSolutionBtn.textContent = 'Showing Solution…';
+  }
+
+  if(duration === 0){
+    finishSolutionAnimation(run);
+    return;
+  }
+
+  let startedAt = null;
+  const step = (now)=>{
+    if(run !== _solutionAnimationRun || !_solutionReview) return;
+    if(startedAt === null) startedAt = now;
+    const progress = Math.min(1, Math.max(0, (now - startedAt) / duration));
+    const eased = progress < 0.5
+      ? 4 * progress * progress * progress
+      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+    POS_IDS.forEach((id)=>{
+      const rec = tokens.get(id);
+      if(!rec) return;
+      rec.pos = {
+        x: starts[id].x + ((targets[id].x - starts[id].x) * eased),
+        y: starts[id].y + ((targets[id].y - starts[id].y) * eased),
+      };
+      placeToken(id);
+    });
+    if(progress < 1) _solutionAnimationFrame = requestAnimationFrame(step);
+    else finishSolutionAnimation(run);
+  };
+  _solutionAnimationFrame = requestAnimationFrame(step);
+}
+
+window._diqWatchSolution = watchSolution;
+window._diqClearSolutionReview = clearSolutionReview;
 
 function resetBallAndRunnerForSituation(){
   if (animReq){ cancelAnimationFrame(animReq); animReq=null; }
@@ -2710,6 +2871,7 @@ function resetPlayers(reason='reset'){
   _timerSecs = TIMER_START_SECS;
   updateTimerHud();
 
+  clearSolutionReview();
   if (continueBtn) continueBtn.classList.add('hidden');
 
   // existing reset logic
