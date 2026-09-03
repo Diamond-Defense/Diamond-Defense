@@ -3,6 +3,8 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import {
   SqlitePracticeAssignmentRepository,
+  type AssignmentSort,
+  type AssignmentView,
   type PracticeAssignmentInput,
 } from '$lib/server/repositories/practice-assignments';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
@@ -25,12 +27,21 @@ export const GET: RequestHandler = async (event) => {
   const user = await requireUser(event, ['player', 'coach', 'admin']);
   const { page, pageSize } = pagination(event.url);
   const repository = new SqlitePracticeAssignmentRepository(databaseFor(event));
+  const requestedView = event.url.searchParams.get('view');
+  const requestedSort = event.url.searchParams.get('sort');
+  const views: AssignmentView[] = ['active', 'draft', 'completed', 'closed', 'archived'];
+  const sorts: AssignmentSort[] = ['newest', 'oldest', 'due', 'title'];
   const result = user.role === 'player'
     ? await repository.listForPlayer(user.id, page, pageSize)
     : await repository.listForTeam(
       user.role === 'coach' ? String(user.teamId || '') : String(event.url.searchParams.get('teamId') || ''),
       page,
       pageSize,
+      {
+        view: views.includes(requestedView as AssignmentView) ? requestedView as AssignmentView : undefined,
+        sort: sorts.includes(requestedSort as AssignmentSort) ? requestedSort as AssignmentSort : 'newest',
+        search: event.url.searchParams.get('search') || '',
+      },
     );
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   return json({

@@ -63,7 +63,6 @@ export const POST: RequestHandler = async (event) => {
         role: user.role,
         teamId: user.teamId,
         teamName: user.teamName,
-        coachEmail: user.coachEmail,
         jerseyNumber: user.jerseyNumber,
         mustChangePassword: user.mustChangePassword,
       },

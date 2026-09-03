@@ -13,16 +13,18 @@ The refresh command:
 2. Confirms that preview and production have different D1 database IDs.
 3. Requires an exact typed confirmation phrase.
 4. Saves a full destination backup before its first change.
-5. Exports only the approved application tables from production. It does not
-   copy schemas or `d1_migrations`.
+5. Exports only the approved application tables from production, including
+   seasons, season roster snapshots, practices, recipients, progress, and
+   attempts. It does not copy schemas or `d1_migrations`.
 6. Applies current migrations to the destination before importing data.
 7. Replaces application rows while preserving the destination migration ledger.
-8. Removes all sessions and audit-log rows.
-9. Replaces every account password with one non-production password and
-   replaces contact email addresses with the reserved `example.invalid` domain.
+8. Removes all sessions, administrative audit-log rows, and non-identifying
+   deletion-audit rows from the destination refresh data.
+9. Replaces every account password with one non-production password.
    Replacement hashes use Cloudflare's supported 100,000 PBKDF2 iterations.
-10. Verifies imported row counts, password replacement, email sanitization,
-    empty sessions/audit tables, and unchanged migration history.
+10. Verifies imported row counts and season/practice relationships, password
+    replacement, empty session/audit tables, and unchanged
+    migration history.
 
 If an operation fails after the destination backup, the script prints the exact
 backup location. It does not automatically restore the backup because a restore
@@ -53,9 +55,26 @@ To also replace player display names and usernames with `Player 001`,
 npm run db:refresh:preview -- --anonymize-players
 ```
 
-Stable player database IDs remain unchanged so attempts and memberships retain
-their relationships. This option therefore removes names shown in the app but
-is not intended as an irreversible de-identification export.
+Stable player database IDs remain unchanged so attempts, memberships, practice
+recipients, and results retain their relationships. Current account names and
+historical name snapshots stored with season rosters, practice recipients, and
+attempts are replaced consistently. This option therefore removes names shown
+in the app but is not intended as an irreversible de-identification export.
+
+## Data included in a refresh
+
+The refresh copies the current production application state for:
+
+- accounts, teams, current memberships, seasons, and season roster snapshots;
+- situations and their saved versions or coach submissions;
+- practice assignments, recipients, ordered situations, and progress; and
+- saved attempts and results, including their season and practice links.
+
+Authentication sessions and audit records are intentionally excluded. Everyone
+must sign in again with the replacement non-production password after a refresh.
+Destination migration history is retained, so apply all pending migrations to
+production before refreshing and let the refresh command migrate the destination
+before it imports the production rows.
 
 ## Local refresh
 

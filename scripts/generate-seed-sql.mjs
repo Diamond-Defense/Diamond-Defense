@@ -5,12 +5,29 @@ import { fileURLToPath } from 'node:url';
 import { normalizeSituationMetadata } from './lib/situation-seed.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const teams = JSON.parse(await readFile(resolve(root, 'teams.json'), 'utf8'));
 const situations = JSON.parse(await readFile(resolve(root, 'situations.json'), 'utf8'));
 const createdAt = new Date().toISOString();
 const iterations = 100000;
-const adminPassword = process.env.DIAMOND_DEFENSE_ADMIN_PASSWORD || 'admin';
-const coachPassword = process.env.DIAMOND_DEFENSE_COACH_PASSWORD || 'coach';
+const testPassword = process.env.DIAMOND_DEFENSE_TEST_PASSWORD || 'password';
+const teams = [
+  {
+    id: '13u-black', name: '13U Black', season: 'Spring 2027',
+    coach: { id: 'staff-coach', name: 'Jamie Rivera' },
+    players: [
+      { id: '13u-black-bob-smith-11', name: 'Bob Smith', number: '11' },
+      { id: '13u-black-kevin-smith-22', name: 'Kevin Smith', number: '22' },
+    ],
+  },
+  {
+    id: '13u-orange', name: '13U Orange', season: 'Spring 2027',
+    coach: { id: 'staff-orange-coach', name: 'Chris Lee' },
+    players: [
+      { id: 'player-maya-jones-8', name: 'Maya Jones', number: '8' },
+      { id: 'player-alex-carter-17', name: 'Alex Carter', number: '17' },
+    ],
+  },
+];
+const unassignedPlayer = { id: 'player-taylor-morgan', name: 'Taylor Morgan' };
 
 function quote(value) {
   if (value === null || value === undefined) return 'NULL';
@@ -30,21 +47,29 @@ function userSql({ id, username, displayName, role, password }) {
 
 const statements = ['PRAGMA foreign_keys = ON;'];
 
-statements.push(userSql({ id: 'staff-admin', username: 'admin', displayName: 'Diamond Defense Admin', role: 'admin', password: adminPassword }));
-statements.push(userSql({ id: 'staff-coach', username: 'coach', displayName: 'Diamond Defense Coach', role: 'coach', password: coachPassword }));
+statements.push(userSql({ id: 'staff-admin', username: 'admin', displayName: 'Diamond Defense Admin', role: 'admin', password: testPassword }));
 
-for (const team of teams.teams ?? []) {
-  statements.push(`INSERT INTO teams (id, name, coach_email, created_at, updated_at) VALUES (${quote(team.id)}, ${quote(team.name)}, ${quote(team.coachEmail ?? '')}, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET name=excluded.name, coach_email=excluded.coach_email, updated_at=excluded.updated_at;`);
-  for (const player of team.roster ?? []) {
-    const playerId = String(player.playerId);
-    statements.push(userSql({ id: playerId, username: `${team.id}:${playerId}`, displayName: player.name, role: 'player', password: player.password || 'change-me' }));
-    statements.push(`INSERT INTO team_memberships (team_id, user_id, team_role, jersey_number, created_at) VALUES (${quote(team.id)}, ${quote(playerId)}, 'player', ${quote(player.number ?? '')}, ${quote(createdAt)}) ON CONFLICT(team_id, user_id) DO UPDATE SET team_role='player', jersey_number=excluded.jersey_number;`);
+for (const team of teams) {
+  const seasonId = `${team.id}-spring-2027`;
+  statements.push(`INSERT INTO teams (id, name, created_at, updated_at) VALUES (${quote(team.id)}, ${quote(team.name)}, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET name=excluded.name, active=1, archived_at=NULL, archived_by=NULL, updated_at=excluded.updated_at;`);
+  statements.push(`INSERT INTO team_seasons (id, team_id, name, status, starts_on, created_at, updated_at) VALUES (${quote(seasonId)}, ${quote(team.id)}, ${quote(team.season)}, 'active', '2027-03-01', ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET name=excluded.name, status='active', updated_at=excluded.updated_at;`);
+  const members = [
+    ...team.players.map((player) => ({ ...player, role: 'player' })),
+    { ...team.coach, role: 'coach', number: '' },
+  ];
+  for (const member of members) {
+    statements.push(userSql({ id: member.id, username: member.id, displayName: member.name, role: member.role, password: testPassword }));
+    statements.push(`INSERT INTO team_memberships (team_id, user_id, team_role, jersey_number, created_at, season_id) VALUES (${quote(team.id)}, ${quote(member.id)}, ${quote(member.role)}, ${quote(member.number ?? '')}, ${quote(createdAt)}, ${quote(seasonId)}) ON CONFLICT(team_id, user_id) DO UPDATE SET team_role=excluded.team_role, jersey_number=excluded.jersey_number, season_id=excluded.season_id, active=1, archived_at=NULL, archived_by=NULL, updated_at=excluded.created_at;`);
+    statements.push(`INSERT INTO season_memberships (season_id, team_id, user_id, team_role, display_name_snapshot, jersey_number_snapshot, status, joined_at) VALUES (${quote(seasonId)}, ${quote(team.id)}, ${quote(member.id)}, ${quote(member.role)}, ${quote(member.name)}, ${quote(member.number ?? '')}, 'active', ${quote(createdAt)}) ON CONFLICT(season_id, user_id) DO UPDATE SET display_name_snapshot=excluded.display_name_snapshot, jersey_number_snapshot=excluded.jersey_number_snapshot, status='active', removed_at=NULL, removed_by=NULL;`);
   }
 }
 
-const firstTeam = teams.teams?.[0];
-if (firstTeam) {
-  statements.push(`INSERT INTO team_memberships (team_id, user_id, team_role, jersey_number, created_at) VALUES (${quote(firstTeam.id)}, 'staff-coach', 'coach', '', ${quote(createdAt)}) ON CONFLICT(team_id, user_id) DO UPDATE SET team_role='coach';`);
+statements.push(userSql({ id: unassignedPlayer.id, username: unassignedPlayer.id, displayName: unassignedPlayer.name, role: 'player', password: testPassword }));
+
+const closedSeasonId = '13u-black-fall-2026';
+statements.push(`INSERT INTO team_seasons (id, team_id, name, status, starts_on, ends_on, closed_at, created_at, updated_at) VALUES (${quote(closedSeasonId)}, '13u-black', 'Fall 2026', 'closed', '2026-08-01', '2026-11-30', ${quote(createdAt)}, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET name=excluded.name, status='closed', ends_on=excluded.ends_on, closed_at=excluded.closed_at, updated_at=excluded.updated_at;`);
+for (const member of [...teams[0].players.map((player) => ({ ...player, role: 'player' })), { ...teams[0].coach, role: 'coach', number: '' }]) {
+  statements.push(`INSERT INTO season_memberships (season_id, team_id, user_id, team_role, display_name_snapshot, jersey_number_snapshot, status, joined_at) VALUES (${quote(closedSeasonId)}, '13u-black', ${quote(member.id)}, ${quote(member.role)}, ${quote(member.name)}, ${quote(member.number ?? '')}, 'active', '2026-08-01') ON CONFLICT(season_id, user_id) DO UPDATE SET display_name_snapshot=excluded.display_name_snapshot, jersey_number_snapshot=excluded.jersey_number_snapshot;`);
 }
 
 for (const rawSituation of situations) {
@@ -56,4 +81,4 @@ for (const rawSituation of situations) {
 const output = resolve(root, 'database/seed.sql');
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${statements.join('\n')}\n`, 'utf8');
-console.log(`Generated ${output} with ${situations.length} situations and ${(teams.teams ?? []).length} teams.`);
+console.log(`Generated ${output} with ${situations.length} situations, ${teams.length} teams, and one unassigned player.`);

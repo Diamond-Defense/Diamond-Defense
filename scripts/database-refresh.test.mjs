@@ -17,9 +17,16 @@ import {
 const exportSql = `PRAGMA defer_foreign_keys=TRUE;
 INSERT INTO "users" ("id","role") VALUES('player-one','player');
 INSERT INTO "teams" ("id") VALUES('team-one');
+INSERT INTO "team_seasons" ("id") VALUES('season-one');
 INSERT INTO "team_memberships" ("team_id","user_id") VALUES('team-one','player-one');
+INSERT INTO "season_memberships" ("season_id","user_id") VALUES('season-one','player-one');
 INSERT INTO "situations" ("key") VALUES('BD-01');
+INSERT INTO "situation_versions" ("situation_key") VALUES('BD-01');
+INSERT INTO "practice_assignments" ("id") VALUES('practice-one');
+INSERT INTO "assignment_recipients" ("assignment_id") VALUES('practice-one');
+INSERT INTO "assignment_situations" ("assignment_id") VALUES('practice-one');
 INSERT INTO "attempts" ("id") VALUES('attempt-one');
+INSERT INTO "assignment_progress" ("assignment_id") VALUES('practice-one');
 INSERT INTO "situation_submissions" ("id") VALUES('submission-one');
 `;
 
@@ -63,9 +70,9 @@ test('replacement SQL preserves migrations and strips sensitive target state', (
   assert.equal(counts.attempts, 1);
   assert.match(sql, /DELETE FROM "sessions"/);
   assert.match(sql, /DELETE FROM "audit_log"/);
+  assert.match(sql, /DELETE FROM "deletion_audit"/);
   assert.doesNotMatch(sql, /DELETE FROM "d1_migrations"/);
   assert.doesNotMatch(sql, new RegExp(password));
-  assert.match(sql, /@example\.invalid/);
   assert.match(sql, /nonprod-player-/);
   assert.match(sql, /UPDATE attempts/);
 });
@@ -73,8 +80,8 @@ test('replacement SQL preserves migrations and strips sensitive target state', (
 test('post-import validation enforces counts, safety rules, and migration history', () => {
   const counts = Object.fromEntries(IMPORT_TABLES.map((table) => [table, 1]));
   const valid = {
-    ...counts, sessions: 0, audit_log: 0, password_variants: 1,
-    exposed_emails: 0, non_anonymized_players: 0, migrations: 4,
+    ...counts, sessions: 0, audit_log: 0, deletion_audit: 0, password_variants: 1,
+    non_anonymized_players: 0, migrations: 4,
   };
   assert.doesNotThrow(() => validateRefreshResult(valid, counts, 4, true));
   assert.throws(
@@ -104,6 +111,14 @@ test('generated replacement SQL executes against the portable SQLite schema', as
     '0006_situation_proposal_review.sql',
     '0007_account_security.sql',
     '0008_situation_metadata.sql',
+    '0009_practice_assignments.sql',
+    '0010_practice_attempt_integrity.sql',
+    '0011_guided_player_practice.sql',
+    '0012_strict_practice_attempts.sql',
+    '0013_practice_assignment_lifecycle.sql',
+    '0014_seasons_and_player_lifecycle.sql',
+    '0015_player_team_transfers.sql',
+    '0016_team_season_workflow.sql',
   ]) {
     database.exec(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     database.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(name);
@@ -123,7 +138,7 @@ test('generated replacement SQL executes against the portable SQLite schema', as
 
   const executableExport = `
     INSERT INTO "users" ("id","username","display_name","role","password_hash","password_salt","password_iterations","active","created_at","updated_at","revision","archived_at","archived_by") VALUES('new-player','new-player','Real Player','player','production-hash','production-salt',100000,1,'2026-02-01','2026-02-01',1,NULL,NULL);
-    INSERT INTO "teams" ("id","name","coach_email","created_at","updated_at","revision","active","archived_at","archived_by") VALUES('team-one','Team One','real@example.com','2026-02-01','2026-02-01',1,1,NULL,NULL);
+    INSERT INTO "teams" ("id","name","created_at","updated_at","revision","active","archived_at","archived_by") VALUES('team-one','Team One','2026-02-01','2026-02-01',1,1,NULL,NULL);
     INSERT INTO "situations" ("key","title","description","payload_json","revision","active","created_by","created_at","updated_at","archived_at","archived_by") VALUES('BD-01','Situation 1','Test','{}',1,1,NULL,'2026-02-01','2026-02-01',NULL,NULL);
   `;
   const password = createPasswordRecord(
@@ -145,9 +160,8 @@ test('generated replacement SQL executes against the portable SQLite schema', as
       password_hash: password.hash,
     },
   );
-  assert.equal(database.prepare('SELECT coach_email FROM teams').get().coach_email, 'team-one@example.invalid');
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM audit_log').get().count, 0);
-  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 8);
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 16);
   database.close();
 });

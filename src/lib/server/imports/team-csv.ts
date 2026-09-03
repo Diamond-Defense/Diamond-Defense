@@ -23,7 +23,7 @@ interface TeamOperation {
   label: string;
   teamId: string;
   name: string;
-  coachEmail: string;
+  seasonName: string;
   before?: TeamOption;
 }
 
@@ -85,8 +85,8 @@ export class TeamCsvStalePreviewError extends Error {}
 
 export function teamCsvTemplate(): string {
   return [
-    'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
-    'team,upsert,13u-black,13U Black,coach@example.com,,,,,',
+    'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
+    'team,upsert,13u-black,13U Black,Spring 2027,,,,,',
     'member,upsert,13u-black,,,13u-black-jordan-12,player,Jordan Lee,12,Temp-4821',
     'member,upsert,13u-black,,,13u-black-coach-rivera,coach,Coach Rivera,,change-me',
   ].join('\r\n');
@@ -191,7 +191,7 @@ function legacyRecords(csv: string, existingTeams: TeamOption[]): CsvRecord[] | 
     if (section === 'team') {
       records.push({ row: index + 1, values: {
         record_type: 'team', action: truthy(values.remove || '') ? 'archive' : 'upsert',
-        team_id: teamId, team_name: teamName, contact_email: values.coach_email || '',
+        team_id: teamId, team_name: teamName, season_name: 'Current Season',
       } });
     } else if (section === 'member') {
       const name = values.player_name || '';
@@ -211,10 +211,6 @@ function legacyRecords(csv: string, existingTeams: TeamOption[]): CsvRecord[] | 
 
 function addIssue(issues: TeamCsvIssue[], row: number, message: string, severity: 'error' | 'warning' = 'error') {
   issues.push({ row, severity, message });
-}
-
-function validEmail(value: string): boolean {
-  return !value || (/^\S+@\S+\.\S+$/.test(value) && value.length <= 254);
 }
 
 async function fingerprint(csv: string, operations: ImportOperation[]): Promise<string> {
@@ -248,9 +244,18 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
 
   const operations: ImportOperation[] = [];
   const teamsById = new Map(existingTeams.map((team) => [team.id, team]));
-  const knownTeamNames = new Map(existingTeams.map((team) => [team.name.toLowerCase(), team.id]));
-  const knownUsers = new Map(existingTeams.flatMap((team) => team.roster.map((member) => [member.playerId, { team, member }] as const)));
-  const databaseUsers = new Set((await database.all<{ id: string }>('SELECT id FROM users')).map((user) => user.id));
+  const activeSeasonTeams = new Set((await database.all<{ team_id: string }>(
+    "SELECT team_id FROM team_seasons WHERE status = 'active'",
+  )).map((season) => season.team_id));
+  const memberships = new Map(existingTeams.flatMap((team) => team.roster.map(
+    (member) => [`${team.id}\u0000${member.playerId}`, { team, member }] as const,
+  )));
+  const activeMemberships = new Map(existingTeams.flatMap((team) => team.roster
+    .filter((member) => member.active)
+    .map((member) => [member.playerId, { team, member }] as const)));
+  const databaseUsers = new Map((await database.all<{ id: string; role: string }>(
+    'SELECT id, role FROM users',
+  )).map((user) => [user.id, user]));
   const jerseyOwners = new Map(existingTeams.flatMap((team) => team.roster
     .filter((member) => member.active && member.role === 'player' && member.number)
     .map((member) => [`${team.id}\u0000${member.number}`, member.playerId] as const)));
@@ -276,24 +281,34 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     if (kind === 'team') {
       const before = teamsById.get(teamId);
       const name = values.team_name?.trim();
-      const coachEmail = values.contact_email?.trim() || '';
       if (requestedAction === 'archive') {
         if (!before) { addIssue(issues, record.row, `Team ${teamId} does not exist and cannot be archived.`); continue; }
-        operations.push({ row: record.row, kind, action: before.active ? 'archive' : 'unchanged', label: before.name, teamId, name: before.name, coachEmail: before.coachEmail, before });
+        operations.push({ row: record.row, kind, action: before.active ? 'archive' : 'unchanged', label: before.name, teamId, name: before.name, seasonName: before.activeSeasonName || '', before });
         teamsById.set(teamId, { ...before, active: false });
+        activeSeasonTeams.delete(teamId);
         continue;
       }
       if (!name || name.length > 100) { addIssue(issues, record.row, 'team_name is required and must be 100 characters or fewer.'); continue; }
-      if (!validEmail(coachEmail)) { addIssue(issues, record.row, 'contact_email must be a valid email address.'); continue; }
-      const duplicateNameId = knownTeamNames.get(name.toLowerCase());
-      if (duplicateNameId && duplicateNameId !== teamId) { addIssue(issues, record.row, `Team name is already used by ${duplicateNameId}.`); continue; }
+      const seasonName = values.season_name?.trim() || before?.activeSeasonName || '';
+      if ((!before || !before.activeSeasonId) && (!seasonName || seasonName.length > 120)) {
+        addIssue(issues, record.row, 'season_name is required for a team without an active season and must be 120 characters or fewer.');
+        continue;
+      }
+      const duplicateName = [...teamsById.values()].find((team) =>
+        team.id !== teamId && team.active && team.name.trim().toLowerCase() === name.toLowerCase());
+      if (duplicateName) {
+        addIssue(issues, record.row, `An active team named ${name} already exists as ${duplicateName.id}.`);
+        continue;
+      }
       const action: ImportAction = !before ? 'create' : !before.active ? 'restore'
-        : before.name !== name || before.coachEmail !== coachEmail ? 'update' : 'unchanged';
-      const operation: TeamOperation = { row: record.row, kind, action, label: name, teamId, name, coachEmail, before };
+        : before.name !== name ? 'update' : 'unchanged';
+      const operation: TeamOperation = { row: record.row, kind, action, label: name, teamId, name, seasonName, before };
       operations.push(operation);
-      const planned = before ? { ...before, name, coachEmail, active: true } : { id: teamId, name, coachEmail, revision: 0, active: true, roster: [] };
+      const planned: TeamOption = before
+        ? { ...before, name, displayName: before.activeSeasonName ? `${name} — ${before.activeSeasonName}` : `${name} — No active season`, active: true }
+        : { id: teamId, name, displayName: `${name} — ${seasonName}`, activeSeasonId: null, activeSeasonName: seasonName, revision: 0, active: true, roster: [] };
       teamsById.set(teamId, planned);
-      knownTeamNames.set(name.toLowerCase(), teamId);
+      activeSeasonTeams.add(teamId);
       continue;
     }
 
@@ -302,10 +317,28 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     const team = teamsById.get(teamId);
     if (!team) { addIssue(issues, record.row, `Team ${teamId} is not in the database or this file.`); continue; }
     if (!team.active && requestedAction !== 'archive') { addIssue(issues, record.row, `Team ${teamId} is archived by this file. Restore the team before updating accounts.`); continue; }
-    const existingUser = knownUsers.get(userId);
-    if (!existingUser && databaseUsers.has(userId)) { addIssue(issues, record.row, `User ID ${userId} is already in use.`); continue; }
-    if (existingUser && existingUser.team.id !== teamId) { addIssue(issues, record.row, `User ID ${userId} already belongs to another team.`); continue; }
-    const before = existingUser?.member;
+    if (requestedAction !== 'archive' && !activeSeasonTeams.has(teamId)) {
+      addIssue(issues, record.row, `Team ${teamId} does not have an active season. Create a season before importing accounts.`);
+      continue;
+    }
+    const existingUser = databaseUsers.get(userId);
+    const existingMembership = memberships.get(`${teamId}\u0000${userId}`);
+    const activeMembership = activeMemberships.get(userId);
+    const before = existingMembership?.member;
+    if (existingUser && !before) {
+      addIssue(
+        issues,
+        record.row,
+        activeMembership
+          ? `Account ${userId} already belongs to ${activeMembership.team.name}. Use Transfer player in Admin Tools.`
+          : `Account ${userId} already exists without a membership on this team. Use Add unassigned player in Admin Tools.`,
+      );
+      continue;
+    }
+    if (before && activeMembership && activeMembership.team.id !== teamId) {
+      addIssue(issues, record.row, `Account ${userId} already belongs to ${activeMembership.team.name}. Use Transfer player in Admin Tools.`);
+      continue;
+    }
     if (requestedAction === 'archive') {
       if (!before) { addIssue(issues, record.row, `Account ${userId} does not exist and cannot be archived.`); continue; }
       operations.push({ row: record.row, kind, action: before.active ? 'archive' : 'unchanged', label: before.name, teamId, userId, role: before.role, name: before.name, number: before.number, password: '', before });
@@ -314,14 +347,20 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     }
     const role = values.role?.trim().toLowerCase();
     const name = values.name?.trim();
-    const number = values.number?.trim() || '';
+    const number = role === 'player' ? values.number?.trim() || '' : '';
     const password = values.password || '';
     if (role !== 'player' && role !== 'coach') { addIssue(issues, record.row, 'role must be player or coach.'); continue; }
     if (!name || name.length > 100) { addIssue(issues, record.row, 'name is required and must be 100 characters or fewer.'); continue; }
-    if (role === 'player' && !number) { addIssue(issues, record.row, 'number is required for a player.'); continue; }
+    if (role === 'player' && (!number || number.length > 12)) {
+      addIssue(issues, record.row, 'number is required for a player and must be 12 characters or fewer.');
+      continue;
+    }
     if (!before && password.length < 8) { addIssue(issues, record.row, 'A temporary password of at least 8 characters is required for a new account.'); continue; }
     if (password && password.length < 8) { addIssue(issues, record.row, 'Temporary passwords must contain at least 8 characters.'); continue; }
-    if (before && before.role !== role) { addIssue(issues, record.row, 'An existing account role cannot be changed by CSV.'); continue; }
+    if ((before && before.role !== role) || (existingUser && existingUser.role !== role)) {
+      addIssue(issues, record.row, 'An existing account role cannot be changed by CSV.');
+      continue;
+    }
     if (role === 'player') {
       const owner = jerseyOwners.get(`${teamId}\u0000${number}`);
       if (owner && owner !== userId) { addIssue(issues, record.row, `Player number ${number} is already assigned to ${owner}.`); continue; }
@@ -332,8 +371,21 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
       : before.name !== name || before.number !== number || Boolean(password) ? 'update' : 'unchanged';
     const operation: MemberOperation = { row: record.row, kind, action, label: `${name}${role === 'player' ? ` #${number}` : ''}`, teamId, userId, role, name, number, password, before };
     operations.push(operation);
-    knownUsers.set(userId, { team, member: before ? { ...before, name, number, active: true } : { playerId: userId, name, number, role, revision: 0, userRevision: 0, active: true } });
-    databaseUsers.add(userId);
+    const plannedMember: TeamOption['roster'][number] = before
+      ? { ...before, name, number, active: true }
+      : {
+          playerId: userId,
+          name,
+          number,
+          role: role as 'player' | 'coach',
+          revision: 0,
+          userRevision: 0,
+          active: true,
+          seasonId: null,
+        };
+    memberships.set(`${teamId}\u0000${userId}`, { team, member: plannedMember });
+    activeMemberships.set(userId, { team, member: plannedMember });
+    databaseUsers.set(userId, { id: userId, role });
   }
 
   const errors = issues.filter((issue) => issue.severity === 'error').length;
@@ -383,23 +435,44 @@ export async function commitTeamCsvImport(
   }
   const commands: SqlCommand[] = [];
   const now = new Date().toISOString();
+  const activeSeasons = new Map((await database.all<{ id: string; team_id: string }>(
+    "SELECT id, team_id FROM team_seasons WHERE status = 'active'",
+  )).map((season) => [season.team_id, season.id]));
   for (const operation of plan.operations) {
     if (operation.action === 'unchanged') continue;
     if (operation.kind === 'team') {
       if (operation.action === 'create') {
+        const seasonId = crypto.randomUUID();
+        activeSeasons.set(operation.teamId, seasonId);
         commands.push({ sql: `INSERT INTO teams
-          (id, name, coach_email, revision, active, created_at, updated_at)
-          VALUES (?1, ?2, ?3, 1, 1, ?4, ?4)`, params: [operation.teamId, operation.name, operation.coachEmail, now] });
+          (id, name, revision, active, created_at, updated_at)
+          VALUES (?1, ?2, 1, 1, ?3, ?3)`, params: [operation.teamId, operation.name, now] });
+        commands.push({ sql: `INSERT INTO team_seasons
+          (id, team_id, name, status, starts_on, created_by, created_at, updated_at)
+          VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?6)`,
+          params: [seasonId, operation.teamId, operation.seasonName, now.slice(0, 10), actorUserId, now] });
       } else if (operation.action === 'archive') {
         commands.push({ sql: `UPDATE teams SET active = 0, revision = revision + 1,
           archived_at = ?2, archived_by = ?3, updated_at = ?2 WHERE id = ?1 AND revision = ?4`,
           params: [operation.teamId, now, actorUserId, operation.before!.revision] });
       } else {
-        commands.push({ sql: `UPDATE teams SET name = ?2, coach_email = ?3, active = 1,
-          archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?4
-          WHERE id = ?1 AND revision = ?5`, params: [operation.teamId, operation.name, operation.coachEmail, now, operation.before!.revision] });
+        commands.push({ sql: `UPDATE teams SET name = ?2, active = 1,
+          archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?3
+          WHERE id = ?1 AND revision = ?4`, params: [operation.teamId, operation.name, now, operation.before!.revision] });
+        if (!activeSeasons.has(operation.teamId)) {
+          const seasonId = crypto.randomUUID();
+          activeSeasons.set(operation.teamId, seasonId);
+          commands.push({ sql: `INSERT INTO team_seasons
+            (id, team_id, name, status, starts_on, created_by, created_at, updated_at)
+            VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?6)`,
+            params: [seasonId, operation.teamId, operation.seasonName, now.slice(0, 10), actorUserId, now] });
+        }
       }
       continue;
+    }
+    const seasonId = activeSeasons.get(operation.teamId);
+    if (operation.action !== 'archive' && !seasonId) {
+      throw new TeamCsvValidationError(`Team ${operation.teamId} does not have an active season.`);
     }
     if (operation.action === 'create') {
       const credentials = await createPasswordHash(operation.password);
@@ -408,35 +481,70 @@ export async function commitTeamCsvImport(
          password_iterations, active, revision, created_at, updated_at,
          must_change_password, password_changed_at)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8, 1, ?8)`,
-        params: [operation.userId, `${operation.teamId}:${operation.userId}`, operation.name, operation.role, credentials.hash, credentials.salt, credentials.iterations, now] });
+        params: [operation.userId, operation.userId, operation.name, operation.role, credentials.hash, credentials.salt, credentials.iterations, now] });
       commands.push({ sql: `INSERT INTO team_memberships
-        (team_id, user_id, team_role, jersey_number, revision, active, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?5)`, params: [operation.teamId, operation.userId, operation.role, operation.number, now] });
+        (team_id, user_id, team_role, jersey_number, revision, active, created_at, updated_at, season_id)
+        VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?5, ?6)`,
+        params: [operation.teamId, operation.userId, operation.role, operation.number, now, seasonId] });
+      commands.push({ sql: `INSERT INTO season_memberships
+        (season_id, team_id, user_id, team_role, display_name_snapshot,
+         jersey_number_snapshot, status, joined_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7)`,
+        params: [seasonId, operation.teamId, operation.userId, operation.role,
+          operation.name, operation.number, now] });
     } else if (operation.action === 'archive') {
       commands.push({ sql: `UPDATE team_memberships SET active = 0, revision = revision + 1,
         archived_at = ?3, archived_by = ?4, updated_at = ?3
         WHERE team_id = ?1 AND user_id = ?2 AND revision = ?5`, params: [operation.teamId, operation.userId, now, actorUserId, operation.before!.revision] });
       commands.push({ sql: `UPDATE users SET active = 0, archived_at = ?2, archived_by = ?3,
-        revision = revision + 1, updated_at = ?2 WHERE id = ?1`, params: [operation.userId, now, actorUserId] });
+        revision = revision + 1, updated_at = ?2 WHERE id = ?1
+          AND NOT EXISTS (SELECT 1 FROM team_memberships WHERE user_id = ?1 AND active = 1)`,
+        params: [operation.userId, now, actorUserId] });
+      commands.push({ sql: `UPDATE season_memberships SET status = 'removed', removed_at = ?3,
+        removed_by = ?4 WHERE season_id = ?1 AND user_id = ?2`,
+        params: [operation.before!.seasonId, operation.userId, now, actorUserId] });
+      commands.push({ sql: `UPDATE assignment_recipients SET withdrawn_at = ?3, lock_active = 0,
+        released_at = COALESCE(released_at, ?3)
+        WHERE player_id = ?2 AND assignment_id IN (
+          SELECT id FROM practice_assignments
+           WHERE season_id = ?1 AND status = 'active'
+             AND closed_at IS NULL AND cancelled_at IS NULL
+        ) AND withdrawn_at IS NULL`, params: [operation.before!.seasonId, operation.userId, now] });
+      commands.push({ sql: `UPDATE attempts SET outcome = 'abandoned', lifecycle_status = 'abandoned',
+        abandon_reason = 'removed_from_team', completed_at = COALESCE(completed_at, ?3),
+        updated_at = ?3 WHERE season_id = ?1 AND player_id = ?2
+          AND lifecycle_status = 'incomplete'`,
+        params: [operation.before!.seasonId, operation.userId, now] });
       commands.push({ sql: 'DELETE FROM sessions WHERE user_id = ?1', params: [operation.userId] });
     } else {
       commands.push({ sql: `UPDATE team_memberships SET jersey_number = ?3, active = 1,
-        archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?4
-        WHERE team_id = ?1 AND user_id = ?2 AND revision = ?5`, params: [operation.teamId, operation.userId, operation.number, now, operation.before!.revision] });
+        archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?4,
+        season_id = ?6 WHERE team_id = ?1 AND user_id = ?2 AND revision = ?5`,
+        params: [operation.teamId, operation.userId, operation.number, now, operation.before!.revision, seasonId] });
+      commands.push({ sql: `INSERT INTO season_memberships
+        (season_id, team_id, user_id, team_role, display_name_snapshot,
+         jersey_number_snapshot, status, joined_at, removed_at, removed_by)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7, NULL, NULL)
+        ON CONFLICT(season_id, user_id) DO UPDATE SET status = 'active',
+          removed_at = NULL, removed_by = NULL,
+          display_name_snapshot = excluded.display_name_snapshot,
+          jersey_number_snapshot = excluded.jersey_number_snapshot`,
+        params: [seasonId, operation.teamId, operation.userId, operation.role,
+          operation.name, operation.number, now] });
       if (operation.password) {
         const credentials = await createPasswordHash(operation.password);
-        commands.push({ sql: `UPDATE users SET display_name = ?2, username = ?3, active = 1,
-          archived_at = NULL, archived_by = NULL, password_hash = ?4, password_salt = ?5,
-          password_iterations = ?6, must_change_password = 1,
+        commands.push({ sql: `UPDATE users SET display_name = ?2, active = 1,
+          archived_at = NULL, archived_by = NULL, password_hash = ?3, password_salt = ?4,
+          password_iterations = ?5, must_change_password = 1,
           failed_login_attempts = 0, locked_until = NULL,
-          password_changed_at = ?7, revision = revision + 1,
-          updated_at = ?7 WHERE id = ?1`,
-          params: [operation.userId, operation.name, `${operation.teamId}:${operation.userId}`, credentials.hash, credentials.salt, credentials.iterations, now] });
+          password_changed_at = ?6, revision = revision + 1,
+          updated_at = ?6 WHERE id = ?1`,
+          params: [operation.userId, operation.name, credentials.hash, credentials.salt, credentials.iterations, now] });
         commands.push({ sql: 'DELETE FROM sessions WHERE user_id = ?1', params: [operation.userId] });
       } else {
-        commands.push({ sql: `UPDATE users SET display_name = ?2, username = ?3, active = 1,
-          archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?4 WHERE id = ?1`,
-          params: [operation.userId, operation.name, `${operation.teamId}:${operation.userId}`, now] });
+        commands.push({ sql: `UPDATE users SET display_name = ?2, active = 1,
+          archived_at = NULL, archived_by = NULL, revision = revision + 1, updated_at = ?3 WHERE id = ?1`,
+          params: [operation.userId, operation.name, now] });
       }
     }
   }

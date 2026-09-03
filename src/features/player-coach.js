@@ -130,7 +130,7 @@ async function prepareCoachLogin(){
     COACH_LOGIN_TEAMS.forEach(team=>{
       const option = document.createElement('option');
       option.value = team.id;
-      option.textContent = team.name || team.id;
+      option.textContent = team.displayName || team.name || team.id;
       teamSelect.appendChild(option);
     });
     if(COACH_LOGIN_TEAMS.some(team=>team.id === previous)) teamSelect.value = previous;
@@ -209,7 +209,7 @@ function flushTeamsDatabaseSync(){
         const result = await diqApiRequest(creating ? 'admin/teams' : `admin/teams/${encodeURIComponent(team.id)}`, {
           method:creating ? 'POST' : 'PUT',
           headers:creating ? {} : { 'If-Match':String(team.revision) },
-          body:JSON.stringify({ id:team.id, name:team.name, coachEmail:team.coachEmail || '' })
+          body:JSON.stringify({ id:team.id, name:team.name })
         });
         if(result && result.record) team.revision = result.record.revision;
       }
@@ -408,8 +408,6 @@ let _timerSecs = TIMER_START_SECS;
   teamsArr.forEach((t, i)=>{
     const name = String((t && (t.name || t.team || t.teamName || t.Team || t.TeamName)) || '').trim();
     const id = String((t && (t.id || t.teamId || t.slug)) || (name ? slugify(name) : ('team-' + (i+1))));
-    const coachEmail = String((t && (t.coachEmail || t.coachesEmail || t.coach_email || t.email)) || '').trim();
-
     const rawRoster =
       (t && (t.roster || t.Roster || t.players || t.Players || t.playerList)) || [];
     const rosterArr = Array.isArray(rawRoster) ? rawRoster : [];
@@ -434,7 +432,6 @@ let _timerSecs = TIMER_START_SECS;
     out.teams.push({
       id,
       name,
-      coachEmail,
       revision:Number(t && t.revision) || 0,
       active:!t || t.active !== false,
       roster:roster.map(p => ({ ...p, playerId:computeRosterPlayerId({id, name}, p) }))
@@ -445,7 +442,7 @@ let _timerSecs = TIMER_START_SECS;
 }
 
 function computeRosterPlayerId(teamObj, playerObj){
-  // Deterministic, stable ID for roster entries (teams.json schema has no ids).
+  // Compatibility fallback for old roster entries that did not include IDs.
   if (playerObj && playerObj.playerId) return String(playerObj.playerId);
   const teamSlug = slugifyLoose(teamObj && (teamObj.name || teamObj.id) ? (teamObj.name || teamObj.id) : "team") || "team";
   const nameSlug = slugifyLoose(playerObj && playerObj.name ? playerObj.name : "") || "player";
@@ -543,7 +540,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
 
   // Parse the v3 block CSV:
-  // [TEAMS] team_name,coach_email,remove
+  // [TEAMS] team_name,remove
   // [PLAYERS] team_name,player_name,player_number,player_password,remove
   function parseTeamsCsvV3(text){
     const raw = String(text || '').replace(/\r\n/g,'\n').replace(/\r/g,'\n');
@@ -622,7 +619,6 @@ function computeRosterPlayerId(teamObj, playerObj){
       const teamName = String(get(r, th, 'team_name', ['team','name','team name','teamname'])).trim();
       if(!teamName) continue;
 
-      const coachEmail = String(get(r, th, 'coach_email', ['coach email','email','coachemail'])).trim();
       const remove = _truthyRemove(get(r, th, 'remove', ['rm','delete','remove?']));
 
       const existing = findTeamByNameLocal(teamName);
@@ -635,11 +631,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       }
 
       if(!existing){
-        upsertTeam(teamName, coachEmail || '');
+        upsertTeam(teamName);
         out.teams++;
-      }else{
-        // Do NOT clear coach email when blank (requirement)
-        if(coachEmail) existing.coachEmail = coachEmail;
       }
     }
 
@@ -657,7 +650,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
       let t = findTeamByNameLocal(teamName);
       if(!t){
-        t = upsertTeam(teamName, '');
+        t = upsertTeam(teamName);
         out.teams++;
       }
 
@@ -763,7 +756,6 @@ function computeRosterPlayerId(teamObj, playerObj){
       const teamName = String(get(r,'Team Name',['Team','TeamName'])).trim();
       if(!teamName) continue;
 
-      const coachEmail = String(get(r,'Coach Email',['CoachEmail','Email'])).trim();
       const playerName = String(get(r,'Player Name',['Player','Name','PlayerName'])).trim();
       const playerNum  = String(get(r,'Player Number',['Number','PlayerNumber','Jersey','Jersey Number'])).trim();
       const password   = String(get(r,'Player Password',['Password','Passcode','PIN','Pin'])).trim();
@@ -782,10 +774,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       }
 
       if(!t){
-        t = upsertTeam(teamName, coachEmail || '');
+        t = upsertTeam(teamName);
         teamAdds++;
-      }else{
-        if(coachEmail) t.coachEmail = coachEmail;
       }
 
       if(action === 'remove' && t){
@@ -829,7 +819,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     // v3 clean template (no comment rows)
     const csv = [
       '[TEAMS]',
-      'team_name,coach_email,remove',
+      'team_name,remove',
       '',
       '[PLAYERS]',
       'team_name,player_name,player_number,player_password,remove'
@@ -845,8 +835,8 @@ function computeRosterPlayerId(teamObj, playerObj){
 
     const lines = [];
     lines.push('[TEAMS]');
-    lines.push('team_name,coach_email,remove');
-    lines.push([t.name||'', t.coachEmail||'', ''].map(_csvEscape).join(','));
+    lines.push('team_name,remove');
+    lines.push([t.name||'', ''].map(_csvEscape).join(','));
     lines.push('');
     lines.push('[PLAYERS]');
     lines.push('team_name,player_name,player_number,player_password,remove');
@@ -880,7 +870,6 @@ function computeRosterPlayerId(teamObj, playerObj){
   // --- Coach TEAMS UI wiring ---
   const coachTeamSelect = document.getElementById("coachTeamSelect");
   const coachTeamName = document.getElementById("coachTeamName");
-  const coachTeamEmail = document.getElementById("coachTeamEmail");
   const coachTeamAddBtn = document.getElementById("coachTeamAddBtn");
   const coachTeamUpdateBtn = document.getElementById("coachTeamUpdateBtn");
   const coachTeamRemoveBtn = document.getElementById("coachTeamRemoveBtn");
@@ -910,11 +899,22 @@ function computeRosterPlayerId(teamObj, playerObj){
   const practiceInstructions = document.getElementById('practiceInstructions');
   const practicePlayerChoices = document.getElementById('practicePlayerChoices');
   const practiceSituationChoices = document.getElementById('practiceSituationChoices');
+  const practiceFormEyebrow = document.getElementById('practiceFormEyebrow');
+  const practiceFormTitle = document.getElementById('practiceFormTitle');
+  const practiceCancelEdit = document.getElementById('practiceCancelEdit');
+  const practiceSaveDraft = document.getElementById('practiceSaveDraft');
+  const practicePublish = document.getElementById('practicePublish');
+  const practiceLifecycleTabs = document.getElementById('practiceLifecycleTabs');
+  const practiceSearch = document.getElementById('practiceSearch');
+  const practiceSort = document.getElementById('practiceSort');
   let coachResultsPage = 1;
   let coachResultsAppliedFilters = {};
   let playerPracticePage = 1;
   let coachPracticePage = 1;
   let playerPracticeAssignments = [];
+  let coachPracticeAssignments = [];
+  let coachPracticeViewFilter = 'active';
+  let practiceEditingAssignment = null;
 
   function escapeHtml(value){
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -1070,6 +1070,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
 
   function practiceAssignmentStatus(assignment){
+    if(assignment?.status === 'archived') return 'archived';
     if(assignment?.cancelledAt) return 'cancelled';
     if(assignment?.closedAt) return 'closed';
     return assignment?.status || 'draft';
@@ -1124,8 +1125,10 @@ function computeRosterPlayerId(teamObj, playerObj){
   function renderCoachPractice(report){
     if(!coachPracticeList) return;
     const assignments = Array.isArray(report?.assignments) ? report.assignments : [];
+    coachPracticeAssignments = assignments;
     if(!assignments.length){
-      coachPracticeList.innerHTML = '<div class="practice-empty"><strong>No assignments yet</strong><span>Create a draft or publish a practice queue.</span></div>';
+      const label = coachPracticeViewFilter === 'draft' ? 'drafts' : `${coachPracticeViewFilter} assignments`;
+      coachPracticeList.innerHTML = `<div class="practice-empty"><strong>No ${escapeHtml(label)}</strong><span>Change the status tab or search, or create a new practice queue.</span></div>`;
     }else{
       coachPracticeList.innerHTML = assignments.map(assignment=>{
         const percent = assignment.recipientCount
@@ -1134,13 +1137,18 @@ function computeRosterPlayerId(teamObj, playerObj){
         const displayStatus = practiceAssignmentStatus(assignment);
         return `<article class="practice-assignment-card compact${assignment.overdue ? ' is-overdue' : ''}">
           <div class="practice-card-heading"><div><span class="practice-status is-${escapeHtml(displayStatus)}">${escapeHtml(displayStatus)}</span><h3>${escapeHtml(assignment.title)}</h3></div><span class="practice-due">${escapeHtml(practiceDueLabel(assignment))}</span></div>
+          ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
           <div class="practice-card-metrics"><span><strong>${Number(assignment.situationCount || 0)}</strong> situations</span><span><strong>${Number(assignment.completedRecipientCount || 0)}/${Number(assignment.recipientCount || 0)}</strong> players complete</span></div>
           <div class="practice-progress"><span style="width:${percent}%"></span></div>
           <div class="practice-recipient-summary">${(assignment.recipients || []).map(recipient=>`<span class="is-${escapeHtml(recipient.status)}">${escapeHtml(recipient.playerNumber ? `#${recipient.playerNumber} ` : '')}${escapeHtml(recipient.playerName)}</span>`).join('')}</div>
           <div class="practice-card-actions">
+            ${assignment.status === 'draft' || (assignment.status === 'active' && !assignment.closedAt && !assignment.cancelledAt) ? `<button class="btn btn-ghost" type="button" data-practice-edit="${escapeHtml(assignment.id)}">Edit</button>` : ''}
             ${assignment.status === 'draft' ? `<button class="btn-green" type="button" data-practice-action="publish" data-assignment-id="${escapeHtml(assignment.id)}">Publish</button>` : ''}
             ${assignment.status === 'active' && !assignment.closedAt && !assignment.cancelledAt ? `<button class="btn btn-ghost" type="button" data-practice-action="close" data-assignment-id="${escapeHtml(assignment.id)}">Close</button><button class="btn btn-danger" type="button" data-practice-action="cancel" data-assignment-id="${escapeHtml(assignment.id)}">Cancel</button>` : ''}
-            <button class="btn btn-danger" type="button" data-practice-action="archive" data-assignment-id="${escapeHtml(assignment.id)}">Archive</button>
+            <button class="btn btn-ghost" type="button" data-practice-action="duplicate" data-assignment-id="${escapeHtml(assignment.id)}">Duplicate</button>
+            ${assignment.status !== 'draft' ? `<button class="btn btn-ghost" type="button" data-practice-action="retake" data-assignment-id="${escapeHtml(assignment.id)}">Retake</button>` : ''}
+            ${assignment.status === 'archived' ? `<button class="btn-green" type="button" data-practice-action="restore" data-assignment-id="${escapeHtml(assignment.id)}">Restore</button>` : `<button class="btn btn-danger" type="button" data-practice-action="archive" data-assignment-id="${escapeHtml(assignment.id)}">Archive</button>`}
+            ${assignment.status === 'draft' ? `<button class="btn btn-danger" type="button" data-practice-delete="${escapeHtml(assignment.id)}">Delete draft</button>` : ''}
           </div>
         </article>`;
       }).join('');
@@ -1156,7 +1164,17 @@ function computeRosterPlayerId(teamObj, playerObj){
     setPracticeStatus(status, 'Loading assignments…');
     try{
       const page = player ? playerPracticePage : coachPracticePage;
-      const report = await diqApiRequest(`practice/assignments?page=${page}&pageSize=6`, { cache:'no-store' });
+      const params = new URLSearchParams({ page:String(page), pageSize:'6' });
+      if(!player){
+        params.set('view', coachPracticeViewFilter);
+        params.set('sort', practiceSort?.value || 'newest');
+        if(practiceSearch?.value.trim()) params.set('search', practiceSearch.value.trim());
+      }
+      const report = await diqApiRequest(`practice/assignments?${params}`, { cache:'no-store' });
+      if(!player && Number(report.page || 1) > Number(report.totalPages || 1)){
+        coachPracticePage = Number(report.totalPages || 1);
+        return loadPracticeAssignments('coach');
+      }
       if(player) renderPlayerPractice(report);
       else renderCoachPractice(report);
       if(player) await refreshPlayerPracticeState();
@@ -1166,22 +1184,67 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
   }
 
-  function renderPracticeFormChoices(){
+  async function refreshCoachPracticeWorkspace(){
+    try{
+      await loadTeamsFromJson();
+      renderPracticeFormChoices();
+      await loadPracticeAssignments('coach');
+    }catch(error){
+      setPracticeStatus(coachPracticeStatus, error?.message || 'Practice data could not be refreshed.', 'error');
+    }
+  }
+
+  function renderPracticeFormChoices(assignment=practiceEditingAssignment){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     const team = findTeam(user?.teamId);
+    const assignedPlayers = new Set((assignment?.recipients || []).map(recipient=>recipient.playerId));
+    const assignedSituations = new Set((assignment?.situations || []).map(situation=>situation.situationKey));
+    const activeEdit = assignment?.status === 'active';
     if(practicePlayerChoices){
       practicePlayerChoices.innerHTML = (team?.roster || [])
         .filter(member=>member.role !== 'coach' && member.active !== false)
-        .map(member=>`<label><input type="checkbox" value="${escapeHtml(member.playerId)}"> <span>${escapeHtml(member.number ? `#${member.number} ` : '')}${escapeHtml(member.name)}</span></label>`)
+        .map(member=>`<label><input type="checkbox" value="${escapeHtml(member.playerId)}" ${assignedPlayers.has(member.playerId) ? 'checked' : ''} ${activeEdit && assignedPlayers.has(member.playerId) ? 'disabled' : ''}> <span>${escapeHtml(member.number ? `#${member.number} ` : '')}${escapeHtml(member.name)}</span></label>`)
         .join('') || '<span class="muted">No active players are available.</span>';
     }
     if(practiceSituationChoices){
       practiceSituationChoices.innerHTML = (Array.isArray(SITUATIONS) ? SITUATIONS : []).map(situation=>`
         <label class="practice-situation-choice">
-          <input type="checkbox" value="${escapeHtml(situation.key)}">
+          <input type="checkbox" value="${escapeHtml(situation.key)}" ${assignedSituations.has(situation.key) ? 'checked' : ''} ${activeEdit ? 'disabled' : ''}>
           <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(situation.category || 'General')} · ${escapeHtml(situation.difficulty || 'intermediate')}</small></span>
         </label>`).join('');
     }
+  }
+
+  function resetPracticeForm(){
+    practiceEditingAssignment = null;
+    practiceAssignmentForm?.reset();
+    if(practiceFormEyebrow) practiceFormEyebrow.textContent = 'New assignment';
+    if(practiceFormTitle) practiceFormTitle.textContent = 'Build a practice queue';
+    if(practiceSaveDraft) practiceSaveDraft.textContent = 'Save draft';
+    practicePublish?.classList.remove('hidden');
+    practiceCancelEdit?.classList.add('hidden');
+    const selectTeam = document.getElementById('practiceSelectTeam');
+    if(selectTeam) selectTeam.textContent = 'Select team';
+    renderPracticeFormChoices(null);
+  }
+
+  function editPracticeAssignment(assignment){
+    if(!assignment) return;
+    practiceEditingAssignment = assignment;
+    if(practiceTitle) practiceTitle.value = assignment.title || '';
+    if(practiceInstructions) practiceInstructions.value = assignment.instructions || '';
+    if(practiceDueAt) practiceDueAt.value = assignment.dueAt ? String(assignment.dueAt).slice(0,10) : '';
+    if(practiceFormEyebrow) practiceFormEyebrow.textContent = assignment.status === 'draft' ? 'Edit draft' : 'Edit active practice';
+    if(practiceFormTitle) practiceFormTitle.textContent = assignment.status === 'draft'
+      ? 'Update the complete practice queue'
+      : 'Update details or add new players';
+    if(practiceSaveDraft) practiceSaveDraft.textContent = 'Save changes';
+    practicePublish?.classList.add('hidden');
+    practiceCancelEdit?.classList.remove('hidden');
+    const selectTeam = document.getElementById('practiceSelectTeam');
+    if(selectTeam) selectTeam.textContent = assignment.status === 'active' ? 'Select new players' : 'Select team';
+    renderPracticeFormChoices(assignment);
+    practiceAssignmentForm?.scrollIntoView({ behavior:'smooth', block:'start' });
   }
 
   function selectedPracticeInput(publish){
@@ -1189,7 +1252,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const situations = [...(practiceSituationChoices?.querySelectorAll('.practice-situation-choice') || [])]
       .filter(row=>row.querySelector('input[type="checkbox"]')?.checked)
       .map(row=>({ situationKey:row.querySelector('input[type="checkbox"]')?.value || '' }));
-    return {
+    const input = {
       title:practiceTitle?.value || '',
       instructions:practiceInstructions?.value || '',
       dueAt:practiceDueAt?.value || null,
@@ -1197,19 +1260,31 @@ function computeRosterPlayerId(teamObj, playerObj){
       situations,
       publish,
     };
+    if(practiceEditingAssignment?.status === 'active'){
+      const existing = new Set((practiceEditingAssignment.recipients || []).map(recipient=>recipient.playerId));
+      input.addPlayerIds = playerIds.filter(playerId=>!existing.has(playerId));
+    }
+    return input;
   }
 
   async function createPracticeAssignment(publish){
-    setPracticeStatus(coachPracticeStatus, publish ? 'Publishing assignment…' : 'Saving draft…');
+    const editing = practiceEditingAssignment;
+    setPracticeStatus(coachPracticeStatus, editing ? 'Saving changes…' : publish ? 'Publishing assignment…' : 'Saving draft…');
     try{
-      await diqApiRequest('practice/assignments', {
-        method:'POST',
+      await diqApiRequest(editing ? `practice/assignments/${encodeURIComponent(editing.id)}` : 'practice/assignments', {
+        method:editing ? 'PUT' : 'POST',
         body:JSON.stringify(selectedPracticeInput(publish)),
       });
-      practiceAssignmentForm?.reset();
-      renderPracticeFormChoices();
+      resetPracticeForm();
+      if(!editing){
+        coachPracticeViewFilter = publish ? 'active' : 'draft';
+        practiceLifecycleTabs?.querySelectorAll('[data-practice-view]').forEach(tab=>{
+          tab.classList.toggle('is-active', tab.dataset.practiceView === coachPracticeViewFilter);
+          tab.setAttribute('aria-selected', String(tab.dataset.practiceView === coachPracticeViewFilter));
+        });
+      }
       coachPracticePage = 1;
-      setPracticeStatus(coachPracticeStatus, publish ? 'Assignment published.' : 'Draft saved.', 'success');
+      setPracticeStatus(coachPracticeStatus, editing ? 'Assignment updated.' : publish ? 'Assignment published.' : 'Draft saved.', 'success');
       await loadPracticeAssignments('coach');
     }catch(error){
       setPracticeStatus(coachPracticeStatus, error?.message || 'Assignment could not be saved.', 'error');
@@ -1244,9 +1319,9 @@ function computeRosterPlayerId(teamObj, playerObj){
       playerPracticePage = 1;
       void loadPracticeAssignments('player');
     }else{
-      renderPracticeFormChoices();
+      resetPracticeForm();
       coachPracticePage = 1;
-      void loadPracticeAssignments('coach');
+      void refreshCoachPracticeWorkspace();
     }
   }
 
@@ -1280,13 +1355,41 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(user?.role === 'coach') document.getElementById('coachCardCloseBtn')?.click();
     else showFieldWorkspace();
   });
-  document.getElementById('practiceCoachRefresh')?.addEventListener('click', ()=>void loadPracticeAssignments('coach'));
+  document.getElementById('practiceCoachRefresh')?.addEventListener('click', ()=>void refreshCoachPracticeWorkspace());
   document.getElementById('practiceSelectTeam')?.addEventListener('click', ()=>{
-    const boxes = [...(practicePlayerChoices?.querySelectorAll('input[type="checkbox"]') || [])];
+    const boxes = [...(practicePlayerChoices?.querySelectorAll('input[type="checkbox"]:not(:disabled)') || [])];
     const select = boxes.some(box=>!box.checked);
     boxes.forEach(box=>{ box.checked = select; });
   });
-  document.getElementById('practiceSaveDraft')?.addEventListener('click', ()=>void createPracticeAssignment(false));
+  practiceSaveDraft?.addEventListener('click', ()=>void createPracticeAssignment(false));
+  practiceCancelEdit?.addEventListener('click', resetPracticeForm);
+  practiceLifecycleTabs?.addEventListener('click', event=>{
+    const button = event.target.closest('[data-practice-view]');
+    if(!button) return;
+    coachPracticeViewFilter = button.dataset.practiceView;
+    coachPracticePage = 1;
+    practiceLifecycleTabs.querySelectorAll('[data-practice-view]').forEach(tab=>{
+      tab.classList.toggle('is-active', tab === button);
+      tab.setAttribute('aria-selected', String(tab === button));
+    });
+    resetPracticeForm();
+    void loadPracticeAssignments('coach');
+  });
+  document.getElementById('practiceApplyFilters')?.addEventListener('click', ()=>{
+    coachPracticePage = 1;
+    void loadPracticeAssignments('coach');
+  });
+  practiceSearch?.addEventListener('keydown', event=>{
+    if(event.key === 'Enter'){
+      event.preventDefault();
+      coachPracticePage = 1;
+      void loadPracticeAssignments('coach');
+    }
+  });
+  practiceSort?.addEventListener('change', ()=>{
+    coachPracticePage = 1;
+    void loadPracticeAssignments('coach');
+  });
   practiceAssignmentForm?.addEventListener('submit', event=>{
     event.preventDefault();
     void createPracticeAssignment(true);
@@ -1309,17 +1412,51 @@ function computeRosterPlayerId(teamObj, playerObj){
       void startGuidedPractice(start.dataset.practiceStart);
       return;
     }
+    const edit = event.target.closest('[data-practice-edit]');
+    if(edit){
+      editPracticeAssignment(coachPracticeAssignments.find(assignment=>assignment.id === edit.dataset.practiceEdit));
+      return;
+    }
+    const remove = event.target.closest('[data-practice-delete]');
+    if(remove){
+      if(!window.confirm('Permanently delete this unused draft? This cannot be undone.')) return;
+      remove.disabled = true;
+      void diqApiRequest(`practice/assignments/${encodeURIComponent(remove.dataset.practiceDelete)}`, {
+        method:'DELETE',
+      }).then(()=>{
+        resetPracticeForm();
+        setPracticeStatus(coachPracticeStatus, 'Draft deleted.', 'success');
+        return loadPracticeAssignments('coach');
+      }).catch(error=>setPracticeStatus(coachPracticeStatus, error?.message || 'Draft could not be deleted.', 'error'));
+      return;
+    }
     const action = event.target.closest('[data-practice-action]');
     if(action){
       const verb = action.dataset.practiceAction;
+      if(['cancel','archive'].includes(verb) && !window.confirm(
+        verb === 'cancel'
+          ? 'Cancel this practice? It will immediately leave every player queue.'
+          : 'Archive this practice? It will immediately leave every player queue.',
+      )) return;
       action.disabled = true;
       void diqApiRequest(`practice/assignments/${encodeURIComponent(action.dataset.assignmentId)}`, {
         method:'PATCH',
         body:JSON.stringify({ action:verb }),
-      }).then(()=>{
-        const actionLabel = { publish:'published', archive:'archived', close:'closed', cancel:'cancelled' }[verb] || 'updated';
+      }).then(result=>{
+        const actionLabel = { publish:'published', archive:'archived', close:'closed', cancel:'cancelled', restore:'restored', duplicate:'duplicated', retake:'created as a new retake draft' }[verb] || 'updated';
+        if(['duplicate','retake'].includes(verb)){
+          coachPracticeViewFilter = 'draft';
+          coachPracticePage = 1;
+          practiceLifecycleTabs?.querySelectorAll('[data-practice-view]').forEach(tab=>{
+            tab.classList.toggle('is-active', tab.dataset.practiceView === 'draft');
+            tab.setAttribute('aria-selected', String(tab.dataset.practiceView === 'draft'));
+          });
+          practiceEditingAssignment = result.assignment || null;
+        }
         setPracticeStatus(coachPracticeStatus, `Assignment ${actionLabel}.`, 'success');
         return loadPracticeAssignments('coach');
+      }).then(()=>{
+        if(practiceEditingAssignment) editPracticeAssignment(practiceEditingAssignment);
       }).catch(error=>setPracticeStatus(coachPracticeStatus, error?.message || 'Assignment could not be updated.', 'error'));
     }
   });
@@ -1657,7 +1794,7 @@ function setRosterControlsEnabled(enabled){
     (TEAMS.teams || []).forEach(t=>{
       const o = document.createElement("option");
       o.value = t.id;
-      o.textContent = t.name || t.id;
+      o.textContent = t.displayName || t.name || t.id;
       coachTeamSelect.appendChild(o);
     });
 
@@ -1707,8 +1844,6 @@ function setRosterControlsEnabled(enabled){
     const t = teamId ? findTeam(teamId) : null;
 
     if(coachTeamName) coachTeamName.value = t ? (t.name || "") : "";
-    if(coachTeamEmail) coachTeamEmail.value = t ? (t.coachEmail || "") : "";
-
     // Only refresh roster controls if those elements exist (coach tools may omit them)
     if(coachRosterSelect) refreshCoachRosterSelect();
 
@@ -1756,18 +1891,17 @@ function setRosterControlsEnabled(enabled){
   }
 
 
-  function upsertTeam(name, email){
+  function upsertTeam(name){
     const teamName = String(name || "").trim();
     if(!teamName) return null;
     const id = slugifyLoose(teamName) || "team";
 
     let t = findTeam(id);
     if(!t){
-      t = { id, name: teamName, coachEmail: String(email||"").trim(), revision:0, active:true, roster: [] };
+      t = { id, name: teamName, revision:0, active:true, roster: [] };
       TEAMS.teams.push(t);
     }else{
       t.name = teamName;
-      t.coachEmail = String(email||"").trim();
     }
     TEAMS.teams = TEAMS.teams.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
     saveTeamsToLocal(t.id);
@@ -1873,7 +2007,7 @@ function setRosterControlsEnabled(enabled){
 
   if(coachTeamAddBtn){
     coachTeamAddBtn.addEventListener("click", ()=>{
-      const t = upsertTeam(coachTeamName.value, coachTeamEmail.value);
+      const t = upsertTeam(coachTeamName.value);
       refreshCoachTeamSelect();
       if(t) coachTeamSelect.value = t.id;
       setCoachTeamFieldsFromSelection();
@@ -1888,9 +2022,7 @@ function setRosterControlsEnabled(enabled){
       const old = findTeam(teamId);
       if(!old) return;
       const newName = String(coachTeamName.value||"").trim();
-      const newEmail = String(coachTeamEmail.value||"").trim();
       old.name = newName || old.name;
-      old.coachEmail = newEmail;
 
       TEAMS.teams = TEAMS.teams.sort((a,b)=> (a.name||"").localeCompare(b.name||""));
       saveTeamsToLocal(teamId);

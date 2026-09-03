@@ -20,6 +20,11 @@ test.describe('portable SQLite API', () => {
     const teamData = await teams.json();
     expect(teamData.teams.length).toBeGreaterThanOrEqual(2);
     expect(teamData.teams[0].roster[0]).not.toHaveProperty('password');
+    expect(teamData.teams.find((team) => team.id === '13u-black')).toMatchObject({
+      name: '13U Black',
+      activeSeasonName: 'Spring 2027',
+      displayName: '13U Black — Spring 2027',
+    });
   });
 
   test('authenticates a player and persists a result', async ({ request, baseURL }) => {
@@ -41,11 +46,14 @@ test.describe('portable SQLite API', () => {
         role: 'player',
         teamId: '13u-black',
         playerId: '13u-black-bob-smith-11',
-        password: '1234',
+        password: 'password',
       },
     });
     expect(login.ok()).toBeTruthy();
-    expect((await login.json()).user.role).toBe('player');
+    expect((await login.json()).user).toMatchObject({
+      role: 'player',
+      teamName: '13U Black — Spring 2027',
+    });
 
     const runId = `database-test-${Date.now()}`;
     const completedAt = new Date().toISOString();
@@ -114,15 +122,15 @@ test.describe('portable SQLite API', () => {
         role: 'player',
         teamId: '13u-black',
         playerId: '13u-black-bob-smith-11',
-        password: '1234',
+        password: 'password',
       },
       {
         role: 'coach',
         teamId: '13u-black',
         coachId: 'staff-coach',
-        password: 'coach',
+        password: 'password',
       },
-      { role: 'admin', password: 'admin' },
+      { role: 'admin', password: 'password' },
     ];
 
     for (const account of accounts) {
@@ -152,7 +160,7 @@ test.describe('portable SQLite API', () => {
         role: 'coach',
         teamId: '13u-black',
         coachId: 'staff-coach',
-        password: 'coach',
+        password: 'password',
       },
     });
     expect(coachLogin.ok()).toBeTruthy();
@@ -184,7 +192,7 @@ test.describe('portable SQLite API', () => {
         role: 'player',
         teamId: '13u-black',
         playerId: '13u-black-bob-smith-11',
-        password: '1234',
+        password: 'password',
       },
     });
     expect(playerLogin.ok()).toBeTruthy();
@@ -333,7 +341,7 @@ test.describe('portable SQLite API', () => {
     const origin = new URL(baseURL).origin;
     const coach = await requestFactory.newContext({ baseURL });
     const player = await requestFactory.newContext({ baseURL });
-    const playerId = '13u-black-john-smith-12';
+    const playerId = '13u-black-bob-smith-11';
     const createAssignment = async (title, situations, dueAt = null) => {
       const response = await coach.post('/api/practice/assignments', {
         headers: { Origin: origin },
@@ -345,7 +353,7 @@ test.describe('portable SQLite API', () => {
     try {
       expect((await coach.post('/api/auth/login', {
         headers: { Origin: origin },
-        data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'coach' },
+        data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'password' },
       })).ok()).toBeTruthy();
       const first = await createAssignment(
         `Guided order ${Date.now()}`,
@@ -358,7 +366,7 @@ test.describe('portable SQLite API', () => {
       );
       expect((await player.post('/api/auth/login', {
         headers: { Origin: origin },
-        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+        data: { role: 'player', teamId: '13u-black', playerId, password: 'password' },
       })).ok()).toBeTruthy();
 
       const initialState = await player.get('/api/practice/status');
@@ -452,7 +460,7 @@ test.describe('portable SQLite API', () => {
       await player.post('/api/auth/logout', { headers: { Origin: origin } });
       await player.post('/api/auth/login', {
         headers: { Origin: origin },
-        data: { role: 'player', teamId: '13u-black', playerId, password: '1234' },
+        data: { role: 'player', teamId: '13u-black', playerId, password: 'password' },
       });
       expect(await (await player.get('/api/practice/status')).json()).toMatchObject({
         lockedAssignmentId: first.id,
@@ -546,6 +554,120 @@ test.describe('portable SQLite API', () => {
     }
   });
 
+  test('supports the complete coach assignment lifecycle without losing history', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const coach = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    let assignmentId = '';
+    try {
+      expect((await coach.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'password' },
+      })).ok()).toBeTruthy();
+      const created = await coach.post('/api/practice/assignments', {
+        headers: { Origin: origin },
+        data: {
+          title: `Lifecycle draft ${Date.now()}`,
+          playerIds: ['13u-black-kevin-smith-22'],
+          situations: [{ situationKey: 'BD-01' }],
+          publish: false,
+        },
+      });
+      expect(created.status()).toBe(201);
+      assignmentId = (await created.json()).assignment.id;
+
+      const edited = await coach.put(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin },
+        data: {
+          title: 'Lifecycle practice updated',
+          instructions: 'Snapshot the roster and complete both plays.',
+          dueAt: '2099-12-31',
+          playerIds: ['13u-black-kevin-smith-22'],
+          situations: [{ situationKey: 'BD-02' }, { situationKey: 'BD-03' }],
+        },
+      });
+      expect(await edited.json()).toMatchObject({
+        assignment: { title: 'Lifecycle practice updated', recipientCount: 1, situationCount: 2 },
+      });
+      const draftSearch = await coach.get('/api/practice/assignments?view=draft&search=lifecycle&sort=title');
+      expect((await draftSearch.json()).assignments.some((item) => item.id === assignmentId)).toBe(true);
+
+      expect((await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'publish' },
+      })).ok()).toBeTruthy();
+      const activeEdit = await coach.put(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin },
+        data: {
+          title: 'Lifecycle practice active',
+          instructions: 'Updated while active.',
+          dueAt: null,
+          addPlayerIds: ['13u-black-bob-smith-11'],
+        },
+      });
+      expect(await activeEdit.json()).toMatchObject({
+        assignment: { status: 'active', title: 'Lifecycle practice active', recipientCount: 2 },
+      });
+
+      const duplicated = await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'duplicate' },
+      });
+      const duplicate = (await duplicated.json()).assignment;
+      expect(duplicate).toMatchObject({ status: 'draft', sourceAssignmentId: assignmentId, cycleNumber: 1 });
+      expect((await coach.delete(`/api/practice/assignments/${duplicate.id}`, {
+        headers: { Origin: origin },
+      })).ok()).toBeTruthy();
+
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId: '13u-black', playerId: '13u-black-kevin-smith-22', password: 'password' },
+      })).ok()).toBeTruthy();
+      expect((await player.post(`/api/practice/assignments/${assignmentId}/start`, {
+        headers: { Origin: origin },
+      })).ok()).toBeTruthy();
+      const runId = `cancelled-lifecycle-${Date.now()}`;
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: { runId, assignmentId, situationKey: 'BD-02', phase: 1 },
+      })).status()).toBe(201);
+
+      expect((await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'cancel' },
+      })).ok()).toBeTruthy();
+      expect(await (await player.get('/api/practice/status')).json()).toMatchObject({ freePlayAllowed: true });
+      const cancelledResult = (await (await player.get('/api/results/me')).json()).log
+        .find((item) => item.runId === runId);
+      expect(cancelledResult).toMatchObject({ outcome: 'abandoned', abandonReason: 'assignment_cancelled' });
+
+      const retaken = await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'retake' },
+      });
+      const retake = (await retaken.json()).assignment;
+      expect(retake).toMatchObject({ status: 'draft', sourceAssignmentId: assignmentId, cycleNumber: 2 });
+
+      expect((await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'archive' },
+      })).ok()).toBeTruthy();
+      const archived = await coach.get('/api/practice/assignments?view=archived&search=lifecycle');
+      expect((await archived.json()).assignments.some((item) => item.id === assignmentId)).toBe(true);
+      const restored = await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+        headers: { Origin: origin }, data: { action: 'restore' },
+      });
+      expect(await restored.json()).toMatchObject({
+        assignment: { status: 'active', cancelledAt: expect.any(String) },
+      });
+
+      await coach.delete(`/api/practice/assignments/${retake.id}`, { headers: { Origin: origin } });
+    } finally {
+      if (assignmentId) {
+        await coach.patch(`/api/practice/assignments/${assignmentId}`, {
+          headers: { Origin: origin }, data: { action: 'archive' },
+        });
+      }
+      await coach.dispose();
+      await player.dispose();
+    }
+  });
+
   test('limits team reports to staff roles', async ({ request, baseURL }) => {
     const origin = new URL(baseURL).origin;
     const playerLogin = await request.post('/api/auth/login', {
@@ -554,7 +676,7 @@ test.describe('portable SQLite API', () => {
         role: 'player',
         teamId: '13u-black',
         playerId: '13u-black-bob-smith-11',
-        password: '1234',
+        password: 'password',
       },
     });
     expect(playerLogin.ok()).toBeTruthy();
@@ -567,7 +689,7 @@ test.describe('portable SQLite API', () => {
         role: 'coach',
         teamId: '13u-black',
         coachId: 'staff-coach',
-        password: 'coach',
+        password: 'password',
       },
     });
     expect(coachLogin.ok()).toBeTruthy();
@@ -641,7 +763,7 @@ test.describe('portable SQLite API', () => {
     const resetPassword = 'Reset-Password-8047';
     const adminLogin = await request.post('/api/auth/login', {
       headers: { Origin: origin },
-      data: { role: 'admin', password: 'admin' },
+      data: { role: 'admin', password: 'password' },
     });
     expect(adminLogin.ok()).toBeTruthy();
 
@@ -757,6 +879,495 @@ test.describe('portable SQLite API', () => {
         },
       );
       expect(archived.ok()).toBeTruthy();
+    }
+  });
+
+  test('manages seasons and the complete player data lifecycle without crossing season boundaries', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const admin = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    const suffix = String(Date.now());
+    const teamId = `season-test-${suffix}`;
+    const playerId = `season-player-${suffix}`;
+    const temporaryPassword = 'Temporary-Season-4821';
+    const permanentPassword = 'Permanent-Season-5932';
+    try {
+      expect((await admin.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'admin', password: 'password' },
+      })).ok()).toBeTruthy();
+
+      const teamResponse = await admin.post('/api/admin/teams', {
+        headers: { Origin: origin },
+        data: { id: teamId, name: 'Season Lifecycle Test' },
+      });
+      expect(teamResponse.status()).toBe(201);
+
+      const initialSeasonsResponse = await admin.get(`/api/admin/teams/${teamId}/seasons`);
+      const initialSeasonData = await initialSeasonsResponse.json();
+      expect(initialSeasonData.seasons).toHaveLength(1);
+      const firstSeason = initialSeasonData.seasons[0];
+      expect(firstSeason).toMatchObject({ status: 'active', memberCount: 0 });
+
+      const memberResponse = await admin.post(`/api/admin/teams/${teamId}/members`, {
+        headers: { Origin: origin },
+        data: {
+          userId: playerId,
+          name: 'Season Test Player',
+          number: '27',
+          role: 'player',
+          password: temporaryPassword,
+        },
+      });
+      expect(memberResponse.status()).toBe(201);
+      const createdMember = (await memberResponse.json()).record;
+      expect(createdMember.seasonId).toBe(firstSeason.id);
+
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId, playerId, password: temporaryPassword },
+      })).ok()).toBeTruthy();
+      expect((await player.put('/api/auth/password', {
+        headers: { Origin: origin },
+        data: { currentPassword: temporaryPassword, newPassword: permanentPassword },
+      })).ok()).toBeTruthy();
+
+      const firstRunId = `season-one-${suffix}`;
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: firstRunId,
+          situationKey: 'BD-01',
+          phase: 1,
+          outcome: 'passed',
+          success: true,
+          score: 9,
+          total: 9,
+        },
+      })).status()).toBe(201);
+
+      const removedResponse = await admin.delete(
+        `/api/admin/teams/${teamId}/members/${playerId}`,
+        { headers: { Origin: origin, 'If-Match': String(createdMember.revision) } },
+      );
+      expect(removedResponse.ok()).toBeTruthy();
+      const removedMember = (await removedResponse.json()).record;
+      expect(removedMember.active).toBe(false);
+      expect((await player.get('/api/auth/session').then((response) => response.json())).user).toBeNull();
+
+      const blockedAssignment = await admin.post('/api/practice/assignments', {
+        headers: { Origin: origin },
+        data: {
+          teamId,
+          title: 'Former player must not receive this',
+          playerIds: [playerId],
+          situations: [{ situationKey: 'BD-01' }],
+          publish: true,
+        },
+      });
+      expect(blockedAssignment.status()).toBe(400);
+
+      const firstArchive = await admin.get(
+        `/api/admin/teams/${teamId}/seasons/${firstSeason.id}/export`,
+      );
+      expect(firstArchive.ok()).toBeTruthy();
+      expect(await firstArchive.text()).toContain(firstRunId);
+
+      expect((await admin.patch(
+        `/api/admin/teams/${teamId}/seasons/${firstSeason.id}`,
+        { headers: { Origin: origin }, data: { action: 'close' } },
+      )).ok()).toBeTruthy();
+      const secondSeasonResponse = await admin.post(`/api/admin/teams/${teamId}/seasons`, {
+        headers: { Origin: origin },
+        data: { name: 'Season Lifecycle Test — Next Season', startsOn: '2099-01-01' },
+      });
+      expect(secondSeasonResponse.status()).toBe(201);
+      const secondSeason = (await secondSeasonResponse.json()).season;
+
+      const afterNewSeason = await admin.get(`/api/admin/teams/${teamId}/seasons`);
+      const afterNewSeasonData = await afterNewSeason.json();
+      expect(afterNewSeasonData.members.some((member) =>
+        member.seasonId === secondSeason.id && member.userId === playerId)).toBe(false);
+
+      const restoredResponse = await admin.post(
+        `/api/admin/teams/${teamId}/members/${playerId}/restore`,
+        { headers: { Origin: origin, 'If-Match': String(removedMember.revision) } },
+      );
+      expect(restoredResponse.ok()).toBeTruthy();
+      expect((await restoredResponse.json()).record.seasonId).toBe(secondSeason.id);
+
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId, playerId, password: permanentPassword },
+      })).ok()).toBeTruthy();
+      const secondRunId = `season-two-${suffix}`;
+      expect((await player.post('/api/attempts', {
+        headers: { Origin: origin },
+        data: {
+          runId: secondRunId,
+          situationKey: 'BD-02',
+          phase: 1,
+          outcome: 'failed',
+          success: false,
+        },
+      })).status()).toBe(201);
+
+      const cleanupPreview = await admin.get(
+        `/api/admin/teams/${teamId}/seasons/${firstSeason.id}/cleanup?playerId=${playerId}`,
+      );
+      expect(await cleanupPreview.json()).toMatchObject({
+        preview: { seasonId: firstSeason.id, playerId, memberships: 1, attempts: 1 },
+      });
+      expect((await admin.post(
+        `/api/admin/teams/${teamId}/seasons/${firstSeason.id}/cleanup`,
+        {
+          headers: { Origin: origin },
+          data: { playerId, confirmation: 'CLEAR SEASON RECORDS' },
+        },
+      )).ok()).toBeTruthy();
+
+      const secondArchive = await admin.get(
+        `/api/admin/teams/${teamId}/seasons/${secondSeason.id}/export`,
+      );
+      expect(secondArchive.ok()).toBeTruthy();
+      expect(await secondArchive.text()).toContain(secondRunId);
+      expect((await player.get('/api/auth/session').then((response) => response.json())).user)
+        .toMatchObject({ id: playerId });
+
+      expect((await admin.delete(`/api/admin/users/${playerId}`, {
+        headers: { Origin: origin },
+        data: { confirmation: 'DELETE PLAYER PERMANENTLY' },
+      })).ok()).toBeTruthy();
+      expect((await player.get('/api/auth/session').then((response) => response.json())).user).toBeNull();
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId, playerId, password: permanentPassword },
+      })).status()).toBe(401);
+      const afterDeletion = await admin.get(`/api/admin/teams/${teamId}/seasons`);
+      expect((await afterDeletion.json()).members.some((member) => member.userId === playerId)).toBe(false);
+    } finally {
+      await admin.dispose();
+      await player.dispose();
+    }
+  });
+
+  test('moves stable player accounts between teams and advances a closed-season roster', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const admin = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    const suffix = String(Date.now());
+    const password = 'Transfer-Test-4821';
+    try {
+      expect((await admin.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'admin', password: 'password' },
+      })).ok()).toBeTruthy();
+
+      const sourceResponse = await admin.post('/api/admin/teams', {
+        headers: { Origin: origin },
+        data: { name: `13U Repeatable ${suffix}` },
+      });
+      expect(sourceResponse.status()).toBe(201);
+      const source = (await sourceResponse.json()).record;
+      expect(source.id).toMatch(/^team-[0-9a-f-]+$/);
+      expect(source.displayName).toContain('13U Repeatable');
+
+      const duplicateTeamResponse = await admin.post('/api/admin/teams', {
+        headers: { Origin: origin },
+        data: { name: `13U Repeatable ${suffix}`, seasonName: 'Fall 2027' },
+      });
+      expect(duplicateTeamResponse.status()).toBe(400);
+
+      const destinationResponse = await admin.post('/api/admin/teams', {
+        headers: { Origin: origin },
+        data: { name: `14U Destination ${suffix}`, seasonName: 'Spring 2027' },
+      });
+      expect(destinationResponse.status()).toBe(201);
+      const destination = (await destinationResponse.json()).record;
+      expect(destination.id).not.toBe(source.id);
+
+      const firstPlayerResponse = await admin.post(`/api/admin/teams/${source.id}/members`, {
+        headers: { Origin: origin },
+        data: { name: 'Stable Transfer Player', number: '7', role: 'player', password },
+      });
+      expect(firstPlayerResponse.status()).toBe(201);
+      const firstPlayer = (await firstPlayerResponse.json()).record;
+      expect(firstPlayer.playerId).toMatch(/^player-[0-9a-f-]+$/);
+
+      const duplicateNumber = await admin.post(`/api/admin/teams/${source.id}/members`, {
+        headers: { Origin: origin },
+        data: { name: 'Duplicate Number', number: '7', role: 'player', password },
+      });
+      expect(duplicateNumber.status()).toBe(400);
+
+      const secondPlayerResponse = await admin.post(`/api/admin/teams/${source.id}/members`, {
+        headers: { Origin: origin },
+        data: { name: 'Roster Advance Player', number: '12', role: 'player', password },
+      });
+      expect(secondPlayerResponse.status()).toBe(201);
+      const secondPlayer = (await secondPlayerResponse.json()).record;
+
+      const transferResponse = await admin.post(
+        `/api/admin/players/${firstPlayer.playerId}/transfer`,
+        {
+          headers: { Origin: origin },
+          data: { destinationTeamId: destination.id, number: '9' },
+        },
+      );
+      expect(transferResponse.ok()).toBeTruthy();
+      const transferred = (await transferResponse.json()).record;
+      expect(transferred).toMatchObject({
+        playerId: firstPlayer.playerId,
+        number: '9',
+        active: true,
+      });
+
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: source.id,
+          playerId: firstPlayer.playerId,
+          password,
+        },
+      })).status()).toBe(401);
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: destination.id,
+          playerId: firstPlayer.playerId,
+          password,
+        },
+      })).ok()).toBeTruthy();
+
+      const removedResponse = await admin.delete(
+        `/api/admin/teams/${destination.id}/members/${firstPlayer.playerId}`,
+        { headers: { Origin: origin, 'If-Match': String(transferred.revision) } },
+      );
+      expect(removedResponse.ok()).toBeTruthy();
+      const unassigned = await admin.get('/api/admin/players/unassigned');
+      expect((await unassigned.json()).players).toEqual(expect.arrayContaining([
+        expect.objectContaining({ userId: firstPlayer.playerId }),
+      ]));
+
+      const readdedResponse = await admin.post(
+        `/api/admin/teams/${destination.id}/members/existing`,
+        {
+          headers: { Origin: origin },
+          data: { userId: firstPlayer.playerId, number: '19' },
+        },
+      );
+      expect(readdedResponse.status()).toBe(201);
+      expect((await readdedResponse.json()).record).toMatchObject({
+        playerId: firstPlayer.playerId,
+        number: '19',
+        active: true,
+      });
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player',
+          teamId: destination.id,
+          playerId: firstPlayer.playerId,
+          password,
+        },
+      })).ok()).toBeTruthy();
+
+      const sourceSeasons = await admin.get(`/api/admin/teams/${source.id}/seasons`);
+      const activeSourceSeason = (await sourceSeasons.json()).seasons.find(
+        (season) => season.status === 'active',
+      );
+      expect(activeSourceSeason).toBeTruthy();
+      expect((await admin.patch(
+        `/api/admin/teams/${source.id}/seasons/${activeSourceSeason.id}`,
+        { headers: { Origin: origin }, data: { action: 'close' } },
+      )).ok()).toBeTruthy();
+
+      const advanceResponse = await admin.post(`/api/admin/teams/${source.id}/advance`, {
+        headers: { Origin: origin },
+        data: {
+          destinationTeamName: `14U Advanced ${suffix}`,
+          seasonName: 'Spring 2027',
+          startsOn: '2027-03-01',
+          members: [{ userId: secondPlayer.playerId, number: '22' }],
+        },
+      });
+      expect(advanceResponse.status()).toBe(201);
+      const advanced = await advanceResponse.json();
+      expect(advanced.team).toMatchObject({ name: `14U Advanced ${suffix}` });
+      expect(advanced.movedUserIds).toEqual([secondPlayer.playerId]);
+      expect(advanced.team.roster).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          playerId: secondPlayer.playerId,
+          number: '22',
+          seasonId: advanced.seasonId,
+          active: true,
+        }),
+      ]));
+
+      const blockedDuplicateMembership = await admin.post(
+        `/api/admin/teams/${destination.id}/members/existing`,
+        {
+          headers: { Origin: origin },
+          data: { userId: secondPlayer.playerId, number: '23' },
+        },
+      );
+      expect(blockedDuplicateMembership.status()).toBe(400);
+    } finally {
+      await admin.dispose();
+      await player.dispose();
+    }
+  });
+
+  test('imports new teams and accounts into an active season with stable login IDs', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const admin = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    const suffix = String(Date.now());
+    const teamId = `csv-season-${suffix}`;
+    const playerId = `csv-player-${suffix}`;
+    const password = 'CSV-Temporary-4821';
+    const csv = [
+      'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
+      `team,upsert,${teamId},Reusable Team Name,Spring 2027,,,,,`,
+      `member,upsert,${teamId},,,${playerId},player,CSV Player,31,${password}`,
+    ].join('\n');
+    try {
+      expect((await admin.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'admin', password: 'password' },
+      })).ok()).toBeTruthy();
+      const previewResponse = await admin.post('/api/admin/team-import', {
+        headers: { Origin: origin },
+        data: { mode: 'preview', csv },
+      });
+      expect(previewResponse.ok()).toBeTruthy();
+      const preview = await previewResponse.json();
+      expect(preview).toMatchObject({
+        valid: true,
+        summary: { changes: 2, creates: 2, errors: 0 },
+      });
+      const commit = await admin.post('/api/admin/team-import', {
+        headers: { Origin: origin },
+        data: { mode: 'commit', csv, fingerprint: preview.fingerprint },
+      });
+      expect(commit.ok()).toBeTruthy();
+
+      const teams = await admin.get('/api/admin/teams?includeArchived=true');
+      const imported = (await teams.json()).teams.find((team) => team.id === teamId);
+      expect(imported).toMatchObject({
+        name: 'Reusable Team Name',
+        displayName: 'Reusable Team Name — Spring 2027',
+        active: true,
+      });
+      expect(imported.roster).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          playerId,
+          number: '31',
+          active: true,
+          seasonId: expect.any(String),
+        }),
+      ]));
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'player', teamId, playerId, password },
+      })).ok()).toBeTruthy();
+    } finally {
+      await admin.dispose();
+      await player.dispose();
+    }
+  });
+
+  test('deletes closed seasons and teams only after explicit destructive confirmation', async ({ baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    const admin = await requestFactory.newContext({ baseURL });
+    const player = await requestFactory.newContext({ baseURL });
+    const suffix = String(Date.now());
+    const password = 'Permanent-Test-4821';
+    try {
+      expect((await admin.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: { role: 'admin', password: 'password' },
+      })).ok()).toBeTruthy();
+
+      const createTeam = async (name) => {
+        const response = await admin.post('/api/admin/teams', {
+          headers: { Origin: origin },
+          data: { name, seasonName: 'Spring 2027' },
+        });
+        expect(response.status()).toBe(201);
+        return (await response.json()).record;
+      };
+      const closeActiveSeason = async (teamId) => {
+        const data = await (await admin.get(`/api/admin/teams/${teamId}/seasons`)).json();
+        const season = data.seasons.find((item) => item.status === 'active');
+        expect(season).toBeTruthy();
+        expect((await admin.patch(`/api/admin/teams/${teamId}/seasons/${season.id}`, {
+          headers: { Origin: origin },
+          data: { action: 'close' },
+        })).ok()).toBeTruthy();
+        return season;
+      };
+
+      const seasonTeam = await createTeam(`Season Delete ${suffix}`);
+      const closedSeason = await closeActiveSeason(seasonTeam.id);
+      expect((await admin.delete(
+        `/api/admin/teams/${seasonTeam.id}/seasons/${closedSeason.id}`,
+        { headers: { Origin: origin }, data: { confirmation: 'wrong' } },
+      )).status()).toBe(400);
+      expect((await admin.delete(
+        `/api/admin/teams/${seasonTeam.id}/seasons/${closedSeason.id}`,
+        { headers: { Origin: origin }, data: { confirmation: closedSeason.name } },
+      )).ok()).toBeTruthy();
+      expect((await (await admin.get(`/api/admin/teams/${seasonTeam.id}/seasons`)).json()).seasons)
+        .toHaveLength(0);
+
+      const retainedTeam = await createTeam(`Retain Players ${suffix}`);
+      const retainedPlayerResponse = await admin.post(`/api/admin/teams/${retainedTeam.id}/members`, {
+        headers: { Origin: origin },
+        data: { name: 'Retained Player', number: '5', role: 'player', password },
+      });
+      const retainedPlayer = (await retainedPlayerResponse.json()).record;
+      await closeActiveSeason(retainedTeam.id);
+      expect((await admin.delete(`/api/admin/teams/${retainedTeam.id}/permanent`, {
+        headers: { Origin: origin },
+        data: { confirmation: 'wrong', deletePlayers: false },
+      })).status()).toBe(400);
+      expect((await admin.delete(`/api/admin/teams/${retainedTeam.id}/permanent`, {
+        headers: { Origin: origin },
+        data: { confirmation: retainedTeam.name, deletePlayers: false },
+      })).ok()).toBeTruthy();
+      const unassigned = (await (await admin.get('/api/admin/players/unassigned')).json()).players;
+      expect(unassigned).toEqual(expect.arrayContaining([
+        expect.objectContaining({ userId: retainedPlayer.playerId }),
+      ]));
+
+      const deletedTeam = await createTeam(`Delete Players ${suffix}`);
+      const deletedPlayerResponse = await admin.post(`/api/admin/teams/${deletedTeam.id}/members`, {
+        headers: { Origin: origin },
+        data: { name: 'Deleted Player', number: '6', role: 'player', password },
+      });
+      const deletedPlayer = (await deletedPlayerResponse.json()).record;
+      await closeActiveSeason(deletedTeam.id);
+      const preview = await admin.get(`/api/admin/teams/${deletedTeam.id}/deletion-preview`);
+      expect(await preview.json()).toMatchObject({ preview: { players: 1, seasons: 1 } });
+      expect((await admin.delete(`/api/admin/teams/${deletedTeam.id}/permanent`, {
+        headers: { Origin: origin },
+        data: { confirmation: deletedTeam.name, deletePlayers: true },
+      })).ok()).toBeTruthy();
+      expect((await player.post('/api/auth/login', {
+        headers: { Origin: origin },
+        data: {
+          role: 'player', teamId: deletedTeam.id,
+          playerId: deletedPlayer.playerId, password,
+        },
+      })).status()).toBe(401);
+      const afterDeletion = (await (await admin.get('/api/admin/players/unassigned')).json()).players;
+      expect(afterDeletion.some((item) => item.userId === deletedPlayer.playerId)).toBe(false);
+    } finally {
+      await admin.dispose();
+      await player.dispose();
     }
   });
 });

@@ -67,32 +67,4 @@ test.describe('static data contracts', () => {
     }
   });
 
-  test('team and player identifiers are unique and references are complete', () => {
-    const data = readJson('teams.json');
-    const teams = data.teams;
-    const teamIds = teams.map((team) => team.id);
-    const playerIds = teams.flatMap((team) => team.roster.map((player) => player.playerId));
-
-    expect(data.version).toBe(1);
-    expect(new Set(teamIds).size).toBe(teamIds.length);
-    expect(new Set(playerIds).size).toBe(playerIds.length);
-
-    for (const team of teams) {
-      expect(team).toEqual(expect.objectContaining({
-        id: expect.any(String),
-        name: expect.any(String),
-        coachEmail: expect.any(String),
-        roster: expect.any(Array),
-      }));
-
-      for (const player of team.roster) {
-        expect(player).toEqual(expect.objectContaining({
-          name: expect.any(String),
-          number: expect.any(String),
-          password: expect.any(String),
-          playerId: expect.any(String),
-        }));
-      }
-    }
-  });
 });

@@ -58,7 +58,9 @@ export interface Player {
 export interface Team {
   id: string;
   name: string;
-  coachEmail: string;
+  displayName?: string;
+  activeSeasonId?: string | null;
+  activeSeasonName?: string | null;
   roster: Player[];
 }
 

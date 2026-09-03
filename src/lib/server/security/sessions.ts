@@ -24,6 +24,7 @@ interface SessionRow {
   role: AuthenticatedUser['role'];
   team_id: string | null;
   team_name: string | null;
+  season_name: string | null;
   jersey_number: string | null;
   must_change_password: number;
   last_seen_at: string;
@@ -105,12 +106,14 @@ export async function currentUser(
   const hash = await tokenHash(token);
   const row = await database.one<SessionRow>(
     `SELECT u.id, u.username, u.display_name, u.role, tm.team_id,
-            t.name AS team_name, tm.jersey_number, u.must_change_password,
+            t.name AS team_name, ts.name AS season_name, tm.jersey_number,
+            u.must_change_password,
             s.last_seen_at
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
        LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
+       LEFT JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
       WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND s.last_seen_at > ?3
         AND u.active = 1
       ORDER BY tm.team_id
@@ -135,7 +138,11 @@ export async function currentUser(
     displayName: row.display_name,
     role: row.role,
     teamId: row.team_id,
-    teamName: row.team_name,
+    teamName: row.team_name && row.season_name
+      ? row.season_name.toLocaleLowerCase().startsWith(`${row.team_name.toLocaleLowerCase()} —`)
+        ? row.season_name
+        : `${row.team_name} — ${row.season_name}`
+      : row.team_name,
     jerseyNumber: row.jersey_number,
     mustChangePassword: Boolean(row.must_change_password),
   };

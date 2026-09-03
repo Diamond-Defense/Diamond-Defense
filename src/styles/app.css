@@ -1327,6 +1327,8 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .practice-situation-choice{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px;border:1px solid rgba(92,180,255,.14);border-radius:9px;background:rgba(6,25,49,.72)}
 .practice-situation-choice>input{width:auto;accent-color:#43e7f4}.practice-situation-choice>span{min-width:0;display:grid;gap:2px}.practice-situation-choice strong{overflow:hidden;color:#eaf9ff;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.practice-situation-choice small{color:#829fb6;font-size:10px}
 .practice-form-actions,.practice-card-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.practice-lifecycle-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}.practice-lifecycle-tabs button{min-width:0;padding:9px 6px;border:1px solid rgba(92,180,255,.22);border-radius:9px;color:#a9bfd3;background:rgba(4,21,42,.72);font:inherit;font-size:11px;font-weight:850;cursor:pointer}.practice-lifecycle-tabs button.is-active{color:#041a20;border-color:#43e7f4;background:#43e7f4;box-shadow:0 0 15px rgba(67,231,244,.2)}
+.practice-list-filters{display:grid;grid-template-columns:minmax(0,1fr) minmax(130px,.5fr) auto;gap:8px;align-items:end}.practice-list-filters .field{display:grid;gap:5px}.practice-list-filters .field>span{color:#a9bfd3;font-size:11px;font-weight:850}.practice-list-filters :is(input,select){width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid rgba(92,180,255,.28);border-radius:9px;color:#edfaff;background:#071b35;font:inherit;color-scheme:dark}
 .practice-assignment-list{display:grid;gap:12px}.practice-assignment-card{display:grid;gap:12px;padding:16px;border:1px solid rgba(67,231,244,.24);border-radius:14px;background:linear-gradient(145deg,rgba(12,42,72,.82),rgba(5,22,44,.9));box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
 .practice-assignment-card.is-overdue{border-color:rgba(255,104,135,.42)}.practice-assignment-card.is-complete{border-color:rgba(75,232,171,.3)}
 .practice-card-heading h3{margin:5px 0 0;font-size:17px}.practice-due{flex:none;color:#a5c0d4;font-size:11px;font-weight:800}.is-overdue .practice-due{color:#ff9ab0}
@@ -1339,10 +1341,10 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 #practiceToggle{color:#9ff6ff;border-color:rgba(67,231,244,.42);background:rgba(25,112,148,.14)}
 #practiceToggle{display:inline-flex;align-items:center;gap:7px}.practice-toggle-count{display:inline-grid;min-width:18px;height:18px;place-items:center;padding:0 5px;border-radius:999px;color:#061225;background:#ffd66b;font-size:10px;font-weight:950;box-shadow:0 0 12px rgba(255,214,107,.28)}#practiceToggle.has-pending-practice{border-color:rgba(255,214,107,.52);color:#fff4c8}
 .practice-advance-panel{position:absolute;inset:50% auto auto 50%;z-index:58;display:grid;width:min(430px,calc(100% - 32px));box-sizing:border-box;gap:9px;justify-items:center;transform:translate(-50%,-50%);padding:22px;border:1px solid rgba(67,231,244,.48);border-radius:17px;color:#effcff;text-align:center;background:rgba(5,18,38,.96);box-shadow:0 20px 54px rgba(0,3,16,.6),0 0 32px rgba(67,231,244,.14);backdrop-filter:blur(14px)}.practice-advance-panel strong{font-size:21px}.practice-advance-panel>span:not(.eyebrow){color:#b0c7d9;line-height:1.45}.practice-advance-panel .btn-green{margin-top:4px}
-.practice-status.is-closed{color:#d9e7f1;background:#2b4964}.practice-status.is-cancelled{color:#ffd2dc;background:#693148}
+.practice-status.is-closed,.practice-status.is-archived{color:#d9e7f1;background:#2b4964}.practice-status.is-cancelled{color:#ffd2dc;background:#693148}
 
 @media(max-width:1050px){.practice-coach-layout{grid-template-columns:1fr}.practice-manage-list{grid-row:1}}
-@media(max-width:700px){.practice-workspace{padding:14px}.practice-workspace-header{align-items:stretch;flex-direction:column}.practice-form-grid,.practice-choice-list{grid-template-columns:1fr}.practice-assignment-form,.practice-manage-list{padding:12px}.practice-card-heading{flex-direction:column}.practice-due{order:-1}.coach-tabs{grid-template-columns:1fr}.practice-form-actions>button{flex:1 1 0}}
+@media(max-width:700px){.practice-workspace{padding:14px}.practice-workspace-header{align-items:stretch;flex-direction:column}.practice-form-grid,.practice-choice-list{grid-template-columns:1fr}.practice-assignment-form,.practice-manage-list{padding:12px}.practice-card-heading{flex-direction:column}.practice-due{order:-1}.coach-tabs{grid-template-columns:1fr}.practice-form-actions>button{flex:1 1 0}.practice-lifecycle-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}.practice-list-filters{grid-template-columns:1fr}.practice-list-filters button{width:100%}}
 
 .context-bar{
   position:fixed;
@@ -1948,7 +1950,7 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 
 /* Administrator workspace and shared situation workflow */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.admin-workspace{width:100%;box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height) - 30px);padding:24px;overflow:auto}
+.admin-workspace{width:100%;box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height) - 30px);padding:24px;overflow:auto;container-name:admin-workspace;container-type:inline-size}
 .tools-panel-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:4px 2px 14px;border-bottom:1px solid rgba(92,180,255,.2)}
 .tools-panel-header strong{display:block;font-size:18px;color:#f2fbff}
 .tools-panel-actions,.admin-actions,.admin-toolbar,.situation-editor-actions,.modal-actions-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -1959,6 +1961,17 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .admin-tab{background:rgba(7,27,53,.72);color:#9fc1d9;border:1px solid rgba(92,180,255,.22);min-height:42px}
 .admin-tab.is-active{color:#061225;background:#43e7f4;border-color:#8ff5ff;box-shadow:0 0 18px rgba(67,231,244,.2)}
 .admin-view{display:grid;gap:14px}
+.admin-team-context{grid-template-columns:minmax(240px,.8fr) minmax(260px,1.2fr) auto;align-items:end}
+.admin-team-context-summary{align-self:center;line-height:1.45}
+.admin-team-context .admin-actions{justify-content:flex-end}
+.admin-team-context>.admin-team-header-fields,.admin-team-context>.admin-actions,.admin-team-context>.admin-bulk-actions{grid-column:1/-1}
+.admin-team-header-fields{grid-template-columns:repeat(2,minmax(220px,1fr))}
+.admin-team-context>.admin-bulk-actions{margin-top:2px}
+.admin-team-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.admin-team-tab{min-height:42px;border:1px solid rgba(92,180,255,.22);border-radius:10px;background:rgba(7,27,53,.72);color:#9fc1d9;font:inherit;font-size:12px;font-weight:850;cursor:pointer}
+.admin-team-tab.is-active{border-color:#8ff5ff;background:#43e7f4;color:#061225;box-shadow:0 0 18px rgba(67,231,244,.16)}
+.admin-team-view{display:grid;gap:14px}
+.admin-team-view.hidden{display:none}
 .admin-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .admin-section-heading h3{margin:0;color:#f1fbff;font-size:17px}
 .admin-section-heading p{margin:4px 0 0;color:#8eacc2;line-height:1.45}
@@ -1977,6 +1990,49 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .admin-record-grid{display:grid;grid-template-columns:minmax(170px,.8fr) minmax(220px,1fr) minmax(220px,1fr);gap:12px}
 .admin-account-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 .admin-record-grid>*,.admin-account-grid>*{min-width:0}
+.admin-account-grid>.admin-record-card{align-self:start;align-content:start}
+.admin-unassigned-player-card{display:grid;gap:12px}
+.admin-unassigned-player-fields{grid-template-columns:minmax(240px,1fr) minmax(140px,.4fr)}
+.admin-advance-source{padding:9px 11px;border:1px solid rgba(67,231,244,.2);border-radius:9px;background:rgba(67,231,244,.055);color:#cdefff;font-weight:800}
+.admin-player-movement{margin-top:2px}
+.admin-inline-workflow{margin-top:4px;padding-top:10px;border-top:1px solid rgba(92,180,255,.16)}
+.admin-inline-workflow summary{cursor:pointer;color:#d8efff;font-size:15px;font-weight:850;line-height:1.35}
+.admin-inline-workflow-content{display:grid;gap:14px;margin-top:12px}
+.admin-inline-workflow-content>section{display:grid;gap:9px;padding:11px;border:1px solid rgba(92,180,255,.14);border-radius:11px;background:rgba(2,17,36,.38)}
+.admin-inline-workflow h4{margin:0;color:#eaf8ff;font-size:13px}
+.admin-inline-workflow-content p{margin:0;line-height:1.4}
+.admin-movement-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.admin-movement-grid>section{display:grid;align-content:start;gap:10px;min-width:0;padding:12px;border:1px solid rgba(92,180,255,.14);border-radius:11px;background:rgba(2,17,36,.38)}
+.admin-movement-grid h4{margin:0;color:#eaf8ff;font-size:14px}
+.admin-movement-grid p{margin:0;line-height:1.4}
+.admin-advance-roster{margin-top:2px}
+.admin-roster-picker{display:grid;gap:9px;margin:0;padding:12px;border:1px solid rgba(92,180,255,.2);border-radius:12px}
+.admin-roster-picker legend{padding:0 6px;color:#b8d0e2;font-size:12px;font-weight:850}
+.admin-roster-picker-list{display:grid;gap:7px}
+.admin-roster-picker-row{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(70px,110px);align-items:center;gap:9px;padding:8px 9px;border-radius:9px;background:rgba(4,22,45,.62);color:#ddecf7;font-size:12px;font-weight:750}
+.admin-roster-picker-row input[type="checkbox"]{width:auto;accent-color:#43e7f4}
+.admin-roster-number{min-height:34px!important;padding:6px 8px!important}
+.admin-season-grid{grid-template-columns:minmax(240px,1.4fr) minmax(145px,.8fr) minmax(145px,.8fr)}
+.admin-season-create{display:grid;gap:12px;padding-top:14px;border-top:1px solid rgba(92,180,255,.16)}
+.admin-season-create.hidden{display:none}
+.admin-season-select-field{max-width:620px}
+.season-status-badge{display:inline-flex;align-items:center;min-height:30px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.78rem;font-weight:800;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.season-status-badge.is-active{border-color:rgba(69,241,168,.5);background:rgba(69,241,168,.1);color:#7ff7bf}
+.season-status-badge.is-closed{border-color:rgba(255,201,83,.5);background:rgba(255,201,83,.1);color:#ffe09a}
+.season-status-badge.is-archived{border-color:rgba(169,184,216,.35);background:rgba(169,184,216,.08);color:#c5d2ed}
+.season-summary{margin-top:12px}
+.admin-season-player-field{max-width:480px;margin-top:12px}
+.season-cleanup-preview{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin-top:14px}
+.season-cleanup-preview>div{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border:1px solid var(--border);border-radius:12px;background:rgba(4,22,48,.55)}
+.season-cleanup-preview span{color:var(--muted);font-size:.75rem;font-weight:700}
+.season-cleanup-preview strong{font-size:1.15rem}
+.season-summary-cards{grid-template-columns:repeat(3,minmax(0,180px));margin-top:0}
+.admin-cleanup-grid{grid-template-columns:repeat(2,minmax(220px,1fr))}
+.admin-danger-zone{margin-top:8px;border-color:rgba(255,72,112,.35);background:rgba(55,12,31,.3)}
+.admin-danger-zone p{margin:5px 0 0;color:#dca6b4;line-height:1.45}
+.admin-danger-zone .field{max-width:620px}
+.admin-danger-zone hr{width:100%;margin:8px 0;border:0;border-top:1px solid rgba(255,72,112,.28)}
+.btn-danger-strong{border-color:rgba(255,80,118,.72);background:rgba(255,60,104,.16);color:#ff9ab1}
 .admin-record-card{display:grid;gap:11px}
 .admin-record-card .sectionTitle{margin:0 0 2px;color:#f1fbff;font-size:15px}
 .field-with-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
@@ -2002,6 +2058,9 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 :is(#adminCard,.admin-workspace) .field,#coachCard .field,#pwModal .field{display:grid;gap:5px;color:#a9c9df}
 :is(#adminCard,.admin-workspace) .field>span,#coachCard .field>span,#pwModal .field>span{font-size:12px;font-weight:800;color:#a9bfd3}
 :is(#adminCard,.admin-workspace) :is(input,select,textarea),#coachCard input,#coachCard select,#coachCard textarea,#pwModal input,#pwModal select{width:100%;box-sizing:border-box;background:#071b35;color:#e6f8ff;border:1px solid rgba(92,180,255,.28)}
+:is(#adminCard,.admin-workspace) .admin-team-delete-option{width:100%;max-width:720px;align-items:flex-start}
+:is(#adminCard,.admin-workspace) .admin-team-delete-option input[type="checkbox"]{width:18px;min-width:18px;height:18px;flex:0 0 18px;margin:0}
+:is(#adminCard,.admin-workspace) .admin-team-delete-option span{min-width:0;flex:1;overflow-wrap:anywhere}
 #adminCard,#adminCard *,.admin-workspace,.admin-workspace *{box-sizing:border-box}
 :is(#adminCard,.admin-workspace) :is(input,select,textarea):focus,#coachCard input:focus,#coachCard select:focus,#coachCard textarea:focus,#pwModal input:focus,#pwModal select:focus{outline:none;border-color:#43e7f4;box-shadow:0 0 0 3px rgba(67,231,244,.13)}
 :is(#adminCard,.admin-workspace) :disabled,#coachCard :disabled{opacity:.48;cursor:not-allowed}
@@ -2013,12 +2072,32 @@ button:disabled,#startBtn:disabled,#resetBtn:disabled,#checkBtn:disabled{
 .modal-actions-row{justify-content:flex-end}
 
 @container tools-workspace (max-width:620px){
-  .admin-record-grid,.admin-account-grid{grid-template-columns:1fr}
+  .admin-record-grid,.admin-account-grid,.admin-season-grid{grid-template-columns:1fr}
+  .season-cleanup-preview{grid-template-columns:repeat(2,minmax(0,1fr))}
   .admin-section-heading{flex-direction:column}
   .admin-section-heading>.btn{width:100%;justify-content:center}
   .field-with-action{grid-template-columns:1fr}
   .field-with-action>.btn{width:100%;justify-content:center}
   #coachCard .rowGrid{grid-template-columns:1fr}
+}
+
+@container admin-workspace (max-width:900px){
+  .admin-team-context{grid-template-columns:1fr auto}
+  .admin-team-context-summary{grid-column:1/-1;grid-row:2}
+  .admin-season-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+
+@container admin-workspace (max-width:560px){
+  .admin-record-grid,.admin-account-grid,.admin-season-grid,.admin-movement-grid{grid-template-columns:1fr}
+  .admin-team-context{grid-template-columns:1fr}
+  .admin-team-context-summary{grid-column:auto;grid-row:auto}
+  .admin-team-context .admin-actions{justify-content:stretch}
+  .admin-team-context .admin-actions .btn{flex:1}
+  .admin-team-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .admin-cleanup-grid{grid-template-columns:1fr}
+  .season-cleanup-preview{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .admin-roster-picker-row{grid-template-columns:auto minmax(0,1fr)}
+  .admin-roster-picker-row .admin-roster-number{grid-column:2}
 }
 
 /* Unified account login and role-aware navigation */
@@ -2176,7 +2255,8 @@ body.account-security-required #accountSecurityClose{display:none}
 }
 
 @media(max-width:900px){
-  .admin-record-grid,.admin-account-grid{grid-template-columns:1fr}
+  .admin-record-grid,.admin-account-grid,.admin-season-grid{grid-template-columns:1fr}
+  .season-cleanup-preview{grid-template-columns:1fr}
   .admin-tabs{grid-template-columns:1fr}
   .admin-section-heading{flex-direction:column}
 }

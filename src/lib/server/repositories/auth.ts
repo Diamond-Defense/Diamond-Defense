@@ -19,7 +19,7 @@ interface LoginRow {
   password_iterations: number;
   team_id: string | null;
   team_name: string | null;
-  coach_email: string | null;
+  season_name: string | null;
   jersey_number: string | null;
   must_change_password: number;
   failed_login_attempts: number;
@@ -33,7 +33,6 @@ export interface LoginResult {
   role: LoginRow['role'];
   teamId: string | null;
   teamName: string | null;
-  coachEmail: string | null;
   jerseyNumber: string | null;
   mustChangePassword: boolean;
 }
@@ -55,11 +54,12 @@ export class SqliteAuthRepository {
       `SELECT u.id, u.username, u.display_name, u.role,
               u.password_hash, u.password_salt, u.password_iterations,
               u.must_change_password, u.failed_login_attempts, u.locked_until,
-              t.id AS team_id, t.name AS team_name, t.coach_email,
+              t.id AS team_id, t.name AS team_name, ts.name AS season_name,
               tm.jersey_number
          FROM users u
          JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'player'
          JOIN teams t ON t.id = tm.team_id
+         JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
         WHERE u.id = ?1 AND t.id = ?2 AND u.role = 'player' AND u.active = 1
           AND t.active = 1 AND tm.active = 1`,
       [playerId, teamId],
@@ -76,11 +76,12 @@ export class SqliteAuthRepository {
       `SELECT u.id, u.username, u.display_name, u.role,
               u.password_hash, u.password_salt, u.password_iterations,
               u.must_change_password, u.failed_login_attempts, u.locked_until,
-              t.id AS team_id, t.name AS team_name, t.coach_email,
+              t.id AS team_id, t.name AS team_name, ts.name AS season_name,
               tm.jersey_number
          FROM users u
          JOIN team_memberships tm ON tm.user_id = u.id AND tm.team_role = 'coach'
          JOIN teams t ON t.id = tm.team_id
+         JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
         WHERE u.id = ?1 AND t.id = ?2 AND u.role = 'coach' AND u.active = 1
           AND t.active = 1 AND tm.active = 1`,
       [coachId, teamId],
@@ -96,11 +97,12 @@ export class SqliteAuthRepository {
       `SELECT u.id, u.username, u.display_name, u.role,
               u.password_hash, u.password_salt, u.password_iterations,
               u.must_change_password, u.failed_login_attempts, u.locked_until,
-              t.id AS team_id, t.name AS team_name, t.coach_email,
+              t.id AS team_id, t.name AS team_name, ts.name AS season_name,
               tm.jersey_number
          FROM users u
          LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
          LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
+         LEFT JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
         WHERE u.username = ?1 AND u.role = ?1 AND u.active = 1
         ORDER BY t.id
         LIMIT 1`,
@@ -197,8 +199,11 @@ export class SqliteAuthRepository {
       displayName: row.display_name,
       role: row.role,
       teamId: row.team_id,
-      teamName: row.team_name,
-      coachEmail: row.coach_email,
+      teamName: row.team_name && row.season_name
+        ? row.season_name.toLocaleLowerCase().startsWith(`${row.team_name.toLocaleLowerCase()} —`)
+          ? row.season_name
+          : `${row.team_name} — ${row.season_name}`
+        : row.team_name,
       jerseyNumber: row.jersey_number,
       mustChangePassword: Boolean(row.must_change_password),
     } };

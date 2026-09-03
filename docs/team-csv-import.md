@@ -6,7 +6,7 @@ after an administrator reviews the preview and selects **Import changes**.
 
 ## Workflow
 
-1. Open **Admin Tools → Teams & accounts → CSV team import**.
+1. Open **Admin Tools → Teams & accounts**, select a team if needed, and expand **CSV roster import**.
 2. Download the current template or a CSV for the selected team.
 3. Drop the completed CSV into the import area or choose the file.
 4. Review change counts, row-level validation messages, and the exact stable
@@ -27,7 +27,7 @@ again.
 | `action` | `upsert` or `archive` |
 | `team_id` | Stable lowercase database ID |
 | `team_name` | Required for a team upsert |
-| `contact_email` | Optional team contact email |
+| `season_name` | Required when the team is new or does not have an active season |
 | `user_id` | Stable account ID for a member |
 | `role` | `player` or `coach` |
 | `name` | Player or coach display name |
@@ -35,7 +35,13 @@ again.
 | `password` | Temporary password of at least 8 characters; required for new accounts, blank preserves an existing password |
 
 Team rows may appear before or after their member rows. New teams referenced in
-the same file are created before their accounts.
+the same file are created before their accounts. A new team receives the active
+season named by `season_name`, and every imported account is attached to that
+season. Restored accounts are attached to the team's current active season.
+
+Active team names must be unique, ignoring capitalization and surrounding
+spaces. The active season is shown alongside the team name throughout the app,
+for example `13U Black — Spring 2027`.
 
 ## Safety and compatibility
 
@@ -44,6 +50,12 @@ the same file are created before their accounts.
 - Any validation error prevents the entire import; valid rows are not applied
   separately.
 - Imported passwords are hashed before storage and never returned in previews.
+- Account IDs and login identity stay stable when display names, teams, seasons,
+  or jersey numbers change.
+- The import rejects a player or coach already active on another team. Use the
+  administrator **Add or transfer an existing player** or **Advance roster** workflow instead so
+  the move is atomic and historical records remain correctly attributed.
+- Active player jersey numbers must be unique within a team.
 - A password change invalidates existing sessions and must be changed by the
   account owner after the next login.
 - Import operations create one audit-log entry containing the non-sensitive
@@ -52,5 +64,7 @@ the same file are created before their accounts.
   compatibility warning. The modern template is recommended because it uses
   explicit stable IDs and supports coach accounts.
 
-Archive actions preserve historical player results. An archived team or
-account can later be restored from the Recovery section.
+Archive actions preserve historical player results and withdraw only current
+practice work. An archived account can be restored to its former team from the
+Recovery section or, for a player, added to another team through **Add or
+transfer an existing player**.

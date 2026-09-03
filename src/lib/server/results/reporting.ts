@@ -18,11 +18,12 @@ function validDate(value: string): boolean {
 
 export function parseAttemptReportFilters(searchParams: URLSearchParams): AttemptReportFilters {
   const playerId = String(searchParams.get('playerId') || '').trim();
+  const seasonId = String(searchParams.get('seasonId') || '').trim();
   const situationKey = String(searchParams.get('situationKey') || '').trim();
   const outcome = String(searchParams.get('outcome') || '').trim() as AttemptOutcome | '';
   const dateFrom = String(searchParams.get('dateFrom') || '').trim();
   const dateTo = String(searchParams.get('dateTo') || '').trim();
-  if (playerId.length > 100 || situationKey.length > 100) {
+  if (playerId.length > 100 || seasonId.length > 100 || situationKey.length > 100) {
     throw error(400, 'A report filter is too long.');
   }
   if (outcome && !REPORT_OUTCOMES.has(outcome)) {
@@ -36,6 +37,7 @@ export function parseAttemptReportFilters(searchParams: URLSearchParams): Attemp
   }
   return {
     ...(playerId ? { playerId } : {}),
+    ...(seasonId ? { seasonId } : {}),
     ...(situationKey ? { situationKey } : {}),
     ...(outcome ? { outcome } : {}),
     ...(dateFrom ? { dateFrom } : {}),

@@ -14,16 +14,48 @@
   const statusEl = byId('adminOperationStatus');
   const teamSelect = byId('adminTeamSelect');
   const teamName = byId('adminTeamName');
-  const teamEmail = byId('adminTeamEmail');
+  const teamHeaderFields = byId('adminTeamHeaderFields');
+  const initialSeasonName = byId('adminInitialSeasonName');
+  const initialSeasonField = byId('adminInitialSeasonField');
   const playerSelect = byId('adminRosterSelect');
   const playerName = byId('adminPlayerName');
   const playerNumber = byId('adminPlayerNumber');
   const playerPassword = byId('adminPlayerPass');
-  const playerPreview = byId('adminPlayerIdPreview');
   const coachSelect = byId('adminCoachSelect');
   const coachName = byId('adminCoachName');
   const coachPassword = byId('adminCoachPass');
-  const coachPreview = byId('adminCoachIdPreview');
+  const unassignedPlayerSelect = byId('adminUnassignedPlayerSelect');
+  const existingPlayerNumber = byId('adminExistingPlayerNumber');
+  const transferTeamSelect = byId('adminTransferTeamSelect');
+  const transferPlayerNumber = byId('adminTransferPlayerNumber');
+  const transferPlayerWorkflow = byId('adminTransferPlayerWorkflow');
+  const transferPlayerSummary = byId('adminTransferPlayerSummary');
+  const transferPlayerGuidance = byId('adminTransferPlayerGuidance');
+  const seasonSelect = byId('adminSeasonSelect');
+  const cleanupSeasonSelect = byId('adminCleanupSeasonSelect');
+  const seasonName = byId('adminSeasonName');
+  const seasonStart = byId('adminSeasonStart');
+  const seasonEnd = byId('adminSeasonEnd');
+  const seasonCreateFields = byId('adminSeasonCreateFields');
+  const seasonStatusBadge = byId('adminSeasonStatusBadge');
+  const seasonSummary = byId('adminSeasonSummary');
+  const seasonCleanupPreview = byId('adminSeasonCleanupPreview');
+  const cleanupGuidance = byId('adminCleanupGuidance');
+  const seasonPlayerSelect = byId('adminSeasonPlayerSelect');
+  const deletePlayerSelect = byId('adminDeletePlayerSelect');
+  const teamContextSummary = byId('adminTeamContextSummary');
+  const advanceDestinationSelect = byId('adminAdvanceDestinationSelect');
+  const advanceNewTeamFields = byId('adminAdvanceNewTeamFields');
+  const advanceTeamName = byId('adminAdvanceTeamName');
+  const advanceSeasonName = byId('adminAdvanceSeasonName');
+  const advanceSeasonStart = byId('adminAdvanceSeasonStart');
+  const advanceSeasonEnd = byId('adminAdvanceSeasonEnd');
+  const advanceRosterMembers = byId('adminAdvanceRosterMembers');
+  const advanceRosterList = byId('adminAdvanceRosterList');
+  const advanceRosterGuidance = byId('adminAdvanceRosterGuidance');
+  const advanceRosterTitle = byId('adminAdvanceRosterTitle');
+  const advanceRosterSource = byId('adminAdvanceRosterSource');
+  const advanceRosterLegend = byId('adminAdvanceRosterLegend');
   const archivedTeamSelect = byId('adminArchivedTeamSelect');
   const archivedMemberSelect = byId('adminArchivedMemberSelect');
   const archivedSituationSelect = byId('adminArchivedSituationSelect');
@@ -39,6 +71,9 @@
   const confirmMessage = byId('adminConfirmMessage');
   const confirmAction = byId('adminConfirmActionBtn');
   const confirmCancel = byId('adminConfirmCancelBtn');
+  const confirmTextField = byId('adminConfirmTextField');
+  const confirmTextLabel = byId('adminConfirmTextLabel');
+  const confirmTextInput = byId('adminConfirmTextInput');
   if (confirmDialog?.parentElement !== document.body) {
     document.body.appendChild(confirmDialog);
   }
@@ -47,8 +82,15 @@
   let archivedSituations = [];
   let publishedSituations = [];
   let proposals = [];
+  let seasons = [];
+  let seasonMembers = [];
+  let unassignedPlayers = [];
   let activeTab = 'teams';
+  let activeTeamView = 'roster';
+  let cleanupPreviewKey = '';
   let operationInProgress = false;
+  let creatingTeam = false;
+  let lastAdvanceSourceTeamId = '';
   let confirmationResolver = null;
 
   function setStatus(message = '', state = '') {
@@ -82,16 +124,15 @@
 
   function validateTeamFields() {
     const name = String(teamName?.value || '').trim();
-    const email = String(teamEmail?.value || '').trim();
     clearFieldError(teamName);
-    clearFieldError(teamEmail);
+    clearFieldError(initialSeasonName);
     let valid = true;
     if (!name) valid = setFieldError(teamName, 'Enter a team name.');
     else if (name.length > 100) {
       valid = setFieldError(teamName, 'Team names must be 100 characters or fewer.');
     }
-    if (email && (teamEmail?.validity?.typeMismatch || email.length > 254)) {
-      valid = setFieldError(teamEmail, 'Enter a valid contact email address.');
+    if (!selectedTeam() && !String(initialSeasonName?.value || '').trim()) {
+      valid = setFieldError(initialSeasonName, 'Enter the initial season name.');
     }
     if (!valid) focusFirstInvalid();
     return valid;
@@ -128,15 +169,28 @@
     confirmDialog?.classList.add('hidden');
     const resolve = confirmationResolver;
     confirmationResolver = null;
+    if (confirmTextInput) confirmTextInput.value = '';
+    confirmTextField?.classList.add('hidden');
     resolve?.(confirmed);
   }
 
-  function requestConfirmation({ title, message, confirmLabel = 'Confirm' }) {
+  function requestConfirmation({ title, message, confirmLabel = 'Confirm', requiredText = '' }) {
     if (!confirmDialog) return Promise.resolve(window.confirm(message));
     if (confirmationResolver) closeConfirmation(false);
     if (confirmTitle) confirmTitle.textContent = title;
     if (confirmMessage) confirmMessage.textContent = message;
-    if (confirmAction) confirmAction.textContent = confirmLabel;
+    if (confirmAction) {
+      confirmAction.textContent = confirmLabel;
+      confirmAction.disabled = Boolean(requiredText);
+    }
+    if (confirmTextInput) {
+      confirmTextInput.value = '';
+      confirmTextInput.dataset.requiredText = requiredText;
+    }
+    if (confirmTextLabel) confirmTextLabel.textContent = requiredText
+      ? `Type “${requiredText}” to confirm`
+      : 'Type the name to confirm';
+    confirmTextField?.classList.toggle('hidden', !requiredText);
     confirmDialog.classList.remove('hidden');
     window.setTimeout(() => confirmPanel?.focus(), 0);
     return new Promise((resolve) => {
@@ -145,6 +199,9 @@
   }
 
   confirmAction?.addEventListener('click', () => closeConfirmation(true));
+  confirmTextInput?.addEventListener('input', () => {
+    if (confirmAction) confirmAction.disabled = confirmTextInput.value !== confirmTextInput.dataset.requiredText;
+  });
   confirmCancel?.addEventListener('click', () => closeConfirmation(false));
   confirmDialog?.querySelector('[data-admin-confirm-cancel]')?.addEventListener(
     'click',
@@ -160,6 +217,21 @@
     item.value = value;
     item.textContent = text;
     return item;
+  }
+
+  function teamLabel(team) {
+    if (!team) return '';
+    if (team.displayName) return team.displayName;
+    return team.activeSeasonName ? `${team.name} — ${team.activeSeasonName}` : `${team.name} — No active season`;
+  }
+
+  function seasonLabel(team, season) {
+    if (!season) return '';
+    const normalizedTeam = String(team?.name || '').trim().toLowerCase();
+    const normalizedSeason = String(season.name || '').trim().toLowerCase();
+    return normalizedTeam && normalizedSeason.startsWith(normalizedTeam)
+      ? season.name
+      : `${team?.name || ''} — ${season.name}`;
   }
 
   function setEnabled(elements, enabled) {
@@ -192,28 +264,207 @@
     );
   }
 
+  function selectedSeason() {
+    const id = String(seasonSelect?.value || '');
+    return seasons.find((season) => season.id === id) || null;
+  }
+
+  function selectedCleanupSeason() {
+    const id = String(cleanupSeasonSelect?.value || '');
+    return seasons.find((season) => season.id === id && season.status !== 'active') || null;
+  }
+
+  function selectedSeasonPlayer() {
+    const season = selectedCleanupSeason();
+    const id = String(seasonPlayerSelect?.value || '');
+    return seasonMembers.find(
+      (member) => member.seasonId === season?.id && member.userId === id && member.role === 'player',
+    ) || null;
+  }
+
+  function selectedDeletionPlayer() {
+    const id = String(deletePlayerSelect?.value || '');
+    if (!id) return null;
+    const member = seasonMembers.find((item) => item.userId === id && item.role === 'player');
+    if (member) return member;
+    const rosterMember = selectedTeam()?.roster?.find(
+      (item) => item.playerId === id && item.role === 'player',
+    );
+    return rosterMember
+      ? { userId: rosterMember.playerId, name: rosterMember.name, number: rosterMember.number || '' }
+      : null;
+  }
+
+  function clearCleanupPreview() {
+    cleanupPreviewKey = '';
+    seasonCleanupPreview?.classList.add('hidden');
+    setEnabled([byId('adminPlayerClearSeasonBtn')], false);
+  }
+
+  function renderSeasonPlayerSelect() {
+    const season = selectedCleanupSeason();
+    const previous = String(seasonPlayerSelect?.value || '');
+    const players = seasonMembers.filter(
+      (member) => member.seasonId === season?.id && member.role === 'player',
+    );
+    seasonPlayerSelect?.replaceChildren(option('', season ? '— Select player —' : '— Select a season first —'));
+    players.forEach((member) => {
+      const number = member.number ? `#${member.number} ` : '';
+      const status = member.status === 'removed' ? ' · removed' : '';
+      seasonPlayerSelect?.appendChild(option(member.userId, `${number}${member.name}${status}`));
+    });
+    if (seasonPlayerSelect) {
+      seasonPlayerSelect.value = players.some((member) => member.userId === previous) ? previous : '';
+    }
+    setEnabled([seasonPlayerSelect], Boolean(season && players.length));
+    const player = selectedSeasonPlayer();
+    setEnabled([byId('adminSeasonPreviewBtn')], Boolean(season && player));
+    if (cleanupGuidance) {
+      cleanupGuidance.textContent = !season
+        ? 'Close a season before deleting its historical player records.'
+        : !players.length
+          ? 'This season has no player records available for cleanup.'
+          : !player
+            ? 'Select a player, then preview exactly what will be deleted.'
+            : 'Export the season if needed, then preview the deletion impact.';
+    }
+    clearCleanupPreview();
+  }
+
+  function renderCleanupControls(preferredId = '') {
+    const team = selectedTeam();
+    const previous = preferredId || cleanupSeasonSelect?.value || '';
+    const eligible = seasons.filter((season) => season.status !== 'active');
+    cleanupSeasonSelect?.replaceChildren(option('', team
+      ? eligible.length ? '— Select historical season —' : '— No closed seasons —'
+      : '— Select a team first —'));
+    eligible.forEach((season) => cleanupSeasonSelect?.appendChild(
+      option(season.id, `${season.name} · ${season.status}`),
+    ));
+    if (cleanupSeasonSelect) {
+      cleanupSeasonSelect.value = eligible.some((season) => season.id === previous) ? previous : '';
+    }
+    setEnabled([cleanupSeasonSelect], Boolean(team && eligible.length));
+    setEnabled([byId('adminCleanupExportBtn')], Boolean(selectedCleanupSeason()));
+    renderSeasonPlayerSelect();
+  }
+
+  function renderDeletionPlayerSelect() {
+    const previous = String(deletePlayerSelect?.value || '');
+    const players = new Map();
+    (selectedTeam()?.roster || [])
+      .filter((member) => member.role === 'player')
+      .forEach((member) => players.set(member.playerId, {
+        userId: member.playerId,
+        name: member.name,
+        number: member.number || '',
+      }));
+    seasonMembers
+      .filter((member) => member.role === 'player')
+      .forEach((member) => {
+        if (!players.has(member.userId)) players.set(member.userId, member);
+      });
+    const sorted = [...players.values()].sort((a, b) =>
+      String(a.number || '').localeCompare(String(b.number || ''), undefined, { numeric: true })
+      || String(a.name || '').localeCompare(String(b.name || '')),
+    );
+    deletePlayerSelect?.replaceChildren(option('', selectedTeam()
+      ? sorted.length ? '— Select player account —' : '— No player accounts —'
+      : '— Select a team first —'));
+    sorted.forEach((player) => {
+      const number = player.number ? `#${player.number} ` : '';
+      deletePlayerSelect?.appendChild(option(player.userId, `${number}${player.name}`));
+    });
+    if (deletePlayerSelect) {
+      deletePlayerSelect.value = sorted.some((player) => player.userId === previous) ? previous : '';
+    }
+    setEnabled([deletePlayerSelect], Boolean(selectedTeam() && sorted.length));
+    setEnabled([byId('adminPlayerDeleteBtn')], Boolean(selectedDeletionPlayer()));
+  }
+
+  function renderSeasonControls(preferredId = '') {
+    const team = selectedTeam();
+    const previous = preferredId || seasonSelect?.value || '';
+    seasonSelect?.replaceChildren(option('', team ? '— Select season —' : '— Select a team first —'));
+    seasons.forEach((season) => {
+      const label = `${seasonLabel(team, season)} · ${season.status}`;
+      seasonSelect?.appendChild(option(season.id, label));
+    });
+    if (seasonSelect) {
+      seasonSelect.value = seasons.some((season) => season.id === previous)
+        ? previous
+        : seasons.find((season) => season.status === 'active')?.id || seasons[0]?.id || '';
+    }
+    const season = selectedSeason();
+    const hasActive = seasons.some((item) => item.status === 'active');
+    setEnabled([seasonSelect], Boolean(team));
+    setEnabled([seasonName, seasonStart, seasonEnd, byId('adminSeasonAddBtn')], Boolean(team) && !hasActive);
+    setVisible(seasonCreateFields, Boolean(team) && !hasActive);
+    setEnabled([byId('adminSeasonExportBtn')], Boolean(season));
+    setEnabled([byId('adminSeasonCloseBtn')], season?.status === 'active');
+    setEnabled([byId('adminSeasonDeleteBtn')], Boolean(season && season.status !== 'active'));
+    setVisible(byId('adminSeasonCloseBtn'), season?.status === 'active');
+    setVisible(byId('adminSeasonDeleteBtn'), Boolean(season && season.status !== 'active'));
+    if (seasonStatusBadge) {
+      seasonStatusBadge.textContent = season
+        ? season.status[0].toUpperCase() + season.status.slice(1)
+        : team ? 'No season' : 'No team selected';
+      seasonStatusBadge.className = `season-status-badge${season ? ` is-${season.status}` : ''}`;
+    }
+    if (seasonSummary) {
+      seasonSummary.replaceChildren();
+      const counts = season ? [
+        ['Roster', season.memberCount],
+        ['Practices', season.assignmentCount],
+        ['Results', season.attemptCount],
+      ] : [];
+      counts.forEach(([label, count]) => {
+        const item = document.createElement('div');
+        const labelElement = document.createElement('span');
+        const countElement = document.createElement('strong');
+        labelElement.textContent = label;
+        countElement.textContent = String(Number(count || 0));
+        item.append(labelElement, countElement);
+        seasonSummary.appendChild(item);
+      });
+      seasonSummary.classList.toggle('hidden', !season);
+    }
+    renderCleanupControls();
+    renderDeletionPlayerSelect();
+    renderAdvanceRoster();
+  }
+
+  async function loadSeasonData(teamId, preferredId = '') {
+    if (!teamId) {
+      seasons = [];
+      seasonMembers = [];
+      renderSeasonControls();
+      return;
+    }
+    const result = await diqApiRequest(
+      `admin/teams/${encodeURIComponent(teamId)}/seasons`,
+      { cache: 'no-store' },
+    );
+    seasons = Array.isArray(result?.seasons) ? result.seasons : [];
+    seasonMembers = Array.isArray(result?.members) ? result.members : [];
+    renderSeasonControls(preferredId);
+    renderTeamContext();
+  }
+
   function generatePassword() {
     return typeof genSimplePassword === 'function'
       ? genSimplePassword(12)
       : `${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}A7`;
   }
 
-  function memberId(role, name, number = '') {
-    const raw =
-      role === 'coach'
-        ? `${selectedTeam()?.id || 'team'}-coach-${name}`
-        : `${selectedTeam()?.id || 'team'}-${name}-${number}`;
-    return slugifyLoose(raw);
-  }
-
   function renderTeamSelect(preferredId = '') {
     if (!teamSelect) return;
     const previous = preferredId || teamSelect.value;
-    teamSelect.replaceChildren(option('', '— New team —'));
+    teamSelect.replaceChildren(option('', '— Select team —'));
     teams
       .filter((team) => team.active !== false)
-      .sort((a, b) => String(a.name).localeCompare(String(b.name)))
-      .forEach((team) => teamSelect.appendChild(option(team.id, team.name)));
+      .sort((a, b) => teamLabel(a).localeCompare(teamLabel(b)))
+      .forEach((team) => teamSelect.appendChild(option(team.id, teamLabel(team))));
     teamSelect.value = teams.some(
       (team) => team.id === previous && team.active !== false,
     )
@@ -251,23 +502,6 @@
       : '';
   }
 
-  function updatePlayerPreview() {
-    if (!playerPreview) return;
-    const id =
-      selectedMember('player')?.playerId ||
-      memberId('player', playerName?.value || '', playerNumber?.value || '');
-    playerPreview.textContent = selectedTeam() && id ? `Login ID: ${id}` : '';
-  }
-
-  function updateCoachPreview() {
-    if (!coachPreview) return;
-    const id =
-      selectedMember('coach')?.playerId ||
-      memberId('coach', coachName?.value || '');
-    coachPreview.textContent =
-      selectedTeam() && id ? `Coach account ID: ${id}` : '';
-  }
-
   function renderPlayerForm() {
     const hasTeam = Boolean(selectedTeam());
     const member = selectedMember('player');
@@ -291,7 +525,8 @@
     if (playerName) playerName.value = member?.name || '';
     if (playerNumber) playerNumber.value = member?.number || '';
     if (playerPassword) playerPassword.value = '';
-    updatePlayerPreview();
+    if (transferPlayerNumber) transferPlayerNumber.value = member?.number || '';
+    renderPlayerMovement();
   }
 
   function renderCoachForm() {
@@ -315,23 +550,222 @@
     );
     if (coachName) coachName.value = member?.name || '';
     if (coachPassword) coachPassword.value = '';
-    updateCoachPreview();
+  }
+
+  function renderPlayerMovement() {
+    const team = selectedTeam();
+    const previousUnassigned = String(unassignedPlayerSelect?.value || '');
+    unassignedPlayerSelect?.replaceChildren(option('', unassignedPlayers.length
+      ? '— Select unassigned player —'
+      : '— No unassigned players —'));
+    unassignedPlayers.forEach((player) => {
+      const history = player.previousTeams?.length
+        ? ` · formerly ${player.previousTeams.join(', ')}`
+        : '';
+      unassignedPlayerSelect?.appendChild(option(player.userId, `${player.name}${history}`));
+    });
+    if (unassignedPlayerSelect) {
+      unassignedPlayerSelect.value = unassignedPlayers.some(
+        (player) => player.userId === previousUnassigned,
+      ) ? previousUnassigned : '';
+    }
+
+    const previousDestination = String(transferTeamSelect?.value || '');
+    transferTeamSelect?.replaceChildren(option('', '— Select destination —'));
+    teams
+      .filter((item) => item.active !== false && item.id !== team?.id)
+      .sort((a, b) => teamLabel(a).localeCompare(teamLabel(b)))
+      .forEach((item) => transferTeamSelect?.appendChild(option(item.id, teamLabel(item))));
+    if (transferTeamSelect) {
+      transferTeamSelect.value = teams.some(
+        (item) => item.id === previousDestination && item.id !== team?.id && item.active !== false,
+      ) ? previousDestination : '';
+    }
+
+    const unassignedSelected = Boolean(unassignedPlayerSelect?.value);
+    const selectedPlayer = selectedMember('player');
+    setVisible(transferPlayerWorkflow, Boolean(selectedPlayer));
+    if (!selectedPlayer && transferPlayerWorkflow) transferPlayerWorkflow.open = false;
+    if (transferPlayerSummary) {
+      transferPlayerSummary.textContent = selectedPlayer
+        ? `Transfer #${selectedPlayer.number} ${selectedPlayer.name}`
+        : 'Transfer selected player';
+    }
+    if (transferPlayerGuidance && selectedPlayer) {
+      transferPlayerGuidance.textContent = `Move #${selectedPlayer.number} ${selectedPlayer.name} to another active team while preserving their historical results.`;
+    }
+    setEnabled([unassignedPlayerSelect], Boolean(team && unassignedPlayers.length));
+    setEnabled([existingPlayerNumber], Boolean(team && unassignedSelected));
+    setEnabled([byId('adminAddExistingPlayerBtn')], Boolean(
+      team && unassignedSelected && String(existingPlayerNumber?.value || '').trim(),
+    ));
+    setEnabled([transferTeamSelect], Boolean(selectedPlayer && transferTeamSelect?.options.length > 1));
+    setEnabled([transferPlayerNumber], Boolean(selectedPlayer));
+    setEnabled([byId('adminTransferPlayerBtn')], Boolean(
+      selectedPlayer
+      && transferTeamSelect?.value
+      && String(transferPlayerNumber?.value || '').trim(),
+    ));
+  }
+
+  function updateAdvanceRosterButton() {
+    const team = selectedTeam();
+    const hasActiveSeason = seasons.some((season) => season.status === 'active');
+    const selectedMembers = advanceRosterList
+      ? advanceRosterList.querySelectorAll('input[type="checkbox"]:checked').length
+      : 0;
+    const creatingTeam = !advanceDestinationSelect?.value || advanceDestinationSelect.value === 'new';
+    const destinationReady = creatingTeam
+      ? Boolean(String(advanceTeamName?.value || '').trim() && String(advanceSeasonName?.value || '').trim())
+      : Boolean(advanceDestinationSelect?.value);
+    setEnabled([byId('adminAdvanceRosterBtn')], Boolean(
+      team && !hasActiveSeason && selectedMembers && destinationReady,
+    ));
+  }
+
+  function suggestedNextAgeTeamName(name = '') {
+    const value = String(name);
+    return /\b\d{1,2}U\b/i.test(value)
+      ? value.replace(/\b(\d{1,2})U\b/i, (match, age) => `${Number(age) + 1}U`)
+      : '';
+  }
+
+  function renderAdvanceRoster() {
+    const team = selectedTeam();
+    const hasActiveSeason = seasons.some((season) => season.status === 'active');
+    const available = Boolean(team && !hasActiveSeason);
+    const sourceChanged = String(team?.id || '') !== lastAdvanceSourceTeamId;
+    const previousDestination = sourceChanged
+      ? 'new'
+      : String(advanceDestinationSelect?.value || 'new');
+    if (sourceChanged && advanceTeamName) {
+      advanceTeamName.value = team ? suggestedNextAgeTeamName(team.name) : '';
+    }
+    lastAdvanceSourceTeamId = String(team?.id || '');
+    const sourceSeason = selectedSeason()
+      || seasons.find((season) => season.status === 'closed')
+      || seasons[0];
+    const sourceLabel = team
+      ? `${team.name}${sourceSeason?.name ? ` — ${sourceSeason.name}` : ''}`
+      : '';
+    if (advanceRosterTitle) {
+      advanceRosterTitle.textContent = team ? `Advance ${team.name} roster` : 'Advance roster';
+    }
+    if (advanceRosterSource) {
+      advanceRosterSource.textContent = team ? `From: ${sourceLabel}` : 'Select a source team above.';
+    }
+    if (advanceRosterLegend) {
+      advanceRosterLegend.textContent = team
+        ? `Players and coaches moving from ${team.name}`
+        : 'Select players and coaches';
+    }
+    advanceDestinationSelect?.replaceChildren(option('new', 'Create a new destination team'));
+    teams
+      .filter((item) => item.active !== false && item.id !== team?.id)
+      .sort((a, b) => teamLabel(a).localeCompare(teamLabel(b)))
+      .forEach((item) => advanceDestinationSelect?.appendChild(option(item.id, `Existing team: ${teamLabel(item)}`)));
+    if (advanceDestinationSelect) {
+      advanceDestinationSelect.value = [...advanceDestinationSelect.options].some(
+        (item) => item.value === previousDestination,
+      ) ? previousDestination : 'new';
+    }
+    const creatingTeam = !advanceDestinationSelect?.value || advanceDestinationSelect.value === 'new';
+    setVisible(advanceNewTeamFields, creatingTeam);
+    setEnabled([
+      advanceDestinationSelect,
+      advanceTeamName,
+      advanceSeasonName,
+      advanceSeasonStart,
+      advanceSeasonEnd,
+    ], available);
+    if (!creatingTeam) {
+      setEnabled([advanceTeamName, advanceSeasonName, advanceSeasonStart, advanceSeasonEnd], false);
+    }
+    if (advanceRosterMembers) advanceRosterMembers.disabled = !available;
+    setEnabled([byId('adminAdvanceSelectAllBtn'), byId('adminAdvanceClearAllBtn')], Boolean(available && (team?.roster || []).some((member) => member.active !== false)));
+    if (advanceRosterGuidance) {
+      advanceRosterGuidance.textContent = !team
+        ? 'Select a source team first.'
+        : hasActiveSeason
+          ? 'Close the active season before advancing this roster.'
+          : 'Select the accounts that should move. Their historical results remain with the source team and season.';
+    }
+    advanceRosterList?.replaceChildren();
+    (team?.roster || [])
+      .filter((member) => member.active !== false)
+      .forEach((member) => {
+        const row = document.createElement('label');
+        row.className = 'admin-roster-picker-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.advanceUserId = member.playerId;
+        checkbox.disabled = !available;
+        const name = document.createElement('span');
+        name.textContent = `${member.role === 'coach' ? 'Coach' : `#${member.number}`} ${member.name}`;
+        row.append(checkbox, name);
+        if (member.role === 'player') {
+          const number = document.createElement('input');
+          number.type = 'text';
+          number.maxLength = 12;
+          number.value = member.number || '';
+          number.className = 'input admin-roster-number';
+          number.setAttribute('aria-label', `New number for ${member.name}`);
+          number.dataset.advanceNumberFor = member.playerId;
+          number.disabled = !available;
+          number.addEventListener('input', updateAdvanceRosterButton);
+          row.appendChild(number);
+        }
+        checkbox.addEventListener('change', updateAdvanceRosterButton);
+        advanceRosterList.appendChild(row);
+      });
+    updateAdvanceRosterButton();
+  }
+
+  function renderTeamContext() {
+    const team = selectedTeam();
+    if (!teamContextSummary) return;
+    const activeSeason = seasons.find((season) => season.status === 'active');
+    const activePlayers = (team?.roster || []).filter(
+      (member) => member.role === 'player' && member.active !== false,
+    ).length;
+    teamContextSummary.textContent = team
+      ? `${activePlayers} active player${activePlayers === 1 ? '' : 's'} · ${activeSeason?.name || 'No active season'}`
+      : creatingTeam
+        ? 'Enter a team name and its first season, then create the team.'
+        : 'Select a team to manage its roster, seasons, and records.';
   }
 
   function renderSelectedTeam() {
     const team = selectedTeam();
-    [teamName, teamEmail, playerName, playerNumber, playerPassword, coachName, coachPassword]
+    const newTeamButton = byId('adminNewTeamBtn');
+    [teamName, initialSeasonName, playerName, playerNumber, playerPassword, coachName, coachPassword]
       .forEach(clearFieldError);
     if (teamName) teamName.value = team?.name || '';
-    if (teamEmail) teamEmail.value = team?.coachEmail || '';
+    if (initialSeasonName) initialSeasonName.value = '';
+    setVisible(teamHeaderFields, Boolean(team || creatingTeam));
+    setVisible(initialSeasonField, creatingTeam);
     setEnabled(
       [byId('adminTeamUpdateBtn'), byId('adminTeamRemoveBtn')],
       Boolean(team),
     );
+    setVisible(byId('adminNewTeamBtn'), !creatingTeam);
+    if (newTeamButton) newTeamButton.textContent = team ? 'Create another team' : 'New team';
+    setVisible(byId('adminTeamAddBtn'), creatingTeam);
+    setVisible(byId('adminTeamCancelCreateBtn'), creatingTeam);
+    setVisible(byId('adminTeamUpdateBtn'), Boolean(team));
+    setVisible(byId('adminTeamRemoveBtn'), Boolean(team));
+    setEnabled([byId('adminTeamDeleteBtn'), byId('adminDeleteTeamPlayers')], Boolean(team && !team.activeSeasonId));
+    renderTeamContext();
     renderMemberSelect('player');
     renderMemberSelect('coach');
     renderPlayerForm();
     renderCoachForm();
+    renderPlayerMovement();
+    if (!team) {
+      seasons = [];
+      seasonMembers = [];
+      renderSeasonControls();
+    }
   }
 
   function populateRecovery() {
@@ -339,15 +773,21 @@
     teams
       .filter((team) => team.active === false)
       .forEach((team) =>
-        archivedTeamSelect?.appendChild(option(team.id, team.name || team.id)),
+        archivedTeamSelect?.appendChild(option(team.id, teamLabel(team) || team.id)),
       );
 
     archivedMemberSelect?.replaceChildren(
       option('', '— No archived members —'),
     );
+    const activePlayerIds = new Set(
+      teams.flatMap((team) => (team.roster || []))
+        .filter((member) => member.role === 'player' && member.active !== false)
+        .map((member) => member.playerId),
+    );
     teams.forEach((team) => {
       (team.roster || [])
-        .filter((member) => member.active === false)
+        .filter((member) => member.active === false
+          && !(member.role === 'player' && activePlayerIds.has(member.playerId)))
         .forEach((member) =>
           archivedMemberSelect?.appendChild(
             option(
@@ -408,12 +848,13 @@
 
   async function loadAdminData(preferredTeamId = '') {
     setStatus('Loading the latest database records…', 'pending');
-    const [teamResult, situationResult, proposalResult] = await Promise.all([
+    const [teamResult, situationResult, proposalResult, unassignedResult] = await Promise.all([
       diqApiRequest('admin/teams?includeArchived=true', { cache: 'no-store' }),
       diqApiRequest('admin/situations', { cache: 'no-store' }),
       diqApiRequest('situation-submissions?status=pending', {
         cache: 'no-store',
       }),
+      diqApiRequest('admin/players/unassigned', { cache: 'no-store' }),
     ]);
     teams = Array.isArray(teamResult?.teams) ? teamResult.teams : [];
     publishedSituations = (situationResult?.situations || []).filter(
@@ -425,8 +866,15 @@
     proposals = Array.isArray(proposalResult?.submissions)
       ? proposalResult.submissions
       : [];
+    unassignedPlayers = Array.isArray(unassignedResult?.players)
+      ? unassignedResult.players
+      : [];
+    creatingTeam = false;
     renderTeamSelect(preferredTeamId);
+    seasons = [];
+    seasonMembers = [];
     renderSelectedTeam();
+    await loadSeasonData(selectedTeam()?.id || '');
     populateRecovery();
     renderProposals();
     setStatus('Database records are up to date.', 'success');
@@ -444,7 +892,9 @@
       setStatus(label, 'pending');
       await action();
       await refreshPublicTeams();
-      await loadAdminData(preferredTeamId);
+      await loadAdminData(
+        typeof preferredTeamId === 'function' ? preferredTeamId() : preferredTeamId,
+      );
       setStatus(successMessage, 'success');
       return true;
     } catch (error) {
@@ -472,14 +922,16 @@
     if (!validateMemberFields(role, { requirePassword: true })) {
       return setStatus('Correct the highlighted account fields.', 'error');
     }
-    const id = memberId(role, name, number);
+    let id = '';
     const ok = await perform(
       `Creating ${role} account…`,
-      () =>
-        diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members`, {
+      async () => {
+        const result = await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members`, {
           method: 'POST',
-          body: JSON.stringify({ userId: id, name, number, role, password }),
-        }),
+          body: JSON.stringify({ name, number, role, password }),
+        });
+        id = result?.record?.playerId || '';
+      },
       `${role === 'coach' ? 'Coach' : 'Player'} account created. The temporary password must be changed at first login.`,
       team.id,
     );
@@ -528,18 +980,18 @@
     );
   }
 
-  async function archiveMember(role) {
+  async function removeMember(role) {
     const team = selectedTeam();
     const member = selectedMember(role);
     if (!team || !member) return;
     const confirmed = await requestConfirmation({
-      title: `Archive ${role}`,
-      message: `Archive ${member.name}? The account will no longer be able to log in, but historical results will be preserved.`,
-      confirmLabel: `Archive ${role}`,
+      title: `Remove ${role} from team`,
+      message: `Remove ${member.name} from ${team.name}? New practice will stop immediately and active sessions will be signed out. Historical results will be preserved.`,
+      confirmLabel: `Remove ${role}`,
     });
     if (!confirmed) return;
     await perform(
-      `Archiving ${role} account…`,
+      `Removing ${role} from team…`,
       () =>
         diqApiRequest(
           `admin/teams/${encodeURIComponent(team.id)}/members/${encodeURIComponent(member.playerId)}`,
@@ -548,8 +1000,20 @@
             headers: { 'If-Match': String(member.revision) },
           },
         ),
-      `${role === 'coach' ? 'Coach' : 'Player'} account archived.`,
+      `${role === 'coach' ? 'Coach' : 'Player'} removed from the team. Historical results were preserved.`,
       team.id,
+    );
+  }
+
+  function switchTeamView(viewName) {
+    activeTeamView = viewName;
+    document.querySelectorAll('[data-admin-team-tab]').forEach((button) => {
+      const selected = button.dataset.adminTeamTab === viewName;
+      button.classList.toggle('is-active', selected);
+      button.setAttribute('aria-selected', String(selected));
+    });
+    document.querySelectorAll('[data-admin-team-view]').forEach((view) =>
+      view.classList.toggle('hidden', view.dataset.adminTeamView !== viewName),
     );
   }
 
@@ -564,6 +1028,7 @@
     const usesMainWorkspace = tab === 'teams' || tab === 'recovery';
     adminWorkspace?.classList.toggle('hidden', !usesMainWorkspace);
     fieldCard?.classList.toggle('hidden', usesMainWorkspace);
+    if (tab === 'teams') switchTeamView(activeTeamView);
     if (tab === 'situations') window._diqSituationEditorOpened?.('admin');
     else window._diqSituationEditorClosed?.('admin');
   }
@@ -571,13 +1036,37 @@
   adminCard.querySelectorAll('[data-admin-tab]').forEach((button) =>
     button.addEventListener('click', () => switchTab(button.dataset.adminTab)),
   );
-  teamSelect?.addEventListener('change', renderSelectedTeam);
+  document.querySelectorAll('[data-admin-team-tab]').forEach((button) =>
+    button.addEventListener('click', () => switchTeamView(button.dataset.adminTeamTab)),
+  );
+  teamSelect?.addEventListener('change', () => {
+    creatingTeam = false;
+    seasons = [];
+    seasonMembers = [];
+    renderSelectedTeam();
+    void loadSeasonData(selectedTeam()?.id || '').catch((error) =>
+      setStatus(error?.message || 'Unable to load season data.', 'error'),
+    );
+  });
+  seasonSelect?.addEventListener('change', () => renderSeasonControls(seasonSelect.value));
+  cleanupSeasonSelect?.addEventListener('change', () => {
+    setEnabled([byId('adminCleanupExportBtn')], Boolean(selectedCleanupSeason()));
+    renderSeasonPlayerSelect();
+  });
+  seasonPlayerSelect?.addEventListener('change', renderSeasonPlayerSelect);
+  deletePlayerSelect?.addEventListener('change', () =>
+    setEnabled([byId('adminPlayerDeleteBtn')], Boolean(selectedDeletionPlayer())),
+  );
   playerSelect?.addEventListener('change', renderPlayerForm);
   coachSelect?.addEventListener('change', renderCoachForm);
-  playerName?.addEventListener('input', updatePlayerPreview);
-  playerNumber?.addEventListener('input', updatePlayerPreview);
-  coachName?.addEventListener('input', updateCoachPreview);
-  [teamName, teamEmail, playerName, playerNumber, playerPassword, coachName, coachPassword]
+  unassignedPlayerSelect?.addEventListener('change', renderPlayerMovement);
+  existingPlayerNumber?.addEventListener('input', renderPlayerMovement);
+  transferTeamSelect?.addEventListener('change', renderPlayerMovement);
+  transferPlayerNumber?.addEventListener('input', renderPlayerMovement);
+  advanceDestinationSelect?.addEventListener('change', renderAdvanceRoster);
+  [advanceTeamName, advanceSeasonName, advanceSeasonStart, advanceSeasonEnd]
+    .forEach((input) => input?.addEventListener('input', updateAdvanceRosterButton));
+  [teamName, initialSeasonName, playerName, playerNumber, playerPassword, coachName, coachPassword]
     .forEach((input) => input?.addEventListener('input', () => clearFieldError(input)));
   proposalSelect?.addEventListener('change', renderProposalDetails);
   byId('adminGenPassBtn')?.addEventListener('click', () => {
@@ -593,25 +1082,42 @@
     );
   });
 
+  byId('adminNewTeamBtn')?.addEventListener('click', () => {
+    creatingTeam = true;
+    if (teamSelect) teamSelect.value = '';
+    renderSelectedTeam();
+    void loadSeasonData('');
+    teamName?.focus();
+  });
+
+  byId('adminTeamCancelCreateBtn')?.addEventListener('click', () => {
+    creatingTeam = false;
+    if (teamSelect) teamSelect.value = '';
+    renderSelectedTeam();
+    void loadSeasonData('');
+    teamSelect?.focus();
+  });
+
   byId('adminTeamAddBtn')?.addEventListener('click', () => {
     const name = String(teamName?.value || '').trim();
     if (!validateTeamFields()) {
       return setStatus('Correct the highlighted team fields.', 'error');
     }
-    const id = slugifyLoose(name);
+    let id = '';
     void perform(
       'Creating team…',
-      () =>
-        diqApiRequest('admin/teams', {
+      async () => {
+        const result = await diqApiRequest('admin/teams', {
           method: 'POST',
           body: JSON.stringify({
-            id,
             name,
-            coachEmail: String(teamEmail?.value || '').trim(),
+            seasonName: String(initialSeasonName?.value || '').trim(),
           }),
-        }),
+        });
+        id = result?.record?.id || '';
+      },
       'Team created.',
-      id,
+      () => id,
     );
   });
 
@@ -629,7 +1135,6 @@
           headers: { 'If-Match': String(team.revision) },
           body: JSON.stringify({
             name: String(teamName?.value || '').trim(),
-            coachEmail: String(teamEmail?.value || '').trim(),
           }),
         }),
       'Team saved.',
@@ -657,6 +1162,235 @@
     );
   });
 
+  byId('adminSeasonAddBtn')?.addEventListener('click', () => {
+    const team = selectedTeam();
+    const name = String(seasonName?.value || '').trim();
+    clearFieldError(seasonName);
+    if (!team) return setStatus('Select a team first.', 'error');
+    if (!name) {
+      setFieldError(seasonName, 'Enter a season name.');
+      focusFirstInvalid();
+      return setStatus('Enter a season name.', 'error');
+    }
+    void perform(
+      'Creating season…',
+      () => diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons`, {
+        method: 'POST',
+        body: JSON.stringify({
+          name,
+          startsOn: seasonStart?.value || null,
+          endsOn: seasonEnd?.value || null,
+        }),
+      }),
+      'Season created. Current roster members were carried into it.',
+      team.id,
+    );
+  });
+
+  function exportSeasonData(season) {
+    const team = selectedTeam();
+    if (!team || !season) return setStatus('Select a season to export.', 'error');
+    window.location.assign(diqApiUrl(
+      `admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/export`,
+    ));
+    setStatus(`Preparing the ${season.name} export…`, 'pending');
+  }
+
+  byId('adminSeasonExportBtn')?.addEventListener('click', () =>
+    exportSeasonData(selectedSeason()),
+  );
+  byId('adminCleanupExportBtn')?.addEventListener('click', () =>
+    exportSeasonData(selectedCleanupSeason()),
+  );
+
+  function renderCleanupPreview(preview) {
+    if (!seasonCleanupPreview) return;
+    const items = [
+      ['Roster records', preview.memberships],
+      ['Practices', preview.assignments],
+      ['Recipients', preview.recipients],
+      ['Progress records', preview.progressRecords],
+      ['Results', preview.attempts],
+    ];
+    seasonCleanupPreview.replaceChildren(...items.map(([label, count]) => {
+      const item = document.createElement('div');
+      const labelElement = document.createElement('span');
+      const countElement = document.createElement('strong');
+      labelElement.textContent = label;
+      countElement.textContent = String(Number(count || 0));
+      item.append(labelElement, countElement);
+      return item;
+    }));
+    seasonCleanupPreview.classList.remove('hidden');
+    const season = selectedCleanupSeason();
+    const player = selectedSeasonPlayer();
+    cleanupPreviewKey = season && player ? `${season.id}:${player.userId}` : '';
+    setEnabled([byId('adminPlayerClearSeasonBtn')], Boolean(cleanupPreviewKey));
+  }
+
+  byId('adminSeasonPreviewBtn')?.addEventListener('click', async () => {
+    const team = selectedTeam();
+    const season = selectedCleanupSeason();
+    const player = selectedSeasonPlayer();
+    if (!team || !season || !player) {
+      return setStatus('Select a historical season and player first.', 'error');
+    }
+    try {
+      clearCleanupPreview();
+      setStatus('Calculating the records that would be deleted…', 'pending');
+      const playerFilter = `?playerId=${encodeURIComponent(player.userId)}`;
+      const result = await diqApiRequest(
+        `admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/cleanup${playerFilter}`,
+        { cache: 'no-store' },
+      );
+      renderCleanupPreview(result.preview || {});
+      setStatus(
+        `${player.name}'s deletion preview is ready. No records were changed.`,
+        'success',
+      );
+    } catch (error) {
+      setStatus(error?.message || 'Unable to preview season cleanup.', 'error');
+    }
+  });
+
+  async function closeSeason() {
+    const team = selectedTeam();
+    const season = selectedSeason();
+    if (!team || !season) return;
+    const confirmed = await requestConfirmation({
+      title: 'Close season',
+      message: `Close ${seasonLabel(team, season)}? Players will stop receiving this season's practice and unfinished attempts will be marked abandoned.`,
+      confirmLabel: 'Close season',
+    });
+    if (!confirmed) return;
+    await perform(
+      'Closing season…',
+      () => diqApiRequest(
+        `admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}`,
+        { method: 'PATCH', body: JSON.stringify({ action: 'close' }) },
+      ),
+      'Season closed.',
+      team.id,
+    );
+  }
+
+  byId('adminSeasonCloseBtn')?.addEventListener('click', () => void closeSeason());
+  byId('adminSeasonDeleteBtn')?.addEventListener('click', async () => {
+    const team = selectedTeam();
+    const season = selectedSeason();
+    if (!team || !season || season.status === 'active') return;
+    const confirmed = await requestConfirmation({
+      title: 'Delete closed season',
+      message: `Permanently delete ${seasonLabel(team, season)} and its roster snapshots, practices, progress, and results? Export it first if this history may be needed.`,
+      confirmLabel: 'Delete season',
+      requiredText: season.name,
+    });
+    if (!confirmed) return;
+    await perform(
+      'Deleting season…',
+      () => diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: season.name }),
+      }),
+      'Closed season permanently deleted.',
+      team.id,
+    );
+  });
+
+  byId('adminAddExistingPlayerBtn')?.addEventListener('click', async () => {
+    const team = selectedTeam();
+    const player = unassignedPlayers.find((item) => item.userId === unassignedPlayerSelect?.value);
+    const number = String(existingPlayerNumber?.value || '').trim();
+    if (!team || !player || !number) {
+      return setStatus('Select an unassigned player and enter their team number.', 'error');
+    }
+    const confirmed = await requestConfirmation({
+      title: 'Add existing player',
+      message: `Add ${player.name} to ${teamLabel(team)} as #${number}? Their existing password and historical results will be preserved.`,
+      confirmLabel: 'Add player',
+    });
+    if (!confirmed) return;
+    await perform(
+      'Adding existing player…',
+      () => diqApiRequest(
+        `admin/teams/${encodeURIComponent(team.id)}/members/existing`,
+        { method: 'POST', body: JSON.stringify({ userId: player.userId, number }) },
+      ),
+      `${player.name} was added to ${team.name}.`,
+      team.id,
+    );
+  });
+
+  byId('adminTransferPlayerBtn')?.addEventListener('click', async () => {
+    const player = selectedMember('player');
+    const destination = teams.find((item) => item.id === transferTeamSelect?.value);
+    const number = String(transferPlayerNumber?.value || '').trim();
+    if (!player || !destination || !number) {
+      return setStatus('Select a player, destination team, and new player number.', 'error');
+    }
+    const source = selectedTeam();
+    const confirmed = await requestConfirmation({
+      title: 'Transfer player',
+      message: `Move ${player.name} from ${teamLabel(source)} to ${teamLabel(destination)} as #${number}? Current practice will stop, active sessions will be signed out, and historical results will remain with ${teamLabel(source)}.`,
+      confirmLabel: 'Transfer player',
+    });
+    if (!confirmed) return;
+    await perform(
+      'Transferring player…',
+      () => diqApiRequest(
+        `admin/players/${encodeURIComponent(player.playerId)}/transfer`,
+        { method: 'POST', body: JSON.stringify({ destinationTeamId: destination.id, number }) },
+      ),
+      `${player.name} was transferred to ${teamLabel(destination)}.`,
+      destination.id,
+    );
+  });
+
+  byId('adminAdvanceRosterBtn')?.addEventListener('click', async () => {
+    const source = selectedTeam();
+    if (!source) return setStatus('Select a source team.', 'error');
+    const members = [...(advanceRosterList?.querySelectorAll('input[type="checkbox"]:checked') || [])]
+      .map((checkbox) => {
+        const userId = checkbox.dataset.advanceUserId;
+        const numberInput = advanceRosterList?.querySelector(`[data-advance-number-for="${CSS.escape(userId)}"]`);
+        return { userId, number: numberInput?.value || '' };
+      });
+    if (!members.length) return setStatus('Select at least one player or coach to advance.', 'error');
+    const destinationId = advanceDestinationSelect?.value;
+    const destination = teams.find((item) => item.id === destinationId);
+    const destinationLabel = destination ? teamLabel(destination) : String(advanceTeamName?.value || '').trim();
+    if (!destinationLabel) return setStatus('Enter the destination team name.', 'error');
+    const confirmed = await requestConfirmation({
+      title: 'Advance roster',
+      message: `Move ${members.length} selected account${members.length === 1 ? '' : 's'} from ${source.name} to ${destinationLabel}? Existing results remain with their original season and everyone moved will be signed out.`,
+      confirmLabel: 'Advance roster',
+    });
+    if (!confirmed) return;
+    let createdTeamId = destination?.id || '';
+    await perform(
+      'Advancing roster…',
+      async () => {
+        const result = await diqApiRequest(
+          `admin/teams/${encodeURIComponent(source.id)}/advance`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              destinationTeamId: destination?.id || undefined,
+              destinationTeamName: destination ? undefined : destinationLabel,
+              seasonName: destination ? undefined : String(advanceSeasonName?.value || '').trim(),
+              startsOn: destination ? undefined : advanceSeasonStart?.value || null,
+              endsOn: destination ? undefined : advanceSeasonEnd?.value || null,
+              members,
+            }),
+          },
+        );
+        createdTeamId = result?.team?.id || createdTeamId;
+      },
+      `${members.length} account${members.length === 1 ? '' : 's'} advanced to ${destinationLabel}.`,
+      () => createdTeamId,
+    );
+  });
+
   byId('adminPlayerAddBtn')?.addEventListener('click', () =>
     void createMember('player'),
   );
@@ -664,7 +1398,7 @@
     void updateMember('player'),
   );
   byId('adminPlayerRemoveBtn')?.addEventListener('click', () =>
-    void archiveMember('player'),
+    void removeMember('player'),
   );
   byId('adminCoachAddBtn')?.addEventListener('click', () =>
     void createMember('coach'),
@@ -673,8 +1407,97 @@
     void updateMember('coach'),
   );
   byId('adminCoachRemoveBtn')?.addEventListener('click', () =>
-    void archiveMember('coach'),
+    void removeMember('coach'),
   );
+
+  byId('adminPlayerClearSeasonBtn')?.addEventListener('click', async () => {
+    const team = selectedTeam();
+    const season = selectedCleanupSeason();
+    const player = selectedSeasonPlayer();
+    if (!team || !season || !player || cleanupPreviewKey !== `${season.id}:${player.userId}`) {
+      return setStatus('Preview this player’s deletion impact before continuing.', 'error');
+    }
+    const confirmed = await requestConfirmation({
+      title: 'Delete player season records',
+      message: `Permanently delete ${player.name}'s practice progress and results from ${season.name}? Export the season first if these records may be needed. The player account will be retained.`,
+      confirmLabel: 'Delete records',
+    });
+    if (!confirmed) return;
+    await perform(
+      'Deleting player season records…',
+      () => diqApiRequest(
+        `admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/cleanup`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            playerId: player.userId,
+            confirmation: 'CLEAR SEASON RECORDS',
+          }),
+        },
+      ),
+      `${player.name}'s ${season.name} records were deleted. The account was retained.`,
+      team.id,
+    );
+  });
+
+  byId('adminPlayerDeleteBtn')?.addEventListener('click', async () => {
+    const player = selectedDeletionPlayer();
+    if (!player) return;
+    const confirmed = await requestConfirmation({
+      title: 'Delete player permanently',
+      message: `Permanently delete ${player.name}? This removes the account, personal information, sessions, assignments, progress, and every saved result across all teams and seasons. This cannot be undone.`,
+      confirmLabel: 'Delete permanently',
+    });
+    if (!confirmed) return;
+    await perform(
+      'Permanently deleting player…',
+      () => diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`, {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: 'DELETE PLAYER PERMANENTLY' }),
+      }),
+      'Player account and identifying records were permanently deleted.',
+      selectedTeam()?.id || '',
+    );
+  });
+
+  byId('adminTeamDeleteBtn')?.addEventListener('click', async () => {
+    const team = selectedTeam();
+    if (!team || team.activeSeasonId) return setStatus('Close the active season before deleting this team.', 'error');
+    const deletePlayers = Boolean(byId('adminDeleteTeamPlayers')?.checked);
+    try {
+      const result = await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/deletion-preview`, { cache: 'no-store' });
+      const preview = result?.preview || {};
+      const playerWarning = deletePlayers
+        ? ` It will also permanently delete ${Number(preview.players || 0)} assigned player account(s) and all of their records.`
+        : ' Assigned player accounts will become unassigned. Their records outside this team remain, but this team’s results are deleted with the team.';
+      const confirmed = await requestConfirmation({
+        title: 'Delete team permanently',
+        message: `Delete ${teamLabel(team)}? This removes ${Number(preview.seasons || 0)} season(s), ${Number(preview.assignments || 0)} practice assignment(s), and ${Number(preview.attempts || 0)} result(s).${playerWarning}`,
+        confirmLabel: 'Delete team',
+        requiredText: team.name,
+      });
+      if (!confirmed) return;
+      await perform(
+        'Deleting team…',
+        () => diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/permanent`, {
+          method: 'DELETE',
+          body: JSON.stringify({ confirmation: team.name, deletePlayers }),
+        }),
+        'Team permanently deleted.',
+      );
+    } catch (error) {
+      setStatus(error?.message || 'Unable to delete the team.', 'error');
+    }
+  });
+
+  function setAdvanceRosterSelection(selected) {
+    advanceRosterList?.querySelectorAll('input[type="checkbox"]:not(:disabled)').forEach((checkbox) => {
+      checkbox.checked = selected;
+    });
+    updateAdvanceRosterButton();
+  }
+  byId('adminAdvanceSelectAllBtn')?.addEventListener('click', () => setAdvanceRosterSelection(true));
+  byId('adminAdvanceClearAllBtn')?.addEventListener('click', () => setAdvanceRosterSelection(false));
 
   byId('adminRestoreTeamBtn')?.addEventListener('click', () => {
     const id = archivedTeamSelect?.value;
@@ -942,8 +1765,8 @@
     const team = selectedTeam();
     if (!team) return setStatus('Select a team first.', 'error');
     const rows = [
-      ['record_type', 'action', 'team_id', 'team_name', 'contact_email', 'user_id', 'role', 'name', 'number', 'password'],
-      ['team', 'upsert', team.id, team.name, team.coachEmail || '', '', '', '', '', ''],
+      ['record_type', 'action', 'team_id', 'team_name', 'season_name', 'user_id', 'role', 'name', 'number', 'password'],
+      ['team', 'upsert', team.id, team.name, team.activeSeasonName || '', '', '', '', '', ''],
       ...(team.roster || []).filter((member) => member.active !== false).map((member) =>
         ['member', 'upsert', team.id, '', '', member.playerId, member.role, member.name, member.number || '', '']),
     ];

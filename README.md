@@ -51,6 +51,7 @@ Detailed documentation:
 - [Role-aware navigation](docs/navigation.md)
 - [Complete result recording](docs/result-recording.md)
 - [Practice assignments and player queues](docs/practice-assignments.md)
+- [Seasons and player data lifecycle](docs/seasons-and-player-lifecycle.md)
 - [Cloudflare deployment](docs/deployment.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
 
@@ -69,6 +70,8 @@ Detailed documentation:
 | `npm run db:seed:situations:production` | Add/update production playbook situations without account data |
 | `npm run db:refresh:preview -- --dry-run` | Safely inspect a production-to-preview refresh |
 | `npm run db:refresh:local -- --dry-run` | Safely inspect a production-to-local refresh |
+| `npm run db:reset:test:local` | Replace local data with the documented test fixtures after typed confirmation |
+| `npm run db:reset:test:preview` | Back up and replace preview data with test fixtures after typed confirmation |
 
 `npm run dev:vite` remains available for UI-only troubleshooting, but it does
 not provide the local Cloudflare D1 runtime and is not the supported full-app
@@ -83,12 +86,16 @@ files are never included in a Cloudflare deployment.
 
 ## Initial local accounts
 
-The development seed currently contains:
+The development seed contains two teams with active Spring 2027 seasons, two
+players and one coach per team, one unassigned player, and a closed Fall 2026
+season for lifecycle testing. Every seeded account uses the password
+`password`:
 
 ```text
-Player: 13U Black / Bob Smith / 1234
-Coach: 13U Black / Diamond Defense Coach / coach
 Admin: admin
+13U Black — Spring 2027: Bob Smith #11, Kevin Smith #22, coach Jamie Rivera
+13U Orange — Spring 2027: Maya Jones #8, Alex Carter #17, coach Chris Lee
+Unassigned player: Taylor Morgan
 ```
 
 These are development credentials only. Generate a production seed with strong
@@ -176,5 +183,9 @@ authenticated CSV downloads as described in the
 [practice assignment guide](docs/practice-assignments.md) for coach-created
 practice queues, immediate incomplete-state tracking, immutable situation
 revisions, and database-backed player progress. See the
+[season and player lifecycle guide](docs/seasons-and-player-lifecycle.md) for
+season-bound rosters, safe team removal, export-before-cleanup, and permanent
+player deletion, plus unassigned-player reuse, transfers, and closed-season
+roster advancement. See the
 [production data refresh guide](docs/database-refresh.md) for the guarded
 preview/local copy workflow.

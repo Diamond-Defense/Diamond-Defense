@@ -10,7 +10,7 @@ function writeHeaders(origin, revision) {
 async function loginAdmin(request, origin) {
   const response = await request.post('/api/auth/login', {
     headers: { Origin: origin },
-    data: { role: 'admin', password: 'admin' },
+    data: { role: 'admin', password: 'password' },
   });
   expect(response.ok()).toBeTruthy();
 }
@@ -31,7 +31,7 @@ test.describe('record-level administration API', () => {
 
     const createdResponse = await request.post('/api/admin/teams', {
       headers: { Origin: origin },
-      data: { id: teamId, name: 'Phase Three Team', coachEmail: 'coach@example.com' },
+      data: { id: teamId, name: 'Phase Three Team', seasonName: 'Spring 2027' },
     });
     expect(createdResponse.status()).toBe(201);
     const created = (await createdResponse.json()).record;
@@ -39,7 +39,7 @@ test.describe('record-level administration API', () => {
 
     const updatedResponse = await request.put(`/api/admin/teams/${teamId}`, {
       headers: writeHeaders(origin, created.revision),
-      data: { name: 'Phase Three Updated', coachEmail: 'updated@example.com' },
+      data: { name: 'Phase Three Updated' },
     });
     expect(updatedResponse.ok()).toBeTruthy();
     const updated = (await updatedResponse.json()).record;
@@ -251,7 +251,7 @@ test.describe('record-level administration API', () => {
       id: coachId,
       role: 'coach',
       teamId,
-      teamName: 'Coach Workflow Team',
+      teamName: 'Coach Workflow Team — Current Season',
       mustChangePassword: true,
     }));
     const permanentPassword = 'coach-permanent-4821';
@@ -381,9 +381,9 @@ test.describe('record-level administration API', () => {
     const playerId = `${teamId}-sam-27`;
     const invalidTeamId = `csv-invalid-${suffix}`;
     const csv = [
-      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
+      'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
       `member,upsert,${teamId},,,${playerId},player,Sam Rivera,27,Temp-7391`,
-      `team,upsert,${teamId},CSV Import Team,csv@example.com,,,,,`,
+      `team,upsert,${teamId},CSV Import Team,Spring 2027,,,,,`,
     ].join('\n');
 
     expect((await request.post('/api/admin/team-import', {
@@ -438,15 +438,18 @@ test.describe('record-level administration API', () => {
     await playerRequest.dispose();
 
     const updateCsv = [
-      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
-      `team,upsert,${teamId},CSV Import Team,updated-csv@example.com,,,,,`,
+      'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
+      `team,upsert,${teamId},CSV Import Team,Spring 2027,,,,,`,
       `member,upsert,${teamId},,,${playerId},player,Sam Rivera Updated,27,`,
     ].join('\n');
     const updatePreview = await (await request.post('/api/admin/team-import', {
       headers: { Origin: origin },
       data: { mode: 'preview', csv: updateCsv },
     })).json();
-    expect(updatePreview).toMatchObject({ valid: true, summary: { updates: 2, changes: 2 } });
+    expect(updatePreview).toMatchObject({
+      valid: true,
+      summary: { updates: 1, unchanged: 1, changes: 1 },
+    });
     expect((await request.post('/api/admin/team-import', {
       headers: { Origin: origin },
       data: { mode: 'commit', csv: updateCsv, fingerprint: updatePreview.fingerprint },
@@ -459,8 +462,8 @@ test.describe('record-level administration API', () => {
     await preservedPasswordRequest.dispose();
 
     const invalidCsv = [
-      'record_type,action,team_id,team_name,contact_email,user_id,role,name,number,password',
-      `team,upsert,${invalidTeamId},Invalid Import Team,,,,,,`,
+      'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
+      `team,upsert,${invalidTeamId},Invalid Import Team,Spring 2027,,,,,`,
       `member,upsert,${invalidTeamId},,,${invalidTeamId}-player,player,No Password,9,`,
     ].join('\n');
     const invalidPreview = await request.post('/api/admin/team-import', {

@@ -131,8 +131,8 @@
         <form id="practiceAssignmentForm" class="practice-assignment-form">
           <div class="practice-form-heading">
             <div>
-              <span class="eyebrow">New assignment</span>
-              <h3>Build a practice queue</h3>
+              <span id="practiceFormEyebrow" class="eyebrow">New assignment</span>
+              <h3 id="practiceFormTitle">Build a practice queue</h3>
             </div>
             <button id="practiceSelectTeam" class="btn btn-ghost" type="button">Select team</button>
           </div>
@@ -146,11 +146,12 @@
             <div id="practicePlayerChoices" class="practice-choice-list"></div>
           </fieldset>
           <fieldset class="practice-choice-group">
-            <legend>Situations and repetitions</legend>
+            <legend>Situations</legend>
             <div id="practiceSituationChoices" class="practice-situation-choices"></div>
           </fieldset>
           <div id="coachPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
           <div class="practice-form-actions">
+            <button id="practiceCancelEdit" class="btn btn-ghost hidden" type="button">Cancel edit</button>
             <button id="practiceSaveDraft" class="btn btn-ghost" type="button">Save draft</button>
             <button id="practicePublish" class="btn-green" type="submit">Publish assignment</button>
           </div>
@@ -159,6 +160,23 @@
           <div class="practice-list-heading">
             <div><span class="eyebrow">Coach view</span><h3 id="practiceManageTitle">Assignments</h3></div>
             <button id="practiceCoachRefresh" class="btn btn-ghost" type="button">Refresh</button>
+          </div>
+          <div id="practiceLifecycleTabs" class="practice-lifecycle-tabs" role="tablist" aria-label="Assignment status">
+            <button class="is-active" type="button" role="tab" aria-selected="true" data-practice-view="active">Active</button>
+            <button type="button" role="tab" aria-selected="false" data-practice-view="draft">Drafts</button>
+            <button type="button" role="tab" aria-selected="false" data-practice-view="completed">Completed</button>
+            <button type="button" role="tab" aria-selected="false" data-practice-view="closed">Closed</button>
+            <button type="button" role="tab" aria-selected="false" data-practice-view="archived">Archived</button>
+          </div>
+          <div class="practice-list-filters">
+            <label class="field"><span>Search</span><input id="practiceSearch" type="search" maxlength="120" placeholder="Search assignments"></label>
+            <label class="field"><span>Sort</span><select id="practiceSort">
+              <option value="newest">Recently updated</option>
+              <option value="oldest">Oldest first</option>
+              <option value="due">Due date</option>
+              <option value="title">Name</option>
+            </select></label>
+            <button id="practiceApplyFilters" class="btn btn-ghost" type="button">Apply</button>
           </div>
           <div id="coachPracticeList" class="practice-assignment-list"></div>
           <div id="coachPracticePagination" class="coach-results-pagination"></div>
@@ -243,7 +261,7 @@
 
             <label class="field">
               <span>Player</span>
-              <select id="playerNameSelect" class="select"><option value="">— Select player —</option><option value="13u-black-bob-smith-11">#11 Bob Smith</option><option value="13u-black-john-smith-12">#12 John Smith</option><option value="13u-black-kevin-smith-22">#22 Kevin Smith</option></select>
+              <select id="playerNameSelect" class="select"><option value="">— Select player —</option></select>
             </label>
           </div>
 
@@ -476,6 +494,7 @@
           <h3 id="adminConfirmTitle">Confirm action</h3>
           <p id="adminConfirmMessage"></p>
         </div>
+        <label id="adminConfirmTextField" class="field hidden"><span id="adminConfirmTextLabel">Type the name to confirm</span><input id="adminConfirmTextInput" class="input" type="text" autocomplete="off"></label>
         <div class="admin-actions">
           <button id="adminConfirmCancelBtn" class="btn btn-ghost" type="button">Cancel</button>
           <button id="adminConfirmActionBtn" class="btn btn-danger" type="button">Confirm</button>
@@ -487,86 +506,187 @@
       <div class="admin-section-heading">
         <div>
           <h3>Teams and accounts</h3>
-          <p>Changes are saved directly to the database. Coaches receive individual logins linked to one team.</p>
+          <p>Select a team, then choose the specific management task you need.</p>
         </div>
-        <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Discard form changes and fetch the latest team data">Refresh team data</button>
       </div>
 
-      <details class="admin-bulk-actions" id="adminCsvImportPanel">
-        <summary>CSV team import</summary>
-        <div class="admin-csv-intro">
-          <strong>Preview every change before it reaches the database.</strong>
-          <span>Import teams, players, and coaches. Blank passwords preserve existing passwords.</span>
-        </div>
-        <div id="adminCsvDropzone" class="admin-csv-dropzone">
-          <input id="adminTeamsCsvFile" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" class="hidden">
-          <div><strong>Drop a CSV here</strong><span id="adminCsvFileName">or choose a file up to 512 KB</span></div>
-          <button id="adminTeamsCsvChooseBtn" class="btn btn-white" type="button">Choose CSV</button>
-        </div>
-        <div class="admin-toolbar">
-          <button id="adminTeamsCsvTemplateBtn" class="btn btn-ghost" type="button">Download template</button>
-          <button id="adminTeamsCsvSelectedBtn" class="btn btn-ghost" type="button">Download selected team</button>
-        </div>
-        <section id="adminCsvPreview" class="admin-csv-preview hidden" aria-live="polite">
-          <div id="adminCsvSummary" class="admin-csv-summary"></div>
-          <div id="adminCsvIssues"></div>
-          <div id="adminCsvOperations"></div>
-          <label id="adminCsvReviewConfirmLabel" class="admin-csv-review-confirm hidden">
-            <input id="adminCsvReviewConfirm" type="checkbox">
-            <span>I reviewed the listed changes and want to apply this exact preview.</span>
-          </label>
-          <label id="adminCsvArchiveConfirmLabel" class="admin-csv-confirm hidden">
-            <input id="adminCsvArchiveConfirm" type="checkbox">
-            <span>I reviewed the archive actions and understand those accounts or teams will no longer be able to log in.</span>
-          </label>
-          <div class="admin-toolbar">
-            <button id="adminCsvCommitBtn" class="btn btn-brand" type="button" disabled>Import changes</button>
-            <button id="adminCsvCancelBtn" class="btn btn-ghost" type="button">Cancel preview</button>
-          </div>
-        </section>
-      </details>
-
-      <div class="admin-record-card">
-        <div class="admin-record-grid">
-          <label class="field"><span>Team</span><select id="adminTeamSelect" class="select"></select></label>
-          <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., 13U Black"></label>
-          <label class="field"><span>Contact email</span><input id="adminTeamEmail" class="input" type="email" maxlength="254" autocomplete="email" placeholder="coach@example.com"></label>
+      <section class="admin-record-card admin-team-context" aria-label="Selected team">
+        <label class="field"><span>Team and season</span><select id="adminTeamSelect" class="select"></select></label>
+        <div id="adminTeamContextSummary" class="admin-team-context-summary muted">Select a team to manage its roster, seasons, and records.</div>
+        <div id="adminTeamHeaderFields" class="admin-record-grid admin-team-header-fields hidden">
+          <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., 14U Black"></label>
+          <label id="adminInitialSeasonField" class="field hidden"><span>Initial season</span><input id="adminInitialSeasonName" class="input" type="text" maxlength="120" autocomplete="off" placeholder="e.g., Spring 2027"></label>
         </div>
         <div class="admin-actions">
-          <button id="adminTeamAddBtn" class="btn btn-brand" type="button">Add team</button>
-          <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Save team</button>
+          <button id="adminNewTeamBtn" class="btn btn-brand" type="button">New team</button>
+          <button id="adminTeamAddBtn" class="btn btn-brand hidden" type="button">Create team</button>
+          <button id="adminTeamCancelCreateBtn" class="btn btn-ghost hidden" type="button">Cancel</button>
+          <button id="adminTeamUpdateBtn" class="btn btn-ghost" type="button">Save team name</button>
           <button id="adminTeamRemoveBtn" class="btn btn-danger" type="button">Archive team</button>
+          <button id="adminTeamsResetBtn" class="btn btn-ghost" type="button" title="Discard form changes and fetch the latest team data">Refresh</button>
         </div>
-      </div>
+        <details class="admin-bulk-actions" id="adminCsvImportPanel">
+          <summary>CSV roster import</summary>
+          <div class="admin-csv-intro"><strong>Preview every change before it reaches the database.</strong><span>Import teams, players, and coaches. Blank passwords preserve existing passwords.</span></div>
+          <div id="adminCsvDropzone" class="admin-csv-dropzone">
+            <input id="adminTeamsCsvFile" type="file" accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values" class="hidden">
+            <div><strong>Drop a CSV here</strong><span id="adminCsvFileName">or choose a file up to 512 KB</span></div>
+            <button id="adminTeamsCsvChooseBtn" class="btn btn-white" type="button">Choose CSV</button>
+          </div>
+          <div class="admin-toolbar"><button id="adminTeamsCsvTemplateBtn" class="btn btn-ghost" type="button">Download template</button><button id="adminTeamsCsvSelectedBtn" class="btn btn-ghost" type="button">Download selected team</button></div>
+          <section id="adminCsvPreview" class="admin-csv-preview hidden" aria-live="polite">
+            <div id="adminCsvSummary" class="admin-csv-summary"></div><div id="adminCsvIssues"></div><div id="adminCsvOperations"></div>
+            <label id="adminCsvReviewConfirmLabel" class="admin-csv-review-confirm hidden"><input id="adminCsvReviewConfirm" type="checkbox"><span>I reviewed the listed changes and want to apply this exact preview.</span></label>
+            <label id="adminCsvArchiveConfirmLabel" class="admin-csv-confirm hidden"><input id="adminCsvArchiveConfirm" type="checkbox"><span>I reviewed the archive actions and understand those accounts or teams will no longer be able to log in.</span></label>
+            <div class="admin-toolbar"><button id="adminCsvCommitBtn" class="btn btn-brand" type="button" disabled>Import changes</button><button id="adminCsvCancelBtn" class="btn btn-ghost" type="button">Cancel preview</button></div>
+          </section>
+        </details>
+      </section>
 
-      <div class="admin-account-grid">
-        <section class="admin-record-card">
-          <div class="sectionTitle">Players</div>
-          <label class="field"><span>Player</span><select id="adminRosterSelect" class="select" disabled></select></label>
-          <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., John Smith" disabled></label>
-          <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" maxlength="12" inputmode="numeric" autocomplete="off" placeholder="e.g., 12" disabled></label>
-          <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">The player must change this password after logging in.</small></label>
-          <div class="muted record-id-preview" id="adminPlayerIdPreview"></div>
+      <nav class="admin-team-tabs" aria-label="Team management sections">
+        <button class="admin-team-tab is-active" type="button" data-admin-team-tab="roster">Roster</button>
+        <button class="admin-team-tab" type="button" data-admin-team-tab="seasons">Seasons</button>
+        <button class="admin-team-tab" type="button" data-admin-team-tab="data">Data management</button>
+      </nav>
+
+      <section class="admin-team-view" data-admin-team-view="roster">
+        <div class="admin-section-heading">
+          <div><h3>Current roster</h3><p>Add or update the players and coaches who currently belong to this team.</p></div>
+        </div>
+        <div class="admin-account-grid">
+          <section class="admin-record-card">
+            <div class="sectionTitle">Players</div>
+            <label class="field"><span>Player</span><select id="adminRosterSelect" class="select" disabled></select></label>
+            <label class="field"><span>Name</span><input id="adminPlayerName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., John Smith" disabled></label>
+            <label class="field"><span>Player number</span><input id="adminPlayerNumber" class="input" type="text" maxlength="12" inputmode="numeric" autocomplete="off" placeholder="e.g., 12" disabled></label>
+            <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminPlayerPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">Used only for a new account or password reset. The player must change it after logging in.</small></label>
+            <div class="admin-actions">
+              <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add player</button>
+              <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Save player</button>
+              <button id="adminPlayerRemoveBtn" class="btn btn-danger" type="button" disabled>Remove from team</button>
+            </div>
+            <details id="adminTransferPlayerWorkflow" class="admin-inline-workflow hidden">
+              <summary id="adminTransferPlayerSummary">Transfer selected player</summary>
+              <div class="admin-inline-workflow-content">
+                <section>
+                  <p id="adminTransferPlayerGuidance" class="muted">Move the selected player to another active team while preserving their historical results.</p>
+                  <label class="field"><span>Destination team and season</span><select id="adminTransferTeamSelect" class="select" disabled><option value="">— Select destination —</option></select></label>
+                  <label class="field"><span>New player number</span><input id="adminTransferPlayerNumber" class="input" type="text" maxlength="12" placeholder="e.g., 12" disabled></label>
+                  <button id="adminTransferPlayerBtn" class="btn btn-ghost" type="button" disabled>Transfer player</button>
+                </section>
+              </div>
+            </details>
+          </section>
+
+          <section class="admin-record-card">
+            <div class="sectionTitle">Coaches</div>
+            <label class="field"><span>Coach</span><select id="adminCoachSelect" class="select" disabled></select></label>
+            <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., Jamie Rivera" disabled></label>
+            <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">Used only for a new account or password reset. The coach must change it after logging in.</small></label>
+            <div class="admin-actions">
+              <button id="adminCoachAddBtn" class="btn btn-brand" type="button" disabled>Add coach</button>
+              <button id="adminCoachUpdateBtn" class="btn btn-ghost" type="button" disabled>Save coach</button>
+              <button id="adminCoachRemoveBtn" class="btn btn-danger" type="button" disabled>Remove from team</button>
+            </div>
+          </section>
+        </div>
+
+        <section id="adminAddExistingPlayerWorkflow" class="admin-record-card admin-unassigned-player-card">
+          <div class="admin-section-heading">
+            <div>
+              <div class="sectionTitle">Add an unassigned player</div>
+              <p>Add a previously removed or otherwise unassigned player account to the selected team.</p>
+            </div>
+          </div>
+          <div class="admin-record-grid admin-unassigned-player-fields">
+            <label class="field"><span>Unassigned player</span><select id="adminUnassignedPlayerSelect" class="select" disabled><option value="">— No unassigned players —</option></select></label>
+            <label class="field"><span>Player number</span><input id="adminExistingPlayerNumber" class="input" type="text" maxlength="12" placeholder="e.g., 12" disabled></label>
+          </div>
           <div class="admin-actions">
-            <button id="adminPlayerAddBtn" class="btn btn-brand" type="button" disabled>Add player</button>
-            <button id="adminPlayerUpdateBtn" class="btn btn-ghost" type="button" disabled>Save player</button>
-            <button id="adminPlayerRemoveBtn" class="btn btn-danger" type="button" disabled>Archive player</button>
+            <button id="adminAddExistingPlayerBtn" class="btn btn-brand" type="button" disabled>Add to selected team</button>
           </div>
         </section>
 
-        <section class="admin-record-card">
-          <div class="sectionTitle">Coaches</div>
-          <label class="field"><span>Coach</span><select id="adminCoachSelect" class="select" disabled></select></label>
-          <label class="field"><span>Name</span><input id="adminCoachName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., Jamie Rivera" disabled></label>
-          <label class="field"><span>Temporary password</span><div class="field-with-action"><input id="adminCoachPass" class="input" type="text" minlength="8" maxlength="1024" autocomplete="new-password" placeholder="At least 8 characters" disabled><button id="adminCoachGenPassBtn" class="btn btn-ghost" type="button" disabled>Generate</button></div><small class="muted">The coach must change this password after logging in.</small></label>
-          <div class="muted record-id-preview" id="adminCoachIdPreview"></div>
+      </section>
+
+      <section class="admin-team-view hidden" data-admin-team-view="seasons">
+        <section class="admin-record-card admin-season-card" aria-labelledby="adminSeasonHeading">
+          <div class="admin-section-heading">
+            <div>
+              <div class="sectionTitle" id="adminSeasonHeading">Seasons</div>
+              <p>Close the active season when play ends. Closed seasons remain available for export or permanent deletion.</p>
+            </div>
+            <span id="adminSeasonStatusBadge" class="season-status-badge">No team selected</span>
+          </div>
+          <label class="field admin-season-select-field"><span>Season</span><select id="adminSeasonSelect" class="select" disabled><option value="">— Select season —</option></select></label>
+          <div id="adminSeasonSummary" class="season-cleanup-preview season-summary-cards hidden" aria-live="polite"></div>
+          <div id="adminSeasonCreateFields" class="admin-season-create hidden">
+            <div class="admin-section-heading"><div><div class="sectionTitle">Start the next season</div><p>Current active roster members will carry into the new season.</p></div></div>
+            <div class="admin-record-grid admin-season-grid">
+              <label class="field"><span>Season name</span><input id="adminSeasonName" class="input" type="text" maxlength="120" placeholder="e.g., Spring 2027" disabled></label>
+              <label class="field"><span>Start date</span><input id="adminSeasonStart" class="input" type="date" disabled></label>
+              <label class="field"><span>End date</span><input id="adminSeasonEnd" class="input" type="date" disabled></label>
+            </div>
+            <button id="adminSeasonAddBtn" class="btn btn-brand" type="button" disabled>Add season</button>
+          </div>
           <div class="admin-actions">
-            <button id="adminCoachAddBtn" class="btn btn-brand" type="button" disabled>Add coach</button>
-            <button id="adminCoachUpdateBtn" class="btn btn-ghost" type="button" disabled>Save coach</button>
-            <button id="adminCoachRemoveBtn" class="btn btn-danger" type="button" disabled>Archive coach</button>
+            <button id="adminSeasonExportBtn" class="btn btn-ghost" type="button" disabled>Export season data</button>
+            <button id="adminSeasonCloseBtn" class="btn btn-ghost" type="button" disabled>Close season</button>
+            <button id="adminSeasonDeleteBtn" class="btn btn-danger" type="button" disabled>Delete closed season</button>
           </div>
         </section>
-      </div>
+
+        <section id="adminAdvanceRosterPanel" class="admin-record-card admin-advance-roster">
+          <div class="admin-section-heading">
+            <div><div id="adminAdvanceRosterTitle" class="sectionTitle">Advance roster</div><p>After closing this team's season, move selected players and coaches into the next age-level team and season.</p></div>
+          </div>
+          <div id="adminAdvanceRosterSource" class="admin-advance-source muted">Select a source team above.</div>
+          <p id="adminAdvanceRosterGuidance" class="muted">Close the active season before advancing the roster.</p>
+          <label class="field"><span>Move selected members to</span><select id="adminAdvanceDestinationSelect" class="select" disabled><option value="new">Create a new destination team</option></select></label>
+          <div id="adminAdvanceNewTeamFields" class="admin-record-grid">
+            <label class="field"><span>New team name</span><input id="adminAdvanceTeamName" class="input" type="text" maxlength="100" placeholder="e.g., 14U Black" disabled></label>
+            <label class="field"><span>First season name</span><input id="adminAdvanceSeasonName" class="input" type="text" maxlength="120" placeholder="e.g., Spring 2027" disabled></label>
+            <label class="field"><span>Start date</span><input id="adminAdvanceSeasonStart" class="input" type="date" disabled></label>
+            <label class="field"><span>End date</span><input id="adminAdvanceSeasonEnd" class="input" type="date" disabled></label>
+          </div>
+          <fieldset class="admin-roster-picker" id="adminAdvanceRosterMembers" disabled>
+            <legend id="adminAdvanceRosterLegend">Select players and coaches</legend>
+            <div class="admin-toolbar"><button id="adminAdvanceSelectAllBtn" class="btn btn-ghost btn-small" type="button" disabled>Select all</button><button id="adminAdvanceClearAllBtn" class="btn btn-ghost btn-small" type="button" disabled>Clear all</button></div>
+            <div id="adminAdvanceRosterList" class="admin-roster-picker-list"></div>
+          </fieldset>
+          <button id="adminAdvanceRosterBtn" class="btn btn-brand" type="button" disabled>Advance selected roster</button>
+        </section>
+      </section>
+
+      <section class="admin-team-view hidden" data-admin-team-view="data">
+        <div class="admin-section-heading"><div><h3>Data management</h3><p>Export and review historical data before permanently removing anything.</p></div></div>
+        <section class="admin-record-card">
+          <div class="sectionTitle">Player season records</div>
+          <p id="adminCleanupGuidance" class="muted">Select a team with a closed season.</p>
+          <div class="admin-record-grid admin-cleanup-grid">
+            <label class="field"><span>Historical season</span><select id="adminCleanupSeasonSelect" class="select" disabled><option value="">— Select historical season —</option></select></label>
+            <label class="field"><span>Player</span><select id="adminSeasonPlayerSelect" class="select" disabled><option value="">— Select a season first —</option></select></label>
+          </div>
+          <div class="admin-actions">
+            <button id="adminCleanupExportBtn" class="btn btn-ghost" type="button" disabled>Export season data</button>
+            <button id="adminSeasonPreviewBtn" class="btn btn-ghost" type="button" disabled>Preview deletion impact</button>
+            <button id="adminPlayerClearSeasonBtn" class="btn btn-danger" type="button" disabled>Delete player’s season records</button>
+          </div>
+          <div id="adminSeasonCleanupPreview" class="season-cleanup-preview hidden" aria-live="polite"></div>
+        </section>
+
+        <section class="admin-record-card admin-danger-zone">
+          <div><div class="sectionTitle">Danger zone</div><p>Permanently deleting an account removes its personal information and results from every team and season.</p></div>
+          <label class="field"><span>Player account</span><select id="adminDeletePlayerSelect" class="select" disabled><option value="">— Select player account —</option></select></label>
+          <div class="admin-actions">
+            <button id="adminPlayerDeleteBtn" class="btn btn-danger btn-danger-strong" type="button" disabled>Delete player permanently</button>
+          </div>
+          <hr>
+          <div><div class="sectionTitle">Delete team permanently</div><p>Available only after the active season is closed. This cannot be undone.</p></div>
+          <label class="admin-csv-confirm admin-team-delete-option"><input id="adminDeleteTeamPlayers" type="checkbox" disabled><span>Also permanently delete every player still assigned to this team and all of their records.</span></label>
+          <button id="adminTeamDeleteBtn" class="btn btn-danger btn-danger-strong" type="button" disabled>Delete team permanently</button>
+        </section>
+      </section>
     </section>
 
     <section class="admin-view hidden" data-admin-view="situations">

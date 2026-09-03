@@ -71,6 +71,6 @@ them securely and remove them when no longer required.
 
 Guarded production-to-preview and production-to-local refresh commands are now
 available. They back up the target, exclude sessions and audit history, replace
-passwords and contact emails, optionally anonymize player display data, preserve
+passwords, optionally anonymize player display data, preserve
 target migration history, and validate the result. They remain intentionally
 separate from deployment. See [Production data refresh](database-refresh.md).

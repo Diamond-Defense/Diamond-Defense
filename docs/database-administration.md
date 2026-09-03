@@ -8,12 +8,17 @@ to the D1 adapter.
 ## Record identity and history
 
 Team IDs, user IDs, and situation keys are permanent identifiers. Renaming a
-team or player changes display fields but not its ID, so attempts and audit
-records keep valid references.
+team or player, changing a jersey number, or moving a player changes display or
+membership fields but not the user ID, so attempts and audit records keep valid
+references. Active team names are unique. Every team chooser appends its active
+season, such as `14U Black — Spring 2027`, while the team and season remain
+separate database records.
 
-Teams, memberships, users, and situations are archived instead of deleted.
-Archived records are removed from player-facing option lists and authentication,
-but remain available to historical attempts and the administrator restore UI.
+Teams and situations are archived instead of deleted. Team members are normally
+removed from the current roster while their season snapshots and results are
+preserved. Administrators also have an explicit permanent player deletion flow
+for privacy and retention requirements. See
+[Seasons and player data lifecycle](seasons-and-player-lifecycle.md).
 
 Every editable record has an integer `revision`. Update, archive, and restore
 requests must include the revision loaded by the client:
@@ -44,16 +49,23 @@ overwriting another edit.
 | --- | --- |
 | List/create teams | `GET/POST /api/admin/teams` |
 | Update/archive team | `PUT/DELETE /api/admin/teams/:teamId` |
+| Preview/delete team permanently | `GET /api/admin/teams/:teamId/deletion-preview`, `DELETE /api/admin/teams/:teamId/permanent` |
 | Restore team | `POST /api/admin/teams/:teamId/restore` |
 | Create player or coach membership | `POST /api/admin/teams/:teamId/members` (coach accounts require admin) |
-| Update/archive membership | `PUT/DELETE /api/admin/teams/:teamId/members/:userId` |
+| Update/remove membership | `PUT/DELETE /api/admin/teams/:teamId/members/:userId` |
 | Restore membership | `POST /api/admin/teams/:teamId/members/:userId/restore` |
+| List unassigned players | `GET /api/admin/players/unassigned` |
+| Add existing player to selected team | `POST /api/admin/teams/:teamId/members/existing` |
+| Transfer player between teams | `POST /api/admin/players/:userId/transfer` |
+| Advance selected roster to another team | `POST /api/admin/teams/:teamId/advance` |
 | Reset member password | `PUT /api/admin/teams/:teamId/members/:userId/password` |
 | Create situation | `POST /api/situations` |
 | Update/archive situation | `PUT/DELETE /api/situations/:key` |
 | List archived situations | `GET /api/admin/situations` |
 | Restore situation | `POST /api/admin/situations/:key/restore` |
 | Recent audit entries | `GET /api/admin/audit` |
+| Manage, export, close, and delete team seasons | `/api/admin/teams/:teamId/seasons/*` |
+| Permanently delete a player | `DELETE /api/admin/users/:userId` |
 | List coach login options | `GET /api/coaches/options` |
 | Submit/list coach situation proposals | `POST/GET /api/situation-submissions` |
 | Withdraw a pending proposal | `DELETE /api/situation-submissions/:id` |
@@ -129,5 +141,6 @@ normal administration. CSV files are validated and previewed without writes,
 then committed through one database-native administrator operation only after
 the administrator reviews the exact changes. See the
 [team CSV import guide](team-csv-import.md). Recovery can reactivate a specific
-archived team, player, coach, or situation without changing its stable ID or
-historical results.
+archived team, removed player or coach, or archived situation without changing
+its stable ID or historical results. Season controls provide a separate,
+guarded path for export, selected-season cleanup, and permanent player deletion.

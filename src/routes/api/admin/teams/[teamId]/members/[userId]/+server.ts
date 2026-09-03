@@ -49,7 +49,7 @@ export const DELETE: RequestHandler = async (event) => {
     );
     if (existing?.role === 'coach' && user.role !== 'admin') {
       return json(
-        { error: 'Only an administrator can archive coach accounts.' },
+        { error: 'Only an administrator can remove coach accounts from a team.' },
         { status: 403 },
       );
     }

@@ -42,7 +42,7 @@ suite.
 
 The suite covers:
 
-- the `situations.json` and `teams.json` data contracts;
+- the `situations.json` seed-input contract;
 - application startup and JavaScript runtime errors;
 - situation selection and HUD updates;
 - start/check/reset round transitions;

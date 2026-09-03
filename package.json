@@ -22,6 +22,8 @@
     "db:seed:situations:generate": "node scripts/generate-situation-seed-sql.mjs",
     "db:migrate:local": "node scripts/wrangler-command.mjs d1 migrations apply diamond-defense --local --persist-to .wrangler/state",
     "db:seed:local": "node scripts/wrangler-command.mjs d1 execute diamond-defense --local --persist-to .wrangler/state --file=database/seed.sql",
+    "db:reset:test:local": "node scripts/reset-test-data.mjs",
+    "db:reset:test:preview": "node scripts/reset-test-data.mjs --preview",
     "db:seed:situations:preview": "node scripts/wrangler-command.mjs d1 execute diamond-defense-preview --remote --env preview --file=database/situations-seed.sql --yes",
     "db:seed:situations:production": "node scripts/wrangler-command.mjs d1 execute diamond-defense-production --remote --env production --file=database/situations-seed.sql --yes",
     "db:migrate:preview": "node scripts/wrangler-command.mjs d1 migrations apply diamond-defense-preview --remote --env preview",

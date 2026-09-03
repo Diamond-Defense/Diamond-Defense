@@ -121,3 +121,39 @@ the server selects the next incomplete situation in order; completing the same
 attempt once advances progress; duplicate submissions do not advance progress
 twice; pending work cannot be bypassed through another UI or API route; coaches
 can see recipient completion without accessing another team's data.
+
+## Phase 8: seasons and player data lifecycle
+
+Status: implemented in application code; migration pending environment rollout.
+
+- One active season per team with historical closed seasons.
+- Season roster snapshots that preserve ordinary departures without carrying
+  former players into the next season.
+- Season-bound assignment cycles and attempts.
+- Export and read-only cleanup previews before destructive maintenance.
+- Player-specific cleanup limited to a selected closed season.
+- Normal team removal with immediate session revocation and retained history.
+- Administrator-only permanent player deletion with a non-identifying count
+  audit.
+
+Acceptance criteria: removed players receive no new work; ordinary removal
+preserves history; cleanup does not cross season boundaries; permanent deletion
+removes credentials, identifying data, practice progress, and results.
+
+## Phase 9: player transfers and roster advancement
+
+Status: implemented in application code; migration pending environment rollout.
+
+- Stable player accounts that can move without changing credentials or losing
+  historical results.
+- One active team per player and unique active jersey numbers within a team.
+- Administrator workflows for unassigned players and direct team transfers.
+- Closed-season roster advancement into an existing team or a newly created
+  age-level team and season.
+- Reusable team display names with database IDs preserving identity.
+- CSV safeguards aligned with active-season and stable-account rules.
+
+Acceptance criteria: a player cannot belong to two active teams; transfers
+revoke sessions and release current practice; completed history remains on its
+original team and season; advancing a roster preserves the source season while
+moving only selected accounts.

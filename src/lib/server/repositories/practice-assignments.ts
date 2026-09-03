@@ -4,6 +4,8 @@ import { writeAudit } from './audit';
 import { RecordNotFoundError, RecordValidationError } from './errors';
 
 export type AssignmentStatus = 'draft' | 'active' | 'completed' | 'archived';
+export type AssignmentView = 'active' | 'draft' | 'completed' | 'closed' | 'archived';
+export type AssignmentSort = 'newest' | 'oldest' | 'due' | 'title';
 export type RecipientStatus = 'assigned' | 'in_progress' | 'completed';
 export type SituationProgressStatus = 'not_started' | 'incomplete' | 'completed';
 
@@ -21,9 +23,25 @@ export interface PracticeAssignmentInput {
   publish?: boolean;
 }
 
+export interface PracticeAssignmentUpdateInput {
+  title: string;
+  instructions?: string;
+  dueAt?: string | null;
+  playerIds?: string[];
+  situations?: AssignmentSituationInput[];
+  addPlayerIds?: string[];
+}
+
+export interface AssignmentListOptions {
+  view?: AssignmentView;
+  search?: string;
+  sort?: AssignmentSort;
+}
+
 interface AssignmentRow {
   id: string;
   team_id: string;
+  season_id: string;
   coach_id: string;
   coach_name: string;
   title: string;
@@ -34,6 +52,9 @@ interface AssignmentRow {
   completed_at: string | null;
   closed_at: string | null;
   cancelled_at: string | null;
+  archived_from_status: AssignmentStatus | null;
+  source_assignment_id: string | null;
+  cycle_number: number;
   created_at: string;
   updated_at: string;
   recipient_count: number;
@@ -52,6 +73,7 @@ interface RecipientRow {
   completed_at: string | null;
   lock_active: number;
   released_at: string | null;
+  withdrawn_at: string | null;
 }
 
 interface SituationRow {
@@ -74,6 +96,7 @@ interface SituationRow {
 export interface PracticeAssignment {
   id: string;
   teamId: string;
+  seasonId: string;
   coachId: string;
   coachName: string;
   title: string;
@@ -84,6 +107,9 @@ export interface PracticeAssignment {
   completedAt: string | null;
   closedAt: string | null;
   cancelledAt: string | null;
+  archivedFromStatus: AssignmentStatus | null;
+  sourceAssignmentId: string | null;
+  cycleNumber: number;
   createdAt: string;
   updatedAt: string;
   recipientCount: number;
@@ -100,6 +126,7 @@ export interface PracticeAssignment {
     completedAt: string | null;
     lockActive: boolean;
     releasedAt: string | null;
+    withdrawnAt: string | null;
   }>;
   situations: Array<{
     situationKey: string;
@@ -166,11 +193,20 @@ function normalizedInput(input: PracticeAssignmentInput): PracticeAssignmentInpu
   };
 }
 
+function normalizedMetadata(input: PracticeAssignmentUpdateInput) {
+  return {
+    title: text(input.title, 'Assignment title', 120),
+    instructions: text(input.instructions, 'Instructions', 1000, false),
+    dueAt: dueDate(input.dueAt),
+  };
+}
+
 function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situations: SituationRow[]): PracticeAssignment {
   const now = Date.now();
   return {
     id: row.id,
     teamId: row.team_id,
+    seasonId: row.season_id,
     coachId: row.coach_id,
     coachName: row.coach_name,
     title: row.title,
@@ -181,6 +217,9 @@ function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situation
     completedAt: row.completed_at,
     closedAt: row.closed_at,
     cancelledAt: row.cancelled_at,
+    archivedFromStatus: row.archived_from_status,
+    sourceAssignmentId: row.source_assignment_id,
+    cycleNumber: Number(row.cycle_number || 1),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     recipientCount: Number(row.recipient_count || 0),
@@ -201,6 +240,7 @@ function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situation
       completedAt: item.completed_at,
       lockActive: item.lock_active === 1,
       releasedAt: item.released_at,
+      withdrawnAt: item.withdrawn_at,
     })),
     situations: situations.filter((item) => item.assignment_id === row.id).map((item) => ({
       situationKey: item.situation_key,
@@ -235,9 +275,12 @@ export class SqlitePracticeAssignmentRepository {
     const ids = rows.map((row) => row.id);
     const placeholders = ids.map((_, index) => `?${index + 1}`).join(', ');
     const recipients = await this.database.all<RecipientRow>(
-      `SELECT ar.assignment_id, ar.player_id, u.display_name AS player_name,
-              tm.jersey_number AS player_number, ar.status, ar.assigned_at,
-              ar.started_at, ar.completed_at, ar.lock_active, ar.released_at
+      `SELECT ar.assignment_id, ar.player_id,
+              COALESCE(NULLIF(ar.player_name_snapshot, ''), u.display_name) AS player_name,
+              COALESCE(NULLIF(ar.player_number_snapshot, ''), tm.jersey_number, '') AS player_number,
+              ar.status, ar.assigned_at,
+              ar.started_at, ar.completed_at, ar.lock_active, ar.released_at,
+              ar.withdrawn_at
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
          JOIN users u ON u.id = ar.player_id
@@ -281,10 +324,12 @@ export class SqlitePracticeAssignmentRepository {
   }
 
   private baseSelect(): string {
-    return `SELECT pa.id, pa.team_id, pa.coach_id, u.display_name AS coach_name,
+    return `SELECT pa.id, pa.team_id, pa.season_id, pa.coach_id, u.display_name AS coach_name,
                    pa.title, pa.instructions, pa.status, pa.due_at,
                    pa.published_at, pa.completed_at, pa.closed_at,
-                   pa.cancelled_at, pa.created_at, pa.updated_at,
+                   pa.cancelled_at, pa.archived_from_status,
+                   pa.source_assignment_id, pa.cycle_number,
+                   pa.created_at, pa.updated_at,
                    COUNT(DISTINCT ar.player_id) AS recipient_count,
                    COUNT(DISTINCT CASE WHEN ar.status = 'completed' THEN ar.player_id END)
                      AS completed_recipient_count,
@@ -295,21 +340,49 @@ export class SqlitePracticeAssignmentRepository {
               LEFT JOIN assignment_situations ast ON ast.assignment_id = pa.id`;
   }
 
-  async listForTeam(teamId: string, page: number, pageSize: number): Promise<{ assignments: PracticeAssignment[]; total: number }> {
+  async listForTeam(
+    teamId: string,
+    page: number,
+    pageSize: number,
+    options: AssignmentListOptions = {},
+  ): Promise<{ assignments: PracticeAssignment[]; total: number }> {
     const offset = (page - 1) * pageSize;
+    const conditions = ['pa.team_id = ?1'];
+    const params: unknown[] = [teamId];
+    const viewConditions: Record<AssignmentView, string> = {
+      active: "pa.status = 'active' AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL",
+      draft: "pa.status = 'draft'",
+      completed: "pa.status = 'completed'",
+      closed: "pa.status = 'active' AND (pa.closed_at IS NOT NULL OR pa.cancelled_at IS NOT NULL)",
+      archived: "pa.status = 'archived'",
+    };
+    if (options.view) conditions.push(viewConditions[options.view]);
+    else conditions.push("pa.status <> 'archived'");
+    const search = String(options.search || '').trim();
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      conditions.push(`(LOWER(pa.title) LIKE ?${params.length} OR LOWER(pa.instructions) LIKE ?${params.length})`);
+    }
+    const where = conditions.join(' AND ');
+    const orderBy: Record<AssignmentSort, string> = {
+      newest: 'pa.updated_at DESC, pa.created_at DESC',
+      oldest: 'pa.created_at, pa.id',
+      due: 'pa.due_at IS NULL, pa.due_at, pa.updated_at DESC',
+      title: 'LOWER(pa.title), pa.updated_at DESC',
+    };
     const total = await this.database.one<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM practice_assignments
-        WHERE team_id = ?1 AND status <> 'archived'`,
-      [teamId],
+      `SELECT COUNT(*) AS total FROM practice_assignments pa WHERE ${where}`,
+      params,
     );
+    const pageSizePlaceholder = `?${params.length + 1}`;
+    const offsetPlaceholder = `?${params.length + 2}`;
     const rows = await this.database.all<AssignmentRow>(
       `${this.baseSelect()}
-        WHERE pa.team_id = ?1 AND pa.status <> 'archived'
+        WHERE ${where}
         GROUP BY pa.id
-        ORDER BY CASE pa.status WHEN 'active' THEN 0 WHEN 'draft' THEN 1 ELSE 2 END,
-                 pa.due_at IS NULL, pa.due_at, pa.created_at DESC
-        LIMIT ?2 OFFSET ?3`,
-      [teamId, pageSize, offset],
+        ORDER BY ${orderBy[options.sort || 'newest']}
+        LIMIT ${pageSizePlaceholder} OFFSET ${offsetPlaceholder}`,
+      [...params, pageSize, offset],
     );
     return { assignments: await this.hydrate(rows), total: Number(total?.total || 0) };
   }
@@ -321,6 +394,7 @@ export class SqlitePracticeAssignmentRepository {
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND pa.status IN ('active', 'completed')
+          AND ar.withdrawn_at IS NULL
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL`,
       [playerId],
     );
@@ -329,6 +403,7 @@ export class SqlitePracticeAssignmentRepository {
          JOIN assignment_recipients mine
            ON mine.assignment_id = pa.id AND mine.player_id = ?1
         WHERE pa.status IN ('active', 'completed')
+          AND mine.withdrawn_at IS NULL
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
         GROUP BY pa.id
         ORDER BY CASE mine.status WHEN 'in_progress' THEN 0 WHEN 'assigned' THEN 1 ELSE 2 END,
@@ -364,6 +439,7 @@ export class SqlitePracticeAssignmentRepository {
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND ar.status <> 'completed'
+          AND ar.withdrawn_at IS NULL
           AND pa.status = 'active'
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL`,
       [playerId, now],
@@ -373,7 +449,8 @@ export class SqlitePracticeAssignmentRepository {
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND ar.lock_active = 1
-          AND ar.status <> 'completed' AND pa.status = 'active'
+          AND ar.status <> 'completed' AND ar.withdrawn_at IS NULL
+          AND pa.status = 'active'
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
         LIMIT 1`,
       [playerId],
@@ -399,14 +476,15 @@ export class SqlitePracticeAssignmentRepository {
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.assignment_id = ?1 AND ar.player_id = ?2
-          AND ar.status <> 'completed' AND pa.status = 'active'
+          AND ar.status <> 'completed' AND ar.withdrawn_at IS NULL
+          AND pa.status = 'active'
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL`,
       [assignmentId, playerId],
     );
     if (!available) throw new RecordNotFoundError('This practice assignment is no longer available.');
     const existing = await this.database.one<{ assignment_id: string }>(
       `SELECT assignment_id FROM assignment_recipients
-        WHERE player_id = ?1 AND lock_active = 1 LIMIT 1`,
+        WHERE player_id = ?1 AND lock_active = 1 AND withdrawn_at IS NULL LIMIT 1`,
       [playerId],
     );
     if (existing && existing.assignment_id !== assignmentId) {
@@ -421,6 +499,7 @@ export class SqlitePracticeAssignmentRepository {
                 started_at = COALESCE(started_at, ?3), released_at = NULL
           WHERE assignment_id = ?1 AND player_id = ?2
             AND status <> 'completed'
+            AND withdrawn_at IS NULL
             AND EXISTS (
               SELECT 1 FROM practice_assignments pa
                WHERE pa.id = assignment_recipients.assignment_id
@@ -444,13 +523,21 @@ export class SqlitePracticeAssignmentRepository {
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
     const status: AssignmentStatus = normalized.publish ? 'active' : 'draft';
-    const validPlayers = await this.database.all<{ user_id: string }>(
-      `SELECT tm.user_id FROM team_memberships tm JOIN users u ON u.id = tm.user_id
-        WHERE tm.team_id = ?1 AND tm.team_role = 'player'
-          AND tm.active = 1 AND u.active = 1`,
+    const season = await this.database.one<{ id: string }>(
+      "SELECT id FROM team_seasons WHERE team_id = ?1 AND status = 'active' LIMIT 1",
       [teamId],
     );
+    if (!season) throw new RecordValidationError('Create an active season before assigning practice.');
+    const validPlayers = await this.database.all<{ user_id: string; player_name: string; player_number: string }>(
+      `SELECT tm.user_id, u.display_name AS player_name,
+              COALESCE(tm.jersey_number, '') AS player_number
+         FROM team_memberships tm JOIN users u ON u.id = tm.user_id
+        WHERE tm.team_id = ?1 AND tm.team_role = 'player'
+          AND tm.season_id = ?2 AND tm.active = 1 AND u.active = 1`,
+      [teamId, season.id],
+    );
     const playerSet = new Set(validPlayers.map((row) => row.user_id));
+    const playerSnapshots = new Map(validPlayers.map((row) => [row.user_id, row]));
     if (normalized.playerIds.some((playerId) => !playerSet.has(playerId))) {
       throw new RecordValidationError('Every assignment recipient must be an active player on this team.');
     }
@@ -471,17 +558,19 @@ export class SqlitePracticeAssignmentRepository {
       })),
       {
         sql: `INSERT INTO practice_assignments
-          (id, team_id, coach_id, title, instructions, status, due_at,
+          (id, team_id, season_id, coach_id, title, instructions, status, due_at,
            published_at, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`,
-        params: [id, teamId, coachId, normalized.title, normalized.instructions,
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)`,
+        params: [id, teamId, season.id, coachId, normalized.title, normalized.instructions,
           status, normalized.dueAt, normalized.publish ? now : null, now],
       },
       ...normalized.playerIds.map((playerId) => ({
         sql: `INSERT INTO assignment_recipients
-          (assignment_id, player_id, status, assigned_at)
-         VALUES (?1, ?2, 'assigned', ?3)`,
-        params: [id, playerId, now],
+          (assignment_id, player_id, status, assigned_at,
+           player_name_snapshot, player_number_snapshot)
+         VALUES (?1, ?2, 'assigned', ?3, ?4, ?5)`,
+        params: [id, playerId, now, playerSnapshots.get(playerId)!.player_name,
+          playerSnapshots.get(playerId)!.player_number],
       })),
       ...normalized.situations.map((item, index) => ({
         sql: `INSERT INTO assignment_situations
@@ -507,26 +596,180 @@ export class SqlitePracticeAssignmentRepository {
     const before = await this.get(id);
     if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
     if (before.status !== 'draft') throw new RecordValidationError('Only draft assignments can be published.');
-    const now = new Date().toISOString();
-    await this.database.execute(
-      `UPDATE practice_assignments
-          SET status = 'active', published_at = ?2, updated_at = ?2
-        WHERE id = ?1 AND status = 'draft'`,
-      [id, now],
+    const activeSeason = await this.database.one<{ id: string }>(
+      "SELECT id FROM team_seasons WHERE team_id = ?1 AND status = 'active' LIMIT 1",
+      [teamId],
     );
+    if (!activeSeason || activeSeason.id !== before.seasonId) {
+      throw new RecordValidationError('Only a draft from the active season can be published.');
+    }
+    if (!before.recipients.length || !before.situations.length) {
+      throw new RecordValidationError('A practice needs at least one player and one situation before publishing.');
+    }
+    const activeRecipients = await this.database.one<{ total: number }>(
+      `SELECT COUNT(*) AS total
+         FROM assignment_recipients ar
+         JOIN users u ON u.id = ar.player_id
+         JOIN team_memberships tm ON tm.user_id = ar.player_id AND tm.team_id = ?2
+        WHERE ar.assignment_id = ?1 AND u.active = 1 AND tm.active = 1
+          AND tm.season_id = ?3 AND ar.withdrawn_at IS NULL
+          AND tm.team_role = 'player'`,
+      [id, teamId, before.seasonId],
+    );
+    if (Number(activeRecipients?.total || 0) !== before.recipients.length) {
+      throw new RecordValidationError('Remove inactive or transferred players before publishing this practice.');
+    }
+    const now = new Date().toISOString();
+    await this.database.batch([
+      {
+        sql: `UPDATE assignment_recipients
+                 SET player_name_snapshot = COALESCE((SELECT display_name FROM users WHERE id = player_id), player_name_snapshot),
+                     player_number_snapshot = COALESCE((SELECT jersey_number FROM team_memberships
+                       WHERE team_id = ?2 AND user_id = player_id LIMIT 1), player_number_snapshot)
+               WHERE assignment_id = ?1`,
+        params: [id, teamId],
+      },
+      {
+        sql: `UPDATE practice_assignments
+                 SET status = 'active', published_at = ?2, updated_at = ?2
+               WHERE id = ?1 AND status = 'draft'`,
+        params: [id, now],
+      },
+    ]);
     const updated = await this.get(id);
     await writeAudit(this.database, actorId, 'publish', 'practice_assignment', id, before, updated);
+    return updated!;
+  }
+
+  async update(
+    id: string,
+    teamId: string,
+    actorId: string,
+    input: PracticeAssignmentUpdateInput,
+  ): Promise<PracticeAssignment> {
+    const before = await this.get(id);
+    if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
+    if (before.status === 'archived' || before.status === 'completed' || before.closedAt || before.cancelledAt) {
+      throw new RecordValidationError('Only drafts and open active practices can be edited.');
+    }
+    const metadata = normalizedMetadata(input);
+    const now = new Date().toISOString();
+    if (before.status === 'active') {
+      const requested = [...new Set((input.addPlayerIds || []).map(String).map((value) => value.trim()).filter(Boolean))]
+        .filter((playerId) => !before.recipients.some((recipient) => recipient.playerId === playerId));
+      const players = requested.length
+        ? await this.database.all<{ user_id: string; player_name: string; player_number: string }>(
+          `SELECT tm.user_id, u.display_name AS player_name, COALESCE(tm.jersey_number, '') AS player_number
+             FROM team_memberships tm JOIN users u ON u.id = tm.user_id
+            WHERE tm.team_id = ?1 AND tm.season_id = ?2
+              AND tm.team_role = 'player' AND tm.active = 1 AND u.active = 1`,
+          [teamId, before.seasonId],
+        )
+        : [];
+      const playerMap = new Map(players.map((player) => [player.user_id, player]));
+      if (requested.some((playerId) => !playerMap.has(playerId))) {
+        throw new RecordValidationError('New recipients must be active players on this team.');
+      }
+      await this.database.batch([
+        {
+          sql: `UPDATE practice_assignments SET title = ?2, instructions = ?3,
+                  due_at = ?4, updated_at = ?5 WHERE id = ?1`,
+          params: [id, metadata.title, metadata.instructions, metadata.dueAt, now],
+        },
+        ...requested.map((playerId) => ({
+          sql: `INSERT INTO assignment_recipients
+            (assignment_id, player_id, status, assigned_at, player_name_snapshot, player_number_snapshot)
+           VALUES (?1, ?2, 'assigned', ?3, ?4, ?5)`,
+          params: [id, playerId, now, playerMap.get(playerId)!.player_name, playerMap.get(playerId)!.player_number],
+        })),
+        ...requested.flatMap((playerId) => before.situations.map((situation) => ({
+          sql: `INSERT INTO assignment_progress
+            (assignment_id, player_id, situation_key, updated_at)
+           VALUES (?1, ?2, ?3, ?4)`,
+          params: [id, playerId, situation.situationKey, now],
+        }))),
+      ]);
+    } else {
+      const normalized = normalizedInput({
+        ...input,
+        playerIds: input.playerIds || [],
+        situations: input.situations || [],
+        publish: false,
+      });
+      const players = await this.database.all<{ user_id: string; player_name: string; player_number: string }>(
+        `SELECT tm.user_id, u.display_name AS player_name, COALESCE(tm.jersey_number, '') AS player_number
+           FROM team_memberships tm JOIN users u ON u.id = tm.user_id
+          WHERE tm.team_id = ?1 AND tm.season_id = ?2
+            AND tm.team_role = 'player' AND tm.active = 1 AND u.active = 1`,
+        [teamId, before.seasonId],
+      );
+      const playerMap = new Map(players.map((player) => [player.user_id, player]));
+      if (normalized.playerIds.some((playerId) => !playerMap.has(playerId))) {
+        throw new RecordValidationError('Every assignment recipient must be an active player on this team.');
+      }
+      const situations = await this.database.all<{ key: string; revision: number }>(
+        'SELECT key, revision FROM situations WHERE active = 1',
+      );
+      const revisions = new Map(situations.map((situation) => [situation.key, Number(situation.revision)]));
+      if (normalized.situations.some((situation) => !revisions.has(situation.situationKey))) {
+        throw new RecordValidationError('Every assigned situation must be active.');
+      }
+      await this.database.batch([
+        ...normalized.situations.map((item) => ({
+          sql: `INSERT OR IGNORE INTO situation_versions
+            (situation_key, revision, title, category, difficulty, payload_json, created_at)
+           SELECT key, revision, title, category, difficulty, payload_json, ?2 FROM situations WHERE key = ?1`,
+          params: [item.situationKey, now],
+        })),
+        { sql: 'DELETE FROM assignment_progress WHERE assignment_id = ?1', params: [id] },
+        { sql: 'DELETE FROM assignment_situations WHERE assignment_id = ?1', params: [id] },
+        { sql: 'DELETE FROM assignment_recipients WHERE assignment_id = ?1', params: [id] },
+        {
+          sql: `UPDATE practice_assignments SET title = ?2, instructions = ?3,
+                  due_at = ?4, updated_at = ?5 WHERE id = ?1 AND status = 'draft'`,
+          params: [id, metadata.title, metadata.instructions, metadata.dueAt, now],
+        },
+        ...normalized.playerIds.map((playerId) => ({
+          sql: `INSERT INTO assignment_recipients
+            (assignment_id, player_id, status, assigned_at, player_name_snapshot, player_number_snapshot)
+           VALUES (?1, ?2, 'assigned', ?3, ?4, ?5)`,
+          params: [id, playerId, now, playerMap.get(playerId)!.player_name, playerMap.get(playerId)!.player_number],
+        })),
+        ...normalized.situations.map((item, index) => ({
+          sql: `INSERT INTO assignment_situations
+            (assignment_id, situation_key, sort_order, required_repetitions, created_at, situation_revision)
+           VALUES (?1, ?2, ?3, 1, ?4, ?5)`,
+          params: [id, item.situationKey, index, now, revisions.get(item.situationKey)!],
+        })),
+        ...normalized.playerIds.flatMap((playerId) => normalized.situations.map((item) => ({
+          sql: `INSERT INTO assignment_progress
+            (assignment_id, player_id, situation_key, updated_at) VALUES (?1, ?2, ?3, ?4)`,
+          params: [id, playerId, item.situationKey, now],
+        }))),
+      ]);
+    }
+    const updated = await this.get(id);
+    await writeAudit(this.database, actorId, 'update', 'practice_assignment', id, before, updated);
     return updated!;
   }
 
   async archive(id: string, teamId: string, actorId: string): Promise<PracticeAssignment> {
     const before = await this.get(id);
     if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
+    if (before.status === 'archived') throw new RecordValidationError('This practice is already archived.');
     const now = new Date().toISOString();
     await this.database.batch([
       {
-        sql: `UPDATE practice_assignments SET status = 'archived', archived_at = ?2,
+        sql: `UPDATE practice_assignments SET archived_from_status = status,
+                status = 'archived', archived_at = ?2,
                 updated_at = ?2 WHERE id = ?1`,
+        params: [id, now],
+      },
+      {
+        sql: `UPDATE attempts SET outcome = 'abandoned', lifecycle_status = 'abandoned',
+                abandon_reason = 'assignment_archived', completed_at = COALESCE(completed_at, ?2),
+                updated_at = ?2
+              WHERE assignment_id = ?1 AND lifecycle_status = 'incomplete'`,
         params: [id, now],
       },
       {
@@ -548,7 +791,7 @@ export class SqlitePracticeAssignmentRepository {
     }
     const now = new Date().toISOString();
     const column = action === 'close' ? 'closed_at' : 'cancelled_at';
-    await this.database.batch([
+    const commands = [
       {
         sql: `UPDATE practice_assignments SET ${column} = ?2, ended_by = ?3,
                 updated_at = ?2 WHERE id = ?1`,
@@ -559,10 +802,143 @@ export class SqlitePracticeAssignmentRepository {
                 released_at = COALESCE(released_at, ?2) WHERE assignment_id = ?1`,
         params: [id, now],
       },
-    ]);
+    ];
+    if (action === 'cancel') {
+      commands.push({
+        sql: `UPDATE attempts SET outcome = 'abandoned', lifecycle_status = 'abandoned',
+                abandon_reason = 'assignment_cancelled', completed_at = COALESCE(completed_at, ?2),
+                updated_at = ?2
+              WHERE assignment_id = ?1 AND lifecycle_status = 'incomplete'`,
+        params: [id, now],
+      });
+    }
+    await this.database.batch(commands);
     const updated = await this.get(id);
     await writeAudit(this.database, actorId, action, 'practice_assignment', id, before, updated);
     return updated!;
+  }
+
+  async restore(id: string, teamId: string, actorId: string): Promise<PracticeAssignment> {
+    const before = await this.get(id);
+    if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
+    if (before.status !== 'archived') throw new RecordValidationError('Only archived practices can be restored.');
+    const now = new Date().toISOString();
+    await this.database.batch([
+      {
+        sql: `UPDATE practice_assignments
+                 SET status = CASE archived_from_status
+                       WHEN 'draft' THEN 'draft'
+                       WHEN 'completed' THEN 'completed'
+                       ELSE 'active'
+                     END,
+                     closed_at = CASE
+                       WHEN archived_from_status = 'active'
+                         AND closed_at IS NULL AND cancelled_at IS NULL THEN ?2
+                       ELSE closed_at
+                     END,
+                     archived_at = NULL, updated_at = ?2
+               WHERE id = ?1 AND status = 'archived'`,
+        params: [id, now],
+      },
+      {
+        sql: `UPDATE assignment_recipients SET lock_active = 0,
+                released_at = COALESCE(released_at, ?2) WHERE assignment_id = ?1`,
+        params: [id, now],
+      },
+    ]);
+    const updated = await this.get(id);
+    await writeAudit(this.database, actorId, 'restore', 'practice_assignment', id, before, updated);
+    return updated!;
+  }
+
+  async duplicate(id: string, teamId: string, actorId: string, retake = false): Promise<PracticeAssignment> {
+    const before = await this.get(id);
+    if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
+    if (retake && before.status === 'draft') throw new RecordValidationError('Publish this draft before creating a retake.');
+    const activeSeason = await this.database.one<{ id: string }>(
+      "SELECT id FROM team_seasons WHERE team_id = ?1 AND status = 'active' LIMIT 1",
+      [teamId],
+    );
+    if (!activeSeason) {
+      throw new RecordValidationError('Create an active season before duplicating a practice.');
+    }
+    const rootId = before.sourceAssignmentId || before.id;
+    const highest = retake
+      ? await this.database.one<{ cycle: number }>(
+        `SELECT MAX(cycle_number) AS cycle FROM practice_assignments
+          WHERE id = ?1 OR source_assignment_id = ?1`,
+        [rootId],
+      )
+      : null;
+    const cycle = retake ? Number(highest?.cycle || before.cycleNumber || 1) + 1 : 1;
+    const newId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const title = text(
+      (retake ? `${before.title} — Retake ${cycle}` : `${before.title} (Copy)`).slice(0, 120),
+      'Assignment title',
+      120,
+    );
+    const currentPlayers = await this.database.all<{
+      user_id: string;
+      display_name: string;
+      jersey_number: string;
+    }>(
+      `SELECT tm.user_id, u.display_name, COALESCE(tm.jersey_number, '') AS jersey_number
+         FROM team_memberships tm JOIN users u ON u.id = tm.user_id
+        WHERE tm.team_id = ?1 AND tm.season_id = ?2 AND tm.team_role = 'player'
+          AND tm.active = 1 AND u.active = 1`,
+      [teamId, activeSeason.id],
+    );
+    const currentPlayerMap = new Map(currentPlayers.map((player) => [player.user_id, player]));
+    const copiedRecipients = before.recipients
+      .filter((recipient) => !recipient.withdrawnAt && currentPlayerMap.has(recipient.playerId))
+      .map((recipient) => ({
+        ...recipient,
+        playerName: currentPlayerMap.get(recipient.playerId)!.display_name,
+        playerNumber: currentPlayerMap.get(recipient.playerId)!.jersey_number,
+      }));
+    await this.database.batch([
+      {
+        sql: `INSERT INTO practice_assignments
+          (id, team_id, season_id, coach_id, title, instructions, status, due_at,
+           created_at, updated_at, source_assignment_id, cycle_number)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'draft', NULL, ?7, ?7, ?8, ?9)`,
+        params: [newId, teamId, activeSeason.id, actorId, title, before.instructions, now, rootId, cycle],
+      },
+      ...copiedRecipients.map((recipient) => ({
+        sql: `INSERT INTO assignment_recipients
+          (assignment_id, player_id, status, assigned_at, player_name_snapshot, player_number_snapshot)
+         VALUES (?1, ?2, 'assigned', ?3, ?4, ?5)`,
+        params: [newId, recipient.playerId, now, recipient.playerName, recipient.playerNumber],
+      })),
+      ...before.situations.map((situation, index) => ({
+        sql: `INSERT INTO assignment_situations
+          (assignment_id, situation_key, sort_order, required_repetitions, created_at, situation_revision)
+         VALUES (?1, ?2, ?3, 1, ?4, ?5)`,
+        params: [newId, situation.situationKey, index, now, situation.situationRevision],
+      })),
+      ...copiedRecipients.flatMap((recipient) => before.situations.map((situation) => ({
+        sql: `INSERT INTO assignment_progress
+          (assignment_id, player_id, situation_key, updated_at) VALUES (?1, ?2, ?3, ?4)`,
+        params: [newId, recipient.playerId, situation.situationKey, now],
+      }))),
+    ]);
+    const created = await this.get(newId);
+    await writeAudit(this.database, actorId, retake ? 'retake' : 'duplicate', 'practice_assignment', newId, before, created);
+    return created!;
+  }
+
+  async deleteUnusedDraft(id: string, teamId: string, actorId: string): Promise<void> {
+    const before = await this.get(id);
+    if (!before || before.teamId !== teamId) throw new RecordNotFoundError('Assignment not found.');
+    if (before.status !== 'draft') throw new RecordValidationError('Only unused drafts can be permanently deleted.');
+    const attempt = await this.database.one<{ id: string }>(
+      'SELECT id FROM attempts WHERE assignment_id = ?1 LIMIT 1',
+      [id],
+    );
+    if (attempt) throw new RecordValidationError('This draft has results and cannot be permanently deleted.');
+    await this.database.execute("DELETE FROM practice_assignments WHERE id = ?1 AND status = 'draft'", [id]);
+    await writeAudit(this.database, actorId, 'delete', 'practice_assignment', id, before, null);
   }
 
   async assertFreePlayAccess(playerId: string, runId?: string | null): Promise<void> {
@@ -579,6 +955,7 @@ export class SqlitePracticeAssignmentRepository {
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND ar.status <> 'completed'
+          AND ar.withdrawn_at IS NULL
           AND pa.status = 'active'
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
         LIMIT 1`,
@@ -631,7 +1008,8 @@ export class SqlitePracticeAssignmentRepository {
           AND ap.player_id = ar.player_id
         WHERE pa.id = ?1 AND ar.player_id = ?2 AND ast.situation_key = ?3
           AND pa.status = 'active' AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
-          AND ar.lock_active = 1 AND ap.progress_status = 'not_started'
+          AND ar.lock_active = 1 AND ar.withdrawn_at IS NULL
+          AND ap.progress_status = 'not_started'
           AND (ap.attempt_run_id IS NULL OR ap.attempt_run_id = ?4)
               AND NOT EXISTS (
                 SELECT 1
@@ -697,7 +1075,8 @@ export class SqlitePracticeAssignmentRepository {
                    JOIN assignment_recipients ar ON ar.assignment_id = pa.id
                     WHERE pa.id = assignment_progress.assignment_id
                       AND ar.player_id = assignment_progress.player_id
-                      AND ar.lock_active = 1 AND pa.status = 'active'
+                      AND ar.lock_active = 1 AND ar.withdrawn_at IS NULL
+                      AND pa.status = 'active'
                       AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
                  )`,
         params: [assignmentId, playerId, situationKey, attemptId, startedAt],
@@ -706,7 +1085,8 @@ export class SqlitePracticeAssignmentRepository {
         sql: `UPDATE assignment_recipients
                  SET status = CASE WHEN status = 'assigned' THEN 'in_progress' ELSE status END,
                      started_at = COALESCE(started_at, ?3)
-               WHERE assignment_id = ?1 AND player_id = ?2 AND lock_active = 1`,
+               WHERE assignment_id = ?1 AND player_id = ?2 AND lock_active = 1
+                 AND withdrawn_at IS NULL`,
         params: [assignmentId, playerId, startedAt],
       },
     ]);
@@ -728,7 +1108,8 @@ export class SqlitePracticeAssignmentRepository {
                    JOIN assignment_recipients ar ON ar.assignment_id = pa.id
                     WHERE pa.id = assignment_progress.assignment_id
                       AND ar.player_id = assignment_progress.player_id
-                      AND ar.lock_active = 1 AND pa.status = 'active'
+                      AND ar.lock_active = 1 AND ar.withdrawn_at IS NULL
+                      AND pa.status = 'active'
                       AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
                  )`,
       [assignmentId, playerId, situationKey, passed ? 1 : 0, attemptId, completedAt],
@@ -752,7 +1133,7 @@ export class SqlitePracticeAssignmentRepository {
     }
     const incompleteRecipients = await this.database.one<{ remaining: number }>(
       `SELECT COUNT(*) AS remaining FROM assignment_recipients
-        WHERE assignment_id = ?1 AND status <> 'completed'`,
+        WHERE assignment_id = ?1 AND status <> 'completed' AND withdrawn_at IS NULL`,
       [assignmentId],
     );
     if (Number(incompleteRecipients?.remaining || 0) === 0) {

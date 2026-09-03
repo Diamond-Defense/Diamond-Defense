@@ -16,6 +16,7 @@ interface AttemptRow {
   created_at: string;
   lifecycle_status: AttemptLifecycleStatus;
   assignment_id: string | null;
+  season_id: string | null;
 }
 
 interface CoachAttemptRow extends AttemptRow {
@@ -66,6 +67,7 @@ export interface SequenceStageResult {
 export interface AttemptInput {
   situationKey: string;
   assignmentId?: string;
+  seasonId?: string;
   phase: 1 | 2;
   formatVersion?: 2;
   runId?: string;
@@ -104,6 +106,7 @@ export interface PaginatedCoachAttempts {
 
 export interface AttemptReportFilters {
   playerId?: string;
+  seasonId?: string;
   situationKey?: string;
   outcome?: AttemptOutcome;
   dateFrom?: string;
@@ -132,6 +135,7 @@ function reportWhere(teamId: string, filters: AttemptReportFilters = {}): {
     conditions.push(condition(`?${params.length}`));
   };
   if (filters.playerId) add((placeholder) => `a.player_id = ${placeholder}`, filters.playerId);
+  if (filters.seasonId) add((placeholder) => `a.season_id = ${placeholder}`, filters.seasonId);
   if (filters.situationKey) add((placeholder) => `a.situation_key = ${placeholder}`, filters.situationKey);
   if (filters.outcome) add((placeholder) => `a.outcome = ${placeholder}`, filters.outcome);
   if (filters.dateFrom) {
@@ -167,6 +171,7 @@ function mapCoachAttempt(row: CoachAttemptRow): CoachAttempt {
     createdAt: row.created_at,
     lifecycleStatus: row.lifecycle_status,
     assignmentId: row.assignment_id ?? undefined,
+    seasonId: row.season_id ?? undefined,
   };
 }
 
@@ -186,6 +191,7 @@ function mapAttempt(row: AttemptRow): AttemptInput {
     createdAt: row.created_at,
     lifecycleStatus: row.lifecycle_status,
     assignmentId: row.assignment_id ?? undefined,
+    seasonId: row.season_id ?? undefined,
   };
 }
 
@@ -245,16 +251,23 @@ export class SqliteAttemptRepository {
       team_name: string;
       player_name: string;
       player_number: string;
+      season_id: string | null;
     }>(
       `SELECT COALESCE(t.name, '') AS team_name,
               COALESCE(u.display_name, '') AS player_name,
-              COALESCE(tm.jersey_number, '') AS player_number
+              COALESCE(tm.jersey_number, '') AS player_number,
+              CASE WHEN ?3 IS NOT NULL THEN
+                (SELECT season_id FROM practice_assignments WHERE id = ?3)
+              ELSE tm.season_id END AS season_id
          FROM users u
          LEFT JOIN teams t ON t.id = ?2
          LEFT JOIN team_memberships tm ON tm.team_id = ?2 AND tm.user_id = u.id
         WHERE u.id = ?1`,
-      [playerId, teamId],
+      [playerId, teamId, attempt.assignmentId || null],
     );
+    if (!identity?.season_id) {
+      throw new RecordValidationError('This attempt is not associated with a team season.');
+    }
     const payload = {
       ...attempt,
       formatVersion: attempt.formatVersion ?? 2,
@@ -265,6 +278,7 @@ export class SqliteAttemptRepository {
       playerId,
       situationRevision,
       lifecycleStatus,
+      seasonId: identity.season_id,
       ts: completedAt || startedAt,
     };
 
@@ -330,9 +344,9 @@ export class SqliteAttemptRepository {
          success, tries_used, elapsed_seconds, payload_json, created_at, run_id,
          outcome, started_at, completed_at, abandon_reason, situation_revision,
          situation_title, team_name, player_name, player_number, assignment_id,
-         lifecycle_status, updated_at)
+         lifecycle_status, updated_at, season_id)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13,
-         ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)`,
+         ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)`,
       [
         id,
         playerId,
@@ -360,6 +374,7 @@ export class SqliteAttemptRepository {
         attempt.assignmentId || null,
         lifecycleStatus,
         now,
+        identity.season_id,
       ],
     );
     if (result.changes > 0) return { id, created: true, changed: true, lifecycleStatus };
@@ -379,7 +394,8 @@ export class SqliteAttemptRepository {
     const rows = await this.database.all<AttemptRow>(
       `SELECT payload_json, run_id, outcome, started_at, completed_at,
               abandon_reason, situation_revision, situation_title, team_name,
-              player_name, player_number, created_at, lifecycle_status, assignment_id
+              player_name, player_number, created_at, lifecycle_status, assignment_id,
+              season_id
          FROM attempts
         WHERE player_id = ?1 AND lifecycle_status <> 'incomplete' ORDER BY created_at`,
       [playerId],
@@ -398,7 +414,7 @@ export class SqliteAttemptRepository {
       `SELECT a.payload_json, a.run_id, a.outcome, a.started_at,
               a.completed_at, a.abandon_reason, a.situation_revision,
               a.situation_title, a.team_name, a.player_name, a.player_number,
-              a.created_at, a.lifecycle_status, a.assignment_id
+              a.created_at, a.lifecycle_status, a.assignment_id, a.season_id
          FROM attempts a
         WHERE a.team_id = ?1 AND a.lifecycle_status <> 'incomplete'
         ORDER BY a.created_at DESC`,
@@ -430,6 +446,7 @@ export class SqliteAttemptRepository {
                 a.outcome, a.started_at, a.completed_at, a.abandon_reason,
                 a.situation_revision, a.situation_title, a.team_name,
                 a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
+                a.season_id,
                 ROW_NUMBER() OVER (
                   PARTITION BY a.player_id
                   ORDER BY a.created_at DESC, a.id DESC
@@ -440,7 +457,7 @@ export class SqliteAttemptRepository {
        SELECT id, player_id, payload_json, created_at, run_id, outcome,
               started_at, completed_at, abandon_reason, situation_revision,
               situation_title, team_name, player_name, player_number,
-              lifecycle_status, assignment_id
+              lifecycle_status, assignment_id, season_id
          FROM ranked
         WHERE player_rank = 1
         ORDER BY created_at DESC, id DESC
@@ -471,7 +488,8 @@ export class SqliteAttemptRepository {
       `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
               a.outcome, a.started_at, a.completed_at, a.abandon_reason,
               a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id
+              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
+              a.season_id
          FROM attempts a
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC
@@ -495,7 +513,8 @@ export class SqliteAttemptRepository {
       `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
               a.outcome, a.started_at, a.completed_at, a.abandon_reason,
               a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id
+              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
+              a.season_id
         FROM attempts a
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC
