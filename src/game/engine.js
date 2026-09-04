@@ -1112,7 +1112,7 @@ function mapHitTypeToAdvance(hitType){
     default:         return 1;
   }
 }
-function animateHit(style){
+function animateHit(style, options={}){
   const sit=currentSituation; if(!sit) return;
   ensureDefaultHit(); style = style || sit.hitType || 'line';
   if (ballSvg) ballSvg.innerHTML='';
@@ -1149,7 +1149,10 @@ function animateHit(style){
 
   ballEl.style.left=`${startCss.x}px`; ballEl.style.top=`${startCss.y}px`; ballEl.style.display='block';
   const dist=Math.hypot(endCss.x-startCss.x,endCss.y-startCss.y);
-  const duration = clamp(1200 + dist * 0.90, 1500, 3200); // slower + smoother
+  const requestedDuration = Number(options.duration);
+  const duration = Number.isFinite(requestedDuration)
+    ? Math.max(0, requestedDuration)
+    : clamp(1200 + dist * 0.90, 1500, 3200); // slower + smoother
   let t0=performance.now(); if (animReq) cancelAnimationFrame(animReq);
   const p0={x:startCss.x,y:startCss.y}, p3={x:endCss.x,y:endCss.y};
 
@@ -1161,6 +1164,10 @@ function animateHit(style){
   }
 
   function step(now){
+    if(options.isCancelled?.()){
+      animReq=null;
+      return;
+    }
     const t=clamp((now-t0)/duration,0,1);
 
     // For popup: ease-in-out to simulate "hang time" while still tracking the same blue line path.
@@ -1172,7 +1179,20 @@ function animateHit(style){
 
     ballEl.style.left=`${pos.x}px`; ballEl.style.top=`${pos.y}px`;
     if (t<1) animReq=requestAnimationFrame(step);
-    else { if (ballSvg) ballSvg.innerHTML=''; animReq=null; if (ballEl) ballEl.style.display='block'; }
+    else {
+      if (ballSvg) ballSvg.innerHTML='';
+      animReq=null;
+      if (ballEl) ballEl.style.display='block';
+      options.onDone?.();
+    }
+  }
+  if(duration === 0){
+    ballEl.style.left=`${endCss.x}px`;
+    ballEl.style.top=`${endCss.y}px`;
+    if (ballSvg) ballSvg.innerHTML='';
+    animReq=null;
+    options.onDone?.();
+    return;
   }
   animReq=requestAnimationFrame(step);
 }
@@ -1212,7 +1232,7 @@ function placeRunnerAtBase(base){
   }
 }
 function hideRunner(){ if (runnerEl) runnerEl.style.display='none'; runnerLastBase='home'; }
-function animateBatterAdvance(basesAdvanced, onDone){
+function animateBatterAdvance(basesAdvanced, onDone, options={}){
   ensureRunner();
   if (runnerAnimId){ cancelAnimationFrame(runnerAnimId); runnerAnimId=null; }
 
@@ -1236,10 +1256,26 @@ function animateBatterAdvance(basesAdvanced, onDone){
     const midY  = lerp(fromCss.y, toCss.y, stopT);
 
     const dist = Math.hypot(toCss.x - fromCss.x, toCss.y - fromCss.y) * stopT;
-    const duration = clamp(700 + dist * 0.55, 600, 1400);
+    const requestedDuration = Number(options.duration);
+    const duration = Number.isFinite(requestedDuration)
+      ? Math.max(0, requestedDuration)
+      : clamp(700 + dist * 0.55, 600, 1400);
+
+    if(duration === 0){
+      runnerEl.style.left = midX + 'px';
+      runnerEl.style.top = midY + 'px';
+      runnerLastBase = 'home';
+      runnerAnimId = null;
+      if (typeof onDone === 'function') onDone('home');
+      return;
+    }
 
     let t0 = performance.now();
     const step = (now) => {
+      if(options.isCancelled?.()){
+        runnerAnimId=null;
+        return;
+      }
       const t = clamp((now - t0) / duration, 0, 1);
       const e = 1 - Math.pow(1 - t, 3); // ease-out
       runnerEl.style.left = lerp(fromCss.x, midX, e) + 'px';
@@ -1250,6 +1286,7 @@ function animateBatterAdvance(basesAdvanced, onDone){
       } else {
         // Stays visible short of 1B; not credited as reaching first
         runnerLastBase = 'home'; // keep model as not-on-base
+        runnerAnimId = null;
         if (typeof onDone === 'function') onDone('home');
       }
     };
@@ -1260,6 +1297,10 @@ function animateBatterAdvance(basesAdvanced, onDone){
   // Path of bases (index is "bases moved")
   const path=['home','first','second','third','home'];
   const legs=path.slice(0, Math.min(4,basesAdvanced)+1);
+  const requestedDuration = Number(options.duration);
+  const durationPerLeg = Number.isFinite(requestedDuration)
+    ? Math.max(0, requestedDuration) / Math.max(1, legs.length - 1)
+    : null;
 
   placeRunnerAtBase(legs[0]);
   let legIdx=0;
@@ -1269,6 +1310,7 @@ function animateBatterAdvance(basesAdvanced, onDone){
       // Finished
       const destBase = legs[legs.length-1];      // first/second/third/home
       runnerLastBase = destBase;
+      runnerAnimId = null;
       if (typeof onDone === 'function') onDone(destBase);
       return;
     }
@@ -1276,10 +1318,25 @@ function animateBatterAdvance(basesAdvanced, onDone){
     const fromCss=nativeToCssPoint(BASES_NATIVE[fromName]);
     const toCss  =nativeToCssPoint(BASES_NATIVE[toName]);
     const dist=Math.hypot(toCss.x-fromCss.x,toCss.y-fromCss.y);
-    const duration=clamp(700+dist*0.55, 800, 1600);
+    const duration=durationPerLeg === null
+      ? clamp(700+dist*0.55, 800, 1600)
+      : durationPerLeg;
+
+    if(duration === 0){
+      runnerEl.style.left=toCss.x+'px';
+      runnerEl.style.top=toCss.y+'px';
+      runnerLastBase=toName;
+      legIdx++;
+      runLeg();
+      return;
+    }
 
     let t0=performance.now();
     const step=(now)=>{
+      if(options.isCancelled?.()){
+        runnerAnimId=null;
+        return;
+      }
       const t=clamp((now-t0)/duration,0,1);
       const e=1-Math.pow(1-t,3);
       runnerEl.style.left=lerp(fromCss.x,toCss.x,e)+'px';
@@ -1299,7 +1356,7 @@ const BASE_ORDER = ['first', 'second', 'third', 'home'];
  * Animate a runner that starts on a base (first/second/third) forward `advance` bases.
  * Returns a Promise that resolves when this runner's animation finishes.
  */
-function animateExistingRunnerFrom(baseName, advance){
+function animateExistingRunnerFrom(baseName, advance, options={}){
   return new Promise(resolve=>{
     // Nothing to do
     const startIdx = BASE_ORDER.indexOf(baseName);
@@ -1322,6 +1379,10 @@ function animateExistingRunnerFrom(baseName, advance){
     // Build its path across legs
     const destIdx = Math.min(startIdx + advance, BASE_ORDER.length - 1); // up to "home"
     const legs = BASE_ORDER.slice(startIdx, destIdx + 1); // e.g. ['first','second','third'] (or 'home')
+    const requestedDuration = Number(options.duration);
+    const durationPerLeg = Number.isFinite(requestedDuration)
+      ? Math.max(0, requestedDuration) / Math.max(1, legs.length - 1)
+      : null;
 
     // Place at starting base
     const startCss = nativeToCssPoint(BASES_NATIVE[legs[0]]);
@@ -1344,10 +1405,24 @@ function animateExistingRunnerFrom(baseName, advance){
       const dist     = Math.hypot(toCss.x - fromCss.x, toCss.y - fromCss.y);
 
       // Match your slower, smooth feel
-      const duration = clamp(700 + dist * 0.55, 800, 1600);
+      const duration = durationPerLeg === null
+        ? clamp(700 + dist * 0.55, 800, 1600)
+        : durationPerLeg;
+
+      if(duration === 0){
+        mover.style.left = toCss.x + 'px';
+        mover.style.top = toCss.y + 'px';
+        leg++;
+        runLeg();
+        return;
+      }
 
       let t0 = performance.now();
       const step = (now)=>{
+        if(options.isCancelled?.()){
+          if (mover.parentNode) mover.remove();
+          return resolve();
+        }
         const t = clamp((now - t0) / duration, 0, 1);
         const e = 1 - Math.pow(1 - t, 3); // smooth ease-out
         mover.style.left = lerp(fromCss.x, toCss.x, e) + 'px';
@@ -1366,7 +1441,7 @@ function animateExistingRunnerFrom(baseName, advance){
  * Animate all existing runners (first/second/third) forward `advance` bases in parallel.
  * Calls onDone(finalState) when all have finished (finalState excludes batter).
  */
-function animateExistingRunnersAdvance(advance, onDone){
+function animateExistingRunnersAdvance(advance, onDone, options={}){
   const start = normalizeRunnersOn(liveRunners);
 
   const movers = [];
@@ -1387,8 +1462,9 @@ function animateExistingRunnersAdvance(advance, onDone){
   renderBaseRunners(start);
 
   // Animate all movers
-  Promise.all(movers.map(b => animateExistingRunnerFrom(b, advance)))
+  Promise.all(movers.map(b => animateExistingRunnerFrom(b, advance, options)))
     .then(()=>{
+      if(options.isCancelled?.()) return;
       // Compute final state and clear suppression
       const finalState = advanceRunnersState(start, advance);
       movers.forEach(b => _animSuppressedBases.delete(b));
@@ -2732,6 +2808,16 @@ function cancelSolutionAnimation(){
     cancelAnimationFrame(_solutionAnimationFrame);
     _solutionAnimationFrame = null;
   }
+  if(animReq){
+    cancelAnimationFrame(animReq);
+    animReq = null;
+  }
+  if(runnerAnimId){
+    cancelAnimationFrame(runnerAnimId);
+    runnerAnimId = null;
+  }
+  if(wrap) wrap.querySelectorAll('.movingRunner').forEach((runner)=>runner.remove());
+  _animSuppressedBases.clear();
   if(_solutionReview) _solutionReview.animating = false;
   wrap?.classList.remove('is-showing-solution');
 }
@@ -2808,6 +2894,20 @@ function watchSolution(){
     placeToken(id);
   });
 
+  const initialRunners = normalizeRunnersOn(currentSituation?.runnersOn);
+  liveRunners = { ...initialRunners };
+  _animSuppressedBases.clear();
+  if(wrap) wrap.querySelectorAll('.movingRunner').forEach((runner)=>runner.remove());
+  renderBaseRunners(liveRunners);
+  hideRunner();
+  if(ballSvg) ballSvg.innerHTML = '';
+  if(ballEl){
+    const home = nativeToCssPoint(HOME_NATIVE);
+    ballEl.style.left = `${home.x}px`;
+    ballEl.style.top = `${home.y}px`;
+    ballEl.style.display = 'block';
+  }
+
   _solutionReview.animating = true;
   const run = ++_solutionAnimationRun;
   const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
@@ -2819,8 +2919,53 @@ function watchSolution(){
     watchSolutionBtn.textContent = 'Showing Solution…';
   }
 
-  if(duration === 0){
+  const hitType = currentSituation?.hitType || 'line';
+  const advance = mapHitTypeToAdvance(hitType);
+  const completed = {
+    fielders: false,
+    ball: false,
+    existingRunners: false,
+    batter: false,
+  };
+  let finalExisting = { ...initialRunners };
+  let batterDestination = 'home';
+  const isCancelled = ()=>run !== _solutionAnimationRun || !_solutionReview;
+  const markComplete = (actor)=>{
+    if(isCancelled()) return;
+    completed[actor] = true;
+    if(!Object.values(completed).every(Boolean)) return;
+
+    liveRunners = { ...finalExisting };
+    if(batterDestination === 'first') liveRunners.first = true;
+    else if(batterDestination === 'second') liveRunners.second = true;
+    else if(batterDestination === 'third') liveRunners.third = true;
+    renderBaseRunners(liveRunners);
+    hideRunner();
     finishSolutionAnimation(run);
+  };
+
+  animateHit(hitType, {
+    duration,
+    isCancelled,
+    onDone: ()=>markComplete('ball'),
+  });
+  animateExistingRunnersAdvance(advance, (finalState)=>{
+    finalExisting = finalState;
+    markComplete('existingRunners');
+  }, { duration, isCancelled });
+  animateBatterAdvance(advance, (destination)=>{
+    batterDestination = destination;
+    markComplete('batter');
+  }, { duration, isCancelled });
+
+  if(duration === 0){
+    POS_IDS.forEach((id)=>{
+      const rec = tokens.get(id);
+      if(!rec) return;
+      rec.pos = Fcopy(targets[id]);
+      placeToken(id);
+    });
+    markComplete('fielders');
     return;
   }
 
@@ -2842,7 +2987,7 @@ function watchSolution(){
       placeToken(id);
     });
     if(progress < 1) _solutionAnimationFrame = requestAnimationFrame(step);
-    else finishSolutionAnimation(run);
+    else markComplete('fielders');
   };
   _solutionAnimationFrame = requestAnimationFrame(step);
 }

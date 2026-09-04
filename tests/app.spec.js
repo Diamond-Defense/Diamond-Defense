@@ -693,6 +693,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.evaluate(() => {
       currentSituation.playSeq = [];
       currentSituation.playSeq2 = [];
+      currentSituation.runnersOn = { first: true, second: false, third: false };
+      liveRunners = { ...currentSituation.runnersOn };
+      renderBaseRunners(liveRunners);
     });
 
     await page.getByRole('button', { name: 'Start Situation' }).click();
@@ -728,15 +731,49 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(await page.evaluate(() => ({
       state: document.querySelector('#wrap')?.dataset.solutionState,
       ghosts: document.querySelectorAll('.solution-ghost').length,
-    }))).toEqual({ state: 'animating', ghosts: 0 });
-    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
+      ballNearHome: (() => {
+        const home = nativeToCssPoint(HOME_NATIVE);
+        const hit = nativeToCssPoint(currentSituation.hit);
+        const ball = { x: parseFloat(ballEl.style.left), y: parseFloat(ballEl.style.top) };
+        return Math.hypot(ball.x - home.x, ball.y - home.y) < Math.hypot(ball.x - hit.x, ball.y - hit.y);
+      })(),
+      movingRunners: document.querySelectorAll('.movingRunner').length,
+      batterVisible: runnerEl?.style.display !== 'none',
+    }))).toEqual({
+      state: 'animating',
+      ghosts: 0,
+      ballNearHome: true,
+      movingRunners: 1,
+      batterVisible: true,
+    });
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready', { timeout: 7000 });
     await expect(page.locator('.solution-ghost')).toHaveCount(9);
     await expect(page.locator('.tgt.selectable')).toHaveCount(9);
-    expect(await page.evaluate(() => POS_IDS.every((position) => {
-      const token = tokens.get(position)?.pos;
-      const target = currentSituation?.targets?.[position];
-      return token && target && Math.hypot(token.x - target.x, token.y - target.y) < 0.01;
-    }))).toBe(true);
+    expect(await page.evaluate(() => {
+      const advance = mapHitTypeToAdvance(currentSituation.hitType);
+      const expectedRunners = advanceRunnersState(currentSituation.runnersOn, advance);
+      if(advance === 1) expectedRunners.first = true;
+      else if(advance === 2) expectedRunners.second = true;
+      else if(advance === 3) expectedRunners.third = true;
+      const hit = nativeToCssPoint(currentSituation.hit);
+      return {
+        fieldersAtTargets: POS_IDS.every((position) => {
+          const token = tokens.get(position)?.pos;
+          const target = currentSituation?.targets?.[position];
+          return token && target && Math.hypot(token.x - target.x, token.y - target.y) < 0.01;
+        }),
+        ballAtHit: Math.hypot(parseFloat(ballEl.style.left) - hit.x, parseFloat(ballEl.style.top) - hit.y) < 0.01,
+        runnersAtDestinations: JSON.stringify(normalizeRunnersOn(liveRunners)) === JSON.stringify(normalizeRunnersOn(expectedRunners)),
+        movingRunners: document.querySelectorAll('.movingRunner').length,
+        batterVisible: runnerEl?.style.display !== 'none',
+      };
+    })).toEqual({
+      fieldersAtTargets: true,
+      ballAtHit: true,
+      runnersAtDestinations: true,
+      movingRunners: 0,
+      batterVisible: false,
+    });
   });
 
   test('player login rejects a wrong password and accepts a roster password', async ({ page }) => {
