@@ -1,4 +1,8 @@
 import type { Situation } from '$lib/domain/models';
+import {
+  normalizeDifficulty,
+  normalizeTeachingCategories,
+} from '$lib/domain/situation-metadata';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import { writeAudit } from './audit';
 import {
@@ -56,7 +60,14 @@ function validateSubmissionSituation(input: Situation): Situation {
   const key = String(input?.key || '').trim();
   const title = String(input?.title || '').trim();
   const category = String(input?.category || '').trim();
-  const difficulty = String(input?.difficulty || '').trim().toLowerCase();
+  let difficulty: Situation['difficulty'];
+  let teachingCategories: ReturnType<typeof normalizeTeachingCategories>;
+  try {
+    difficulty = normalizeDifficulty(input?.difficulty);
+    teachingCategories = normalizeTeachingCategories(input);
+  } catch (error) {
+    throw new RecordValidationError(error instanceof Error ? error.message : 'Situation metadata is invalid.');
+  }
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(key)) {
     throw new RecordValidationError(
       'Situation key must use 2–80 letters, numbers, hyphens, or underscores.',
@@ -72,20 +83,32 @@ function validateSubmissionSituation(input: Situation): Situation {
       'Situation category is required and must be 60 characters or fewer.',
     );
   }
-  if (!['beginner', 'intermediate', 'advanced'].includes(difficulty)) {
-    throw new RecordValidationError(
-      'Situation difficulty must be beginner, intermediate, or advanced.',
-    );
-  }
-  return { ...input, key, title, category, difficulty } as Situation;
+  return { ...input, key, title, category, difficulty, ...teachingCategories } as Situation;
 }
 
 function mapRow(row: SubmissionRow): SituationSubmissionRecord {
+  const rawSituation = JSON.parse(row.payload_json) as Situation;
+  let metadata: Pick<Situation, 'difficulty' | 'primaryCategory' | 'relatedCategories'>;
+  try {
+    metadata = {
+      difficulty: normalizeDifficulty(rawSituation.difficulty),
+      ...normalizeTeachingCategories({
+        primaryCategory: rawSituation.primaryCategory || 'cutoffs-relays',
+        relatedCategories: rawSituation.relatedCategories || ['backups-rotations', 'base-coverage'],
+      }),
+    };
+  } catch {
+    metadata = {
+      difficulty: 'intermediate',
+      primaryCategory: 'cutoffs-relays',
+      relatedCategories: ['backups-rotations', 'base-coverage'],
+    };
+  }
   return {
     id: row.id,
     situationKey: row.situation_key,
     submissionType: row.submission_type,
-    situation: JSON.parse(row.payload_json) as Situation,
+    situation: { ...rawSituation, ...metadata },
     baseRevision:
       row.base_revision == null ? null : Number(row.base_revision),
     status: row.status,
@@ -272,7 +295,7 @@ export class SqliteSituationSubmissionRepository {
     }
 
     const selectableFields = [
-      'title', 'desc', 'category', 'difficulty', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
+      'title', 'desc', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
       'hitType', 'batterAdvance', 'playSeq', 'seqNote',
     ];
     const acceptedFields = Array.from(new Set(acceptedFieldsInput))

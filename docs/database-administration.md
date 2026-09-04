@@ -114,11 +114,17 @@ the top because they affect the entire editing session. Situation JSON files
 are no longer downloaded from this editor; database backup and seed tooling
 remain the supported administrative paths.
 
-Category and difficulty are stored as indexed columns on the `situations`
-table so the Playbook can filter database records efficiently. The field
+Hit outcome and difficulty are stored on `situations`. Controlled teaching
+categories are stored in `teaching_categories` and joined through
+`situation_teaching_categories`; immutable revisions use the matching
+`situation_version_teaching_categories` table. This keeps category filtering
+relational and preserves the metadata used by historical assignments. The field
 geometry, targets, notes, and ordered sequence remain together in the
-database's structured situation payload. Migration `0008_situation_metadata.sql`
-adds and initializes the searchable columns for existing databases.
+database's structured situation payload. Migration
+`0017_situation_teaching_metadata.sql` initializes the new metadata for
+existing databases and presents Beginner records as Foundational.
+Migration `0018_situation_display_codes.sql` assigns the stable public `S##`
+labels while retaining the existing keys for database relationships.
 
 Submitting as a coach creates a pending proposal containing the full draft, a
 required rationale, and the revision of the published situation it was based

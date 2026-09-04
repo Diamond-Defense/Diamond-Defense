@@ -79,9 +79,12 @@ interface RecipientRow {
 interface SituationRow {
   assignment_id: string;
   situation_key: string;
+  display_code: string | null;
   title: string;
   category: string;
   difficulty: string;
+  primary_category: string;
+  related_categories: string | null;
   sort_order: number;
   situation_revision: number;
   required_repetitions: number;
@@ -130,9 +133,12 @@ export interface PracticeAssignment {
   }>;
   situations: Array<{
     situationKey: string;
+    displayCode?: string;
     title: string;
     category: string;
     difficulty: string;
+    primaryCategory: string;
+    relatedCategories: string[];
     sortOrder: number;
     situationRevision: number;
     requiredRepetitions: number;
@@ -244,9 +250,12 @@ function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situation
     })),
     situations: situations.filter((item) => item.assignment_id === row.id).map((item) => ({
       situationKey: item.situation_key,
+      displayCode: item.display_code || undefined,
       title: item.title,
       category: item.category,
       difficulty: item.difficulty,
+      primaryCategory: item.primary_category,
+      relatedCategories: item.related_categories ? item.related_categories.split('|').filter(Boolean) : [],
       sortOrder: Number(item.sort_order),
       situationRevision: Number(item.situation_revision),
       requiredRepetitions: Number(item.required_repetitions),
@@ -258,9 +267,12 @@ function mapAssignment(row: AssignmentRow, recipients: RecipientRow[], situation
       situation: {
         ...(JSON.parse(item.payload_json) as Situation),
         key: item.situation_key,
+        displayCode: item.display_code || undefined,
         title: item.title,
         category: item.category,
         difficulty: item.difficulty as Situation['difficulty'],
+        primaryCategory: item.primary_category as Situation['primaryCategory'],
+        relatedCategories: (item.related_categories ? item.related_categories.split('|').filter(Boolean) : []) as Situation['relatedCategories'],
         revision: Number(item.situation_revision),
       } as Situation,
     })),
@@ -307,14 +319,21 @@ export class SqlitePracticeAssignmentRepository {
         ap.started_at, ap.completed_at`;
     }
     const situations = await this.database.all<SituationRow>(
-      `SELECT ast.assignment_id, ast.situation_key, sv.title, sv.category,
+      `SELECT ast.assignment_id, ast.situation_key, s.display_code, sv.title, sv.category,
               sv.difficulty, sv.payload_json, ast.sort_order, ast.situation_revision,
+              (SELECT category_id FROM situation_version_teaching_categories
+                WHERE situation_key = sv.situation_key AND situation_revision = sv.revision
+                  AND is_primary = 1 LIMIT 1) AS primary_category,
+              (SELECT GROUP_CONCAT(category_id, '|') FROM situation_version_teaching_categories
+                WHERE situation_key = sv.situation_key AND situation_revision = sv.revision
+                  AND is_primary = 0 ORDER BY sort_order) AS related_categories,
               ast.required_repetitions,
               ${progressValues}
          FROM assignment_situations ast
          JOIN situation_versions sv
            ON sv.situation_key = ast.situation_key
           AND sv.revision = ast.situation_revision
+         JOIN situations s ON s.key = ast.situation_key
          ${progressJoin}
         WHERE ast.assignment_id IN (${placeholders})
         ORDER BY ast.assignment_id, ast.sort_order, ast.situation_key`,
@@ -549,13 +568,24 @@ export class SqlitePracticeAssignmentRepository {
       throw new RecordValidationError('Every assigned situation must be active.');
     }
     const commands = [
-      ...normalized.situations.map((item) => ({
-        sql: `INSERT OR IGNORE INTO situation_versions
-          (situation_key, revision, title, category, difficulty, payload_json, created_at)
-         SELECT key, revision, title, category, difficulty, payload_json, ?2
-           FROM situations WHERE key = ?1`,
-        params: [item.situationKey, now],
-      })),
+      ...normalized.situations.flatMap((item) => ([
+        {
+          sql: `INSERT OR IGNORE INTO situation_versions
+            (situation_key, revision, title, category, difficulty, payload_json, created_at)
+           SELECT key, revision, title, category, difficulty_level, payload_json, ?2
+             FROM situations WHERE key = ?1`,
+          params: [item.situationKey, now],
+        },
+        {
+          sql: `INSERT OR IGNORE INTO situation_version_teaching_categories
+            (situation_key, situation_revision, category_id, is_primary, sort_order)
+           SELECT stc.situation_key, s.revision, stc.category_id, stc.is_primary, stc.sort_order
+             FROM situation_teaching_categories stc
+             JOIN situations s ON s.key = stc.situation_key
+            WHERE stc.situation_key = ?1`,
+          params: [item.situationKey],
+        },
+      ])),
       {
         sql: `INSERT INTO practice_assignments
           (id, team_id, season_id, coach_id, title, instructions, status, due_at,
@@ -715,12 +745,23 @@ export class SqlitePracticeAssignmentRepository {
         throw new RecordValidationError('Every assigned situation must be active.');
       }
       await this.database.batch([
-        ...normalized.situations.map((item) => ({
-          sql: `INSERT OR IGNORE INTO situation_versions
-            (situation_key, revision, title, category, difficulty, payload_json, created_at)
-           SELECT key, revision, title, category, difficulty, payload_json, ?2 FROM situations WHERE key = ?1`,
-          params: [item.situationKey, now],
-        })),
+        ...normalized.situations.flatMap((item) => ([
+          {
+            sql: `INSERT OR IGNORE INTO situation_versions
+              (situation_key, revision, title, category, difficulty, payload_json, created_at)
+             SELECT key, revision, title, category, difficulty_level, payload_json, ?2 FROM situations WHERE key = ?1`,
+            params: [item.situationKey, now],
+          },
+          {
+            sql: `INSERT OR IGNORE INTO situation_version_teaching_categories
+              (situation_key, situation_revision, category_id, is_primary, sort_order)
+             SELECT stc.situation_key, s.revision, stc.category_id, stc.is_primary, stc.sort_order
+               FROM situation_teaching_categories stc
+               JOIN situations s ON s.key = stc.situation_key
+              WHERE stc.situation_key = ?1`,
+            params: [item.situationKey],
+          },
+        ])),
         { sql: 'DELETE FROM assignment_progress WHERE assignment_id = ?1', params: [id] },
         { sql: 'DELETE FROM assignment_situations WHERE assignment_id = ?1', params: [id] },
         { sql: 'DELETE FROM assignment_recipients WHERE assignment_id = ?1', params: [id] },

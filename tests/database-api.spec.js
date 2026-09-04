@@ -11,8 +11,11 @@ test.describe('portable SQLite API', () => {
     const situationRecords = await situations.json();
     expect(situationRecords.length).toBeGreaterThanOrEqual(22);
     expect(situationRecords[0]).toEqual(expect.objectContaining({
+      displayCode: expect.stringMatching(/^S\d+(?:\.\d+)*$/),
       category: expect.any(String),
-      difficulty: expect.stringMatching(/^(beginner|intermediate|advanced)$/),
+      difficulty: expect.stringMatching(/^(foundational|intermediate|advanced)$/),
+      primaryCategory: expect.stringMatching(/^(cutoffs-relays|backups-rotations|force-plays|fly-ball-priority|rundowns|bunt-defense|first-third-defense|double-plays|base-coverage|pitcher-catcher-responsibilities|tag-ups-sacrifice-flies|situational-alignment)$/),
+      relatedCategories: expect.any(Array),
     }));
 
     const teams = await request.get('/api/teams/options');

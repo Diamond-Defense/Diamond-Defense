@@ -86,6 +86,7 @@ const playbookBrowserOverlay = document.getElementById('playbookBrowserOverlay')
 const playbookBrowserClose = document.getElementById('playbookBrowserClose');
 const playbookSearch = document.getElementById('playbookSearch');
 const playbookCategory = document.getElementById('playbookCategory');
+const playbookHitOutcome = document.getElementById('playbookHitOutcome');
 const playbookDifficulty = document.getElementById('playbookDifficulty');
 const playbookRunners = document.getElementById('playbookRunners');
 const playbookClearFilters = document.getElementById('playbookClearFilters');
@@ -548,6 +549,8 @@ const newTitleInput   = document.getElementById('newTitleInput');
 const newDescInput    = document.getElementById('newDescInput');
 const situationCategoryInput = document.getElementById('situationCategoryInput');
 const situationDifficultySelect = document.getElementById('situationDifficultySelect');
+const situationPrimaryCategorySelect = document.getElementById('situationPrimaryCategorySelect');
+const situationRelatedCategories = document.getElementById('situationRelatedCategories');
 const newSituationBtn  = document.getElementById('newSituationBtn');
 const saveSituationBtn = document.getElementById('saveSituationBtn');
 const deleteSituationBtn = document.getElementById('deleteSituationBtn');
@@ -1668,10 +1671,20 @@ function normalizeSituation(sRaw, i){
     ? 'advanced'
     : runnerCount >= 1 || safe.batterAdvance >= 2
       ? 'intermediate'
-      : 'beginner';
-  safe.difficulty = ['beginner','intermediate','advanced'].includes(String(safe.difficulty).toLowerCase())
-    ? String(safe.difficulty).toLowerCase()
+      : 'foundational';
+  const normalizedDifficulty = String(safe.difficulty || '').toLowerCase() === 'beginner'
+    ? 'foundational'
+    : String(safe.difficulty || '').toLowerCase();
+  safe.difficulty = ['foundational','intermediate','advanced'].includes(normalizedDifficulty)
+    ? normalizedDifficulty
     : derivedDifficulty;
+  const validCategoryIds = new Set((window.DIQ_TEACHING_CATEGORIES || []).map(category=>category.id));
+  safe.primaryCategory = validCategoryIds.has(String(safe.primaryCategory || ''))
+    ? String(safe.primaryCategory)
+    : 'cutoffs-relays';
+  safe.relatedCategories = [...new Set(Array.isArray(safe.relatedCategories) ? safe.relatedCategories : ['backups-rotations','base-coverage'])]
+    .map(String)
+    .filter(category=>validCategoryIds.has(category) && category !== safe.primaryCategory);
 
   // Phase 2: sequence + note
   const rawSeq = Array.isArray(safe.playSeq) ? safe.playSeq : String(safe.playSeq || '')
@@ -1853,26 +1866,28 @@ function restoreSituationFromOrig(key){
 
 
 /* ===== [A8.1] Description HUD helpers (mobile-friendly) ===== */
-function situationDisplayCode(key){
-  const raw = String(key || '').replace(/^BD-/i, '');
-  if (!raw) return 'Situation';
-  const [number, ...suffix] = raw.split('-');
-  const main = /^\d+$/.test(number) ? number.padStart(2, '0') : number;
-  return `S${main}${suffix.length ? `.${suffix.join('.')}` : ''}`;
+function situationDisplayCode(key, displayCode){
+  const assigned = String(displayCode || '').trim();
+  if (/^S\d+(?:\.\d+)*$/i.test(assigned)) return assigned.toUpperCase();
+  const match = String(key || '').match(/^BD-(\d+)(?:-(.+))?$/i);
+  if (!match) return '';
+  return `S${match[1].padStart(2, '0')}${match[2] ? `.${match[2].replaceAll('-', '.')}` : ''}`;
 }
 
 function situationDisplayLabel(situation){
   if (!situation) return '';
-  const description = String(situation.desc || situation.title || situation.key || '').trim();
-  return `${situationDisplayCode(situation.key)} · ${description}`;
+  const code = situationDisplayCode(situation.key, situation.displayCode);
+  const description = String(situation.desc || situation.title || (code ? 'Situation' : 'New situation')).trim();
+  return [code, description].filter(Boolean).join(' · ') || 'Situation';
 }
+window._diqSituationDisplayLabel = situationDisplayLabel;
 
 function updateDescriptionHudText(){
   const el = document.getElementById('descHud');
   if (!el || !currentSituation) return;
   const txt = situationDisplayLabel(currentSituation);
   el.textContent = txt;
-  el.title = txt ? txt.replace(/^S/, 'Situation ').replace(' · ', ' — ') : '';
+  el.title = txt;
 }
 
 // @diq:end [A8]
@@ -1890,6 +1905,7 @@ function syncSituationInputsFromCurrent(){
     if (newDescInput)  newDescInput.value  = currentSituation.desc  || '';
     if (situationCategoryInput) situationCategoryInput.value = currentSituation.category || '';
     if (situationDifficultySelect) situationDifficultySelect.value = currentSituation.difficulty || 'intermediate';
+    populateSituationTeachingCategoryControls();
   });
 
   updateDescriptionHudText();
@@ -1955,7 +1971,9 @@ function makeBlankSituation(){
     title,
     desc,
     category: 'Singles',
-    difficulty: 'beginner',
+    difficulty: 'foundational',
+    primaryCategory: 'cutoffs-relays',
+    relatedCategories: ['backups-rotations','base-coverage'],
     starts: Fcopy(DEFAULT_STARTS),
     targets: (() => {
       const t = {};
@@ -1988,6 +2006,7 @@ function addNewSituation(){
     if (newDescInput)  newDescInput.value  = s.desc  || '';
     if (situationCategoryInput) situationCategoryInput.value = s.category;
     if (situationDifficultySelect) situationDifficultySelect.value = s.difficulty;
+    populateSituationTeachingCategoryControls();
   });
 
   // Put caret in Title for convenience
@@ -2082,6 +2101,43 @@ function titleCase(value){
   return text ? text.charAt(0).toUpperCase() + text.slice(1) : '';
 }
 
+function teachingCategoryLabel(value){
+  return (window.DIQ_TEACHING_CATEGORIES || []).find(category=>category.id === value)?.label || String(value || 'Uncategorized');
+}
+
+function difficultyLabel(value){
+  return value === 'foundational' || value === 'beginner' ? 'Foundational' : titleCase(value);
+}
+
+window._diqTeachingCategoryLabel = teachingCategoryLabel;
+window._diqDifficultyLabel = difficultyLabel;
+
+function populateSituationTeachingCategoryControls(){
+  const categories = window.DIQ_TEACHING_CATEGORIES || [];
+  if(situationPrimaryCategorySelect){
+    const selected = currentSituation?.primaryCategory || 'cutoffs-relays';
+    situationPrimaryCategorySelect.replaceChildren(...categories.map(category=>new Option(category.label, category.id)));
+    situationPrimaryCategorySelect.value = selected;
+  }
+  if(situationRelatedCategories){
+    const primary = currentSituation?.primaryCategory || 'cutoffs-relays';
+    const selected = new Set(currentSituation?.relatedCategories || []);
+    situationRelatedCategories.replaceChildren(...categories
+      .filter(category=>category.id !== primary)
+      .map(category=>{
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = category.id;
+        checkbox.checked = selected.has(category.id);
+        const text = document.createElement('span');
+        text.textContent = category.label;
+        label.append(checkbox, text);
+        return label;
+      }));
+  }
+}
+
 function playbookRunnerLabel(situation){
   const runners = runnersStateToArray(normalizeRunnersOn(situation?.runnersOn));
   return runners.length ? runners.join(', ') : 'Bases empty';
@@ -2090,13 +2146,17 @@ function playbookRunnerLabel(situation){
 function filteredPlaybookSituations(){
   const query = String(playbookSearch?.value || '').trim().toLowerCase();
   const category = String(playbookCategory?.value || '');
+  const hitOutcome = String(playbookHitOutcome?.value || '');
   const difficulty = String(playbookDifficulty?.value || '');
   const runners = String(playbookRunners?.value || '');
   return (SITUATIONS || []).filter((situation) => {
-    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${situation.key}`.toLowerCase();
+    const teachingCategories = [situation.primaryCategory, ...(situation.relatedCategories || [])];
+    const categoryLabels = teachingCategories.map(teachingCategoryLabel).join(' ');
+    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key}`.toLowerCase();
     const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
     return (!query || haystack.includes(query))
-      && (!category || situation.category === category)
+      && (!category || teachingCategories.includes(category))
+      && (!hitOutcome || situation.category === hitOutcome)
       && (!difficulty || situation.difficulty === difficulty)
       && (!runners || (runners === 'on' ? hasRunners : !hasRunners));
   });
@@ -2112,12 +2172,12 @@ function choosePlaybookSituation(key){
 
 function renderPlaybookBrowser(){
   if (!playbookBrowserList) return;
-  const categories = [...new Set((SITUATIONS || []).map(s => s.category).filter(Boolean))].sort();
+  const categories = window.DIQ_TEACHING_CATEGORIES || [];
   if (playbookCategory) {
     const selected = playbookCategory.value;
     playbookCategory.replaceChildren(new Option('All categories', ''));
-    categories.forEach(category => playbookCategory.appendChild(new Option(category, category)));
-    playbookCategory.value = categories.includes(selected) ? selected : '';
+    categories.forEach(category => playbookCategory.appendChild(new Option(category.label, category.id)));
+    playbookCategory.value = categories.some(category=>category.id === selected) ? selected : '';
   }
   const filtered = filteredPlaybookSituations();
   playbookBrowserList.replaceChildren();
@@ -2138,7 +2198,7 @@ function renderPlaybookBrowser(){
     title.textContent = displayLabel;
     const difficulty = document.createElement('span');
     difficulty.className = `playbook-difficulty is-${situation.difficulty}`;
-    difficulty.textContent = titleCase(situation.difficulty);
+    difficulty.textContent = difficultyLabel(situation.difficulty);
     heading.append(title, difficulty);
 
     const description = document.createElement('span');
@@ -2146,7 +2206,8 @@ function renderPlaybookBrowser(){
     description.textContent = `${runnerLabel} · ${outLabel}`;
     const metadata = document.createElement('span');
     metadata.className = 'playbook-card-metadata';
-    metadata.textContent = situation.category || 'Uncategorized';
+    const related = (situation.relatedCategories || []).map(teachingCategoryLabel);
+    metadata.textContent = `${teachingCategoryLabel(situation.primaryCategory)}${related.length ? ` · ${related.join(' · ')}` : ''} · ${situation.category || 'General'}`;
     button.append(heading, description, metadata);
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
     playbookBrowserList.appendChild(button);
@@ -2571,6 +2632,12 @@ function refreshSituationAll(){
   }
   if (situationDifficultySelect){
     currentSituation.difficulty = situationDifficultySelect.value;
+  }
+  if(situationPrimaryCategorySelect){
+    currentSituation.primaryCategory = situationPrimaryCategorySelect.value;
+  }
+  if(situationRelatedCategories){
+    currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('input:checked')].map(input=>input.value);
   }
 
   // 2) Outs (HUD + dropdown sync)

@@ -147,6 +147,12 @@
           </fieldset>
           <fieldset class="practice-choice-group">
             <legend>Situations</legend>
+            <div class="practice-situation-filters">
+              <label class="field"><span>Search</span><input id="practiceSituationSearch" type="search" placeholder="Search situations"></label>
+              <label class="field"><span>Teaching category</span><select id="practiceSituationCategory"><option value="">All categories</option></select></label>
+              <label class="field"><span>Difficulty</span><select id="practiceSituationDifficulty"><option value="">All levels</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+            </div>
+            <div id="practiceSituationFilterSummary" class="practice-filter-summary"></div>
             <div id="practiceSituationChoices" class="practice-situation-choices"></div>
           </fieldset>
           <div id="coachPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
@@ -349,14 +355,14 @@
     <div id="coachProposalHistory" class="proposal-history"></div>
     <section id="sbDetailsSection" class="situation-editor-section" data-editor-section="details">
       <div class="sectionTitle">Situation details</div>
-    <div class="row"><label class="hint">Title:</label>
-      <input id="newTitleInput" type="text" style="flex:1;min-width:120px">
-    </div><div class="row">
-      <label class="hint">Description:</label>
-      <input id="newDescInput" type="text" style="flex:2;min-width:200px">
+    <div class="situation-title-fields">
+      <label class="field"><span>Title</span><input id="newTitleInput" type="text"></label>
+      <label class="field"><span>Description</span><input id="newDescInput" type="text"></label>
     </div><div class="row situation-metadata-row">
-      <label class="field"><span>Category</span><input id="situationCategoryInput" type="text" maxlength="60" placeholder="e.g., Singles"></label>
-      <label class="field"><span>Difficulty</span><select id="situationDifficultySelect"><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+      <label class="field"><span>Hit outcome</span><select id="situationCategoryInput"><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base Hits</option><option value="General">General / Other</option></select></label>
+      <label class="field"><span>Difficulty</span><select id="situationDifficultySelect"><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+      <label class="field"><span>Primary teaching category</span><select id="situationPrimaryCategorySelect"></select></label>
+      <fieldset class="situation-related-categories"><legend>Related teaching categories (optional)</legend><div id="situationRelatedCategories" class="situation-category-checklist"></div></fieldset>
     </div><div class="row">
       <label class="hint">Outs:</label>
       <select id="outsSelSituation">
@@ -738,14 +744,15 @@
       <div>
         <span class="eyebrow">Practice library</span>
         <h2 id="playbookBrowserTitle">Playbook</h2>
-        <p>Find a situation by game state, topic, or difficulty.</p>
+        <p>Find a situation by teaching category, game state, or difficulty.</p>
       </div>
       <button id="playbookBrowserClose" class="btn btn-ghost" type="button">Close</button>
     </div>
     <div class="playbook-browser-filters">
       <label class="field playbook-search"><span>Search</span><input id="playbookSearch" type="search" placeholder="Search situations" autocomplete="off"></label>
-      <label class="field"><span>Category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
-      <label class="field"><span>Difficulty</span><select id="playbookDifficulty"><option value="">All levels</option><option value="beginner">Beginner</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+      <label class="field"><span>Teaching category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
+      <label class="field"><span>Hit outcome</span><select id="playbookHitOutcome"><option value="">All outcomes</option><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base hits</option><option value="General">General / Other</option></select></label>
+      <label class="field"><span>Difficulty</span><select id="playbookDifficulty"><option value="">All levels</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
       <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label>
       <button id="playbookClearFilters" class="btn btn-ghost" type="button">Clear</button>
     </div>

@@ -143,7 +143,9 @@ test.describe('record-level administration API', () => {
       ...template,
       key,
       title: 'Phase 3 Situation',
-      category: 'Cutoffs and relays',
+      category: 'Extra-base hits',
+      primaryCategory: 'cutoffs-relays',
+      relatedCategories: ['backups-rotations', 'base-coverage'],
       difficulty: 'advanced',
     };
     delete input.revision;
@@ -160,7 +162,9 @@ test.describe('record-level administration API', () => {
       key,
       revision: 1,
       active: true,
-      category: 'Cutoffs and relays',
+      category: 'Extra-base hits',
+      primaryCategory: 'cutoffs-relays',
+      relatedCategories: ['backups-rotations', 'base-coverage'],
       difficulty: 'advanced',
     }));
 

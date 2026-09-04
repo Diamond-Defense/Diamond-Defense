@@ -12,7 +12,20 @@ export const POSITION_IDS = [
 
 export type PositionId = (typeof POSITION_IDS)[number];
 export type HitType = 'line' | 'popup' | 'grounder';
-export type SituationDifficulty = 'beginner' | 'intermediate' | 'advanced';
+export type SituationDifficulty = 'foundational' | 'intermediate' | 'advanced';
+export type TeachingCategoryId =
+  | 'cutoffs-relays'
+  | 'backups-rotations'
+  | 'force-plays'
+  | 'fly-ball-priority'
+  | 'rundowns'
+  | 'bunt-defense'
+  | 'first-third-defense'
+  | 'double-plays'
+  | 'base-coverage'
+  | 'pitcher-catcher-responsibilities'
+  | 'tag-ups-sacrifice-flies'
+  | 'situational-alignment';
 
 export interface Point {
   x: number;
@@ -32,10 +45,15 @@ export interface RunnersOn {
 
 export interface Situation {
   key: string;
+  /** Stable public identifier such as S01 or S21. The key remains internal. */
+  displayCode?: string;
   title: string;
   desc: string;
+  /** Hit/play outcome such as Singles or Extra-base hits. */
   category: string;
   difficulty: SituationDifficulty;
+  primaryCategory: TeachingCategoryId;
+  relatedCategories: TeachingCategoryId[];
   outs: 0 | 1 | 2;
   runnersOn: RunnersOn;
   starts: Record<PositionId, Point>;

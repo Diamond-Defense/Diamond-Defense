@@ -293,6 +293,21 @@ window._diqQueueSituationSave = queueSituationDatabaseSync;
 window._diqDeleteSituation = deleteSituationFromDatabase;
 window._diqFlushTeamDatabaseSync = flushTeamsDatabaseSync;
 
+window.DIQ_TEACHING_CATEGORIES = Object.freeze([
+  { id:'cutoffs-relays', label:'Cutoffs & Relays' },
+  { id:'backups-rotations', label:'Backups & Rotations' },
+  { id:'force-plays', label:'Force Plays' },
+  { id:'fly-ball-priority', label:'Fly-Ball Priority' },
+  { id:'rundowns', label:'Rundowns' },
+  { id:'bunt-defense', label:'Bunt Defense' },
+  { id:'first-third-defense', label:'First-and-Third Defense' },
+  { id:'double-plays', label:'Double Plays' },
+  { id:'base-coverage', label:'Base Coverage' },
+  { id:'pitcher-catcher-responsibilities', label:'Pitcher & Catcher Responsibilities' },
+  { id:'tag-ups-sacrifice-flies', label:'Tag-Ups & Sacrifice Flies' },
+  { id:'situational-alignment', label:'Situational Alignment' },
+]);
+
 // Patch map (JS):
 // [A0] Boot / globals
 // [A1] Utilities + storage
@@ -309,7 +324,8 @@ window._diqFlushTeamDatabaseSync = flushTeamsDatabaseSync;
 /** @typedef {{ first:boolean, second:boolean, third:boolean }} RunnersOn */
 /** @typedef {{
  *   key:string, title:string, desc:string, category:string,
- *   difficulty:'beginner'|'intermediate'|'advanced',
+ *   difficulty:'foundational'|'intermediate'|'advanced',
+ *   primaryCategory:string, relatedCategories:string[],
  *   starts?:Starts, targets?:Targets,
  *   hit?:Pt, hitType?:'line'|'popup'|'grounder',
  *   batterAdvance?:number,
@@ -899,6 +915,10 @@ function computeRosterPlayerId(teamObj, playerObj){
   const practiceInstructions = document.getElementById('practiceInstructions');
   const practicePlayerChoices = document.getElementById('practicePlayerChoices');
   const practiceSituationChoices = document.getElementById('practiceSituationChoices');
+  const practiceSituationSearch = document.getElementById('practiceSituationSearch');
+  const practiceSituationCategory = document.getElementById('practiceSituationCategory');
+  const practiceSituationDifficulty = document.getElementById('practiceSituationDifficulty');
+  const practiceSituationFilterSummary = document.getElementById('practiceSituationFilterSummary');
   const practiceFormEyebrow = document.getElementById('practiceFormEyebrow');
   const practiceFormTitle = document.getElementById('practiceFormTitle');
   const practiceCancelEdit = document.getElementById('practiceCancelEdit');
@@ -1052,15 +1072,18 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
   }
 
-  function practiceSituationCode(key){
-    const raw = String(key || '').replace(/^BD-/i, '');
-    const [number, ...suffix] = raw.split('-');
-    const main = /^\d+$/.test(number) ? number.padStart(2, '0') : number;
-    return `S${main}${suffix.length ? `.${suffix.join('.')}` : ''}`;
+  function practiceSituationCode(key, displayCode){
+    const assigned = String(displayCode || '').trim();
+    if(/^S\d+(?:\.\d+)*$/i.test(assigned)) return assigned.toUpperCase();
+    const match = String(key || '').match(/^BD-(\d+)(?:-(.+))?$/i);
+    if(!match) return '';
+    return `S${match[1].padStart(2, '0')}${match[2] ? `.${match[2].replaceAll('-', '.')}` : ''}`;
   }
 
   function practiceSituationLabel(situation){
-    return `${practiceSituationCode(situation?.key || situation?.situationKey)} · ${situation?.title || 'Situation'}`;
+    const code = practiceSituationCode(situation?.key || situation?.situationKey, situation?.displayCode);
+    const title = String(situation?.desc || situation?.title || 'Situation').trim();
+    return [code, title].filter(Boolean).join(' · ');
   }
 
   function practiceDueLabel(assignment){
@@ -1207,11 +1230,33 @@ function computeRosterPlayerId(teamObj, playerObj){
         .join('') || '<span class="muted">No active players are available.</span>';
     }
     if(practiceSituationChoices){
+      if(practiceSituationCategory && practiceSituationCategory.options.length <= 1){
+        window.DIQ_TEACHING_CATEGORIES.forEach(category=>practiceSituationCategory.appendChild(new Option(category.label, category.id)));
+      }
       practiceSituationChoices.innerHTML = (Array.isArray(SITUATIONS) ? SITUATIONS : []).map(situation=>`
-        <label class="practice-situation-choice">
+        <label class="practice-situation-choice" data-search="${escapeHtml(`${practiceSituationLabel(situation)} ${situation.desc || ''}`.toLowerCase())}" data-categories="${escapeHtml([situation.primaryCategory, ...(situation.relatedCategories || [])].join('|'))}" data-difficulty="${escapeHtml(situation.difficulty || 'intermediate')}">
           <input type="checkbox" value="${escapeHtml(situation.key)}" ${assignedSituations.has(situation.key) ? 'checked' : ''} ${activeEdit ? 'disabled' : ''}>
-          <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(situation.category || 'General')} · ${escapeHtml(situation.difficulty || 'intermediate')}</small></span>
+          <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(window._diqTeachingCategoryLabel?.(situation.primaryCategory) || 'Uncategorized')} · ${escapeHtml(window._diqDifficultyLabel?.(situation.difficulty) || situation.difficulty || 'Intermediate')} · ${escapeHtml(situation.category || 'General')}</small></span>
         </label>`).join('');
+      filterPracticeSituationChoices();
+    }
+  }
+
+  function filterPracticeSituationChoices(){
+    const query = String(practiceSituationSearch?.value || '').trim().toLowerCase();
+    const category = String(practiceSituationCategory?.value || '');
+    const difficulty = String(practiceSituationDifficulty?.value || '');
+    let visible = 0;
+    practiceSituationChoices?.querySelectorAll('.practice-situation-choice').forEach(row=>{
+      const categories = String(row.dataset.categories || '').split('|');
+      const show = (!query || String(row.dataset.search || '').includes(query))
+        && (!category || categories.includes(category))
+        && (!difficulty || row.dataset.difficulty === difficulty);
+      row.classList.toggle('hidden', !show);
+      if(show) visible += 1;
+    });
+    if(practiceSituationFilterSummary){
+      practiceSituationFilterSummary.textContent = `${visible} ${visible === 1 ? 'situation' : 'situations'} shown`;
     }
   }
 
@@ -1390,6 +1435,9 @@ function computeRosterPlayerId(teamObj, playerObj){
     coachPracticePage = 1;
     void loadPracticeAssignments('coach');
   });
+  practiceSituationSearch?.addEventListener('input', filterPracticeSituationChoices);
+  practiceSituationCategory?.addEventListener('change', filterPracticeSituationChoices);
+  practiceSituationDifficulty?.addEventListener('change', filterPracticeSituationChoices);
   practiceAssignmentForm?.addEventListener('submit', event=>{
     event.preventDefault();
     void createPracticeAssignment(true);
@@ -4177,12 +4225,13 @@ function wireOnce(){
   if (playbookBrowserOverlay) playbookBrowserOverlay.addEventListener('click', (event)=>{
     if(event.target === playbookBrowserOverlay) closePlaybookBrowser();
   });
-  [playbookSearch, playbookCategory, playbookDifficulty, playbookRunners].forEach(control=>{
+  [playbookSearch, playbookCategory, playbookHitOutcome, playbookDifficulty, playbookRunners].forEach(control=>{
     control?.addEventListener(control === playbookSearch ? 'input' : 'change', renderPlaybookBrowser);
   });
   if (playbookClearFilters) playbookClearFilters.addEventListener('click', ()=>{
     if(playbookSearch) playbookSearch.value = '';
     if(playbookCategory) playbookCategory.value = '';
+    if(playbookHitOutcome) playbookHitOutcome.value = '';
     if(playbookDifficulty) playbookDifficulty.value = '';
     if(playbookRunners) playbookRunners.value = '';
     renderPlaybookBrowser();
@@ -4727,7 +4776,7 @@ wireSeqBuilderOnce();
   }
 
   if (situationCategoryInput) {
-    situationCategoryInput.addEventListener('input', () => {
+    situationCategoryInput.addEventListener('change', () => {
       if (_muteCoachInputs || !currentSituation) return;
       currentSituation.category = situationCategoryInput.value.trim();
       queueCurrentSituationDatabaseSync();
@@ -4738,6 +4787,26 @@ wireSeqBuilderOnce();
     situationDifficultySelect.addEventListener('change', () => {
       if (_muteCoachInputs || !currentSituation) return;
       currentSituation.difficulty = situationDifficultySelect.value;
+      queueCurrentSituationDatabaseSync();
+    });
+  }
+
+  if (situationPrimaryCategorySelect) {
+    situationPrimaryCategorySelect.addEventListener('change', () => {
+      if (_muteCoachInputs || !currentSituation) return;
+      currentSituation.primaryCategory = situationPrimaryCategorySelect.value;
+      currentSituation.relatedCategories = (currentSituation.relatedCategories || [])
+        .filter(category=>category !== currentSituation.primaryCategory);
+      populateSituationTeachingCategoryControls();
+      queueCurrentSituationDatabaseSync();
+    });
+  }
+
+  if (situationRelatedCategories) {
+    situationRelatedCategories.addEventListener('change', () => {
+      if (_muteCoachInputs || !currentSituation) return;
+      currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('input:checked')]
+        .map(input=>input.value);
       queueCurrentSituationDatabaseSync();
     });
   }

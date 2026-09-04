@@ -1783,8 +1783,9 @@
   const FIELD_WIDTH = 3200;
   const FIELD_HEIGHT = 2133;
   const EDITABLE_FIELDS = [
-    ['title', 'Title'], ['desc', 'Description'], ['category', 'Category'],
-    ['difficulty', 'Difficulty'], ['outs', 'Outs'],
+    ['title', 'Title'], ['desc', 'Description'], ['category', 'Hit outcome'],
+    ['difficulty', 'Difficulty'], ['primaryCategory', 'Primary teaching category'],
+    ['relatedCategories', 'Related teaching categories'], ['outs', 'Outs'],
     ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
     ['targets', 'Targets, tolerances, and notes'], ['hit', 'Ball landing spot'],
     ['hitType', 'Hit type'], ['batterAdvance', 'Batter advance'],
@@ -1901,8 +1902,15 @@
     const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
     if (!String(snapshot?.title || '').trim()) add('Add a situation title.', 'sbDetailsSection');
     if (!String(snapshot?.desc || '').trim()) add('Add a player-facing description.', 'sbDetailsSection');
-    if (!String(snapshot?.category || '').trim()) add('Choose a Playbook category.', 'sbDetailsSection');
-    if (!['beginner', 'intermediate', 'advanced'].includes(String(snapshot?.difficulty || ''))) {
+    if (!String(snapshot?.category || '').trim()) add('Choose a hit outcome.', 'sbDetailsSection');
+    const teachingCategoryIds = new Set((window.DIQ_TEACHING_CATEGORIES || []).map(category=>category.id));
+    if (!teachingCategoryIds.has(String(snapshot?.primaryCategory || ''))) {
+      add('Choose a primary teaching category.', 'sbDetailsSection');
+    }
+    if ((snapshot?.relatedCategories || []).some(category=>!teachingCategoryIds.has(String(category)) || category === snapshot.primaryCategory)) {
+      add('Choose valid, distinct related teaching categories.', 'sbDetailsSection');
+    }
+    if (!['foundational', 'intermediate', 'advanced'].includes(String(snapshot?.difficulty || ''))) {
       add('Choose a valid difficulty.', 'sbDetailsSection');
     }
     POSITION_IDS.forEach((id) => {

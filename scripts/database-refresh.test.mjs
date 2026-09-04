@@ -119,6 +119,8 @@ test('generated replacement SQL executes against the portable SQLite schema', as
     '0014_seasons_and_player_lifecycle.sql',
     '0015_player_team_transfers.sql',
     '0016_team_season_workflow.sql',
+    '0017_situation_teaching_metadata.sql',
+    '0018_situation_display_codes.sql',
   ]) {
     database.exec(await readFile(new URL(`../migrations/${name}`, import.meta.url), 'utf8'));
     database.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(name);
@@ -162,6 +164,6 @@ test('generated replacement SQL executes against the portable SQLite schema', as
   );
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM sessions').get().count, 0);
   assert.equal(database.prepare('SELECT COUNT(*) AS count FROM audit_log').get().count, 0);
-  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 16);
+  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM d1_migrations').get().count, 18);
   database.close();
 });

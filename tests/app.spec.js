@@ -159,7 +159,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#playbookDifficulty').selectOption('advanced');
     await expect(page.locator('.playbook-situation-card')).toHaveCount(9);
     await page.locator('#playbookClearFilters').click();
-    await page.locator('#playbookCategory').selectOption('Extra-base hits');
+    await page.locator('#playbookCategory').selectOption('cutoffs-relays');
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(22);
+    await page.locator('#playbookHitOutcome').selectOption('Extra-base hits');
     await expect(page.locator('.playbook-situation-card')).toHaveCount(8);
 
     await page.locator('#playbookSearch').fill('Left-Center');
@@ -918,6 +920,11 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('[data-practice-view="active"]')).toHaveClass(/is-active/);
     await expect(page.locator('#practiceSearch')).toBeVisible();
     await expect(page.locator('#practiceSort')).toHaveValue('newest');
+    await expect(page.locator('#practiceSituationCategory option')).toHaveCount(13);
+    await page.locator('#practiceSituationDifficulty').selectOption('advanced');
+    await expect(page.locator('#practiceSituationChoices .practice-situation-choice:not(.hidden)')).toHaveCount(9);
+    await expect(page.locator('#practiceSituationFilterSummary')).toHaveText('9 situations shown');
+    await page.locator('#practiceSituationDifficulty').selectOption('');
 
     await logoutCurrentUser(page);
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
@@ -1147,6 +1154,8 @@ test.describe('Diamond Defense regression behavior', () => {
       looseSlug: slugifyLoose(`Coach's Team`),
       clampedLow: clampInt(-4, 0, 2),
       clampedHigh: clampInt(9, 0, 2),
+      publishedSituationLabel: situationDisplayLabel({ key:'BD-02', desc:'Single to CF' }),
+      generatedSituationLabel: situationDisplayLabel({ key:'S-MTMU286H-0', displayCode:'S21', title:'New Situation', desc:'Squeeze bunt' }),
     }));
 
     expect(output).toEqual({
@@ -1154,6 +1163,8 @@ test.describe('Diamond Defense regression behavior', () => {
       looseSlug: 'coachs-team',
       clampedLow: 0,
       clampedHigh: 2,
+      publishedSituationLabel: 'S02 · Single to CF',
+      generatedSituationLabel: 'S21 · Squeeze bunt',
     });
   });
 
@@ -1175,6 +1186,8 @@ test.describe('Diamond Defense regression behavior', () => {
           key: normalized.key,
           category: normalized.category,
           difficulty: normalized.difficulty,
+          primaryCategory: normalized.primaryCategory,
+          relatedCategories: normalized.relatedCategories,
           outs: normalized.outs,
           runnersOn: normalized.runnersOn,
           hitType: normalized.hitType,
@@ -1187,6 +1200,8 @@ test.describe('Diamond Defense regression behavior', () => {
       key: 'NORMALIZE-01',
       category: 'General',
       difficulty: 'advanced',
+      primaryCategory: 'cutoffs-relays',
+      relatedCategories: ['backups-rotations', 'base-coverage'],
       outs: 2,
       runnersOn: { first: true, second: false, third: true },
       hitType: 'line',
@@ -1319,7 +1334,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#situationWorkflowRole')).toHaveText('Coach draft');
     await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
     await expect(page.locator('#situationCategoryInput')).not.toHaveValue('');
-    await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(beginner|intermediate|advanced)$/);
+    await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(foundational|intermediate|advanced)$/);
+    await expect(page.locator('#situationPrimaryCategorySelect')).not.toHaveValue('');
+    await expect(page.locator('#situationRelatedCategories input')).toHaveCount(11);
     await expect(page.locator('[data-editor-step]')).toHaveCount(6);
     await expect(page.locator('.situation-editor-actions #previewSituationBtn')).toHaveCount(0);
     await expect(page.locator('.situation-editor-actions #submitSituationBtn')).toHaveCount(0);
