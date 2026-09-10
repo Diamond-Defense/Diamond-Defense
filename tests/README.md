@@ -29,10 +29,36 @@ Run the complete release verification sequence:
 npm run verify
 ```
 
+Run the focused desktop/mobile acceptance checks:
+
+```sh
+npm run test:acceptance
+```
+
+Run the same focused checks in Chromium, Firefox, WebKit, Android-sized
+Chromium, and iPhone-sized WebKit:
+
+```sh
+npx playwright install chromium firefox webkit
+npm run test:cross-browser
+```
+
+The release suite checks responsive overflow, keyboard-accessible login,
+accessible control names, session refresh/logout, player and coach permission
+boundaries, and coach-report loading. It is intentionally separate from
+`npm test`, so the full mutation-heavy behavior suite still runs once against
+Chromium and isolated D1.
+
 To run the browser behavior checks against a deployed Cloudflare Worker URL:
 
 ```sh
 BASE_URL=https://your-worker.workers.dev npm run test:live
+```
+
+For the smaller cross-browser preview smoke test, use:
+
+```sh
+BASE_URL=https://your-preview-worker.workers.dev npm run test:cross-browser
 ```
 
 The live command does not start a local server and does not run the local JSON
@@ -66,3 +92,6 @@ The suite covers:
 Tests should be kept at the behavior and repository-contract level during the
 modular rewrite. Internal function-level tests can be added after modules have
 stable public interfaces.
+
+The complete manual and automated environment sequence is in the
+[release checklist](../docs/release-checklist.md).

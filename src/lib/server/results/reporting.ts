@@ -7,7 +7,9 @@ import type {
   SequenceStageResult,
 } from '$lib/server/repositories/attempts';
 
-const REPORT_OUTCOMES = new Set<AttemptOutcome>(['passed', 'failed', 'abandoned']);
+const REPORT_OUTCOMES = new Set<AttemptOutcome | 'incomplete'>(['passed', 'failed', 'abandoned', 'incomplete']);
+const REPORT_ACTIVITY_TYPES = new Set(['assigned', 'free_play']);
+const REPORT_DIFFICULTIES = new Set(['foundational', 'intermediate', 'advanced']);
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 function validDate(value: string): boolean {
@@ -19,15 +21,28 @@ function validDate(value: string): boolean {
 export function parseAttemptReportFilters(searchParams: URLSearchParams): AttemptReportFilters {
   const playerId = String(searchParams.get('playerId') || '').trim();
   const seasonId = String(searchParams.get('seasonId') || '').trim();
+  const assignmentId = String(searchParams.get('assignmentId') || '').trim();
   const situationKey = String(searchParams.get('situationKey') || '').trim();
-  const outcome = String(searchParams.get('outcome') || '').trim() as AttemptOutcome | '';
+  const outcome = String(searchParams.get('outcome') || '').trim() as AttemptOutcome | 'incomplete' | '';
+  const activityType = String(searchParams.get('activityType') || '').trim() as 'assigned' | 'free_play' | '';
+  const difficulty = String(searchParams.get('difficulty') || '').trim() as 'foundational' | 'intermediate' | 'advanced' | '';
+  const categoryId = String(searchParams.get('categoryId') || '').trim();
   const dateFrom = String(searchParams.get('dateFrom') || '').trim();
   const dateTo = String(searchParams.get('dateTo') || '').trim();
-  if (playerId.length > 100 || seasonId.length > 100 || situationKey.length > 100) {
+  if (
+    playerId.length > 100 || seasonId.length > 100 || assignmentId.length > 100
+    || situationKey.length > 100 || categoryId.length > 100
+  ) {
     throw error(400, 'A report filter is too long.');
   }
   if (outcome && !REPORT_OUTCOMES.has(outcome)) {
     throw error(400, 'The result filter is invalid.');
+  }
+  if (activityType && !REPORT_ACTIVITY_TYPES.has(activityType)) {
+    throw error(400, 'The activity filter is invalid.');
+  }
+  if (difficulty && !REPORT_DIFFICULTIES.has(difficulty)) {
+    throw error(400, 'The difficulty filter is invalid.');
   }
   if ((dateFrom && !validDate(dateFrom)) || (dateTo && !validDate(dateTo))) {
     throw error(400, 'Report dates must use YYYY-MM-DD.');
@@ -38,8 +53,12 @@ export function parseAttemptReportFilters(searchParams: URLSearchParams): Attemp
   return {
     ...(playerId ? { playerId } : {}),
     ...(seasonId ? { seasonId } : {}),
+    ...(assignmentId ? { assignmentId } : {}),
     ...(situationKey ? { situationKey } : {}),
     ...(outcome ? { outcome } : {}),
+    ...(activityType ? { activityType } : {}),
+    ...(difficulty ? { difficulty } : {}),
+    ...(categoryId ? { categoryId } : {}),
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   };
@@ -83,7 +102,9 @@ function csvCell(value: unknown): string {
 
 export function attemptsCsv(attempts: CoachAttempt[]): string {
   const headings = [
-    'Date and Time', 'Player Number', 'Player', 'Situation', 'Result', 'Score',
+    'Date and Time', 'Season', 'Activity', 'Assignment', 'Cycle', 'Assignment Due',
+    'Timing', 'Player Number', 'Player', 'Situation', 'Difficulty', 'Teaching Categories',
+    'Result', 'Attempt State', 'Score',
     'Tries', 'Positioning Time (seconds)', 'Sequence Result', 'Sequence Tries',
     'Sequence Time (seconds)', 'Selected Sequence', 'Abandon Reason', 'Run ID',
   ];
@@ -92,12 +113,24 @@ export function attemptsCsv(attempts: CoachAttempt[]): string {
     const sequence = lastSequenceStage(attempt);
     const outcome = attempt.outcome
       ?? (attempt.success === true ? 'passed' : attempt.success === false ? 'failed' : '');
+    const timing = attempt.isLateCompletion
+      ? 'Late completion'
+      : attempt.isOverdue ? 'Overdue' : '';
     return [
-      attempt.completedAt || attempt.createdAt || attempt.ts || '',
+      attempt.completedAt || attempt.startedAt || attempt.createdAt || attempt.ts || '',
+      attempt.seasonName || '',
+      attempt.activityType === 'assigned' ? 'Assigned practice' : 'Free play',
+      attempt.assignmentTitle || '',
+      attempt.assignmentCycleNumber || '',
+      attempt.assignmentDueAt || '',
+      timing,
       attempt.playerNumber,
       attempt.playerName,
       attempt.situationTitle || attempt.situationKey,
+      attempt.difficulty || '',
+      attempt.teachingCategories.join(' | '),
       outcome ? outcome.toUpperCase() : '',
+      attempt.lifecycleStatus === 'incomplete' ? 'IN PROGRESS' : String(attempt.lifecycleStatus || '').toUpperCase(),
       positioning ? `${positioning.scoreCorrect}/${positioning.scoreTotal}` : '',
       positioning?.triesUsed ?? '',
       positioning?.elapsed ?? '',

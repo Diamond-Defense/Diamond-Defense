@@ -1,4 +1,8 @@
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
+import {
+  buildDevelopmentInsightsFromMetrics,
+  type AttemptDevelopmentInsights,
+} from '$lib/server/results/development';
 import { RecordValidationError } from './errors';
 
 interface AttemptRow {
@@ -22,6 +26,29 @@ interface AttemptRow {
 interface CoachAttemptRow extends AttemptRow {
   id: string;
   player_id: string;
+  season_name: string | null;
+  assignment_title: string | null;
+  assignment_cycle_number: number | null;
+  assignment_due_at: string | null;
+  assignment_status: string | null;
+  recipient_status: string | null;
+  difficulty: string | null;
+  primary_category: string | null;
+  teaching_categories: string | null;
+}
+
+interface DevelopmentMetricRow {
+  player_id: string;
+  player_name: string;
+  player_number: string;
+  situation_key: string;
+  situation_title: string;
+  activity_at: string | null;
+  passed: number;
+  positioning_passed: number | null;
+  sequence_passed: number | null;
+  score_percent: number | null;
+  completion_seconds: number | null;
 }
 
 export type AttemptOutcome = 'passed' | 'failed' | 'abandoned';
@@ -97,6 +124,19 @@ export interface CoachAttempt extends AttemptInput {
   playerName: string;
   playerNumber: string;
   createdAt: string;
+  seasonName: string;
+  activityType: 'assigned' | 'free_play';
+  assignmentTitle: string | null;
+  assignmentCycleNumber: number | null;
+  assignmentDueAt: string | null;
+  assignmentStatus: string | null;
+  recipientStatus: string | null;
+  difficulty: string;
+  primaryCategory: string;
+  teachingCategories: string[];
+  isRetake: boolean;
+  isOverdue: boolean;
+  isLateCompletion: boolean;
 }
 
 export interface PaginatedCoachAttempts {
@@ -107,8 +147,12 @@ export interface PaginatedCoachAttempts {
 export interface AttemptReportFilters {
   playerId?: string;
   seasonId?: string;
+  assignmentId?: string;
   situationKey?: string;
-  outcome?: AttemptOutcome;
+  outcome?: AttemptOutcome | 'incomplete';
+  activityType?: 'assigned' | 'free_play';
+  difficulty?: 'foundational' | 'intermediate' | 'advanced';
+  categoryId?: string;
   dateFrom?: string;
   dateTo?: string;
 }
@@ -119,41 +163,160 @@ export interface AttemptReportSummary {
   passed: number;
   failed: number;
   abandoned: number;
+  incomplete: number;
+  assigned: number;
+  freePlay: number;
+  overdue: number;
+  lateCompletions: number;
+  retakes: number;
   passRate: number | null;
   averageScorePercent: number | null;
   averageCompletionSeconds: number | null;
 }
+
+export interface AttemptReportOptions {
+  players: Array<{ id: string; name: string; number: string }>;
+  seasons: Array<{ id: string; name: string; status: string }>;
+  assignments: Array<{
+    id: string;
+    title: string;
+    cycleNumber: number;
+    status: string;
+    seasonName: string;
+  }>;
+  situations: Array<{ key: string; displayCode: string; title: string }>;
+  categories: Array<{ id: string; label: string }>;
+}
+
+const REPORT_JOINS = `
+  LEFT JOIN practice_assignments pa ON pa.id = a.assignment_id
+  LEFT JOIN assignment_recipients ar
+    ON ar.assignment_id = a.assignment_id AND ar.player_id = a.player_id
+  LEFT JOIN team_seasons ts ON ts.id = a.season_id
+  LEFT JOIN situation_versions sv
+    ON sv.situation_key = a.situation_key AND sv.revision = a.situation_revision
+  LEFT JOIN situations s ON s.key = a.situation_key`;
+
+const REPORT_SITUATION_JOINS = `
+  LEFT JOIN situation_versions sv
+    ON sv.situation_key = a.situation_key AND sv.revision = a.situation_revision
+  LEFT JOIN situations s ON s.key = a.situation_key`;
+
+function reportFilterJoins(filters: AttemptReportFilters): string {
+  return filters.difficulty ? REPORT_SITUATION_JOINS : '';
+}
+
+const REPORT_SELECT = `
+  a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
+  a.outcome, a.started_at, a.completed_at, a.abandon_reason,
+  a.situation_revision, a.situation_title, a.team_name,
+  a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
+  a.season_id, ts.name AS season_name, pa.title AS assignment_title,
+  pa.cycle_number AS assignment_cycle_number, pa.due_at AS assignment_due_at,
+  pa.status AS assignment_status, ar.status AS recipient_status,
+  COALESCE(sv.difficulty, s.difficulty_level, s.difficulty, '') AS difficulty,
+  COALESCE(
+    (SELECT tc.label
+       FROM situation_version_teaching_categories svtc
+       JOIN teaching_categories tc ON tc.id = svtc.category_id
+      WHERE svtc.situation_key = a.situation_key
+        AND svtc.situation_revision = a.situation_revision
+        AND svtc.is_primary = 1
+      LIMIT 1),
+    (SELECT tc.label
+       FROM situation_teaching_categories stc
+       JOIN teaching_categories tc ON tc.id = stc.category_id
+      WHERE stc.situation_key = a.situation_key AND stc.is_primary = 1
+      LIMIT 1),
+    ''
+  ) AS primary_category,
+  COALESCE(
+    (SELECT group_concat(label, char(31)) FROM (
+       SELECT tc.label AS label
+         FROM situation_version_teaching_categories svtc
+         JOIN teaching_categories tc ON tc.id = svtc.category_id
+        WHERE svtc.situation_key = a.situation_key
+          AND svtc.situation_revision = a.situation_revision
+        ORDER BY svtc.is_primary DESC, svtc.sort_order, tc.label
+    )),
+    (SELECT group_concat(label, char(31)) FROM (
+       SELECT tc.label AS label
+         FROM situation_teaching_categories stc
+         JOIN teaching_categories tc ON tc.id = stc.category_id
+        WHERE stc.situation_key = a.situation_key
+        ORDER BY stc.is_primary DESC, stc.sort_order, tc.label
+    )),
+    ''
+  ) AS teaching_categories`;
 
 function reportWhere(teamId: string, filters: AttemptReportFilters = {}): {
   clause: string;
   params: unknown[];
 } {
   const params: unknown[] = [teamId];
-  const conditions = ["a.team_id = ?1", "a.lifecycle_status <> 'incomplete'"];
+  const conditions = ['a.team_id = ?1'];
   const add = (condition: (placeholder: string) => string, value: unknown) => {
     params.push(value);
     conditions.push(condition(`?${params.length}`));
   };
   if (filters.playerId) add((placeholder) => `a.player_id = ${placeholder}`, filters.playerId);
   if (filters.seasonId) add((placeholder) => `a.season_id = ${placeholder}`, filters.seasonId);
+  if (filters.assignmentId) add((placeholder) => `a.assignment_id = ${placeholder}`, filters.assignmentId);
   if (filters.situationKey) add((placeholder) => `a.situation_key = ${placeholder}`, filters.situationKey);
-  if (filters.outcome) add((placeholder) => `a.outcome = ${placeholder}`, filters.outcome);
+  if (filters.outcome === 'incomplete') conditions.push("a.lifecycle_status = 'incomplete'");
+  else if (filters.outcome) add((placeholder) => `a.outcome = ${placeholder}`, filters.outcome);
+  if (filters.activityType === 'assigned') conditions.push('a.assignment_id IS NOT NULL');
+  if (filters.activityType === 'free_play') conditions.push('a.assignment_id IS NULL');
+  if (filters.difficulty) {
+    add(
+      (placeholder) => `COALESCE(sv.difficulty, s.difficulty_level, s.difficulty, '') = ${placeholder}`,
+      filters.difficulty,
+    );
+  }
+  if (filters.categoryId) {
+    add(
+      (placeholder) => `(
+        EXISTS (
+          SELECT 1 FROM situation_version_teaching_categories category_filter
+           WHERE category_filter.situation_key = a.situation_key
+             AND category_filter.situation_revision = a.situation_revision
+             AND category_filter.category_id = ${placeholder}
+        ) OR (
+          NOT EXISTS (
+            SELECT 1 FROM situation_version_teaching_categories version_categories
+             WHERE version_categories.situation_key = a.situation_key
+               AND version_categories.situation_revision = a.situation_revision
+          ) AND EXISTS (
+            SELECT 1 FROM situation_teaching_categories category_filter
+             WHERE category_filter.situation_key = a.situation_key
+               AND category_filter.category_id = ${placeholder}
+          )
+        )
+      )`,
+      filters.categoryId,
+    );
+  }
   if (filters.dateFrom) {
     add(
-      (placeholder) => `substr(COALESCE(a.completed_at, a.created_at), 1, 10) >= ${placeholder}`,
-      filters.dateFrom,
+      (placeholder) => `COALESCE(a.completed_at, a.created_at) >= ${placeholder}`,
+      `${filters.dateFrom}T00:00:00.000Z`,
     );
   }
   if (filters.dateTo) {
+    const exclusiveDate = new Date(`${filters.dateTo}T00:00:00.000Z`);
+    exclusiveDate.setUTCDate(exclusiveDate.getUTCDate() + 1);
     add(
-      (placeholder) => `substr(COALESCE(a.completed_at, a.created_at), 1, 10) <= ${placeholder}`,
-      filters.dateTo,
+      (placeholder) => `COALESCE(a.completed_at, a.created_at) < ${placeholder}`,
+      exclusiveDate.toISOString(),
     );
   }
   return { clause: conditions.join(' AND '), params };
 }
 
 function mapCoachAttempt(row: CoachAttemptRow): CoachAttempt {
+  const assignmentDueAt = row.assignment_due_at || null;
+  const completedAt = row.completed_at || null;
+  const lifecycleStatus = row.lifecycle_status;
   return {
     ...(JSON.parse(row.payload_json) as AttemptInput),
     id: row.id,
@@ -172,6 +335,28 @@ function mapCoachAttempt(row: CoachAttemptRow): CoachAttempt {
     lifecycleStatus: row.lifecycle_status,
     assignmentId: row.assignment_id ?? undefined,
     seasonId: row.season_id ?? undefined,
+    seasonName: row.season_name || '',
+    activityType: row.assignment_id ? 'assigned' : 'free_play',
+    assignmentTitle: row.assignment_title || null,
+    assignmentCycleNumber: row.assignment_cycle_number == null
+      ? null : Number(row.assignment_cycle_number),
+    assignmentDueAt,
+    assignmentStatus: row.assignment_status || null,
+    recipientStatus: row.recipient_status || null,
+    difficulty: row.difficulty || '',
+    primaryCategory: row.primary_category || '',
+    teachingCategories: String(row.teaching_categories || '').split(String.fromCharCode(31)).filter(Boolean),
+    isRetake: Number(row.assignment_cycle_number || 0) > 1,
+    isOverdue: Boolean(
+      assignmentDueAt
+      && lifecycleStatus === 'incomplete'
+      && new Date(assignmentDueAt).getTime() < Date.now()
+    ),
+    isLateCompletion: Boolean(
+      assignmentDueAt
+      && completedAt
+      && new Date(completedAt).getTime() > new Date(assignmentDueAt).getTime()
+    ),
   };
 }
 
@@ -435,29 +620,30 @@ export class SqliteAttemptRepository {
   ): Promise<PaginatedCoachAttempts> {
     const where = reportWhere(teamId, filters);
     const count = await this.database.one<{ total: number }>(
-      `SELECT COUNT(DISTINCT a.player_id) AS total FROM attempts a WHERE ${where.clause}`,
+      `SELECT COUNT(DISTINCT a.player_id) AS total
+         FROM attempts a ${reportFilterJoins(filters)}
+        WHERE ${where.clause}`,
       where.params,
     );
     const limitPlaceholder = `?${where.params.length + 1}`;
     const offsetPlaceholder = `?${where.params.length + 2}`;
     const rows = await this.database.all<CoachAttemptRow>(
       `WITH ranked AS (
-         SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
-                a.outcome, a.started_at, a.completed_at, a.abandon_reason,
-                a.situation_revision, a.situation_title, a.team_name,
-                a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
-                a.season_id,
+         SELECT ${REPORT_SELECT},
                 ROW_NUMBER() OVER (
                   PARTITION BY a.player_id
                   ORDER BY a.created_at DESC, a.id DESC
                 ) AS player_rank
-           FROM attempts a
+           FROM attempts a ${REPORT_JOINS}
           WHERE ${where.clause}
        )
        SELECT id, player_id, payload_json, created_at, run_id, outcome,
               started_at, completed_at, abandon_reason, situation_revision,
               situation_title, team_name, player_name, player_number,
-              lifecycle_status, assignment_id, season_id
+              lifecycle_status, assignment_id, season_id, season_name,
+              assignment_title, assignment_cycle_number, assignment_due_at,
+              assignment_status, recipient_status, difficulty, primary_category,
+              teaching_categories
          FROM ranked
         WHERE player_rank = 1
         ORDER BY created_at DESC, id DESC
@@ -479,18 +665,16 @@ export class SqliteAttemptRepository {
   ): Promise<PaginatedCoachAttempts> {
     const where = reportWhere(teamId, { ...filters, playerId });
     const count = await this.database.one<{ total: number }>(
-      `SELECT COUNT(*) AS total FROM attempts a WHERE ${where.clause}`,
+      `SELECT COUNT(*) AS total
+         FROM attempts a ${reportFilterJoins({ ...filters, playerId })}
+        WHERE ${where.clause}`,
       where.params,
     );
     const limitPlaceholder = `?${where.params.length + 1}`;
     const offsetPlaceholder = `?${where.params.length + 2}`;
     const rows = await this.database.all<CoachAttemptRow>(
-      `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
-              a.outcome, a.started_at, a.completed_at, a.abandon_reason,
-              a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
-              a.season_id
-         FROM attempts a
+      `SELECT ${REPORT_SELECT}
+         FROM attempts a ${REPORT_JOINS}
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC
         LIMIT ${limitPlaceholder} OFFSET ${offsetPlaceholder}`,
@@ -510,12 +694,8 @@ export class SqliteAttemptRepository {
     const where = reportWhere(teamId, filters);
     const limitClause = limit == null ? '' : `LIMIT ?${where.params.length + 1}`;
     const rows = await this.database.all<CoachAttemptRow>(
-      `SELECT a.id, a.player_id, a.payload_json, a.created_at, a.run_id,
-              a.outcome, a.started_at, a.completed_at, a.abandon_reason,
-              a.situation_revision, a.situation_title, a.team_name,
-              a.player_name, a.player_number, a.lifecycle_status, a.assignment_id,
-              a.season_id
-        FROM attempts a
+      `SELECT ${REPORT_SELECT}
+        FROM attempts a ${REPORT_JOINS}
         WHERE ${where.clause}
         ORDER BY a.created_at DESC, a.id DESC
         ${limitClause}`,
@@ -535,6 +715,12 @@ export class SqliteAttemptRepository {
       passed: number;
       failed: number;
       abandoned: number;
+      incomplete: number;
+      assigned: number;
+      free_play: number;
+      overdue: number;
+      late_completions: number;
+      retakes: number;
       average_score_percent: number | null;
       average_completion_seconds: number | null;
     }>(
@@ -543,30 +729,211 @@ export class SqliteAttemptRepository {
               SUM(CASE WHEN a.outcome = 'passed' THEN 1 ELSE 0 END) AS passed,
               SUM(CASE WHEN a.outcome = 'failed' THEN 1 ELSE 0 END) AS failed,
               SUM(CASE WHEN a.outcome = 'abandoned' THEN 1 ELSE 0 END) AS abandoned,
+              SUM(CASE WHEN a.lifecycle_status = 'incomplete' THEN 1 ELSE 0 END) AS incomplete,
+              SUM(CASE WHEN a.assignment_id IS NOT NULL THEN 1 ELSE 0 END) AS assigned,
+              SUM(CASE WHEN a.assignment_id IS NULL THEN 1 ELSE 0 END) AS free_play,
+              SUM(CASE
+                WHEN a.lifecycle_status = 'incomplete' AND pa.due_at IS NOT NULL
+                  AND datetime(pa.due_at) < CURRENT_TIMESTAMP THEN 1 ELSE 0 END) AS overdue,
+              SUM(CASE
+                WHEN a.completed_at IS NOT NULL AND pa.due_at IS NOT NULL
+                  AND datetime(a.completed_at) > datetime(pa.due_at) THEN 1 ELSE 0 END) AS late_completions,
+              SUM(CASE WHEN COALESCE(pa.cycle_number, 0) > 1 THEN 1 ELSE 0 END) AS retakes,
               AVG(CASE WHEN a.total > 0 THEN (a.score * 100.0) / a.total END)
                 AS average_score_percent,
-              AVG(CASE
-                WHEN a.started_at IS NOT NULL AND a.completed_at IS NOT NULL
-                  THEN MAX(0, (julianday(a.completed_at) - julianday(a.started_at)) * 86400.0)
-                ELSE a.elapsed_seconds
+              AVG(CASE WHEN a.lifecycle_status <> 'incomplete' THEN
+                CASE
+                  WHEN a.started_at IS NOT NULL AND a.completed_at IS NOT NULL
+                    THEN MAX(0, (julianday(a.completed_at) - julianday(a.started_at)) * 86400.0)
+                  ELSE a.elapsed_seconds
+                END
               END) AS average_completion_seconds
          FROM attempts a
+         LEFT JOIN practice_assignments pa ON pa.id = a.assignment_id
+         ${reportFilterJoins(filters)}
         WHERE ${where.clause}`,
       where.params,
     );
     const attempts = Number(row?.attempts || 0);
     const passed = Number(row?.passed || 0);
+    const finalizedAttempts = Math.max(0, attempts - Number(row?.incomplete || 0));
     return {
       attempts,
       players: Number(row?.players || 0),
       passed,
       failed: Number(row?.failed || 0),
       abandoned: Number(row?.abandoned || 0),
-      passRate: attempts ? (passed / attempts) * 100 : null,
+      incomplete: Number(row?.incomplete || 0),
+      assigned: Number(row?.assigned || 0),
+      freePlay: Number(row?.free_play || 0),
+      overdue: Number(row?.overdue || 0),
+      lateCompletions: Number(row?.late_completions || 0),
+      retakes: Number(row?.retakes || 0),
+      passRate: finalizedAttempts ? (passed / finalizedAttempts) * 100 : null,
       averageScorePercent: row?.average_score_percent == null
         ? null : Number(row.average_score_percent),
       averageCompletionSeconds: row?.average_completion_seconds == null
         ? null : Number(row.average_completion_seconds),
+    };
+  }
+
+  async developmentInsightsForTeam(
+    teamId: string,
+    filters: AttemptReportFilters = {},
+  ): Promise<AttemptDevelopmentInsights> {
+    const where = reportWhere(teamId, filters);
+    const rows = await this.database.all<DevelopmentMetricRow>(
+      `SELECT a.player_id, a.player_name, a.player_number,
+              a.situation_key, a.situation_title,
+              COALESCE(a.completed_at, a.started_at, a.created_at) AS activity_at,
+              CASE WHEN a.outcome = 'passed'
+                     OR (a.outcome IS NULL AND a.success = 1) THEN 1 ELSE 0 END AS passed,
+              CASE
+                WHEN json_type(a.payload_json, '$.phase1.ok') IN ('true', 'false')
+                  THEN CAST(json_extract(a.payload_json, '$.phase1.ok') AS INTEGER)
+                WHEN json_type(a.payload_json, '$.phase1Ok') IN ('true', 'false')
+                  THEN CAST(json_extract(a.payload_json, '$.phase1Ok') AS INTEGER)
+                WHEN a.phase = 1 AND a.total > 0 THEN CASE WHEN a.score >= a.total THEN 1 ELSE 0 END
+                ELSE NULL
+              END AS positioning_passed,
+              CASE
+                WHEN json_array_length(COALESCE(json_extract(a.payload_json, '$.sequenceStages'), '[]')) > 0
+                  THEN CASE WHEN EXISTS (
+                    SELECT 1 FROM json_each(json_extract(a.payload_json, '$.sequenceStages')) stage
+                     WHERE COALESCE(CAST(json_extract(stage.value, '$.success') AS INTEGER), 0) = 0
+                  ) THEN 0 ELSE 1 END
+                WHEN json_type(a.payload_json, '$.sequenceSuccess') IN ('true', 'false')
+                  THEN CAST(json_extract(a.payload_json, '$.sequenceSuccess') AS INTEGER)
+                WHEN a.phase = 2 AND a.success IS NOT NULL THEN a.success
+                ELSE NULL
+              END AS sequence_passed,
+              CASE WHEN COALESCE(
+                CAST(json_extract(a.payload_json, '$.phase1.scoreTotal') AS REAL),
+                CAST(json_extract(a.payload_json, '$.phase1ScoreTotal') AS REAL),
+                CASE WHEN a.phase = 1 THEN CAST(a.total AS REAL) END
+              ) > 0 THEN 100.0 * COALESCE(
+                CAST(json_extract(a.payload_json, '$.phase1.scoreCorrect') AS REAL),
+                CAST(json_extract(a.payload_json, '$.phase1ScoreCorrect') AS REAL),
+                CASE WHEN a.phase = 1 THEN CAST(a.score AS REAL) END
+              ) / COALESCE(
+                CAST(json_extract(a.payload_json, '$.phase1.scoreTotal') AS REAL),
+                CAST(json_extract(a.payload_json, '$.phase1ScoreTotal') AS REAL),
+                CASE WHEN a.phase = 1 THEN CAST(a.total AS REAL) END
+              ) ELSE NULL END AS score_percent,
+              CASE
+                WHEN json_extract(a.payload_json, '$.phase1.elapsed') IS NOT NULL
+                  OR json_extract(a.payload_json, '$.phase1Elapsed') IS NOT NULL
+                  OR json_array_length(COALESCE(json_extract(a.payload_json, '$.sequenceStages'), '[]')) > 0
+                THEN COALESCE(
+                  CAST(json_extract(a.payload_json, '$.phase1.elapsed') AS REAL),
+                  CAST(json_extract(a.payload_json, '$.phase1Elapsed') AS REAL), 0
+                ) + CASE
+                  WHEN json_array_length(COALESCE(json_extract(a.payload_json, '$.sequenceStages'), '[]')) > 0
+                    THEN COALESCE((
+                      SELECT SUM(COALESCE(CAST(json_extract(stage.value, '$.timeElapsed') AS REAL), 0))
+                        FROM json_each(json_extract(a.payload_json, '$.sequenceStages')) stage
+                    ), 0)
+                  WHEN a.phase = 2 THEN COALESCE(
+                    CAST(json_extract(a.payload_json, '$.timeElapsed') AS REAL), a.elapsed_seconds, 0
+                  )
+                  ELSE 0 END
+                WHEN json_extract(a.payload_json, '$.timeElapsed') IS NOT NULL
+                  THEN MAX(0, CAST(json_extract(a.payload_json, '$.timeElapsed') AS REAL))
+                WHEN a.elapsed_seconds IS NOT NULL THEN MAX(0, a.elapsed_seconds)
+                WHEN a.started_at IS NOT NULL AND a.completed_at IS NOT NULL
+                  THEN MAX(0, (julianday(a.completed_at) - julianday(a.started_at)) * 86400.0)
+                ELSE NULL
+              END AS completion_seconds
+         FROM attempts a ${reportFilterJoins(filters)}
+        WHERE ${where.clause} AND a.lifecycle_status <> 'incomplete'
+        ORDER BY COALESCE(a.completed_at, a.started_at, a.created_at), a.id`,
+      where.params,
+    );
+    return buildDevelopmentInsightsFromMetrics(rows.map((row) => ({
+      playerId: row.player_id,
+      playerName: row.player_name,
+      playerNumber: row.player_number,
+      situationKey: row.situation_key,
+      situationTitle: row.situation_title,
+      activityAt: row.activity_at,
+      passed: Boolean(row.passed),
+      positioningPassed: row.positioning_passed == null ? null : Boolean(row.positioning_passed),
+      sequencePassed: row.sequence_passed == null ? null : Boolean(row.sequence_passed),
+      scorePercent: row.score_percent == null ? null : Number(row.score_percent),
+      completionSeconds: row.completion_seconds == null ? null : Number(row.completion_seconds),
+    })));
+  }
+
+  async reportOptionsForTeam(teamId: string): Promise<AttemptReportOptions> {
+    const [players, seasons, assignments, situations, categories] = await Promise.all([
+      this.database.all<{ id: string; name: string; number: string }>(
+        `SELECT tm.user_id AS id, u.display_name AS name, tm.jersey_number AS number
+           FROM team_memberships tm
+           JOIN users u ON u.id = tm.user_id
+          WHERE tm.team_id = ?1 AND tm.team_role = 'player' AND tm.active = 1
+          UNION ALL
+         SELECT a.player_id AS id,
+                MAX(COALESCE(NULLIF(a.player_name, ''), u.display_name, 'Player')) AS name,
+                MAX(COALESCE(NULLIF(a.player_number, ''), '')) AS number
+           FROM attempts a
+           LEFT JOIN users u ON u.id = a.player_id
+          WHERE a.team_id = ?1 AND NOT EXISTS (
+            SELECT 1 FROM team_memberships current_member
+             WHERE current_member.team_id = a.team_id
+               AND current_member.user_id = a.player_id
+               AND current_member.team_role = 'player'
+               AND current_member.active = 1
+          )
+          GROUP BY a.player_id
+          ORDER BY name, number, id`,
+        [teamId],
+      ),
+      this.database.all<{ id: string; name: string; status: string }>(
+        `SELECT id, name, status FROM team_seasons
+          WHERE team_id = ?1 ORDER BY starts_on DESC, created_at DESC`,
+        [teamId],
+      ),
+      this.database.all<{
+        id: string;
+        title: string;
+        cycle_number: number;
+        status: string;
+        season_name: string;
+      }>(
+        `SELECT pa.id, pa.title, pa.cycle_number, pa.status,
+                COALESCE(ts.name, '') AS season_name
+           FROM practice_assignments pa
+           LEFT JOIN team_seasons ts ON ts.id = pa.season_id
+          WHERE pa.team_id = ?1 AND pa.status <> 'draft'
+          ORDER BY pa.created_at DESC, pa.id DESC`,
+        [teamId],
+      ),
+      this.database.all<{ key: string; display_code: string | null; title: string }>(
+        `SELECT key, display_code, title
+           FROM situations
+          ORDER BY display_code, title, key`,
+      ),
+      this.database.all<{ id: string; label: string }>(
+        `SELECT id, label FROM teaching_categories
+          WHERE active = 1 ORDER BY sort_order, label`,
+      ),
+    ]);
+    return {
+      players,
+      seasons,
+      assignments: assignments.map((assignment) => ({
+        id: assignment.id,
+        title: assignment.title,
+        cycleNumber: Number(assignment.cycle_number || 1),
+        status: assignment.status,
+        seasonName: assignment.season_name,
+      })),
+      situations: situations.map((situation) => ({
+        key: situation.key,
+        displayCode: situation.display_code || '',
+        title: situation.title,
+      })),
+      categories,
     };
   }
 }

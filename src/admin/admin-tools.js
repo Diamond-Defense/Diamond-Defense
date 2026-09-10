@@ -59,12 +59,18 @@
   const archivedTeamSelect = byId('adminArchivedTeamSelect');
   const archivedMemberSelect = byId('adminArchivedMemberSelect');
   const archivedSituationSelect = byId('adminArchivedSituationSelect');
+  const situationsTab = adminCard.querySelector('[data-admin-tab="situations"]');
   const proposalSelect = byId('adminProposalSelect');
   const proposalDetails = byId('adminProposalDetails');
   const proposalNotes = byId('adminProposalNotes');
   const proposalConflict = byId('adminProposalConflict');
   const proposalComparison = byId('adminProposalComparison');
   const proposalDiffList = byId('adminProposalDiffList');
+  const proposalPreview = byId('adminProposalPreviewBtn');
+  const outcomeReviewQueue = byId('adminOutcomeReviewQueue');
+  const outcomeReviewSummary = byId('adminOutcomeReviewSummary');
+  const outcomeReviewList = byId('adminOutcomeReviewList');
+  const outcomeReviewNext = byId('adminOutcomeReviewNextBtn');
   const confirmDialog = byId('adminConfirmDialog');
   const confirmPanel = confirmDialog?.querySelector('.admin-confirm-panel');
   const confirmTitle = byId('adminConfirmTitle');
@@ -805,7 +811,7 @@
       archivedSituationSelect?.appendChild(
         option(
           situation.key,
-          `${situation.key} — ${situation.title || situation.key}`,
+          window._diqSituationDisplayLabel?.(situation) || situation.title || 'Situation',
         ),
       ),
     );
@@ -822,14 +828,18 @@
     }
     if (proposalNotes) proposalNotes.value = '';
     setEnabled(
-      [byId('adminProposalApproveBtn'), byId('adminProposalRejectBtn')],
+      [byId('adminProposalApproveBtn'), byId('adminProposalRejectBtn'), proposalPreview],
       Boolean(proposal),
     );
     renderProposalComparison(proposal || null);
   }
 
   function renderProposals() {
-    proposalSelect?.replaceChildren(option('', '— No pending proposals —'));
+    const previousSelection = proposalSelect?.value || '';
+    proposalSelect?.replaceChildren();
+    if (!proposals.length) {
+      proposalSelect?.appendChild(option('', '— No pending proposals —'));
+    }
     proposals.forEach((proposal) =>
       proposalSelect?.appendChild(
         option(
@@ -838,7 +848,80 @@
         ),
       ),
     );
+    if (proposalSelect && proposals.length) {
+      proposalSelect.value = proposals.some((proposal) => proposal.id === previousSelection)
+        ? previousSelection
+        : proposals[0].id;
+    }
+    const outcomeReviewCount = publishedSituations.filter(
+      (situation) => situation?.playOutcome?.reviewStatus === 'needs_review',
+    ).length;
+    situationsTab?.classList.toggle('has-pending', proposals.length > 0);
+    situationsTab?.classList.toggle('has-review-items', outcomeReviewCount > 0);
+    if (situationsTab) {
+      situationsTab.dataset.pendingCount = String(proposals.length);
+      situationsTab.dataset.outcomeReviewCount = String(outcomeReviewCount);
+      situationsTab.title = [
+        proposals.length
+          ? `${proposals.length} pending ${proposals.length === 1 ? 'proposal' : 'proposals'}`
+          : '',
+        outcomeReviewCount
+          ? `${outcomeReviewCount} ${outcomeReviewCount === 1 ? 'situation needs' : 'situations need'} outcome review`
+          : '',
+      ].filter(Boolean).join(' · ');
+    }
     renderProposalDetails();
+  }
+
+  function renderOutcomeReviewQueue() {
+    if (!outcomeReviewQueue || !outcomeReviewList || !outcomeReviewSummary) return;
+    const records = publishedSituations.filter(
+      (situation) => situation?.playOutcome?.reviewStatus === 'needs_review',
+    );
+    outcomeReviewQueue.classList.toggle('hidden', records.length === 0);
+    outcomeReviewSummary.textContent = records.length
+      ? `${records.length} converted ${records.length === 1 ? 'situation has' : 'situations have'} conservative outcomes that must be confirmed.`
+      : '';
+    outcomeReviewNext?.classList.toggle('hidden', records.length < 2);
+    outcomeReviewList.replaceChildren();
+    const openForReview = (situation) => {
+      if (!situation) return;
+      populateSituations(situation.key);
+      if (situation.hit && typeof setHitSaved === 'function') setHitSaved(situation.key, situation.hit);
+      setSituation(situation.key, clone(situation));
+      focusEditorSection('sbBallHitSubsec');
+    };
+    records.forEach((situation) => {
+      const item = document.createElement('div');
+      item.className = 'outcome-review-item';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-ghost btn-small';
+      const label = window._diqSituationDisplayLabel?.(situation)
+        || situation.displayCode
+        || situation.title
+        || situation.key;
+      button.textContent = `Review ${label}`;
+      button.dataset.situationKey = situation.key;
+      button.addEventListener('click', () => openForReview(situation));
+      const reason = document.createElement('span');
+      let outcomeIssues = [];
+      try { outcomeIssues = window._diqValidateSituationOutcomes?.(clone(situation)) || []; } catch (_error) {}
+      reason.textContent = outcomeIssues.length
+        ? outcomeIssues.map((issue) => issue.message).join(' ')
+        : Number(situation.batterAdvance || 0) === 0
+          ? 'The legacy situation did not define explicit batter and runner advancement.'
+          : 'The converted play and runner results have not been explicitly confirmed.';
+      item.append(button, reason);
+      outcomeReviewList.appendChild(item);
+    });
+    if (outcomeReviewNext) {
+      outcomeReviewNext.onclick = () => {
+        const currentKey = window._diqGetCurrentSituationSnapshot?.()?.key;
+        const currentIndex = records.findIndex((situation) => situation.key === currentKey);
+        openForReview(records[(currentIndex + 1 + records.length) % records.length]);
+      };
+    }
   }
 
   async function refreshPublicTeams() {
@@ -877,6 +960,7 @@
     await loadSeasonData(selectedTeam()?.id || '');
     populateRecovery();
     renderProposals();
+    renderOutcomeReviewQueue();
     setStatus('Database records are up to date.', 'success');
   }
 
@@ -1788,9 +1872,11 @@
     ['relatedCategories', 'Related teaching categories'], ['outs', 'Outs'],
     ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
     ['targets', 'Targets, tolerances, and notes'], ['hit', 'Ball landing spot'],
-    ['hitType', 'Hit type'], ['batterAdvance', 'Batter advance'],
+    ['hitType', 'Ball type'], ['playOutcome', 'Play outcome'],
+    ['runnerOutcomes', 'Runner outcomes'],
     ['playSeq', 'Play sequence'], ['seqNote', 'Sequence coaching note'],
   ];
+  const OUTCOME_ATOMIC_FIELDS = ['runnersOn', 'batterAdvance', 'playOutcome', 'runnerOutcomes'];
   const situationEditor = byId('situationBuilderSubsec');
   const coachEditorMount = byId('coachSituationEditorMount');
   const adminEditorMount = byId('adminSituationEditorMount');
@@ -1819,6 +1905,7 @@
   let editorDirty = false;
   let editorBaseline = null;
   let playerPreviewActive = false;
+  let proposalPreviewState = null;
 
   const clone = (value) => value == null ? value : JSON.parse(JSON.stringify(value));
   const sameValue = (left, right) => JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
@@ -1832,19 +1919,145 @@
       .map(([field]) => field);
   }
 
+  function geometryChangeSummary(field, before = {}, after = {}) {
+    const noun = field === 'targets' ? 'target positions' : 'starting positions';
+    const changes = POSITION_IDS.flatMap((position) => {
+      const previous = before?.[position];
+      const next = after?.[position];
+      if (!previous && !next) return [];
+      if (!previous) return [`${position} added`];
+      if (!next) return [`${position} removed`];
+      const details = [];
+      if (Number(previous.x) !== Number(next.x) || Number(previous.y) !== Number(next.y)) {
+        details.push('moved');
+      }
+      if (field === 'targets' && Number(previous.tol || 0) !== Number(next.tol || 0)) {
+        details.push('tolerance changed');
+      }
+      if (field === 'targets'
+        && String(previous.notes || previous.note || '') !== String(next.notes || next.note || '')) {
+        details.push('note changed');
+      }
+      return details.length ? [`${position} ${details.join(', ')}`] : [];
+    });
+    if (!changes.length) return `No ${noun} changed`;
+    return `${changes.length} of ${POSITION_IDS.length} ${noun} changed: ${changes.join('; ')}`;
+  }
+
+  function teachingCategoryNames(value) {
+    const labels = new Map(
+      (window.DIQ_TEACHING_CATEGORIES || []).map((category) => [category.id, category.label]),
+    );
+    return Array.isArray(value) && value.length
+      ? value.map((category) => labels.get(category) || category).join(', ')
+      : 'None';
+  }
+
+  function teachingCategoryName(value) {
+    const category = (window.DIQ_TEACHING_CATEGORIES || [])
+      .find((item) => item.id === value);
+    return category?.label || value || '—';
+  }
+
+  function ballLocationLabel(value) {
+    if (!Number.isFinite(value?.x) || !Number.isFinite(value?.y)) return 'Not set';
+    const horizontal = value.x < FIELD_WIDTH * 0.4
+      ? 'left side'
+      : value.x > FIELD_WIDTH * 0.6 ? 'right side' : 'center';
+    const depth = value.y < FIELD_HEIGHT * 0.34
+      ? 'deep outfield'
+      : value.y < FIELD_HEIGHT * 0.62 ? 'shallow outfield' : 'infield';
+    return `${depth}, ${horizontal} (${Math.round(value.x)}, ${Math.round(value.y)})`;
+  }
+
+  function ballLocationChangeSummary(before, after) {
+    if (!Number.isFinite(before?.x) || !Number.isFinite(before?.y)) {
+      return `Set to ${ballLocationLabel(after)}`;
+    }
+    const dx = Math.round(Number(after?.x) - Number(before.x));
+    const dy = Math.round(Number(after?.y) - Number(before.y));
+    const directions = [
+      dx ? `${Math.abs(dx)} toward ${dx > 0 ? 'right field' : 'left field'}` : '',
+      dy ? `${Math.abs(dy)} toward ${dy > 0 ? 'home plate' : 'the outfield'}` : '',
+    ].filter(Boolean);
+    return directions.length
+      ? `Moved ${directions.join(' and ')}; now ${ballLocationLabel(after)}`
+      : `Unchanged at ${ballLocationLabel(after)}`;
+  }
+
+  function sequenceChangeSummary(before = [], after = []) {
+    const previous = Array.isArray(before) ? before : [];
+    const next = Array.isArray(after) ? after : [];
+    const changes = [];
+    for (let index = 0; index < Math.max(previous.length, next.length); index += 1) {
+      if (previous[index] === next[index]) continue;
+      if (previous[index] == null) changes.push(`step ${index + 1} added ${next[index]}`);
+      else if (next[index] == null) changes.push(`step ${index + 1} removed ${previous[index]}`);
+      else changes.push(`step ${index + 1} changed from ${previous[index]} to ${next[index]}`);
+    }
+    return changes.length
+      ? `${changes.length} sequence ${changes.length === 1 ? 'step' : 'steps'} changed: ${changes.join('; ')}`
+      : 'No sequence steps changed';
+  }
+
   function formatDiffValue(field, value) {
     if (value == null || value === '') return '—';
     if (field === 'runnersOn') {
       const bases = [value.first && '1B', value.second && '2B', value.third && '3B'].filter(Boolean);
       return bases.join(', ') || 'None';
     }
-    if (field === 'playSeq') return Array.isArray(value) && value.length ? value.join(' → ') : 'Disabled';
+    if (field === 'playSeq') return Array.isArray(value) && value.length ? `${value.join(' → ')} (${value.length} steps)` : 'Disabled';
+    if (field === 'primaryCategory') return teachingCategoryName(value);
+    if (field === 'relatedCategories') return teachingCategoryNames(value);
+    if (field === 'playOutcome') {
+      if (!value) return 'Not configured';
+      const label = String(value.result || 'other').replaceAll('_', ' ');
+      const batter = String(value.batterResult || 'out').replaceAll('_', ' ');
+      const review = value.reviewStatus === 'needs_review' ? '; needs outcome review' : '';
+      return `${label}; batter ${batter}; ${Number(value.outsRecorded || 0)} out(s)${review}`;
+    }
+    if (field === 'runnerOutcomes') {
+      return Array.isArray(value) && value.length
+        ? value.map((runner) => `${runner.startingBase} → ${runner.result}${runner.outType ? ` (${runner.outType} out${runner.outOrder ? ` #${runner.outOrder}` : ''})` : ''}${runner.taggedUp ? ' (tag up)' : ''}`).join('; ')
+        : 'No starting runners';
+    }
     if (field === 'starts' || field === 'targets') {
       return `${Object.keys(value || {}).length} positions configured`;
     }
-    if (field === 'hit') return Number.isFinite(value?.x) ? `${Math.round(value.x)}, ${Math.round(value.y)}` : 'Not set';
+    if (field === 'hit') return ballLocationLabel(value);
     if (typeof value === 'object') return JSON.stringify(value);
     return String(value);
+  }
+
+  function selectedProposalFields(expandOutcomes = false) {
+    const fields = Array.from(
+      proposalDiffList?.querySelectorAll('input[data-proposal-field]:checked') || [],
+    ).map((input) => input.dataset.proposalField);
+    if (expandOutcomes && fields.some((field) => OUTCOME_ATOMIC_FIELDS.includes(field))) {
+      OUTCOME_ATOMIC_FIELDS.forEach((field) => {
+        if (!fields.includes(field)) fields.push(field);
+      });
+    }
+    return fields;
+  }
+
+  function selectedProposalSnapshot(proposal, published) {
+    if (!proposal) return null;
+    if (proposal.submissionType === 'create' || !published) return clone(proposal.situation);
+    const snapshot = clone(published);
+    selectedProposalFields(true).forEach((field) => {
+      snapshot[field] = clone(proposal.situation?.[field]);
+    });
+    return snapshot;
+  }
+
+  function updateProposalSelectionActions(proposal) {
+    const published = publishedSituations.find((item) => item.key === proposal?.situationKey) || null;
+    const conflict = proposal?.submissionType === 'update'
+      && (!published || Number(published.revision) !== Number(proposal.baseRevision));
+    const hasSelection = proposal?.submissionType === 'create' || selectedProposalFields().length > 0;
+    setEnabled([byId('adminProposalApproveBtn')], Boolean(proposal) && !conflict && hasSelection);
+    setEnabled([proposalPreview], Boolean(proposal) && !conflict && hasSelection);
   }
 
   function renderProposalComparison(proposal) {
@@ -1883,18 +2096,39 @@
       choose.checked = true;
       choose.disabled = proposal.submissionType === 'create' || conflict;
       choose.dataset.proposalField = field;
+      if (OUTCOME_ATOMIC_FIELDS.includes(field)) {
+        choose.addEventListener('change', () => {
+          proposalDiffList.querySelectorAll(OUTCOME_ATOMIC_FIELDS.map((name) => `input[data-proposal-field="${name}"]`).join(', '))
+            .forEach((input) => { if (!input.disabled) input.checked = choose.checked; });
+        });
+      }
+      choose.addEventListener('change', () => updateProposalSelectionActions(proposal));
       const title = document.createElement('label');
       title.textContent = label;
       const current = document.createElement('div');
       current.className = 'proposal-diff-value';
-      current.textContent = `Published: ${formatDiffValue(field, published?.[field])}`;
       const proposed = document.createElement('div');
       proposed.className = 'proposal-diff-value is-proposed';
-      proposed.textContent = `Proposed: ${formatDiffValue(field, proposal.situation?.[field])}`;
+      if (field === 'starts' || field === 'targets') {
+        const publishedCount = Object.keys(published?.[field] || {}).length;
+        current.textContent = published
+          ? `Published: ${publishedCount} ${field === 'targets' ? 'targets' : 'starting positions'} form the comparison baseline`
+          : 'Published: —';
+        proposed.textContent = `Proposed: ${geometryChangeSummary(field, published?.[field], proposal.situation?.[field])}`;
+      } else if (field === 'hit') {
+        current.textContent = `Published: ${formatDiffValue(field, published?.[field])}`;
+        proposed.textContent = `Proposed: ${ballLocationChangeSummary(published?.[field], proposal.situation?.[field])}`;
+      } else if (field === 'playSeq') {
+        current.textContent = `Published: ${formatDiffValue(field, published?.[field])}`;
+        proposed.textContent = `Proposed: ${sequenceChangeSummary(published?.[field], proposal.situation?.[field])}`;
+      } else {
+        current.textContent = `Published: ${formatDiffValue(field, published?.[field])}`;
+        proposed.textContent = `Proposed: ${formatDiffValue(field, proposal.situation?.[field])}`;
+      }
       row.append(choose, title, current, proposed);
       proposalDiffList.appendChild(row);
     });
-    setEnabled([byId('adminProposalApproveBtn')], !conflict && changes.length > 0);
+    updateProposalSelectionActions(proposal);
   }
 
   function validateSituation(snapshot) {
@@ -1947,6 +2181,11 @@
       add('Set the ball landing spot.', 'sbBallHitSubsec');
     } else if (snapshot.hit.x < 0 || snapshot.hit.x > FIELD_WIDTH || snapshot.hit.y < 0 || snapshot.hit.y > FIELD_HEIGHT) {
       add('The ball landing spot is outside the field.', 'sbBallHitSubsec');
+    }
+    const outcomeIssues = window._diqValidateSituationOutcomes?.(snapshot) || [];
+    outcomeIssues.forEach((issue) => add(issue.message, issue.section || 'sbBallHitSubsec', issue.severity || 'error'));
+    if (snapshot?.playOutcome?.reviewStatus === 'needs_review' && outcomeIssues.length === 0) {
+      add('Confirm the converted play and runner outcomes before publishing.', 'sbBallHitSubsec');
     }
     const sequence = Array.isArray(snapshot?.playSeq) ? snapshot.playSeq : [];
     if (sequence.length === 1) add('A play sequence needs at least two positions, or it should be empty.', 'seqSubsec');
@@ -2201,6 +2440,38 @@
     }
   }
 
+  window._diqConfirmConvertedSituationOutcomes = async (snapshot) => {
+    const confirmed = clone(snapshot);
+    if (!confirmed?.playOutcome || confirmed.playOutcome.reviewStatus !== 'ready') return false;
+    const errors = validateSituation(confirmed).filter((issue) => issue.severity === 'error');
+    if (errors.length) {
+      setWorkflowStatus('Correct the listed outcome details before confirming this conversion.', 'error');
+      renderEditorState(confirmed, true);
+      focusEditorSection(errors[0].section);
+      return false;
+    }
+    const revision = Number(confirmed.revision);
+    if (!Number.isInteger(revision) || revision < 1) {
+      setWorkflowStatus('Only a published converted situation can be confirmed.', 'error');
+      return false;
+    }
+    try {
+      setWorkflowStatus('Saving the confirmed outcomes…', 'pending');
+      const result = await diqApiRequest(`situations/${encodeURIComponent(confirmed.key)}`, {
+        method: 'PUT',
+        headers: { 'If-Match': String(revision) },
+        body: JSON.stringify(confirmed),
+      });
+      await reloadPublishedSituation(result?.record?.key || confirmed.key);
+      await loadAdminData(teamSelect?.value || '');
+      setWorkflowStatus('Converted outcomes confirmed and removed from the review queue.', 'success');
+      return true;
+    } catch (error) {
+      setWorkflowStatus(error?.message || 'Unable to confirm the converted outcomes.', 'error');
+      return false;
+    }
+  };
+
   function setPlayerPreview(active) {
     playerPreviewActive = Boolean(active);
     document.body.classList.toggle('situation-player-preview', playerPreviewActive);
@@ -2223,9 +2494,103 @@
     }
   }
 
+  function proposalPreviewBar() {
+    document.querySelector('.situation-preview-bar')?.remove();
+    if (!proposalPreviewState) return;
+    const bar = document.createElement('div');
+    bar.className = 'situation-preview-bar proposal-preview-bar';
+    const label = document.createElement('strong');
+    label.textContent = `Proposal field review — ${proposalPreviewState.displayLabel}`;
+    const versionControls = document.createElement('div');
+    versionControls.className = 'proposal-preview-versions';
+    const published = document.createElement('button');
+    published.type = 'button';
+    published.className = 'btn btn-ghost btn-small';
+    published.textContent = proposalPreviewState.published ? 'Published version' : 'No published version';
+    published.disabled = !proposalPreviewState.published;
+    published.setAttribute('aria-pressed', String(proposalPreviewState.mode === 'published'));
+    published.addEventListener('click', () => showProposalFieldPreview('published'));
+    const proposed = document.createElement('button');
+    proposed.type = 'button';
+    proposed.className = 'btn btn-ghost btn-small';
+    proposed.textContent = proposalPreviewState.submissionType === 'create'
+      ? 'Proposed version'
+      : 'Selected changes';
+    proposed.setAttribute('aria-pressed', String(proposalPreviewState.mode === 'proposed'));
+    proposed.addEventListener('click', () => showProposalFieldPreview('proposed'));
+    versionControls.append(published, proposed);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn-brand btn-small';
+    close.textContent = 'Return to proposal review';
+    close.addEventListener('click', () => closeProposalFieldPreview());
+    bar.append(label, versionControls, close);
+    document.body.appendChild(bar);
+  }
+
+  function showProposalFieldPreview(mode = 'proposed') {
+    const selected = proposals.find((item) => item.id === proposalSelect?.value);
+    if (!proposalPreviewState) {
+      if (!selected) return;
+      const published = clone(publishedSituations.find((item) => item.key === selected.situationKey) || null);
+      const selectedSnapshot = selectedProposalSnapshot(selected, published);
+      if (!selectedSnapshot) return;
+      const proposalTitle = selected.situation?.title || selected.situation?.desc || 'Untitled situation';
+      proposalPreviewState = {
+        proposalId:selected.id,
+        submissionType:selected.submissionType,
+        displayLabel:window._diqSituationDisplayLabel?.({
+          ...selected.situation,
+          desc:proposalTitle,
+          title:proposalTitle,
+        }) || [selected.situation?.displayCode, proposalTitle].filter(Boolean).join(' · '),
+        proposed:selectedSnapshot,
+        published,
+        returnSnapshot:clone(currentSnapshot()),
+        returnBaseline:clone(editorBaseline),
+        returnDirty:editorDirty,
+        mode:'proposed',
+      };
+    }
+    const nextMode = mode === 'published' && proposalPreviewState.published
+      ? 'published'
+      : 'proposed';
+    const snapshot = nextMode === 'published'
+      ? proposalPreviewState.published
+      : proposalPreviewState.proposed;
+    if (!snapshot) return;
+    proposalPreviewState.mode = nextMode;
+    window._diqSetEditorMode?.(null);
+    if (snapshot.hit && typeof setHitSaved === 'function') setHitSaved(snapshot.key, snapshot.hit);
+    setSituation(snapshot.key, clone(snapshot));
+    document.body.classList.add('situation-player-preview', 'proposal-field-preview');
+    proposalPreviewBar();
+  }
+
+  function closeProposalFieldPreview(restoreEditor = true) {
+    if (!proposalPreviewState) return;
+    const state = proposalPreviewState;
+    const snapshot = state.returnSnapshot;
+    document.body.classList.remove('situation-player-preview', 'proposal-field-preview');
+    document.querySelector('.situation-preview-bar')?.remove();
+    if (!restoreEditor) {
+      proposalPreviewState = null;
+      return;
+    }
+    if (snapshot?.hit && typeof setHitSaved === 'function') setHitSaved(snapshot.key, snapshot.hit);
+    if (snapshot?.key) setSituation(snapshot.key, clone(snapshot));
+    proposalPreviewState = null;
+    window._diqSetEditorMode?.('admin');
+    editorBaseline = clone(state.returnBaseline);
+    editorDirty = state.returnDirty;
+    renderEditorState(currentSnapshot());
+    renderProposalDetails();
+  }
+
   submitSituation?.addEventListener('click', () => void submitCurrentSituation());
   publishSituation?.addEventListener('click', () => void publishCurrentSituation());
   previewSituation?.addEventListener('click', () => setPlayerPreview(true));
+  proposalPreview?.addEventListener('click', () => showProposalFieldPreview('proposed'));
   previewSequence?.addEventListener('click', () => {
     if (!window._diqPreviewSequence?.()) setWorkflowStatus('Add at least two positions to preview the sequence.', 'error');
   });
@@ -2243,9 +2608,11 @@
   });
   byId('adminProposalSelectAllBtn')?.addEventListener('click', () => {
     proposalDiffList?.querySelectorAll('input[data-proposal-field]:not(:disabled)').forEach((input) => { input.checked = true; });
+    updateProposalSelectionActions(proposals.find((item) => item.id === proposalSelect?.value));
   });
   byId('adminProposalClearAllBtn')?.addEventListener('click', () => {
     proposalDiffList?.querySelectorAll('input[data-proposal-field]:not(:disabled)').forEach((input) => { input.checked = false; });
+    updateProposalSelectionActions(proposals.find((item) => item.id === proposalSelect?.value));
   });
   document.querySelectorAll('[data-editor-step]').forEach((button) => {
     button.addEventListener('click', () => focusEditorSection(button.dataset.editorStep));
@@ -2265,6 +2632,7 @@
   };
 
   window._diqSituationChanged = (snapshot) => {
+    if (proposalPreviewState) return;
     if (!editorRole || !snapshot) return;
     editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(snapshot.key) || snapshot);
     editorDirty = false;
@@ -2303,6 +2671,7 @@
     if (editorRole !== role) return;
     const key = currentSnapshot()?.key || '';
     if (playerPreviewActive) setPlayerPreview(false);
+    if (proposalPreviewState) closeProposalFieldPreview(false);
     editorRole = null;
     editorDirty = false;
     editorBaseline = null;

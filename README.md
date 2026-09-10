@@ -44,6 +44,7 @@ their storage location changes. Cloudflare-specific calls remain isolated in
 Detailed documentation:
 
 - [Local development](docs/development.md)
+- [D1 reporting and queue optimization](docs/d1-optimization.md)
 - [Database environments and migrations](docs/database-environments.md)
 - [Production data refresh](docs/database-refresh.md)
 - [Database administration API](docs/database-administration.md)
@@ -53,6 +54,7 @@ Detailed documentation:
 - [Practice assignments and player queues](docs/practice-assignments.md)
 - [Seasons and player data lifecycle](docs/seasons-and-player-lifecycle.md)
 - [Cloudflare deployment](docs/deployment.md)
+- [Release readiness and rollout checklist](docs/release-checklist.md)
 - [Database conversion roadmap](docs/database-roadmap.md)
 
 ## Common commands
@@ -62,6 +64,8 @@ Detailed documentation:
 | `npm run dev:local` | Migrate, conditionally seed, build, and start local D1 |
 | `npm run verify` | Run checks, isolated tests, and a production build |
 | `npm test` | Run script tests and browser/API tests against isolated D1 |
+| `npm run test:acceptance` | Run focused desktop and mobile release checks |
+| `npm run test:cross-browser` | Run focused Chromium, Firefox, WebKit, Android, and iPhone checks |
 | `npm run deploy:cloudflare -- --dry-run` | Show the branch deployment target without changing Cloudflare |
 | `npm run deploy:cloudflare` | Verify, migrate, and deploy `main` or `preview` |
 | `npm run admin:password` | Update the local administrator password |

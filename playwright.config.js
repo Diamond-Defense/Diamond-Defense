@@ -6,6 +6,7 @@ const localBaseUrl = `http://127.0.0.1:${testPort}`;
 
 export default defineConfig({
   testDir: './tests',
+  testIgnore: 'release-readiness.spec.js',
   fullyParallel: false,
   timeout: 15_000,
   expect: {

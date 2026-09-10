@@ -696,7 +696,7 @@ test.describe('portable SQLite API', () => {
       },
     });
     expect(coachLogin.ok()).toBeTruthy();
-    const report = await request.get('/api/reports/team/13u-black');
+    const report = await request.get('/api/reports/team/13u-black?includeOptions=1');
     expect(report.ok()).toBeTruthy();
     const activity = await report.json();
     expect(activity).toMatchObject({
@@ -711,9 +711,52 @@ test.describe('portable SQLite API', () => {
       passed: expect.any(Number),
       failed: expect.any(Number),
       abandoned: expect.any(Number),
+      incomplete: expect.any(Number),
+      assigned: expect.any(Number),
+      freePlay: expect.any(Number),
+      overdue: expect.any(Number),
+      lateCompletions: expect.any(Number),
+      retakes: expect.any(Number),
     });
+    expect(activity.insights).toMatchObject({
+      finalizedAttempts: expect.any(Number),
+      trend: expect.any(Array),
+      phases: {
+        positioning: { attempts: expect.any(Number), passed: expect.any(Number) },
+        sequence: { attempts: expect.any(Number), passed: expect.any(Number) },
+      },
+      improvement: { sampleSize: expect.any(Number) },
+      attentionSituations: expect.any(Array),
+      playerProgress: expect.any(Array),
+    });
+    expect(activity.options).toMatchObject({
+      players: expect.any(Array),
+      seasons: expect.any(Array),
+      assignments: expect.any(Array),
+      situations: expect.any(Array),
+      categories: expect.any(Array),
+    });
+    if (activity.attempts.length) {
+      expect(activity.attempts[0]).toEqual(expect.objectContaining({
+        seasonName: expect.any(String),
+        activityType: expect.stringMatching(/^(assigned|free_play)$/),
+        teachingCategories: expect.any(Array),
+        isRetake: expect.any(Boolean),
+        isOverdue: expect.any(Boolean),
+        isLateCompletion: expect.any(Boolean),
+      }));
+    }
     expect(new Set(activity.attempts.map((attempt) => attempt.playerId)).size)
       .toBe(activity.attempts.length);
+
+    const pageOnlyReport = await request.get(
+      '/api/reports/team/13u-black?page=1&includeAggregates=0',
+    );
+    expect(pageOnlyReport.ok()).toBeTruthy();
+    const pageOnlyActivity = await pageOnlyReport.json();
+    expect(pageOnlyActivity).not.toHaveProperty('summary');
+    expect(pageOnlyActivity).not.toHaveProperty('insights');
+    expect(pageOnlyActivity.attempts).toEqual(expect.any(Array));
 
     const playerReport = await request.get(
       '/api/reports/team/13u-black?playerId=13u-black-bob-smith-11&page=1',
@@ -739,6 +782,46 @@ test.describe('portable SQLite API', () => {
     expect(passedActivity.attempts.every((attempt) =>
       attempt.outcome === 'passed' && attempt.situationKey === 'BD-01')).toBeTruthy();
 
+    const metadataReport = await request.get(
+      '/api/reports/team/13u-black?difficulty=foundational&categoryId=cutoffs-relays&activityType=free_play',
+    );
+    expect(metadataReport.ok()).toBeTruthy();
+    const metadataActivity = await metadataReport.json();
+    expect(metadataActivity.filters).toMatchObject({
+      difficulty: 'foundational',
+      categoryId: 'cutoffs-relays',
+      activityType: 'free_play',
+    });
+    expect(metadataActivity.attempts.every((attempt) =>
+      attempt.difficulty === 'foundational'
+      && attempt.activityType === 'free_play'
+      && attempt.teachingCategories.includes('Cutoffs & Relays'))).toBeTruthy();
+
+    const incompleteReport = await request.get('/api/reports/team/13u-black?outcome=incomplete');
+    expect(incompleteReport.ok()).toBeTruthy();
+    expect((await incompleteReport.json()).attempts.every((attempt) =>
+      attempt.lifecycleStatus === 'incomplete')).toBeTruthy();
+
+    const seasonOption = activity.options.seasons[0];
+    if (seasonOption) {
+      const seasonReport = await request.get(
+        `/api/reports/team/13u-black?seasonId=${encodeURIComponent(seasonOption.id)}`,
+      );
+      expect(seasonReport.ok()).toBeTruthy();
+      expect((await seasonReport.json()).attempts.every((attempt) =>
+        attempt.seasonId === seasonOption.id)).toBeTruthy();
+    }
+
+    const assignmentOption = activity.options.assignments[0];
+    if (assignmentOption) {
+      const assignmentReport = await request.get(
+        `/api/reports/team/13u-black?assignmentId=${encodeURIComponent(assignmentOption.id)}`,
+      );
+      expect(assignmentReport.ok()).toBeTruthy();
+      expect((await assignmentReport.json()).attempts.every((attempt) =>
+        attempt.assignmentId === assignmentOption.id)).toBeTruthy();
+    }
+
     const invalidDates = await request.get(
       '/api/reports/team/13u-black?dateFrom=2026-09-01&dateTo=2026-08-01',
     );
@@ -752,8 +835,11 @@ test.describe('portable SQLite API', () => {
     expect(exportResponse.headers()['content-disposition'])
       .toContain('diamond-defense-13u-black-results.csv');
     const csv = await exportResponse.text();
-    expect(csv).toContain('"Date and Time","Player Number","Player","Situation","Result"');
+    expect(csv).toContain('"Date and Time","Season","Activity","Assignment","Cycle","Assignment Due","Timing"');
+    expect(csv).toContain('"Difficulty","Teaching Categories","Result","Attempt State"');
     expect(csv).toContain('"Bob Smith"');
+
+    expect((await request.get('/api/reports/team/13u-black?difficulty=expert')).status()).toBe(400);
 
     expect((await request.get('/api/reports/team/12u-blue/export')).status()).toBe(403);
   });

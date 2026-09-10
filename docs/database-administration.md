@@ -132,11 +132,23 @@ on. The published record does not change. Proposal history shows pending,
 approved, rejected, and withdrawn states with administrator notes.
 
 An administrator sees a published-versus-proposed comparison and can publish
-the complete proposal or select individual changed fields for an update. The
-accepted field list is retained with the review record. Rejection requires a
-note. Approval is blocked with a revision conflict if the published situation
-changed after the coach submitted the draft; the coach must then submit a fresh
-revision.
+the complete proposal or select individual changed fields for an update. Start
+and target comparisons name the positions that moved or changed, rather than
+only showing a configured-position count. **Review selected changes on field**
+builds a runnable version from the fields currently checked for approval and
+lets the administrator switch between it and the published version before
+returning to the proposal. Runner presence and structured outcome fields are
+always accepted as one atomic group. The accepted field list is retained with the review
+record. Rejection requires a note. Approval is blocked with a revision conflict
+if the published situation changed after the coach submitted the draft; the
+coach must then submit a fresh revision.
+
+Migration `0019_structured_situation_outcomes.sql` adds relational current and
+versioned batter/runner outcomes. Ambiguous legacy records are marked
+`needs_review` and shown in the administrator Situations review queue. New
+submissions and publishes are rejected until those outcomes are explicitly
+confirmed. Fresh generated seeds populate these relational records as well as
+the compatibility payload.
 
 ## Admin interface
 

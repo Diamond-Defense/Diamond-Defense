@@ -3,6 +3,7 @@ import {
   normalizeDifficulty,
   normalizeTeachingCategories,
 } from '$lib/domain/situation-metadata';
+import { normalizeSituationOutcomes } from '$lib/domain/situation-outcomes';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import { writeAudit } from './audit';
 import {
@@ -83,7 +84,18 @@ function validateSubmissionSituation(input: Situation): Situation {
       'Situation category is required and must be 60 characters or fewer.',
     );
   }
-  return { ...input, key, title, category, difficulty, ...teachingCategories } as Situation;
+  let outcomes: ReturnType<typeof normalizeSituationOutcomes>;
+  try {
+    outcomes = normalizeSituationOutcomes(input);
+  } catch (error) {
+    throw new RecordValidationError(error instanceof Error ? error.message : 'Situation outcomes are invalid.');
+  }
+  if (outcomes.playOutcome.reviewStatus === 'needs_review') {
+    throw new RecordValidationError(
+      'Confirm the play and runner outcomes before submitting this situation.',
+    );
+  }
+  return { ...input, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }
 
 function mapRow(row: SubmissionRow): SituationSubmissionRecord {
@@ -296,10 +308,15 @@ export class SqliteSituationSubmissionRepository {
 
     const selectableFields = [
       'title', 'desc', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
-      'hitType', 'batterAdvance', 'playSeq', 'seqNote',
+      'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'seqNote',
     ];
     const acceptedFields = Array.from(new Set(acceptedFieldsInput))
       .filter((field) => selectableFields.includes(field));
+    if (acceptedFields.some((field) => ['runnersOn', 'batterAdvance', 'playOutcome', 'runnerOutcomes'].includes(field))) {
+      for (const field of ['runnersOn', 'batterAdvance', 'playOutcome', 'runnerOutcomes']) {
+        if (!acceptedFields.includes(field)) acceptedFields.push(field);
+      }
+    }
     let published: SituationRecord | null = null;
     if (decision === 'approve') {
       const situations = new SqliteSituationRepository(this.database);

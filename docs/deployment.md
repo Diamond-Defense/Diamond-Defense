@@ -135,6 +135,15 @@ because that would create a duplicate deployment.
 5. Apply the same accepted migrations against production.
 6. Merge the accepted commit into `main` and let the production Worker deploy.
 
+Use the [release readiness and rollout checklist](release-checklist.md) for the
+exact local browser coverage, database exports, migration-status checks, remote
+query-plan verification, smoke tests, and release record.
+
+Cloudflare Git build commands do not apply D1 migrations. When using Git-based
+deployment, apply pending migrations separately immediately before the matching
+Worker deployment. The repository's direct `deploy:cloudflare` wrapper is the
+exception: it verifies, migrates, and deploys in that documented order.
+
 Remote migrations create schema but not operational accounts or teams. Initial
 data setup is a separate reviewed administration operation. Never deploy the
 checked-in demonstration passwords to a public environment.

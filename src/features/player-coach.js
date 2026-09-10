@@ -329,6 +329,8 @@ window.DIQ_TEACHING_CATEGORIES = Object.freeze([
  *   starts?:Starts, targets?:Targets,
  *   hit?:Pt, hitType?:'line'|'popup'|'grounder',
  *   batterAdvance?:number,
+ *   playOutcome?:{result:string,batterResult:'out'|'first'|'second'|'third'|'home',outsRecorded:number,batterOutType?:string,batterOutOrder?:number,reviewStatus:'ready'|'needs_review'},
+ *   runnerOutcomes?:Array<{startingBase:'first'|'second'|'third',result:'hold'|'second'|'third'|'home'|'out',outType?:string,outOrder?:number,taggedUp:boolean}>,
  *   outs?:0|1|2,
  *   runnersOn?:RunnersOn
  * }} Situation */
@@ -892,12 +894,19 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   const coachResultsWorkspace = document.getElementById('coachResultsWorkspace');
   const coachResultsPlayerSelect = document.getElementById('coachResultsPlayerSelect');
+  const coachResultsSeasonSelect = document.getElementById('coachResultsSeasonSelect');
+  const coachResultsAssignmentSelect = document.getElementById('coachResultsAssignmentSelect');
   const coachResultsSituationSelect = document.getElementById('coachResultsSituationSelect');
+  const coachResultsDifficultySelect = document.getElementById('coachResultsDifficultySelect');
+  const coachResultsCategorySelect = document.getElementById('coachResultsCategorySelect');
+  const coachResultsActivitySelect = document.getElementById('coachResultsActivitySelect');
   const coachResultsOutcomeSelect = document.getElementById('coachResultsOutcomeSelect');
   const coachResultsDateFrom = document.getElementById('coachResultsDateFrom');
   const coachResultsDateTo = document.getElementById('coachResultsDateTo');
   const coachResultsStatus = document.getElementById('coachResultsStatus');
   const coachResultsSummary = document.getElementById('coachResultsSummary');
+  const coachDevelopmentInsights = document.getElementById('coachDevelopmentInsights');
+  const coachDevelopmentContent = document.getElementById('coachDevelopmentContent');
   const coachResultsList = document.getElementById('coachResultsList');
   const coachResultsPagination = document.getElementById('coachResultsPagination');
   const practiceWorkspace = document.getElementById('practiceWorkspace');
@@ -929,6 +938,8 @@ function computeRosterPlayerId(teamObj, playerObj){
   const practiceSort = document.getElementById('practiceSort');
   let coachResultsPage = 1;
   let coachResultsAppliedFilters = {};
+  let coachResultsOptionsTeamId = '';
+  let coachResultsAggregateCache = { key:'', summary:null, insights:null };
   let playerPracticePage = 1;
   let coachPracticePage = 1;
   let playerPracticeAssignments = [];
@@ -1548,10 +1559,75 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
   }
 
+  function replaceCoachResultsOptions(select, placeholder, options, valueFor, labelFor){
+    if(!select) return;
+    const selected = select.value;
+    select.replaceChildren();
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = placeholder;
+    select.appendChild(empty);
+    (Array.isArray(options) ? options : []).forEach(item=>{
+      const option = document.createElement('option');
+      option.value = String(valueFor(item) || '');
+      option.textContent = String(labelFor(item) || option.value);
+      select.appendChild(option);
+    });
+    if(selected && [...select.options].some(option=>option.value === selected)) select.value = selected;
+  }
+
+  function applyCoachResultsOptions(options){
+    if(!options) return;
+    replaceCoachResultsOptions(
+      coachResultsPlayerSelect,
+      'All recent team activity',
+      options.players,
+      player=>player.id,
+      player=>`#${player.number || '—'} ${player.name}`,
+    );
+    replaceCoachResultsOptions(
+      coachResultsSeasonSelect,
+      'All seasons',
+      options.seasons,
+      season=>season.id,
+      season=>`${season.name}${season.status === 'active' ? '' : ` · ${season.status}`}`,
+    );
+    replaceCoachResultsOptions(
+      coachResultsAssignmentSelect,
+      'All assignments',
+      options.assignments,
+      assignment=>assignment.id,
+      assignment=>[
+        assignment.title,
+        Number(assignment.cycleNumber) > 1 ? `Retake ${assignment.cycleNumber}` : '',
+        assignment.seasonName || '',
+      ].filter(Boolean).join(' · '),
+    );
+    replaceCoachResultsOptions(
+      coachResultsSituationSelect,
+      'All situations',
+      options.situations,
+      situation=>situation.key,
+      situation=>[situation.displayCode, situation.title].filter(Boolean).join(' · '),
+    );
+    replaceCoachResultsOptions(
+      coachResultsCategorySelect,
+      'All categories',
+      options.categories,
+      category=>category.id,
+      category=>category.label,
+    );
+  }
+
   function readCoachResultsFilters(){
     return {
       playerId:String(coachResultsPlayerSelect?.value || ''),
+      seasonId:String(coachResultsSeasonSelect?.value || ''),
+      assignmentId:String(coachResultsAssignmentSelect?.value || ''),
       situationKey:String(coachResultsSituationSelect?.value || ''),
+      difficulty:String(coachResultsDifficultySelect?.value || ''),
+      categoryId:String(coachResultsCategorySelect?.value || ''),
+      activityType:String(coachResultsActivitySelect?.value || ''),
       outcome:String(coachResultsOutcomeSelect?.value || ''),
       dateFrom:String(coachResultsDateFrom?.value || ''),
       dateTo:String(coachResultsDateTo?.value || ''),
@@ -1577,12 +1653,109 @@ function computeRosterPlayerId(teamObj, playerObj){
       ['Passed', Number(summary.passed || 0)],
       ['Failed', Number(summary.failed || 0)],
       ['Abandoned', Number(summary.abandoned || 0)],
+      ['In progress', Number(summary.incomplete || 0)],
+      ['Overdue', Number(summary.overdue || 0)],
+      ['Late completions', Number(summary.lateCompletions || 0)],
+      ['Retake attempts', Number(summary.retakes || 0)],
       ['Average score', formatPercent(summary.averageScorePercent)],
       ['Average completion', formatSeconds(summary.averageCompletionSeconds)],
     ];
     coachResultsSummary.innerHTML = cards.map(([label,value])=>`<div class="coach-summary-card">
       <span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>
     </div>`).join('');
+  }
+
+  function renderCoachDevelopmentInsights(insights={}, selectedPlayer=''){
+    if(!coachDevelopmentInsights || !coachDevelopmentContent) return;
+    const title = document.getElementById('coachDevelopmentTitle');
+    if(title) title.textContent = selectedPlayer ? 'Player development' : 'Team development';
+    const finalizedAttempts = Number(insights.finalizedAttempts || 0);
+    if(!finalizedAttempts){
+      coachDevelopmentContent.innerHTML = '<div class="coach-results-empty">No completed results match these filters yet.</div>';
+      return;
+    }
+    const hasNumber = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+    const formatPercent = value => hasNumber(value) ? `${Math.round(Number(value))}%` : '—';
+    const formatSeconds = value => hasNumber(value) ? `${Number(value).toFixed(1)}s` : '—';
+    const formatChange = (value, suffix=' pts', lowerIsBetter=false) => {
+      if(!hasNumber(value)) return { text:'Not enough data', state:'neutral' };
+      const number = Number(value);
+      const positive = lowerIsBetter ? number < 0 : number > 0;
+      const negative = lowerIsBetter ? number > 0 : number < 0;
+      return {
+        text:`${number > 0 ? '+' : ''}${number.toFixed(1)}${suffix}`,
+        state:positive ? 'positive' : negative ? 'negative' : 'neutral',
+      };
+    };
+    const improvement = insights.improvement || {};
+    const passChange = formatChange(improvement.passRateChange);
+    const scoreChange = formatChange(improvement.scoreChange);
+    const timeChange = formatChange(improvement.completionSecondsChange, 's', true);
+    const positioning = insights.phases?.positioning || {};
+    const sequence = insights.phases?.sequence || {};
+    const phaseCard = (label, phase) => `<div class="coach-phase-row">
+      <div><strong>${escapeHtml(label)}</strong><small>${Number(phase.passed || 0)} of ${Number(phase.attempts || 0)} passed</small></div>
+      <div class="coach-insight-meter" aria-label="${escapeHtml(label)} pass rate ${escapeHtml(formatPercent(phase.passRate))}">
+        <span style="width:${Math.max(0, Math.min(100, Number(phase.passRate || 0)))}%"></span>
+      </div><b>${escapeHtml(formatPercent(phase.passRate))}</b>
+    </div>`;
+    const trend = Array.isArray(insights.trend) ? insights.trend : [];
+    const trendMarkup = trend.length ? trend.map(point=>{
+      const [year,month] = String(point.period || '').split('-').map(Number);
+      const label = Number.isFinite(year) && Number.isFinite(month)
+        ? new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString(undefined, { month:'short', year:'numeric', timeZone:'UTC' })
+        : point.period;
+      return `<div class="coach-trend-column">
+        <div class="coach-trend-track" aria-label="${escapeHtml(label)}: ${escapeHtml(formatPercent(point.passRate))} pass rate">
+          <span style="height:${Math.max(3, Math.min(100, Number(point.passRate || 0)))}%"></span>
+        </div>
+        <strong>${escapeHtml(formatPercent(point.passRate))}</strong>
+        <small>${escapeHtml(label)} · ${Number(point.attempts || 0)}</small>
+      </div>`;
+    }).join('') : '<p class="coach-insight-empty">No dated results are available for a trend.</p>';
+    const attention = Array.isArray(insights.attentionSituations) ? insights.attentionSituations : [];
+    const attentionMarkup = attention.length ? attention.map(situation=>{
+      const detail = [
+        Number(situation.positioningMisses || 0) ? `${Number(situation.positioningMisses)} positioning` : '',
+        Number(situation.sequenceMisses || 0) ? `${Number(situation.sequenceMisses)} sequence` : '',
+      ].filter(Boolean).join(' · ');
+      return `<li><div><strong>${escapeHtml(situation.situationTitle || 'Situation')}</strong>
+        <small>${escapeHtml(detail || `${Number(situation.missed || 0)} unsuccessful`)}</small></div>
+        <span>${Number(situation.missed || 0)} of ${Number(situation.attempts || 0)} missed</span></li>`;
+    }).join('') : '<li class="coach-insight-success">No missed situations in the filtered results.</li>';
+    const comparisonLabel = Number(improvement.sampleSize || 0) >= 4
+      ? `First ${Number(improvement.sampleSize || 0) / 2} versus most recent ${Number(improvement.sampleSize || 0) / 2} results`
+      : 'At least four completed results are needed';
+    const playerProgress = Array.isArray(insights.playerProgress) ? insights.playerProgress : [];
+    const playerProgressMarkup = playerProgress.length ? playerProgress.map(player=>`<tr>
+      <td><strong>#${escapeHtml(player.playerNumber || '—')} ${escapeHtml(player.playerName || 'Player')}</strong></td>
+      <td>${Number(player.attempts || 0)}</td><td>${escapeHtml(formatPercent(player.passRate))}</td>
+      <td>${escapeHtml(formatPercent(player.averageScorePercent))}</td>
+      <td>${escapeHtml(formatPercent(player.positioningPassRate))}</td>
+      <td>${escapeHtml(formatPercent(player.sequencePassRate))}</td>
+    </tr>`).join('') : '<tr><td colspan="6">No completed player results match these filters.</td></tr>';
+    coachDevelopmentContent.innerHTML = `<div class="coach-insight-grid">
+      <article class="coach-insight-card coach-progress-card">
+        <h4>Recent progress</h4><p>${escapeHtml(comparisonLabel)}</p>
+        <div class="coach-progress-metrics">
+          <div><span>Pass rate</span><strong class="is-${passChange.state}">${escapeHtml(passChange.text)}</strong><small>${escapeHtml(formatPercent(improvement.earlierPassRate))} → ${escapeHtml(formatPercent(improvement.recentPassRate))}</small></div>
+          <div><span>Position score</span><strong class="is-${scoreChange.state}">${escapeHtml(scoreChange.text)}</strong><small>${escapeHtml(formatPercent(improvement.earlierScorePercent))} → ${escapeHtml(formatPercent(improvement.recentScorePercent))}</small></div>
+          <div><span>Completion time</span><strong class="is-${timeChange.state}">${escapeHtml(timeChange.text)}</strong><small>${escapeHtml(formatSeconds(improvement.earlierCompletionSeconds))} → ${escapeHtml(formatSeconds(improvement.recentCompletionSeconds))}</small></div>
+        </div>
+      </article>
+      <article class="coach-insight-card"><h4>Skill phases</h4><p>Where successful results are being won or lost.</p>
+        <div class="coach-phase-list">${phaseCard('Positioning', positioning)}${phaseCard('Play sequence', sequence)}</div>
+      </article>
+      <article class="coach-insight-card coach-trend-card"><h4>Pass-rate trend</h4><p>Up to six months of matching completed results.</p>
+        <div class="coach-trend-chart">${trendMarkup}</div>
+      </article>
+      <article class="coach-insight-card"><h4>Needs attention</h4><p>Situations with the most unsuccessful results.</p>
+        <ol class="coach-attention-list">${attentionMarkup}</ol>
+      </article>
+      ${selectedPlayer ? '' : `<article class="coach-insight-card coach-player-progress-card"><h4>Player development snapshot</h4><p>Up to eight players, beginning with the lowest pass rate so support needs are visible first.</p>
+        <div class="coach-player-progress-wrap"><table><thead><tr><th>Player</th><th>Results</th><th>Pass rate</th><th>Position score</th><th>Positioning</th><th>Sequence</th></tr></thead><tbody>${playerProgressMarkup}</tbody></table></div>
+      </article>`}
+    </div>`;
   }
 
   function resultBadge(value, state){
@@ -1628,8 +1801,10 @@ function computeRosterPlayerId(teamObj, playerObj){
     const outcome = attempt.outcome
       || (attempt.success === true ? 'passed' : attempt.success === false ? 'failed' : null);
     return {
-      dateTime: new Date(attempt.createdAt || attempt.ts).toLocaleString(),
-      positionResult: outcome === 'abandoned' ? 'ABANDONED' : outcome === 'passed' ? 'PASS' : outcome === 'failed' ? 'FAIL' : '—',
+      dateTime: new Date(attempt.completedAt || attempt.startedAt || attempt.createdAt || attempt.ts).toLocaleString(),
+      positionResult: attempt.lifecycleStatus === 'incomplete'
+        ? 'IN PROGRESS'
+        : outcome === 'abandoned' ? 'ABANDONED' : outcome === 'passed' ? 'PASS' : outcome === 'failed' ? 'FAIL' : '—',
       positionScore: phaseOne?.scoreCorrect != null && phaseOne?.scoreTotal != null
         ? `${phaseOne.scoreCorrect}/${phaseOne.scoreTotal}` : '—',
       positionTries: phaseOne?.triesUsed != null ? `${phaseOne.triesUsed}/${MAX_TRIES}` : '—',
@@ -1639,6 +1814,25 @@ function computeRosterPlayerId(teamObj, playerObj){
       sequenceTime: lastStage?.timeElapsed != null ? `${lastStage.timeElapsed}s` : '—',
       selectedSequence: sequence.length ? sequence.join(' → ') : '—',
     };
+  }
+
+  function coachAttemptContext(attempt){
+    const activity = attempt.activityType === 'assigned'
+      ? (attempt.assignmentTitle || 'Assigned practice')
+      : 'Free play';
+    const details = [];
+    if(attempt.seasonName) details.push(attempt.seasonName);
+    if(Number(attempt.assignmentCycleNumber) > 1) details.push(`Retake ${attempt.assignmentCycleNumber}`);
+    if(attempt.assignmentDueAt){
+      const dueDate = new Date(attempt.assignmentDueAt);
+      if(!Number.isNaN(dueDate.valueOf())) details.push(`Due ${dueDate.toLocaleDateString()}`);
+    }
+    const flags = [];
+    if(attempt.isOverdue) flags.push('<span class="coach-context-flag is-warning">Overdue</span>');
+    if(attempt.isLateCompletion) flags.push('<span class="coach-context-flag is-warning">Completed late</span>');
+    return `<span class="coach-review-primary">${escapeHtml(activity)}</span>
+      ${details.length ? `<small>${escapeHtml(details.join(' · '))}</small>` : ''}
+      ${flags.join('')}`;
   }
 
   function renderCoachResultsPage(report){
@@ -1652,6 +1846,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       ? 'Recent saved attempts for the selected player.'
       : 'The latest matching saved result for each player.';
     renderCoachResultsSummary(report.summary || {});
+    renderCoachDevelopmentInsights(report.insights || {}, selectedPlayer);
     coachResultsList.replaceChildren();
     if(!attempts.length){
       coachResultsList.innerHTML = '<div class="coach-results-empty">No saved player results were found.</div>';
@@ -1660,12 +1855,19 @@ function computeRosterPlayerId(teamObj, playerObj){
         const values = coachReviewValues(attempt);
         const positionState = values.positionResult === 'PASS'
           ? 'success'
-          : values.positionResult === 'ABANDONED' ? 'warning' : 'fail';
+          : ['ABANDONED', 'IN PROGRESS'].includes(values.positionResult) ? 'warning' : 'fail';
         const sequenceState = values.sequenceResult === 'PASS' ? 'success' : 'fail';
+        const situationMetadata = [
+          attempt.difficulty
+            ? `${String(attempt.difficulty).charAt(0).toUpperCase()}${String(attempt.difficulty).slice(1)}`
+            : '',
+          attempt.primaryCategory || '',
+        ].filter(Boolean).join(' · ');
         return `<tr>
           <td class="coach-review-datetime">${escapeHtml(values.dateTime)}</td>
           ${selectedPlayer ? '' : `<td><span class="coach-review-primary">#${escapeHtml(attempt.playerNumber || '—')} ${escapeHtml(attempt.playerName || '')}</span></td>`}
-          <td><span class="coach-review-primary">${escapeHtml(attempt.situationTitle || 'Situation')}</span></td>
+          <td><span class="coach-review-primary">${escapeHtml(attempt.situationTitle || 'Situation')}</span>${situationMetadata ? `<small>${escapeHtml(situationMetadata)}</small>` : ''}</td>
+          <td class="coach-review-context">${coachAttemptContext(attempt)}</td>
           <td>${resultBadge(values.positionResult, positionState)}</td>
           <td>${countText(values.positionScore, 'score')}</td>
           <td>${countText(values.positionTries, 'tries')}</td>
@@ -1679,7 +1881,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       coachResultsList.innerHTML = `<div class="coach-review-table-wrap">
         <table class="coach-review-table coach-results-table">
           <thead><tr>
-            <th>Date &amp; Time</th>${selectedPlayer ? '' : '<th>Player</th>'}<th>Situation</th><th>Result</th>
+            <th>Date &amp; Time</th>${selectedPlayer ? '' : '<th>Player</th>'}<th>Situation</th><th>Context</th><th>Result</th>
             <th>Score</th><th>Tries</th><th>Positioning Time</th><th>Sequence Result</th>
             <th>Seq Tries</th><th>Seq Time</th><th>Selected Sequence</th>
           </tr></thead>
@@ -1691,20 +1893,46 @@ function computeRosterPlayerId(teamObj, playerObj){
       <button class="btn btn-ghost" type="button" data-page="previous" ${report.hasPrevious ? '' : 'disabled'}>← Previous</button>
       <span>Page ${report.page} of ${report.totalPages} · ${report.total} result${report.total === 1 ? '' : 's'}</span>
       <button class="btn btn-ghost" type="button" data-page="next" ${report.hasNext ? '' : 'disabled'}>Next →</button>`;
-    coachResultsPagination.querySelector('[data-page="previous"]')?.addEventListener('click', ()=>{ coachResultsPage -= 1; void loadCoachDatabaseReport(); });
-    coachResultsPagination.querySelector('[data-page="next"]')?.addEventListener('click', ()=>{ coachResultsPage += 1; void loadCoachDatabaseReport(); });
+    coachResultsPagination.querySelector('[data-page="previous"]')?.addEventListener('click', ()=>{ coachResultsPage -= 1; void loadCoachDatabaseReport({ refreshAggregates:false }); });
+    coachResultsPagination.querySelector('[data-page="next"]')?.addEventListener('click', ()=>{ coachResultsPage += 1; void loadCoachDatabaseReport({ refreshAggregates:false }); });
   }
 
-  async function loadCoachDatabaseReport(){
+  async function loadCoachDatabaseReport({ refreshAggregates=true }={}){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     if(!user || !user.teamId || !coachResultsList) return;
-    populateCoachResultsPlayers(user.teamId);
-    populateCoachResultsSituations();
+    if(coachResultsOptionsTeamId !== user.teamId){
+      coachResultsOptionsTeamId = '';
+      coachResultsAggregateCache = { key:'', summary:null, insights:null };
+      populateCoachResultsPlayers(user.teamId);
+      populateCoachResultsSituations();
+    }
     setCoachResultsStatus('Loading saved team results…', 'pending');
     try{
       const query = coachResultsQuery();
+      if(coachResultsOptionsTeamId !== user.teamId) query.set('includeOptions', '1');
+      const aggregateKey = JSON.stringify(coachResultsAppliedFilters);
+      const canReuseAggregates = !refreshAggregates
+        && coachResultsAggregateCache.key === aggregateKey
+        && coachResultsAggregateCache.summary
+        && coachResultsAggregateCache.insights;
+      if(canReuseAggregates) query.set('includeAggregates', '0');
       const report = await diqApiRequest(`reports/team/${encodeURIComponent(user.teamId)}?${query}`, { cache:'no-store' });
-      renderCoachResultsPage(report);
+      if(report.options){
+        applyCoachResultsOptions(report.options);
+        coachResultsOptionsTeamId = user.teamId;
+      }
+      if(report.summary && report.insights){
+        coachResultsAggregateCache = {
+          key:aggregateKey,
+          summary:report.summary,
+          insights:report.insights,
+        };
+      }
+      renderCoachResultsPage({
+        ...report,
+        summary:report.summary || coachResultsAggregateCache.summary || {},
+        insights:report.insights || coachResultsAggregateCache.insights || {},
+      });
       setCoachResultsStatus('');
     }catch(error){
       setCoachResultsStatus(error?.message || 'Unable to load saved team results.', 'error');
@@ -1749,17 +1977,24 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
     coachResultsAppliedFilters = filters;
     coachResultsPage = 1;
+    coachResultsAggregateCache = { key:'', summary:null, insights:null };
     void loadCoachDatabaseReport();
   }
 
   function clearCoachResultsFilters(){
     if(coachResultsPlayerSelect) coachResultsPlayerSelect.value = '';
+    if(coachResultsSeasonSelect) coachResultsSeasonSelect.value = '';
+    if(coachResultsAssignmentSelect) coachResultsAssignmentSelect.value = '';
     if(coachResultsSituationSelect) coachResultsSituationSelect.value = '';
+    if(coachResultsDifficultySelect) coachResultsDifficultySelect.value = '';
+    if(coachResultsCategorySelect) coachResultsCategorySelect.value = '';
+    if(coachResultsActivitySelect) coachResultsActivitySelect.value = '';
     if(coachResultsOutcomeSelect) coachResultsOutcomeSelect.value = '';
     if(coachResultsDateFrom) coachResultsDateFrom.value = '';
     if(coachResultsDateTo) coachResultsDateTo.value = '';
     coachResultsAppliedFilters = {};
     coachResultsPage = 1;
+    coachResultsAggregateCache = { key:'', summary:null, insights:null };
     void loadCoachDatabaseReport();
   }
 
@@ -2965,6 +3200,7 @@ function persistAttemptStart(active){
     situationTitle:active.situationTitle,
     situationRevision:active.situationRevision,
     situationSnapshot:copyAttemptValue(active.situationSnapshot),
+    resolvedOutcome:copyAttemptValue(active.resolvedOutcome),
     initialPositions:copyAttemptValue(active.initialPositions),
     phase:1,
   };
@@ -2985,6 +3221,9 @@ function beginPlayAttempt(situation){
     void abandonCurrentPlayAttempt('new_attempt_started');
   }
   const startedAt = new Date().toISOString();
+  const resolvedOutcome = typeof resolveSituationOutcome === 'function'
+    ? resolveSituationOutcome(situation)
+    : null;
   _activePlayAttempt = {
     formatVersion:2,
     runId:newAttemptRunId(),
@@ -2993,6 +3232,7 @@ function beginPlayAttempt(situation){
     situationKey:String(situation?.key || ''),
     situationTitle:String(situation?.title || ''),
     situationRevision:Number.isInteger(Number(situation?.revision)) ? Number(situation.revision) : null,
+    resolvedOutcome:copyAttemptValue(resolvedOutcome),
     situationSnapshot:{
       key:String(situation?.key || ''),
       title:String(situation?.title || ''),
@@ -3000,6 +3240,8 @@ function beginPlayAttempt(situation){
       revision:Number.isInteger(Number(situation?.revision)) ? Number(situation.revision) : null,
       outs:situation?.outs ?? null,
       runnersOn:copyAttemptValue(situation?.runnersOn || null),
+      playOutcome:copyAttemptValue(situation?.playOutcome || null),
+      runnerOutcomes:copyAttemptValue(situation?.runnerOutcomes || []),
       playSeq:copyAttemptValue(situation?.playSeq || []),
       playSeq2:copyAttemptValue(situation?.playSeq2 || []),
     },
@@ -3088,6 +3330,7 @@ function finalizePlayAttempt(outcome, reason='', options={}){
     situationTitle:active.situationTitle,
     situationRevision:active.situationRevision,
     situationSnapshot:copyAttemptValue(active.situationSnapshot),
+    resolvedOutcome:copyAttemptValue(active.resolvedOutcome),
     initialPositions:copyAttemptValue(active.initialPositions),
     finalPositions:currentAttemptPositions(),
     phase:lastStage ? 2 : 1,
@@ -3958,9 +4201,12 @@ function sizeOverlays(){
   }
 
   // 5) Ball graphics: reset and rebuild SVG to match new viewBox
+  const restoreContextHitPath = ballSvg?.classList.contains('is-context-hit-path');
   if (animReq){ cancelAnimationFrame(animReq); animReq = null; }
-  if (ballSvg) ballSvg.innerHTML = '';
   buildBallGraphics(); // also calls syncBallToHit()
+  if (restoreContextHitPath && currentSituation){
+    animateHit(currentSituation.hitType, { duration:0, persistPath:true });
+  }
 
   // 6) Reposition coach hit marker (if visible)
   if (hitMarker && currentSituation && currentSituation.hit){
@@ -4317,40 +4563,28 @@ function wireOnce(){
 
     // --- Animate hit + runners ---
     const ht = (currentSituation.hitType) || (hitTypeSel && hitTypeSel.value) || 'line';
-    animateHit(ht);
+    const animationDuration = getPlayAnimationDuration();
+    const animationOptions = { duration:animationDuration };
+    animateHit(ht, { ...animationOptions, persistPath:true });
 
-    const advFromSit = (typeof currentSituation.batterAdvance === 'number') ? currentSituation.batterAdvance : null;
-    const advFromUI  = advanceSel ? clampInt(advanceSel.value,0,4) : null;
-    const advance    = (advFromSit ?? advFromUI ?? mapHitTypeToAdvance(ht));
-
-    liveRunners = normalizeRunnersOn(currentSituation.runnersOn);
+    const resolvedOutcome = resolveSituationOutcome(currentSituation);
+    liveRunners = { ...resolvedOutcome.initialRunners };
 
     let existingDone = false, batterDone = false;
-    let finalExisting = null;
-    let batterDest = null;
 
-    animateExistingRunnersAdvance(advance, (finalState)=>{
-      finalExisting = finalState;
+    animateExistingRunnersByOutcome(resolvedOutcome, ()=>{
       existingDone = true;
       maybeFinish();
-   });
+    }, animationOptions);
 
-    animateBatterAdvance(advance, (destBase)=>{
-      batterDest = destBase;
+    animateBatterOutcome(resolvedOutcome.batterResult, ()=>{
       batterDone = true;
       maybeFinish();
-    });
+    }, animationOptions);
 
     function maybeFinish(){
       if (!existingDone || !batterDone) return;
-      liveRunners = normalizeRunnersOn(finalExisting || liveRunners);
-
-      if (batterDest === 'first')        liveRunners.first  = true;
-      else if (batterDest === 'second')  liveRunners.second = true;
-      else if (batterDest === 'third')   liveRunners.third  = true;
-
-      renderBaseRunners();
-      updateRunnersHudFromLive();
+      applyResolvedSituationOutcome(resolvedOutcome);
     }
   });
 
@@ -4464,6 +4698,7 @@ wireSeqBuilderOnce();
     _phase2Ended = false;
     hideFieldNotice?.();
     window._diqClearSolutionReview?.();
+    clearBallHitPath();
 
     phase2Locked = new Set();
     phase2Picks  = [];
@@ -4705,8 +4940,41 @@ wireSeqBuilderOnce();
     if (!currentSituation) return;
     currentSituation.hitType = hitTypeSel.value || 'line';
     if (currentSituation.batterAdvance == null) advanceSel.value = String(mapHitTypeToAdvance(currentSituation.hitType));
+    queueCurrentSituationDatabaseSync();
   });
-  if (advanceSel)  advanceSel.addEventListener('change', ()=>{ if(currentSituation) currentSituation.batterAdvance=clampInt(advanceSel.value,0,4); });
+  if(playResultSel) playResultSel.addEventListener('change',()=>{if(_muteCoachInputs||!currentSituation)return;applyRecommendedSituationOutcomes();});
+  if (advanceSel)  advanceSel.addEventListener('change', ()=>{
+    if(_muteCoachInputs||!currentSituation)return;
+    ensureSituationOutcomeModel(currentSituation);
+    currentSituation.batterAdvance=clampInt(advanceSel.value,0,4);
+    currentSituation.playOutcome.batterResult=outcomeBatterFromAdvance(currentSituation.batterAdvance);
+    if(currentSituation.playOutcome.batterResult==='out'){
+      currentSituation.playOutcome.batterOutType=batterOutTypeSel?.value||'batter_first';
+      currentSituation.playOutcome.batterOutOrder=clampInt(batterOutOrderSel?.value||1,1,3);
+    }else{
+      delete currentSituation.playOutcome.batterOutType;
+      delete currentSituation.playOutcome.batterOutOrder;
+    }
+    currentSituation.playOutcome.reviewStatus='ready';renderOutcomeReview();queueCurrentSituationDatabaseSync();
+  });
+  if(outsRecordedSel) outsRecordedSel.addEventListener('change',()=>{
+    if(_muteCoachInputs||!currentSituation)return;
+    ensureSituationOutcomeModel(currentSituation);
+    currentSituation.playOutcome.outsRecorded=clampInt(outsRecordedSel.value,0,3);
+    currentSituation.playOutcome.reviewStatus='ready';renderOutcomeReview();queueCurrentSituationDatabaseSync();
+  });
+  if(batterOutTypeSel) batterOutTypeSel.addEventListener('change',()=>{
+    if(_muteCoachInputs||!currentSituation)return;
+    currentSituation.playOutcome.batterOutType=batterOutTypeSel.value;
+    currentSituation.playOutcome.reviewStatus='ready';queueCurrentSituationDatabaseSync();
+  });
+  if(batterOutOrderSel) batterOutOrderSel.addEventListener('change',()=>{
+    if(_muteCoachInputs||!currentSituation)return;
+    currentSituation.playOutcome.batterOutOrder=clampInt(batterOutOrderSel.value,1,3);
+    currentSituation.playOutcome.reviewStatus='ready';queueCurrentSituationDatabaseSync();
+  });
+  if(applyOutcomeDefaultsBtn) applyOutcomeDefaultsBtn.addEventListener('click',applyRecommendedSituationOutcomes);
+  if(confirmOutcomeReviewBtn) confirmOutcomeReviewBtn.addEventListener('click',confirmConvertedSituationOutcomes);
   if (testHitBtn)  testHitBtn.addEventListener('click', ()=> animateHit());
 
   if (run1B) run1B.addEventListener('change', ()=> setRunnersOn(null, {quiet:false}));
@@ -4803,10 +5071,13 @@ wireSeqBuilderOnce();
   }
 
   if (situationRelatedCategories) {
-    situationRelatedCategories.addEventListener('change', () => {
+    situationRelatedCategories.addEventListener('click', (event) => {
       if (_muteCoachInputs || !currentSituation) return;
-      currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('input:checked')]
-        .map(input=>input.value);
+      const button = event.target.closest('button[data-category]');
+      if (!button || !situationRelatedCategories.contains(button)) return;
+      button.setAttribute('aria-pressed', String(button.getAttribute('aria-pressed') !== 'true'));
+      currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('button[data-category][aria-pressed="true"]')]
+        .map(categoryButton=>categoryButton.dataset.category);
       queueCurrentSituationDatabaseSync();
     });
   }

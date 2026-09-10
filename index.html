@@ -77,9 +77,44 @@
         </select>
       </label>
       <label class="field">
+        <span>Season</span>
+        <select id="coachResultsSeasonSelect" class="select">
+          <option value="">All seasons</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Assignment</span>
+        <select id="coachResultsAssignmentSelect" class="select">
+          <option value="">All assignments</option>
+        </select>
+      </label>
+      <label class="field">
         <span>Situation</span>
         <select id="coachResultsSituationSelect" class="select">
           <option value="">All situations</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Difficulty</span>
+        <select id="coachResultsDifficultySelect" class="select">
+          <option value="">All levels</option>
+          <option value="foundational">Foundational</option>
+          <option value="intermediate">Intermediate</option>
+          <option value="advanced">Advanced</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Teaching category</span>
+        <select id="coachResultsCategorySelect" class="select">
+          <option value="">All categories</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Activity</span>
+        <select id="coachResultsActivitySelect" class="select">
+          <option value="">Assigned and free play</option>
+          <option value="assigned">Assigned practice</option>
+          <option value="free_play">Free play</option>
         </select>
       </label>
       <label class="field">
@@ -89,6 +124,7 @@
           <option value="passed">Passed</option>
           <option value="failed">Failed</option>
           <option value="abandoned">Abandoned</option>
+          <option value="incomplete">In progress</option>
         </select>
       </label>
       <label class="field">
@@ -107,6 +143,16 @@
     </div>
     <div id="coachResultsStatus" class="operation-status" role="status" aria-live="polite"></div>
     <div id="coachResultsSummary" class="coach-results-summary" aria-label="Filtered results summary"></div>
+    <section id="coachDevelopmentInsights" class="coach-development-insights" aria-labelledby="coachDevelopmentTitle">
+      <div class="coach-development-heading">
+        <div>
+          <span class="eyebrow">Development view</span>
+          <h3 id="coachDevelopmentTitle">Team development</h3>
+        </div>
+        <p>Insights use every result matching the filters above.</p>
+      </div>
+      <div id="coachDevelopmentContent"></div>
+    </section>
     <div id="coachResultsList"></div>
     <div id="coachResultsPagination" class="coach-results-pagination"></div>
   </section>
@@ -342,9 +388,10 @@
       <button type="button" data-editor-step="sbDetailsSection">1. Details</button>
       <button type="button" data-editor-step="sbRunnersSubsec">2. Game state</button>
       <button type="button" data-editor-step="sbTargetsSubsec">3. Alignment &amp; targets</button>
-      <button type="button" data-editor-step="sbBallHitSubsec">4. Ball hit</button>
-      <button type="button" data-editor-step="seqSubsec">5. Sequence</button>
-      <button type="button" data-editor-step="situationReviewSection">6. Review</button>
+      <button type="button" data-editor-step="sbBallHitSubsec">4. Play outcome</button>
+      <button type="button" data-editor-step="sbRunnerOutcomesSubsec">5. Runner outcomes</button>
+      <button type="button" data-editor-step="seqSubsec">6. Sequence</button>
+      <button type="button" data-editor-step="situationReviewSection">7. Review</button>
     </nav>
     <div class="situation-editor-actions">
       <button id="newSituationBtn" class="btn-slate">New situation</button>
@@ -380,7 +427,7 @@
             <label><input id="run1B" type="checkbox"> 1B</label>
             <label><input id="run2B" type="checkbox"> 2B</label>
             <label><input id="run3B" type="checkbox"> 3B</label>
-          </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbTargetsSubsec" data-diq-collapsible="1">
+          </div><div id="situationForceSummary" class="outcome-context-summary" aria-live="polite"></div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbTargetsSubsec" data-diq-collapsible="1">
           <div class="title">Targets &amp; Tolerance<span class="diq-chevron">▾</span></div>
           
 
@@ -408,23 +455,32 @@
             <label class="hint" style="font-weight:800">Target note <span style="font-weight:600; opacity:.8">(required for review)</span></label>
             <textarea id="tolNotes" rows="3" placeholder="Enter coaching notes for this target…" style="width:100%; min-height:72px; resize:vertical"></textarea>
 </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbBallHitSubsec" data-diq-collapsible="1">
-          <div class="title">Ball Hit<span class="diq-chevron">▾</span></div>
+          <div class="title">Play Outcome<span class="diq-chevron">▾</span></div>
 
           
-        <div class="diq-body"><div class="hint">Drag the marker to set the ball’s landing spot and set batter advance for this situation.</div><button id="testHitBtn" class="btn-green" style="margin-left:auto;padding:4px 8px;font-size:12px;line-height:1.2">▶ Test</button><div class="row">
-            <label class="hint">Hit type:</label>
-            <select id="hitTypeSel">
+        <div class="diq-body"><div class="hint">Describe what happens on the play. Drag the marker on the field to set the ball’s landing spot.</div><button id="testHitBtn" class="btn-green" style="margin-left:auto;padding:4px 8px;font-size:12px;line-height:1.2">▶ Test ball path</button><div class="situation-outcome-grid">
+            <label class="field"><span>Ball type</span><select id="hitTypeSel">
               <option value="line">Line drive</option>
-              <option value="popup">Pop up</option>
+              <option value="popup">Fly ball / pop up</option>
               <option value="grounder">Grounder</option>
-            </select>
-            <select id="advanceSel" title="Batter bases to advance (0–3)">
-              <option value="0">0 (Out)</option>
-              <option value="1">1 (Single)</option>
-              <option value="2">2 (Double)</option>
-              <option value="3">3 (Triple)</option>
-            </select>
-          </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="seqSubsec" data-diq-collapsible="1">
+            </select></label>
+            <label class="field"><span>Play result</span><select id="playResultSel">
+              <option value="single">Single</option><option value="double">Double</option><option value="triple">Triple</option><option value="home_run">Home run</option><option value="ground_rule_double">Ground-rule double</option><option value="groundout">Groundout</option><option value="caught_fly">Caught fly ball</option><option value="caught_line">Caught line drive</option><option value="sacrifice_bunt">Sacrifice bunt</option><option value="squeeze_bunt">Squeeze bunt</option><option value="sacrifice_fly">Sacrifice fly</option><option value="fielders_choice">Fielder's choice</option><option value="double_play">Double play</option><option value="error">Error</option><option value="other">Other</option>
+            </select></label>
+            <label class="field"><span>Batter result</span><select id="advanceSel" title="Where the batter finishes">
+              <option value="0">Out</option><option value="1">Safe at first</option><option value="2">Safe at second</option><option value="3">Safe at third</option><option value="4">Scores</option>
+            </select></label>
+            <label class="field"><span>Outs recorded</span><select id="outsRecordedSel"><option value="0">0 outs</option><option value="1">1 out</option><option value="2">2 outs</option><option value="3">3 outs</option></select></label>
+          </div>
+          <div id="batterOutDetails" class="outcome-detail-grid hidden">
+            <label class="field"><span>How the batter is out</span><select id="batterOutTypeSel"><option value="batter_first">Retired before first</option><option value="catch">Caught ball</option><option value="force">Force out</option><option value="tag">Tagged out</option><option value="other">Other</option></select></label>
+            <label class="field"><span>Out order</span><select id="batterOutOrderSel"><option value="1">First out on play</option><option value="2">Second out on play</option><option value="3">Third out on play</option></select></label>
+          </div>
+          <div class="outcome-toolbar"><div class="outcome-toolbar-actions"><button id="applyOutcomeDefaultsBtn" class="btn btn-ghost btn-small" type="button">Use recommended outcomes</button><button id="confirmOutcomeReviewBtn" class="btn btn-brand btn-small hidden" type="button">Confirm converted outcomes</button></div><span id="outcomeReviewBadge" class="outcome-review-badge"></span></div>
+        </div></div><div class="subsec diq-collapsible diq-collapsed" id="sbRunnerOutcomesSubsec" data-diq-collapsible="1">
+          <div class="title">Runner Outcomes<span class="diq-chevron">▾</span></div>
+          <div class="diq-body"><div class="hint">Choose where each starting runner finishes. Out and tag-up details appear only when needed.</div><div id="runnerOutcomeRows" class="runner-outcome-list" aria-live="polite"></div></div>
+        </div><div class="subsec diq-collapsible diq-collapsed" id="seqSubsec" data-diq-collapsible="1">
           <div class="title">Play Sequence<span class="diq-chevron">▾</span></div>
 
 
@@ -452,6 +508,7 @@
           </div></div></div>
           <section id="situationReviewSection" class="situation-editor-section situation-review-section">
             <div class="sectionTitle">Review</div>
+            <div id="situationOutcomeReview" class="situation-outcome-review"></div>
             <div id="situationReviewSummary" class="proposal-change-summary"></div>
             <section id="situationValidationPanel" class="situation-validation-panel hidden" aria-labelledby="situationValidationTitle">
               <div class="sectionTitle" id="situationValidationTitle">Completeness check</div>
@@ -700,6 +757,16 @@
       <div class="admin-section-heading">
         <div><h3>Situation management</h3><p>Edit published situations or review changes submitted by coaches.</p></div>
       </div>
+      <section id="adminOutcomeReviewQueue" class="outcome-review-queue hidden" aria-live="polite">
+        <div class="outcome-review-heading">
+          <div>
+            <strong>Converted outcomes need review</strong>
+            <span id="adminOutcomeReviewSummary"></span>
+          </div>
+          <button id="adminOutcomeReviewNextBtn" class="btn btn-ghost btn-small hidden" type="button">Review next</button>
+        </div>
+        <div id="adminOutcomeReviewList" class="outcome-review-list"></div>
+      </section>
       <div id="adminSituationEditorMount"></div>
       <section class="admin-record-card proposal-review-card">
         <div class="sectionTitle">Coach submissions</div>
@@ -713,6 +780,7 @@
           </div>
           <div id="adminProposalDiffList" class="proposal-diff-list"></div>
           <div class="admin-actions">
+            <button id="adminProposalPreviewBtn" class="btn btn-brand btn-small" type="button">Review selected changes on field</button>
             <button id="adminProposalSelectAllBtn" class="btn btn-ghost btn-small" type="button">Select all</button>
             <button id="adminProposalClearAllBtn" class="btn btn-ghost btn-small" type="button">Clear all</button>
           </div>

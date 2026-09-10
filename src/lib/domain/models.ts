@@ -43,6 +43,44 @@ export interface RunnersOn {
   third: boolean;
 }
 
+export type StartingBase = 'first' | 'second' | 'third';
+export type RunnerDestination = 'hold' | 'second' | 'third' | 'home' | 'out';
+export type BatterResult = 'out' | 'first' | 'second' | 'third' | 'home';
+export type PlayResult =
+  | 'single'
+  | 'double'
+  | 'triple'
+  | 'home_run'
+  | 'ground_rule_double'
+  | 'groundout'
+  | 'caught_fly'
+  | 'caught_line'
+  | 'sacrifice_bunt'
+  | 'squeeze_bunt'
+  | 'sacrifice_fly'
+  | 'fielders_choice'
+  | 'double_play'
+  | 'error'
+  | 'other';
+export type OutType = 'force' | 'tag' | 'catch' | 'batter_first' | 'other';
+
+export interface SituationPlayOutcome {
+  result: PlayResult;
+  batterResult: BatterResult;
+  outsRecorded: 0 | 1 | 2 | 3;
+  batterOutType?: OutType;
+  batterOutOrder?: 1 | 2 | 3;
+  reviewStatus: 'ready' | 'needs_review';
+}
+
+export interface SituationRunnerOutcome {
+  startingBase: StartingBase;
+  result: RunnerDestination;
+  outType?: OutType;
+  outOrder?: 1 | 2 | 3;
+  taggedUp: boolean;
+}
+
 export interface Situation {
   key: string;
   /** Stable public identifier such as S01 or S21. The key remains internal. */
@@ -60,7 +98,10 @@ export interface Situation {
   targets: Record<PositionId, Target>;
   hit: Point;
   hitType: HitType;
+  /** Legacy animation value retained until all clients use structured outcomes. */
   batterAdvance: number;
+  playOutcome?: SituationPlayOutcome;
+  runnerOutcomes?: SituationRunnerOutcome[];
   playSeq: PositionId[];
   playSeq2?: PositionId[];
   seqNote?: string;

@@ -171,6 +171,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-14');
     await expect(page.locator('#descHud')).toHaveText('S14 · Hit to Left-Center Field');
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('S14 · Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-metadata')).toHaveText('Cutoffs & Relays');
   });
 
   test('guides a player through required practice and restores free play when staff closes it', async ({ page, baseURL }) => {
@@ -622,6 +623,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(start).toBeEnabled();
     await expect(reset).toBeDisabled();
     await expect(check).toBeDisabled();
+    expect(await page.evaluate(() => getPlayAnimationDuration())).toBe(4000);
 
     await start.click();
     await expect(start).toBeDisabled();
@@ -629,9 +631,23 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(check).toBeEnabled();
     await expect(reset).toHaveCSS('background-color', 'rgb(255, 177, 74)');
     await expect(page.locator('#triesVal')).toHaveText('3/3');
+    await expect.poll(() => page.evaluate(() => runnerEl?.style.display)).toBe('none');
+    await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCount(1);
+    await expect(page.locator('#ballLayer svg')).toHaveClass(/is-context-hit-path/);
+    await expect(page.locator('#ballLayer svg line, #ballLayer svg path')).toHaveCount(1);
+    await expect(page.locator('#ballLayer svg')).toHaveCSS('opacity', '0.42');
 
-    await page.evaluate(() => renderBaseRunners({ first: true, second: false, third: false }));
+    await page.evaluate(() => renderBaseRunners({ first: true, second: true, third: true }));
     await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCSS('background-color', 'rgb(180, 147, 255)');
+    const runnerLeads = await page.evaluate(() => ['first', 'second', 'third'].map((baseName) => {
+      const marker = document.querySelector(`.baseRunner[data-base="${baseName}"]`);
+      const actual = cssToUnit(parseFloat(marker.style.left), parseFloat(marker.style.top));
+      const start = BASES_NATIVE[baseName];
+      const destination = BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
+      return Math.hypot(actual.x - start.x, actual.y - start.y)
+        / Math.hypot(destination.x - start.x, destination.y - start.y);
+    }));
+    runnerLeads.forEach((lead) => expect(lead).toBeCloseTo(0.14, 2));
 
     await check.click();
     await expect(page.locator('#triesVal')).toHaveText('2/3');
@@ -641,6 +657,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(reset).toBeDisabled();
     await expect(check).toBeDisabled();
     await expect(page.locator('#scoreVal')).toHaveText('0');
+    await expect(page.locator('#ballLayer svg line, #ballLayer svg path')).toHaveCount(0);
+    await expect(page.locator('#ballLayer svg')).not.toHaveClass(/is-context-hit-path/);
   });
 
   test('resetting an active situation records one abandoned play attempt', async ({ page }) => {
@@ -655,6 +673,16 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.getByRole('button', { name: 'Start Situation' }).click();
     const started = await startedResponse;
     expect(started.status()).toBe(201);
+    expect(started.request().postDataJSON().situationSnapshot).toEqual(expect.objectContaining({
+      playOutcome:expect.any(Object),
+      runnerOutcomes:expect.any(Array),
+    }));
+    expect(started.request().postDataJSON().resolvedOutcome).toEqual(expect.objectContaining({
+      finalRunners:expect.any(Object),
+      runsScored:expect.any(Number),
+      outsRecorded:expect.any(Number),
+      finalOuts:expect.any(Number),
+    }));
     const startedResult = await started.json();
     expect(startedResult).toMatchObject({
       created: true,
@@ -752,11 +780,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('.solution-ghost')).toHaveCount(9);
     await expect(page.locator('.tgt.selectable')).toHaveCount(9);
     expect(await page.evaluate(() => {
-      const advance = mapHitTypeToAdvance(currentSituation.hitType);
-      const expectedRunners = advanceRunnersState(currentSituation.runnersOn, advance);
-      if(advance === 1) expectedRunners.first = true;
-      else if(advance === 2) expectedRunners.second = true;
-      else if(advance === 3) expectedRunners.third = true;
+      const expectedRunners = resolveSituationOutcome(currentSituation).finalRunners;
       const hit = nativeToCssPoint(currentSituation.hit);
       return {
         fieldersAtTargets: POS_IDS.every((position) => {
@@ -766,6 +790,17 @@ test.describe('Diamond Defense regression behavior', () => {
         }),
         ballAtHit: Math.hypot(parseFloat(ballEl.style.left) - hit.x, parseFloat(ballEl.style.top) - hit.y) < 0.01,
         runnersAtDestinations: JSON.stringify(normalizeRunnersOn(liveRunners)) === JSON.stringify(normalizeRunnersOn(expectedRunners)),
+        staticRunnerBases: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
+          .map((runner) => runner.dataset.base)
+          .sort(),
+        staticRunnersAtLeads: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
+          .every((runner) => {
+            const expected = nativeToCssPoint(runnerLeadPoint(runner.dataset.base));
+            return Math.hypot(
+              parseFloat(runner.style.left) - expected.x,
+              parseFloat(runner.style.top) - expected.y,
+            ) < 0.01;
+          }),
         movingRunners: document.querySelectorAll('.movingRunner').length,
         batterVisible: runnerEl?.style.display !== 'none',
       };
@@ -773,6 +808,8 @@ test.describe('Diamond Defense regression behavior', () => {
       fieldersAtTargets: true,
       ballAtHit: true,
       runnersAtDestinations: true,
+      staticRunnerBases: ['first', 'second'],
+      staticRunnersAtLeads: true,
       movingRunners: 0,
       batterVisible: false,
     });
@@ -943,6 +980,82 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
     await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Admin workspace');
+    const fieldProposal = await page.evaluate(() => {
+      const published = JSON.parse(JSON.stringify(SITUATIONS[0]));
+      const proposed = JSON.parse(JSON.stringify(published));
+      const targetId = Object.keys(proposed.targets)[0];
+      proposed.targets[targetId].x += 40;
+      proposed.title = `${published.title} proposed title`;
+      proposed.hit.x = Math.min(3190, Number(proposed.hit.x) + 25);
+      if (Array.isArray(proposed.playSeq) && proposed.playSeq.length > 1) {
+        [proposed.playSeq[0], proposed.playSeq[1]] = [proposed.playSeq[1], proposed.playSeq[0]];
+      }
+      const addedCategory = (window.DIQ_TEACHING_CATEGORIES || [])
+        .find((category) => category.id !== proposed.primaryCategory
+          && !(proposed.relatedCategories || []).includes(category.id));
+      proposed.relatedCategories = proposed.relatedCategories || [];
+      if (addedCategory) proposed.relatedCategories.push(addedCategory.id);
+      return {
+        id: 'pending-field-proposal',
+        submitterName: 'Coach Field Review',
+        submissionType: 'update',
+        situationKey: published.key,
+        baseRevision: published.revision,
+        createdAt: '2026-09-04T12:05:00.000Z',
+        rationale: 'Move one defensive target.',
+        targetId,
+        publishedTitle: published.title,
+        proposedTargetX: proposed.targets[targetId].x,
+        addedCategoryLabel: addedCategory?.label,
+        reviewKeys: SITUATIONS.slice(0, 2).map((situation) => situation.key),
+        situation: proposed,
+      };
+    });
+    const convertedOutcomeKeys = new Set(fieldProposal.reviewKeys);
+    await page.route('**/api/situations/*', async (route) => {
+      if (route.request().method() !== 'PUT') return route.continue();
+      const record = route.request().postDataJSON();
+      convertedOutcomeKeys.delete(record.key);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ record: { ...record, revision: Number(record.revision) + 1 } }),
+      });
+    });
+    await page.route('**/api/admin/situations', async (route) => {
+      const response = await route.fetch();
+      const body = await response.json();
+      body.situations?.forEach((situation) => {
+        if (convertedOutcomeKeys.has(situation.key) && situation.playOutcome) {
+          situation.playOutcome.reviewStatus = 'needs_review';
+        }
+      });
+      await route.fulfill({ response, json: body });
+    });
+    await page.route('**/api/situation-submissions?status=pending', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          submissions: [{
+            id: 'pending-ui-proposal',
+            submitterName: 'Coach Pending',
+            submissionType: 'create',
+            situationKey: 'PENDING-UI',
+            baseRevision: null,
+            createdAt: '2026-09-04T12:00:00.000Z',
+            rationale: 'Verify the pending proposal interface.',
+            situation: {
+              ...fieldProposal.situation,
+              key: 'PENDING-UI',
+              displayCode: null,
+              title: 'Pending UI Situation',
+              revision: undefined,
+            },
+          }, fieldProposal],
+        }),
+      });
+    });
     await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#adminCard')).toBeVisible();
     await expect(page.locator('#adminStatus')).toHaveText('unlocked');
@@ -956,6 +1069,10 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(await page.locator('[data-admin-view="teams"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="recovery"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="situations"]').evaluate((view) => view.parentElement.id)).toBe('adminCard');
+    await expect(page.locator('[data-admin-tab="situations"]')).toHaveClass(/has-pending/);
+    await expect(page.locator('[data-admin-tab="situations"]')).toHaveCSS('background-color', 'rgb(255, 214, 107)');
+    await expect(page.locator('#adminProposalSelect')).toHaveValue('pending-ui-proposal');
+    await expect(page.locator('#adminProposalDetails')).toContainText('Coach Pending submitted a create');
     const existingTeamId = await page.locator('#adminTeamSelect option:not([value=""])').first().getAttribute('value');
     await page.locator('#adminTeamSelect').selectOption(existingTeamId);
     await expect(page.locator('#adminNewTeamBtn')).toHaveText('Create another team');
@@ -1030,6 +1147,112 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#adminWorkspace')).toBeHidden();
     await expect(page.locator('.field-card')).toBeVisible();
     await expect(page.locator('[data-admin-view="situations"]')).toBeVisible();
+    await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
+    const categoryLabelLayout = await page.locator('#situationRelatedCategories button').evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const style = getComputedStyle(button);
+        return {
+          width: button.getBoundingClientRect().width || 0,
+          height: button.getBoundingClientRect().height || 0,
+          wordBreak: style.wordBreak,
+          overflowWrap: style.overflowWrap,
+        };
+      }),
+    );
+    expect(categoryLabelLayout.every((label) => label.width >= 70)).toBe(true);
+    expect(categoryLabelLayout.every((label) => label.height <= 45)).toBe(true);
+    expect(categoryLabelLayout.every((label) => label.wordBreak === 'normal')).toBe(true);
+    expect(categoryLabelLayout.every((label) => label.overflowWrap === 'normal')).toBe(true);
+    await page.locator('#adminProposalPreviewBtn').click();
+    await expect(page.getByRole('button', { name: 'No published version', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'No published version', exact: true })).toBeDisabled();
+    await expect(page.locator('.proposal-preview-bar')).toContainText('Pending UI Situation');
+    await page.getByRole('button', { name: 'Return to proposal review', exact: true }).click();
+    await expect(page.locator('[data-admin-tab="situations"]')).toHaveClass(/has-review-items/);
+    await expect(page.locator('#adminOutcomeReviewQueue')).toBeVisible();
+    await expect(page.locator('#adminOutcomeReviewSummary')).toContainText('must be confirmed');
+    await page.locator('#adminOutcomeReviewList button').first().click();
+    await expect(page.locator('#adminOutcomeReviewNextBtn')).toBeVisible();
+    await page.locator('#adminOutcomeReviewNextBtn').click();
+    const reviewedSituationKey = await page.evaluate(() => window._diqGetCurrentSituationSnapshot().key);
+    expect(reviewedSituationKey).toBe(fieldProposal.reviewKeys[1]);
+    await expect(page.locator('#confirmOutcomeReviewBtn')).toBeVisible();
+    await page.locator('#confirmOutcomeReviewBtn').click();
+    await expect(page.locator('#confirmOutcomeReviewBtn')).toBeHidden();
+    await expect(page.locator(`#adminOutcomeReviewList button[data-situation-key="${reviewedSituationKey}"]`)).toHaveCount(0);
+    await expect(page.locator('#adminOutcomeReviewNextBtn')).toBeHidden();
+    await expect(page.locator('#situationWorkflowStatus')).toContainText('removed from the review queue');
+    await page.locator('#adminProposalSelect').selectOption(fieldProposal.id);
+    const targetComparison = page.locator('.proposal-diff-row').filter({
+      has: page.locator('input[data-proposal-field="targets"]'),
+    });
+    await expect(targetComparison).toContainText('1 of 9 target positions changed');
+    await expect(targetComparison).toContainText(`${fieldProposal.targetId} moved`);
+    await expect(targetComparison).not.toContainText('9 positions configured');
+    await expect(page.locator('.proposal-diff-row').filter({
+      has: page.locator('input[data-proposal-field="hit"]'),
+    })).toContainText(/Moved 25 toward/);
+    await expect(page.locator('.proposal-diff-row').filter({
+      has: page.locator('input[data-proposal-field="playSeq"]'),
+    })).toContainText('sequence steps changed');
+    if (fieldProposal.addedCategoryLabel) {
+      await expect(page.locator('.proposal-diff-row').filter({
+        has: page.locator('input[data-proposal-field="relatedCategories"]'),
+      })).toContainText(fieldProposal.addedCategoryLabel);
+    }
+    await page.locator('#adminProposalClearAllBtn').click();
+    await expect(page.locator('#adminProposalPreviewBtn')).toBeDisabled();
+    await page.locator('#adminProposalSelectAllBtn').click();
+    await expect(page.locator('#adminProposalPreviewBtn')).toBeEnabled();
+    await page.locator('input[data-proposal-field="title"]').uncheck();
+    const unsavedEditorTitle = 'Unsaved administrator draft preserved through preview';
+    await page.locator('#newTitleInput').fill(unsavedEditorTitle);
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    let previewAttemptRequests = 0;
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().endsWith('/api/attempts')) {
+        previewAttemptRequests += 1;
+      }
+    });
+    await page.locator('#adminProposalPreviewBtn').click();
+    await expect(page.locator('body')).toHaveClass(/proposal-field-preview/);
+    await expect(page.getByRole('button', { name: 'Selected changes', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    const selectedPreview = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    expect(selectedPreview.title).toBe(fieldProposal.publishedTitle);
+    expect(selectedPreview.targets[fieldProposal.targetId].x).toBe(fieldProposal.proposedTargetX);
+    await expect(page.getByRole('button', { name: 'Start Situation', exact: true })).toBeEnabled();
+    await page.getByRole('button', { name: 'Published version', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Published version', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Selected changes', exact: true }).click();
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.getByRole('button', { name: 'Start Situation', exact: true }).click();
+    await page.evaluate(() => {
+      for (const position of POS_IDS) {
+        const target = currentSituation.targets[position];
+        tokens.get(position).pos = { x: target.x, y: target.y };
+        placeToken(position);
+      }
+    });
+    await page.getByRole('button', { name: 'Check Positions', exact: true }).click();
+    await page.getByRole('button', { name: 'Watch Solution', exact: true }).click();
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
+    if (selectedPreview.playSeq?.length > 1) {
+      await page.getByRole('button', { name: 'Continue ▶', exact: true }).click();
+      await expect(page.getByRole('button', { name: 'Verify Sequence', exact: true })).toBeVisible();
+      await expect(page.locator('#seqPanel')).toBeHidden();
+      for (const position of selectedPreview.playSeq) {
+        const chip = page.locator('#wrap .chip').filter({ hasText: position });
+        await expect(chip).toHaveCount(1);
+        await chip.click();
+      }
+      await page.getByRole('button', { name: 'Verify Sequence', exact: true }).click();
+    }
+    expect(previewAttemptRequests).toBe(0);
+    await page.getByRole('button', { name: 'Return to proposal review', exact: true }).click();
+    await expect(page.locator('body')).not.toHaveClass(/proposal-field-preview/);
+    await expect(page.locator('#adminProposalSelect')).toHaveValue(fieldProposal.id);
+    await expect(page.locator('#newTitleInput')).toHaveValue(unsavedEditorTitle);
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
     await page.getByRole('button', { name: 'Recovery', exact: true }).click();
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
@@ -1149,14 +1372,33 @@ test.describe('Diamond Defense regression behavior', () => {
   test('current pure helpers retain their established output', async ({ page }) => {
     await openCleanApp(page);
 
-    const output = await page.evaluate(() => ({
-      slug: slugify(' 13U Black / Smith '),
-      looseSlug: slugifyLoose(`Coach's Team`),
-      clampedLow: clampInt(-4, 0, 2),
-      clampedHigh: clampInt(9, 0, 2),
-      publishedSituationLabel: situationDisplayLabel({ key:'BD-02', desc:'Single to CF' }),
-      generatedSituationLabel: situationDisplayLabel({ key:'S-MTMU286H-0', displayCode:'S21', title:'New Situation', desc:'Squeeze bunt' }),
-    }));
+    const output = await page.evaluate(() => {
+      const resolved = resolveSituationOutcome({
+        key:'OUTCOME-01',
+        outs:1,
+        runnersOn:{first:true,second:true,third:false},
+        batterAdvance:1,
+        playOutcome:{result:'single',batterResult:'first',outsRecorded:0,reviewStatus:'ready'},
+        runnerOutcomes:[
+          {startingBase:'first',result:'third',taggedUp:false},
+          {startingBase:'second',result:'home',taggedUp:false},
+        ],
+      });
+      return {
+        slug: slugify(' 13U Black / Smith '),
+        looseSlug: slugifyLoose(`Coach's Team`),
+        clampedLow: clampInt(-4, 0, 2),
+        clampedHigh: clampInt(9, 0, 2),
+        publishedSituationLabel: situationDisplayLabel({ key:'BD-02', desc:'Single to CF' }),
+        generatedSituationLabel: situationDisplayLabel({ key:'S-MTMU286H-0', displayCode:'S21', title:'New Situation', desc:'Squeeze bunt' }),
+        resolvedOutcome:{
+          finalRunners:resolved.finalRunners,
+          runsScored:resolved.runsScored,
+          outsRecorded:resolved.outsRecorded,
+          finalOuts:resolved.finalOuts,
+        },
+      };
+    });
 
     expect(output).toEqual({
       slug: '13u-black-smith',
@@ -1165,6 +1407,71 @@ test.describe('Diamond Defense regression behavior', () => {
       clampedHigh: 2,
       publishedSituationLabel: 'S02 · Single to CF',
       generatedSituationLabel: 'S21 · Squeeze bunt',
+      resolvedOutcome:{
+        finalRunners:{first:true,second:false,third:true},
+        runsScored:1,
+        outsRecorded:0,
+        finalOuts:1,
+      },
+    });
+  });
+
+  test('structured outcomes independently resolve runner animation and play totals', async ({ page }) => {
+    await openCleanApp(page);
+    await page.emulateMedia({ reducedMotion:'reduce' });
+
+    const output = await page.evaluate(async () => {
+      currentSituation = normalizeSituation({
+        key:'OUTCOME-ANIMATION-01',
+        title:'Independent runner outcomes',
+        outs:1,
+        runnersOn:{first:true,second:true,third:false},
+        batterAdvance:1,
+        playOutcome:{result:'other',batterResult:'first',outsRecorded:1,reviewStatus:'ready'},
+        runnerOutcomes:[
+          {startingBase:'first',result:'out',outType:'force',outOrder:1,taggedUp:false},
+          {startingBase:'second',result:'home',taggedUp:false},
+        ],
+      }, 0);
+      const resolution = resolveSituationOutcome(currentSituation);
+      liveRunners = { ...resolution.initialRunners };
+      renderBaseRunners(liveRunners);
+      await new Promise((resolve) => {
+        let runnersDone = false;
+        let batterDone = false;
+        const finish = () => {
+          if(!runnersDone || !batterDone)return;
+          applyResolvedSituationOutcome(resolution);
+          resolve();
+        };
+        animateExistingRunnersByOutcome(resolution, () => {
+          runnersDone = true;
+          finish();
+        }, { duration:0 });
+        animateBatterOutcome(resolution.batterResult, () => {
+          batterDone = true;
+          finish();
+        }, { duration:0 });
+      });
+      return {
+        liveRunners:normalizeRunnersOn(liveRunners),
+        staticRunnerBases:[...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
+          .map((runner) => runner.dataset.base)
+          .sort(),
+        movingRunners:document.querySelectorAll('.movingRunner').length,
+        playRuns:wrap.dataset.playRuns,
+        playOuts:wrap.dataset.playOuts,
+        playFinalOuts:wrap.dataset.playFinalOuts,
+      };
+    });
+
+    expect(output).toEqual({
+      liveRunners:{first:true,second:false,third:false},
+      staticRunnerBases:['first'],
+      movingRunners:0,
+      playRuns:'1',
+      playOuts:'1',
+      playFinalOuts:'2',
     });
   });
 
@@ -1285,19 +1592,31 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#teamsSubsec')).toHaveCount(0);
     await expect(page.locator('#coachReviewInput')).toHaveCount(0);
     await expect(page.locator('#coachResultsSituationSelect')).toBeVisible();
+    await expect(page.locator('#coachResultsSeasonSelect')).toBeVisible();
+    await expect(page.locator('#coachResultsAssignmentSelect')).toBeVisible();
+    await expect(page.locator('#coachResultsDifficultySelect')).toBeVisible();
+    await expect(page.locator('#coachResultsCategorySelect')).toBeVisible();
+    await expect(page.locator('#coachResultsActivitySelect')).toBeVisible();
     await expect(page.locator('#coachResultsOutcomeSelect')).toBeVisible();
     await expect(page.locator('#coachResultsDateFrom')).toBeVisible();
     await expect(page.locator('#coachResultsDateTo')).toBeVisible();
-    await expect(page.locator('.coach-summary-card')).toHaveCount(8);
+    await expect(page.locator('.coach-summary-card')).toHaveCount(12);
+    await expect(page.locator('#coachDevelopmentInsights')).toBeVisible();
+    await expect(page.locator('#coachDevelopmentTitle')).toHaveText('Team development');
+    await expect(page.locator('.coach-insight-card')).toHaveCount(5);
+    await expect(page.locator('.coach-player-progress-card')).toBeVisible();
 
     await expect(page.locator('.coach-review-table thead')).toContainText('Player');
 
     await page.locator('#coachResultsPlayerSelect').selectOption('13u-black-bob-smith-11');
 
     await expect(page.locator('.coach-review-table')).toBeVisible();
+    await expect(page.locator('#coachDevelopmentTitle')).toHaveText('Player development');
+    await expect(page.locator('.coach-player-progress-card')).toHaveCount(0);
     await expect(page.locator('.coach-review-table thead')).toContainText('Date & Time');
     await expect(page.locator('.coach-review-table th', { hasText:/^Player$/ })).toHaveCount(0);
     await expect(page.locator('.coach-review-table thead')).toContainText('Result');
+    await expect(page.locator('.coach-review-table thead')).toContainText('Context');
     await expect(page.locator('.coach-review-table thead')).toContainText('Score');
     await expect(page.locator('.coach-review-table thead')).toContainText('Tries');
     await expect(page.locator('.coach-review-table thead')).toContainText('Positioning Time');
@@ -1336,8 +1655,22 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#situationCategoryInput')).not.toHaveValue('');
     await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(foundational|intermediate|advanced)$/);
     await expect(page.locator('#situationPrimaryCategorySelect')).not.toHaveValue('');
-    await expect(page.locator('#situationRelatedCategories input')).toHaveCount(11);
-    await expect(page.locator('[data-editor-step]')).toHaveCount(6);
+    await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
+    const relatedCategory = page.locator('#situationRelatedCategories button').first();
+    const wasSelected = await relatedCategory.getAttribute('aria-pressed');
+    await relatedCategory.click();
+    await expect(relatedCategory).toHaveAttribute('aria-pressed', wasSelected === 'true' ? 'false' : 'true');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('[data-editor-step]')).toHaveCount(7);
+    await expect(page.locator('[data-editor-step="sbBallHitSubsec"]')).toHaveText('4. Play outcome');
+    await expect(page.locator('[data-editor-step="sbRunnerOutcomesSubsec"]')).toHaveText('5. Runner outcomes');
+    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
+    await expect(page.locator('#playResultSel')).toHaveValue(/^(single|double|triple|home_run|ground_rule_double|groundout|caught_fly|caught_line|sacrifice_bunt|squeeze_bunt|sacrifice_fly|fielders_choice|double_play|error|other)$/);
+    await expect(page.locator('#applyOutcomeDefaultsBtn')).toBeVisible();
+    await expect(page.locator('#situationForceSummary')).not.toBeEmpty();
+    await page.locator('[data-editor-step="sbRunnerOutcomesSubsec"]').click();
+    await expect(page.locator('#runnerOutcomeRows')).toBeVisible();
+    await expect(page.locator('#situationOutcomeReview')).not.toBeEmpty();
     await expect(page.locator('.situation-editor-actions #previewSituationBtn')).toHaveCount(0);
     await expect(page.locator('.situation-editor-actions #submitSituationBtn')).toHaveCount(0);
     await expect(page.locator('#situationReviewSection #situationValidationPanel')).toHaveCount(1);

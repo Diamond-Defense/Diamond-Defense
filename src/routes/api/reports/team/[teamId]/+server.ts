@@ -19,11 +19,15 @@ export const GET: RequestHandler = async (event) => {
   const playerId = filters.playerId || '';
   const pageSize = playerId ? 3 : 5;
   const repository = new SqliteAttemptRepository(databaseFor(event));
-  const [result, summary] = await Promise.all([
+  const includeOptions = event.url.searchParams.get('includeOptions') === '1';
+  const includeAggregates = event.url.searchParams.get('includeAggregates') !== '0';
+  const [result, summary, insights, options] = await Promise.all([
     playerId
       ? repository.listForTeamPlayer(teamId, playerId, pageSize, (page - 1) * pageSize, filters)
       : repository.listLatestPerPlayer(teamId, pageSize, (page - 1) * pageSize, filters),
-    repository.summarizeForTeam(teamId, filters),
+    includeAggregates ? repository.summarizeForTeam(teamId, filters) : Promise.resolve(null),
+    includeAggregates ? repository.developmentInsightsForTeam(teamId, filters) : Promise.resolve(null),
+    includeOptions ? repository.reportOptionsForTeam(teamId) : Promise.resolve(null),
   ]);
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   return json(
@@ -32,7 +36,9 @@ export const GET: RequestHandler = async (event) => {
       playerId: playerId || null,
       mode: playerId ? 'player' : 'activity',
       filters,
-      summary,
+      ...(options ? { options } : {}),
+      ...(summary ? { summary } : {}),
+      ...(insights ? { insights } : {}),
       page,
       pageSize,
       total: result.total,

@@ -105,6 +105,18 @@ It runs:
 3. Browser and database API tests against isolated D1.
 4. A final Cloudflare production build.
 
+Before promoting a release, also run the focused responsive and browser checks:
+
+```sh
+npm run test:acceptance
+npm run test:cross-browser
+```
+
+These commands cover a deliberately small release-readiness path across desktop
+and mobile engines. They do not replace the full Chromium behavior/API suite in
+`npm test`. See the [release checklist](release-checklist.md) for the manual
+mobile, accessibility, permission, preview, and production checks.
+
 ## UI-only Vite mode
 
 ```sh

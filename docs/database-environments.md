@@ -27,6 +27,20 @@ npm run db:migrate:preview
 npm run db:migrate:production
 ```
 
+Inspect which migrations are pending without applying them:
+
+```sh
+npm run db:migrations:status:local
+npm run db:migrations:status:preview
+npm run db:migrations:status:production
+```
+
+One migrate command applies all migrations that are still pending for that
+environment, in filename order. There is no need to apply each file manually.
+Migrations `0019_structured_situation_outcomes.sql` and
+`0020_reporting_and_queue_indexes.sql` belong to the current release line and
+must be applied before deploying the matching gameplay/reporting code.
+
 Migration files are immutable after reaching preview. If preview testing finds
 a problem, create a new migration rather than editing one that may already be
 recorded. Prefer additive, backward-compatible migrations so the previously

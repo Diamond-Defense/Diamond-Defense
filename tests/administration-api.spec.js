@@ -152,6 +152,27 @@ test.describe('record-level administration API', () => {
     delete input.active;
     delete input.archivedAt;
 
+    const ambiguousCreate = await request.post('/api/situations', {
+      headers: { Origin: origin },
+      data: {
+        ...input,
+        key: `${key}-review`,
+        batterAdvance: 0,
+        runnersOn: { first: false, second: false, third: false },
+        playOutcome: {
+          result: 'groundout',
+          batterResult: 'out',
+          outsRecorded: 1,
+          batterOutType: 'batter_first',
+          batterOutOrder: 1,
+          reviewStatus: 'needs_review',
+        },
+        runnerOutcomes: [],
+      },
+    });
+    expect(ambiguousCreate.status()).toBe(400);
+    expect((await ambiguousCreate.json()).error).toContain('Confirm the play and runner outcomes');
+
     const createResponse = await request.post('/api/situations', {
       headers: { Origin: origin },
       data: input,
@@ -160,6 +181,7 @@ test.describe('record-level administration API', () => {
     const created = (await createResponse.json()).record;
     expect(created).toEqual(expect.objectContaining({
       key,
+      displayCode: expect.stringMatching(/^S\d+$/),
       revision: 1,
       active: true,
       category: 'Extra-base hits',
@@ -173,7 +195,11 @@ test.describe('record-level administration API', () => {
       data: { ...input, title: 'Phase 3 Situation Updated' },
     });
     const updated = (await updateResponse.json()).record;
-    expect(updated).toEqual(expect.objectContaining({ revision: 2, title: 'Phase 3 Situation Updated' }));
+    expect(updated).toEqual(expect.objectContaining({
+      revision: 2,
+      title: 'Phase 3 Situation Updated',
+      displayCode: created.displayCode,
+    }));
     expect((await request.put(`/api/situations/${key}`, {
       headers: writeHeaders(origin, created.revision),
       data: input,
@@ -195,7 +221,11 @@ test.describe('record-level administration API', () => {
       headers: writeHeaders(origin, archived.revision),
     });
     const restored = (await restoreResponse.json()).record;
-    expect(restored).toEqual(expect.objectContaining({ revision: 4, active: true }));
+    expect(restored).toEqual(expect.objectContaining({
+      revision: 4,
+      active: true,
+      displayCode: created.displayCode,
+    }));
 
     expect((await request.delete(`/api/situations/${key}`, {
       headers: writeHeaders(origin, restored.revision),
@@ -286,6 +316,30 @@ test.describe('record-level administration API', () => {
       },
     })).status()).toBe(403);
 
+    const ambiguousSubmission = await coachRequest.post('/api/situation-submissions', {
+      headers: { Origin: origin },
+      data: {
+        situation: {
+          ...proposal,
+          key: `${situationKey}-review`,
+          batterAdvance: 0,
+          runnersOn: { first: false, second: false, third: false },
+          playOutcome: {
+            result: 'groundout',
+            batterResult: 'out',
+            outsRecorded: 1,
+            batterOutType: 'batter_first',
+            batterOutOrder: 1,
+            reviewStatus: 'needs_review',
+          },
+          runnerOutcomes: [],
+        },
+        rationale: 'This converted outcome still needs confirmation.',
+      },
+    });
+    expect(ambiguousSubmission.status()).toBe(400);
+    expect((await ambiguousSubmission.json()).error).toContain('Confirm the play and runner outcomes');
+
     const submissionResponse = await coachRequest.post('/api/situation-submissions', {
       headers: { Origin: origin },
       data: {
@@ -318,8 +372,16 @@ test.describe('record-level administration API', () => {
     expect(approvalResult.submission).toEqual(expect.objectContaining({ status: 'approved' }));
     expect(approvalResult.published).toEqual(expect.objectContaining({
       key: situationKey,
+      displayCode: expect.stringMatching(/^S\d+$/),
       title: 'Coach Proposed Situation',
       revision: 1,
+      playOutcome: expect.objectContaining({
+        result: expect.any(String),
+        batterResult: expect.any(String),
+        outsRecorded: expect.any(Number),
+        reviewStatus: expect.stringMatching(/^(ready|needs_review)$/),
+      }),
+      runnerOutcomes: expect.any(Array),
     }));
 
     const coachUpdateRequest = await playwrightRequest.newContext({ baseURL });
@@ -370,8 +432,104 @@ test.describe('record-level administration API', () => {
       revision: 2,
     }));
 
+    const destinationForDouble = {
+      first: 'third',
+      second: 'home',
+      third: 'home',
+    };
+    const coachOutcomeRequest = await playwrightRequest.newContext({ baseURL });
+    expect((await coachOutcomeRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'coach', teamId, coachId, password: permanentPassword },
+    })).ok()).toBeTruthy();
+    const outcomeUpdateResponse = await coachOutcomeRequest.post('/api/situation-submissions', {
+      headers: { Origin: origin },
+      data: {
+        situation: {
+          ...proposal,
+          title: 'Selectively Approved Title',
+          batterAdvance: 2,
+          playOutcome: {
+            result: 'double',
+            batterResult: 'second',
+            outsRecorded: 0,
+            reviewStatus: 'ready',
+          },
+          runnerOutcomes: (proposal.runnerOutcomes || []).map((runner) => ({
+            startingBase: runner.startingBase,
+            result: destinationForDouble[runner.startingBase],
+            taggedUp: false,
+          })),
+        },
+        rationale: 'Verify play and runner outcomes remain an atomic change.',
+      },
+    });
+    expect(outcomeUpdateResponse.status()).toBe(201);
+    const outcomeSubmission = (await outcomeUpdateResponse.json()).record;
+    expect(outcomeSubmission).toEqual(expect.objectContaining({
+      submissionType: 'update',
+      baseRevision: 2,
+    }));
+    await coachOutcomeRequest.dispose();
+
+    const outcomeApproval = await request.put(
+      `/api/admin/situation-submissions/${outcomeSubmission.id}`,
+      {
+        headers: { Origin: origin },
+        data: {
+          decision: 'approve',
+          notes: 'Structured outcome approved as one change.',
+          acceptedFields: ['playOutcome'],
+        },
+      },
+    );
+    expect(outcomeApproval.ok()).toBeTruthy();
+    const outcomeResult = await outcomeApproval.json();
+    expect(outcomeResult.submission.acceptedFields).toEqual(expect.arrayContaining([
+      'runnersOn',
+      'batterAdvance',
+      'playOutcome',
+      'runnerOutcomes',
+    ]));
+    expect(outcomeResult.published).toEqual(expect.objectContaining({
+      revision: 3,
+      batterAdvance: 2,
+      playOutcome: expect.objectContaining({ result: 'double', batterResult: 'second' }),
+    }));
+
+    const coachRejectRequest = await playwrightRequest.newContext({ baseURL });
+    expect((await coachRejectRequest.post('/api/auth/login', {
+      headers: { Origin: origin },
+      data: { role: 'coach', teamId, coachId, password: permanentPassword },
+    })).ok()).toBeTruthy();
+    const rejectedSubmissionResponse = await coachRejectRequest.post('/api/situation-submissions', {
+      headers: { Origin: origin },
+      data: {
+        situation: { ...outcomeResult.published, title: 'This proposal should be rejected' },
+        rationale: 'Exercise the rejection lifecycle.',
+      },
+    });
+    expect(rejectedSubmissionResponse.status()).toBe(201);
+    const rejectedSubmission = (await rejectedSubmissionResponse.json()).record;
+    await coachRejectRequest.dispose();
+    const rejectionResponse = await request.put(
+      `/api/admin/situation-submissions/${rejectedSubmission.id}`,
+      {
+        headers: { Origin: origin },
+        data: { decision: 'reject', notes: 'Keep the published title.' },
+      },
+    );
+    expect(rejectionResponse.ok()).toBeTruthy();
+    expect((await rejectionResponse.json())).toEqual(expect.objectContaining({
+      submission: expect.objectContaining({ status: 'rejected', reviewNotes: 'Keep the published title.' }),
+      published: null,
+    }));
+    const afterRejection = (await (await request.get('/api/situations')).json())
+      .find((situation) => situation.key === situationKey);
+    expect(afterRejection.title).toBe('Selectively Approved Title');
+
     expect((await request.delete(`/api/situations/${situationKey}`, {
-      headers: writeHeaders(origin, selectiveResult.published.revision),
+      headers: writeHeaders(origin, outcomeResult.published.revision),
     })).ok()).toBeTruthy();
     expect((await request.delete(`/api/admin/teams/${teamId}`, {
       headers: writeHeaders(origin, team.revision),

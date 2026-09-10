@@ -536,6 +536,241 @@ function selectTolTarget(id, opts = {}){
 const hitTypeSel=document.getElementById('hitTypeSel');
 const testHitBtn=document.getElementById('testHitBtn');
 const advanceSel=document.getElementById('advanceSel');
+const playResultSel=document.getElementById('playResultSel');
+const outsRecordedSel=document.getElementById('outsRecordedSel');
+const batterOutDetails=document.getElementById('batterOutDetails');
+const batterOutTypeSel=document.getElementById('batterOutTypeSel');
+const batterOutOrderSel=document.getElementById('batterOutOrderSel');
+const applyOutcomeDefaultsBtn=document.getElementById('applyOutcomeDefaultsBtn');
+const confirmOutcomeReviewBtn=document.getElementById('confirmOutcomeReviewBtn');
+const outcomeReviewBadge=document.getElementById('outcomeReviewBadge');
+const runnerOutcomeRows=document.getElementById('runnerOutcomeRows');
+const situationForceSummary=document.getElementById('situationForceSummary');
+const situationOutcomeReview=document.getElementById('situationOutcomeReview');
+
+const OUTCOME_BASES = Object.freeze(['first','second','third']);
+const OUTCOME_RESULT_LABELS = Object.freeze({
+  single:'Single', double:'Double', triple:'Triple', home_run:'Home run',
+  ground_rule_double:'Ground-rule double', groundout:'Groundout',
+  caught_fly:'Caught fly ball', caught_line:'Caught line drive',
+  sacrifice_bunt:'Sacrifice bunt', squeeze_bunt:'Squeeze bunt',
+  sacrifice_fly:'Sacrifice fly', fielders_choice:"Fielder's choice",
+  double_play:'Double play', error:'Error', other:'Other',
+});
+const OUTCOME_DESTINATION_LABELS = Object.freeze({ hold:'Holds', second:'Second base', third:'Third base', home:'Scores', out:'Out' });
+const OUTCOME_BATTER_LABELS = Object.freeze({ 0:'Out', 1:'Safe at first', 2:'Safe at second', 3:'Safe at third', 4:'Scores' });
+
+function outcomeAdvanceFromBatter(result){ return ({out:0,first:1,second:2,third:3,home:4})[result] ?? 0; }
+function outcomeBatterFromAdvance(advance){ return ['out','first','second','third','home'][clampInt(advance,0,4)] || 'out'; }
+function outcomeDestination(base, advance){
+  const index=OUTCOME_BASES.indexOf(base)+Number(advance||0);
+  if(advance<=0) return 'hold';
+  if(index===1) return 'second';
+  if(index===2) return 'third';
+  return 'home';
+}
+function inferClientPlayResult(situation){
+  const title=String(situation?.title||'').toLowerCase();
+  const category=String(situation?.category||'').toLowerCase();
+  const advance=clampInt(situation?.batterAdvance ?? 0,0,4);
+  if(title.includes('squeeze')) return 'squeeze_bunt';
+  if(title.includes('bunt')) return 'sacrifice_bunt';
+  if(category.includes('ground-rule')) return 'ground_rule_double';
+  if(advance===1) return 'single';
+  if(advance===2) return 'double';
+  if(advance===3) return 'triple';
+  if(advance===4) return 'home_run';
+  if(situation?.hitType==='grounder') return 'groundout';
+  if(situation?.hitType==='popup') return 'caught_fly';
+  if(situation?.hitType==='line') return 'caught_line';
+  return 'other';
+}
+function presentOutcomeBases(situation){ return OUTCOME_BASES.filter(base=>!!situation?.runnersOn?.[base]); }
+function defaultRunnerOutcome(base, advance){ return {startingBase:base,result:outcomeDestination(base,advance),taggedUp:false}; }
+function ensureSituationOutcomeModel(situation){
+  if(!situation) return null;
+  const advance=clampInt(situation.batterAdvance ?? 0,0,4);
+  if(!situation.playOutcome || typeof situation.playOutcome!=='object'){
+    const result=inferClientPlayResult(situation);
+    const batterResult=outcomeBatterFromAdvance(advance);
+    situation.playOutcome={
+      result,batterResult,outsRecorded:batterResult==='out'?1:0,
+      ...(batterResult==='out'?{batterOutType:['caught_fly','caught_line'].includes(result)?'catch':'batter_first',batterOutOrder:1}:{}),
+      reviewStatus:advance===0?'needs_review':'ready',
+    };
+  }
+  if(!Array.isArray(situation.runnerOutcomes)) situation.runnerOutcomes=[];
+  const existing=new Map(situation.runnerOutcomes.map(item=>[item.startingBase,item]));
+  situation.runnerOutcomes=presentOutcomeBases(situation).map(base=>{
+    const item=existing.get(base)||defaultRunnerOutcome(base,advance);
+    item.startingBase=base;
+    item.result=item.result||'hold';
+    item.taggedUp=item.taggedUp===true;
+    if(item.outOrder)item.outOrder=Number(item.outOrder);
+    return item;
+  });
+  situation.batterAdvance=outcomeAdvanceFromBatter(situation.playOutcome.batterResult);
+  return situation;
+}
+function recommendedSituationOutcomes(situation,result){
+  const bases=presentOutcomeBases(situation);
+  let batterAdvance=0,outsRecorded=0,batterOutType,batterOutOrder;
+  const runners=new Map(bases.map(base=>[base,{startingBase:base,result:'hold',taggedUp:false}]));
+  const advanceAll=(amount,taggedUp=false)=>bases.forEach(base=>runners.set(base,{startingBase:base,result:outcomeDestination(base,amount),taggedUp}));
+  if(result==='single'||result==='error'){batterAdvance=1;advanceAll(1);}
+  else if(result==='double'||result==='ground_rule_double'){batterAdvance=2;advanceAll(2);}
+  else if(result==='triple'){batterAdvance=3;advanceAll(3);}
+  else if(result==='home_run'){batterAdvance=4;advanceAll(4);}
+  else if(['groundout','sacrifice_bunt','squeeze_bunt'].includes(result)){
+    outsRecorded=1;batterOutType='batter_first';batterOutOrder=1;
+    if(['sacrifice_bunt','squeeze_bunt'].includes(result)) advanceAll(1);
+  }else if(['caught_fly','caught_line'].includes(result)){outsRecorded=1;batterOutType='catch';batterOutOrder=1;}
+  else if(result==='sacrifice_fly'){
+    outsRecorded=1;batterOutType='catch';batterOutOrder=1;
+    if(runners.has('third')) runners.set('third',{startingBase:'third',result:'home',taggedUp:true});
+  }else if(result==='fielders_choice'){
+    batterAdvance=1;outsRecorded=bases.length?1:0;
+    const forcedOut=bases.includes('third')&&bases.includes('second')&&bases.includes('first')?'third':bases.includes('second')&&bases.includes('first')?'second':bases.includes('first')?'first':null;
+    if(forcedOut) runners.set(forcedOut,{startingBase:forcedOut,result:'out',outType:'force',outOrder:1,taggedUp:false});
+    if(forcedOut!=='first'&&runners.has('first')) runners.set('first',defaultRunnerOutcome('first',1));
+    if(forcedOut==='third'&&runners.has('second')) runners.set('second',defaultRunnerOutcome('second',1));
+  }else if(result==='double_play'){
+    outsRecorded=bases.includes('first')?2:1;
+    if(runners.has('first')) runners.set('first',{startingBase:'first',result:'out',outType:'force',outOrder:1,taggedUp:false});
+    batterOutType='batter_first';batterOutOrder=outsRecorded;
+  }
+  return {batterAdvance,playOutcome:{result,batterResult:outcomeBatterFromAdvance(batterAdvance),outsRecorded,...(batterOutType?{batterOutType}:{}),...(batterOutOrder?{batterOutOrder}:{}),reviewStatus:'ready'},runnerOutcomes:[...runners.values()]};
+}
+function validateClientSituationOutcomes(situation){
+  ensureSituationOutcomeModel(situation);
+  const play=situation?.playOutcome||{},runners=Array.isArray(situation?.runnerOutcomes)?situation.runnerOutcomes:[],issues=[];
+  const add=(message,section='sbBallHitSubsec')=>issues.push({message,section,severity:'error'});
+  const expected=presentOutcomeBases(situation);
+  if(new Set(runners.map(item=>item.startingBase)).size!==runners.length)add('Each starting runner can have only one outcome.','sbRunnerOutcomesSubsec');
+  expected.forEach(base=>{if(!runners.some(item=>item.startingBase===base))add(`Choose an outcome for the runner starting on ${base}.`,'sbRunnerOutcomesSubsec');});
+  runners.forEach(item=>{if(!expected.includes(item.startingBase))add(`Remove the outcome for the absent runner on ${item.startingBase}.`,'sbRunnerOutcomesSubsec');});
+  if(['sacrifice_bunt','squeeze_bunt','sacrifice_fly'].includes(play.result)&&Number(situation?.outs)>=2)add('A sacrifice result cannot be used with two outs.');
+  if(play.result==='squeeze_bunt'&&!situation?.runnersOn?.third)add('A squeeze bunt requires a runner starting on third.','sbRunnersSubsec');
+  if(play.result==='double_play'&&Number(situation?.outs)>=2)add('A double play cannot be selected with two outs.');
+  const expectedBatter={single:'first',double:'second',ground_rule_double:'second',triple:'third',home_run:'home',groundout:'out',caught_fly:'out',caught_line:'out',sacrifice_bunt:'out',squeeze_bunt:'out',sacrifice_fly:'out',double_play:'out'};
+  if(expectedBatter[play.result]&&play.batterResult!==expectedBatter[play.result])add('The batter result does not match the selected play result.');
+  if(['single','double','triple','home_run','ground_rule_double'].includes(play.result)&&Number(play.outsRecorded)!==0)add('A safe-hit result cannot record an out.');
+  if(play.result==='double_play'&&Number(play.outsRecorded)!==2)add('A double play must record exactly two outs.');
+  if(play.result==='fielders_choice'&&(play.batterResult!=='first'||!runners.some(item=>item.result==='out')))add("A fielder's choice requires the batter to reach first and a runner to be retired.",'sbRunnerOutcomesSubsec');
+  if(Number(play.outsRecorded)>3-Number(situation?.outs||0))add('The play records more outs than remain in the inning.');
+  const outcomeOuts=(play.batterResult==='out'?1:0)+runners.filter(item=>item.result==='out').length;
+  if(outcomeOuts!==Number(play.outsRecorded))add('Outs recorded must match the batter and runner outcomes.');
+  const occupied=runners.filter(item=>!['out','home'].includes(item.result)).map(item=>item.result==='hold'?item.startingBase:item.result);
+  if(!['out','home'].includes(play.batterResult))occupied.push(play.batterResult);
+  if(new Set(occupied).size!==occupied.length)add('Two players cannot finish on the same base.','sbRunnerOutcomesSubsec');
+  if(play.batterResult==='first'){
+    const first=runners.find(item=>item.startingBase==='first'),second=runners.find(item=>item.startingBase==='second'),third=runners.find(item=>item.startingBase==='third');
+    if(first?.result==='hold')add('The runner on first is forced to advance when the batter reaches first safely.','sbRunnerOutcomesSubsec');
+    if(first&&first.result!=='out'&&second?.result==='hold')add('The runner on second is forced to advance while the force chain remains active.','sbRunnerOutcomesSubsec');
+    if(first&&first.result!=='out'&&second&&second.result!=='out'&&third?.result==='hold')add('The runner on third is forced to advance while the force chain remains active.','sbRunnerOutcomesSubsec');
+  }
+  if(['caught_fly','caught_line','sacrifice_fly'].includes(play.result))runners.forEach(item=>{if(!['hold','out'].includes(item.result)&&!item.taggedUp)add(`The runner starting on ${item.startingBase} must tag up before advancing.`,'sbRunnerOutcomesSubsec');});
+  const inningEndingOut=3-Number(situation?.outs||0);
+  const forceThirdOut=runners.some(item=>item.result==='out'&&item.outType==='force'&&Number(item.outOrder)===inningEndingOut)
+    ||(play.batterResult==='out'&&play.batterOutType==='batter_first'&&Number(play.batterOutOrder)===inningEndingOut);
+  if(forceThirdOut&&runners.some(item=>item.result==='home'))add('A run cannot score when the third out is a force play or the batter is retired before reaching first.','sbRunnerOutcomesSubsec');
+  return issues;
+}
+window._diqValidateSituationOutcomes=validateClientSituationOutcomes;
+function forceSituationSummary(situation){
+  const r=situation?.runnersOn||{},forced=[];
+  if(r.first)forced.push('runner on first → second');
+  if(r.first&&r.second)forced.push('runner on second → third');
+  if(r.first&&r.second&&r.third)forced.push('runner on third → home');
+  return forced.length?`Force play if the batter reaches first: ${forced.join('; ')}.`:'No starting force play is present.';
+}
+function outcomeSummaryText(situation){
+  ensureSituationOutcomeModel(situation);if(!situation)return '';
+  const play=situation.playOutcome,batter=OUTCOME_BATTER_LABELS[String(outcomeAdvanceFromBatter(play.batterResult))]||play.batterResult;
+  const runners=situation.runnerOutcomes.map(item=>`Runner from ${item.startingBase}: ${OUTCOME_DESTINATION_LABELS[item.result]||item.result}${item.taggedUp?' after tagging up':''}`).join(' · ');
+  return `${OUTCOME_RESULT_LABELS[play.result]||play.result}. Batter: ${batter}. ${play.outsRecorded} out${play.outsRecorded===1?'':'s'} recorded.${runners?` ${runners}.`:''}`;
+}
+window._diqSituationOutcomeSummary=outcomeSummaryText;
+function renderOutcomeReview(){
+  if(!currentSituation)return;
+  ensureSituationOutcomeModel(currentSituation);
+  if(situationForceSummary)situationForceSummary.textContent=forceSituationSummary(currentSituation);
+  if(situationOutcomeReview)situationOutcomeReview.textContent=outcomeSummaryText(currentSituation);
+  if(outcomeReviewBadge){
+    const needsReview=currentSituation.playOutcome.reviewStatus==='needs_review';
+    outcomeReviewBadge.textContent=needsReview?'Needs outcome review':'Outcome configured';
+    outcomeReviewBadge.className=`outcome-review-badge ${needsReview?'is-warning':'is-ready'}`;
+    if(confirmOutcomeReviewBtn)confirmOutcomeReviewBtn.classList.toggle('hidden',!(needsReview&&situationEditorRole==='admin'));
+  }
+  if(batterOutDetails)batterOutDetails.classList.toggle('hidden',currentSituation.playOutcome.batterResult!=='out');
+}
+function renderRunnerOutcomeEditor(){
+  if(!runnerOutcomeRows||!currentSituation)return;
+  ensureSituationOutcomeModel(currentSituation);runnerOutcomeRows.replaceChildren();
+  if(!currentSituation.runnerOutcomes.length){
+    const empty=document.createElement('div');empty.className='runner-outcome-empty';empty.textContent='No runners start on base in this situation.';runnerOutcomeRows.appendChild(empty);return;
+  }
+  const caught=['caught_fly','caught_line','sacrifice_fly'].includes(currentSituation.playOutcome.result);
+  currentSituation.runnerOutcomes.forEach(item=>{
+    const card=document.createElement('section');card.className='runner-outcome-card';card.dataset.startingBase=item.startingBase;
+    const heading=document.createElement('strong');heading.textContent=`Runner starting on ${item.startingBase}`;
+    const resultLabel=document.createElement('label');resultLabel.className='field';const resultSpan=document.createElement('span');resultSpan.textContent='Result';
+    const select=document.createElement('select');
+    const destinations=item.startingBase==='first'?['hold','second','third','home','out']:item.startingBase==='second'?['hold','third','home','out']:['hold','home','out'];
+    destinations.forEach(value=>{const option=document.createElement('option');option.value=value;option.textContent=OUTCOME_DESTINATION_LABELS[value];select.appendChild(option);});
+    select.value=item.result;resultLabel.append(resultSpan,select);card.append(heading,resultLabel);
+    const detail=document.createElement('div');detail.className=`runner-out-detail outcome-detail-grid${item.result==='out'?'':' hidden'}`;
+    const typeLabel=document.createElement('label');typeLabel.className='field';const typeSpan=document.createElement('span');typeSpan.textContent='How the runner is out';
+    const type=document.createElement('select');[['force','Force out'],['tag','Tagged out'],['catch','Caught ball'],['other','Other']].forEach(([value,label])=>{const option=document.createElement('option');option.value=value;option.textContent=label;type.appendChild(option);});type.value=item.outType||'force';typeLabel.append(typeSpan,type);
+    const orderLabel=document.createElement('label');orderLabel.className='field';const orderSpan=document.createElement('span');orderSpan.textContent='Out order';
+    const order=document.createElement('select');[1,2,3].forEach(value=>{const option=document.createElement('option');option.value=String(value);option.textContent=`${value===1?'First':value===2?'Second':'Third'} out on play`;order.appendChild(option);});order.value=String(item.outOrder||1);orderLabel.append(orderSpan,order);detail.append(typeLabel,orderLabel);card.appendChild(detail);
+    const tagLabel=document.createElement('label');tagLabel.className=`runner-tag-up${caught&&!['hold','out'].includes(item.result)?'':' hidden'}`;const tag=document.createElement('input');tag.type='checkbox';tag.checked=item.taggedUp===true;tagLabel.append(tag,document.createTextNode(' Runner tags up before advancing'));card.appendChild(tagLabel);
+    const update=()=>{
+      item.result=select.value;item.taggedUp=tag.checked;
+      if(item.result==='out'){item.outType=type.value;item.outOrder=Number(order.value);}else{delete item.outType;delete item.outOrder;}
+      detail.classList.toggle('hidden',item.result!=='out');tagLabel.classList.toggle('hidden',!(caught&&!['hold','out'].includes(item.result)));
+      currentSituation.playOutcome.reviewStatus='ready';queueCurrentSituationDatabaseSync();renderOutcomeReview();
+    };
+    select.addEventListener('change',update);type.addEventListener('change',update);order.addEventListener('change',update);tag.addEventListener('change',update);
+    runnerOutcomeRows.appendChild(card);
+  });
+}
+function syncSituationOutcomeEditor(){
+  if(!currentSituation)return;
+  ensureSituationOutcomeModel(currentSituation);
+  withInputMute(()=>{
+    if(playResultSel)playResultSel.value=currentSituation.playOutcome.result;
+    if(advanceSel)advanceSel.value=String(outcomeAdvanceFromBatter(currentSituation.playOutcome.batterResult));
+    if(outsRecordedSel)outsRecordedSel.value=String(currentSituation.playOutcome.outsRecorded);
+    if(batterOutTypeSel)batterOutTypeSel.value=currentSituation.playOutcome.batterOutType||'batter_first';
+    if(batterOutOrderSel)batterOutOrderSel.value=String(currentSituation.playOutcome.batterOutOrder||1);
+  });
+  renderRunnerOutcomeEditor();renderOutcomeReview();
+}
+window._diqSyncSituationOutcomeEditor=syncSituationOutcomeEditor;
+function applyRecommendedSituationOutcomes(){
+  if(!currentSituation)return;
+  const result=playResultSel?.value||currentSituation.playOutcome?.result||inferClientPlayResult(currentSituation);
+  Object.assign(currentSituation,recommendedSituationOutcomes(currentSituation,result));
+  syncSituationOutcomeEditor();queueCurrentSituationDatabaseSync();
+}
+async function confirmConvertedSituationOutcomes(){
+  if(!coachUnlocked||!currentSituation)return;
+  const issues=validateClientSituationOutcomes(currentSituation);
+  if(issues.length){
+    if(typeof toast==='function')toast(issues[0].message);
+    return;
+  }
+  const confirmed=databaseSituationSnapshot(currentSituation);
+  confirmed.playOutcome.reviewStatus='ready';
+  if(typeof window._diqConfirmConvertedSituationOutcomes==='function'){
+    confirmOutcomeReviewBtn.disabled=true;
+    try{await window._diqConfirmConvertedSituationOutcomes(confirmed);}
+    finally{confirmOutcomeReviewBtn.disabled=false;}
+    return;
+  }
+  currentSituation.playOutcome.reviewStatus='ready';queueCurrentSituationDatabaseSync();renderOutcomeReview();
+}
 
 const pwModal=document.getElementById('pwModal');
 const pwInput=document.getElementById('pwInput');
@@ -980,6 +1215,8 @@ function setRunnersOn(next,{quiet=true}={}){
   updateRunnersHudFromLive();
   renderBaseRunners();
   scaleMarkers();
+  ensureSituationOutcomeModel(currentSituation);
+  syncSituationOutcomeEditor();
   if (!quiet && situationMsg){ situationMsg.textContent='Runners updated'; setTimeout(()=>situationMsg.textContent='',900); }
   if(coachUnlocked) queueCurrentSituationDatabaseSync();
 }
@@ -989,8 +1226,27 @@ function setOuts(value,{quiet=true}={}){
   currentSituation.outs = v;
   if (outsValHud) outsValHud.textContent = String(v);
   if (outsSelSituation && outsSelSituation.value !== String(v)) outsSelSituation.value = String(v);
+  renderOutcomeReview();
   if (!quiet && situationMsg){ situationMsg.textContent='Outs updated'; setTimeout(()=>{situationMsg.textContent='';},900); }
   if(coachUnlocked) queueCurrentSituationDatabaseSync();
+}
+// Keep occupied-base markers visibly clear of the bag while still reading as a lead.
+const RUNNER_LEAD_FRACTION = 0.14;
+const RUNNER_NEXT_BASE = { first:'second', second:'third', third:'home' };
+const PLAY_ANIMATION_DURATION_MS = 4000;
+function getPlayAnimationDuration(){
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    ? 0
+    : PLAY_ANIMATION_DURATION_MS;
+}
+function runnerLeadPoint(baseName){
+  const base = BASES_NATIVE[baseName];
+  const next = BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
+  if (!base || !next) return base;
+  return {
+    x:lerp(base.x,next.x,RUNNER_LEAD_FRACTION),
+    y:lerp(base.y,next.y,RUNNER_LEAD_FRACTION),
+  };
 }
 /* draw/remove base runners  */
 function renderBaseRunners(state, exclude = new Set()){
@@ -1004,7 +1260,7 @@ function renderBaseRunners(state, exclude = new Set()){
 
   const add=(baseName)=>{
     if (blocked.has(baseName)) return; // skip bases we’re animating
-    const pos=BASES_NATIVE[baseName]; if(!pos||!wrap) return;
+    const pos=runnerLeadPoint(baseName); if(!pos||!wrap) return;
     const m=document.createElement('div');
     m.className='baseRunner';
     m.dataset.base = baseName;
@@ -1031,6 +1287,59 @@ function advanceRunnersState(state,bases){
   return { first:!!dest[1], second:!!dest[2], third:!!dest[3] };
 }
 
+function resolveSituationOutcome(situation){
+  ensureSituationOutcomeModel(situation);
+  const initialRunners=normalizeRunnersOn(situation?.runnersOn);
+  const existingFinalRunners={first:false,second:false,third:false};
+  let runsScored=0;
+  const runnerOutcomes=presentOutcomeBases(situation).map(startingBase=>{
+    const configured=situation.runnerOutcomes.find(item=>item.startingBase===startingBase)
+      ||{startingBase,result:'hold',taggedUp:false};
+    if(configured.result==='hold')existingFinalRunners[startingBase]=true;
+    else if(['first','second','third'].includes(configured.result))existingFinalRunners[configured.result]=true;
+    else if(configured.result==='home')runsScored+=1;
+    return configured;
+  });
+  const batterResult=situation?.playOutcome?.batterResult||'out';
+  const finalRunners={...existingFinalRunners};
+  if(['first','second','third'].includes(batterResult))finalRunners[batterResult]=true;
+  else if(batterResult==='home')runsScored+=1;
+  const startingOuts=clampInt(situation?.outs||0,0,2);
+  const outsRecorded=clampInt(situation?.playOutcome?.outsRecorded||0,0,3);
+  return {
+    initialRunners,
+    runnerOutcomes,
+    batterResult,
+    existingFinalRunners,
+    finalRunners,
+    runsScored,
+    outsRecorded,
+    finalOuts:Math.min(3,startingOuts+outsRecorded),
+  };
+}
+window._diqResolveSituationOutcome=resolveSituationOutcome;
+
+function applyResolvedSituationOutcome(resolution){
+  if(!resolution)return;
+  liveRunners=normalizeRunnersOn(resolution.finalRunners);
+  if(wrap){
+    wrap.dataset.playRuns=String(resolution.runsScored);
+    wrap.dataset.playOuts=String(resolution.outsRecorded);
+    wrap.dataset.playFinalOuts=String(resolution.finalOuts);
+  }
+  renderBaseRunners(liveRunners);
+  hideRunner();
+  updateRunnersHudFromLive();
+}
+
+function clearResolvedSituationOutcome(){
+  _animSuppressedBases.clear();
+  if(!wrap)return;
+  delete wrap.dataset.playRuns;
+  delete wrap.dataset.playOuts;
+  delete wrap.dataset.playFinalOuts;
+}
+
 // @diq:end [A5]
 /// @diq:begin [A6] Ball & Hit
 function buildBallGraphics(){
@@ -1046,6 +1355,11 @@ function buildBallGraphics(){
     makeBallDraggable(ballEl);
   }
   syncBallToHit();
+}
+function clearBallHitPath(){
+  if (!ballSvg) return;
+  ballSvg.classList.remove('is-context-hit-path');
+  ballSvg.innerHTML = '';
 }
 function ensureDefaultHit(){
   if (!currentSituation) return;
@@ -1118,7 +1432,7 @@ function mapHitTypeToAdvance(hitType){
 function animateHit(style, options={}){
   const sit=currentSituation; if(!sit) return;
   ensureDefaultHit(); style = style || sit.hitType || 'line';
-  if (ballSvg) ballSvg.innerHTML='';
+  clearBallHitPath();
   const startCss=nativeToCssPoint(HOME_NATIVE), endCss=nativeToCssPoint(sit.hit);
   const svgNS='http://www.w3.org/2000/svg';
 
@@ -1183,7 +1497,10 @@ function animateHit(style, options={}){
     ballEl.style.left=`${pos.x}px`; ballEl.style.top=`${pos.y}px`;
     if (t<1) animReq=requestAnimationFrame(step);
     else {
-      if (ballSvg) ballSvg.innerHTML='';
+      if (ballSvg){
+        if(options.persistPath) ballSvg.classList.add('is-context-hit-path');
+        else clearBallHitPath();
+      }
       animReq=null;
       if (ballEl) ballEl.style.display='block';
       options.onDone?.();
@@ -1192,7 +1509,10 @@ function animateHit(style, options={}){
   if(duration === 0){
     ballEl.style.left=`${endCss.x}px`;
     ballEl.style.top=`${endCss.y}px`;
-    if (ballSvg) ballSvg.innerHTML='';
+    if (ballSvg){
+      if(options.persistPath) ballSvg.classList.add('is-context-hit-path');
+      else clearBallHitPath();
+    }
     animReq=null;
     options.onDone?.();
     return;
@@ -1388,7 +1708,7 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
       : null;
 
     // Place at starting base
-    const startCss = nativeToCssPoint(BASES_NATIVE[legs[0]]);
+    const startCss = nativeToCssPoint(runnerLeadPoint(legs[0]));
     mover.style.left = startCss.x + 'px';
     mover.style.top  = startCss.y + 'px';
     mover.style.display = 'block';
@@ -1403,7 +1723,7 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
       }
       const fromName = legs[leg];
       const toName   = legs[leg + 1];
-      const fromCss  = nativeToCssPoint(BASES_NATIVE[fromName]);
+      const fromCss  = nativeToCssPoint(leg === 0 ? runnerLeadPoint(fromName) : BASES_NATIVE[fromName]);
       const toCss    = nativeToCssPoint(BASES_NATIVE[toName]);
       const dist     = Math.hypot(toCss.x - fromCss.x, toCss.y - fromCss.y);
 
@@ -1438,6 +1758,80 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
 
     runLeg();
   });
+}
+
+function animateExistingRunnerOut(outcome, options={}){
+  return new Promise(resolve=>{
+    const baseName=outcome?.startingBase;
+    const startNative=runnerLeadPoint(baseName);
+    const nextNative=BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
+    if(!startNative||!nextNative)return resolve();
+    wrap?.querySelector(`.baseRunner[data-base="${baseName}"]`)?.remove();
+    const mover=document.createElement('div');
+    mover.className='movingRunner is-out';
+    mover.style.position='absolute';
+    mover.style.transform='translate(-50%,-50%)';
+    wrap.appendChild(mover);
+    scaleMarkers();
+    const start=nativeToCssPoint(startNative);
+    const next=nativeToCssPoint(nextNative);
+    const travelFraction=outcome.outType==='force'?0.96:outcome.outType==='tag'?0.68:outcome.outType==='catch'?0.20:0.76;
+    const end={x:lerp(start.x,next.x,travelFraction),y:lerp(start.y,next.y,travelFraction)};
+    mover.style.left=`${start.x}px`;
+    mover.style.top=`${start.y}px`;
+    const requestedDuration=Number(options.duration);
+    const duration=Number.isFinite(requestedDuration)
+      ?Math.max(0,requestedDuration)
+      :clamp(700+Math.hypot(end.x-start.x,end.y-start.y)*0.55,800,1600);
+    const finish=()=>{mover.remove();resolve();};
+    if(duration===0){finish();return;}
+    let startedAt=performance.now();
+    const step=(now)=>{
+      if(options.isCancelled?.()){finish();return;}
+      const progress=clamp((now-startedAt)/duration,0,1);
+      const eased=1-Math.pow(1-progress,3);
+      mover.style.left=`${lerp(start.x,end.x,eased)}px`;
+      mover.style.top=`${lerp(start.y,end.y,eased)}px`;
+      mover.style.opacity=String(progress<0.82?1:Math.max(0,1-((progress-0.82)/0.18)));
+      if(progress<1)requestAnimationFrame(step);
+      else finish();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+function animateExistingRunnerOutcome(outcome, options={}){
+  if(!outcome||outcome.result==='hold')return Promise.resolve();
+  if(outcome.result==='out')return animateExistingRunnerOut(outcome,options);
+  const startIndex=BASE_ORDER.indexOf(outcome.startingBase);
+  const destinationIndex=BASE_ORDER.indexOf(outcome.result);
+  if(startIndex<0||destinationIndex<=startIndex)return Promise.resolve();
+  return animateExistingRunnerFrom(outcome.startingBase,destinationIndex-startIndex,options);
+}
+
+function animateExistingRunnersByOutcome(resolution,onDone,options={}){
+  const movers=(resolution?.runnerOutcomes||[]).filter(outcome=>{
+    if(outcome.result==='hold')return false;
+    if(outcome.result==='out')return true;
+    return BASE_ORDER.indexOf(outcome.result)>BASE_ORDER.indexOf(outcome.startingBase);
+  });
+  if(!movers.length){
+    renderBaseRunners(resolution?.existingFinalRunners);
+    onDone?.(resolution?.existingFinalRunners||{first:false,second:false,third:false});
+    return;
+  }
+  movers.forEach(outcome=>_animSuppressedBases.add(outcome.startingBase));
+  renderBaseRunners(resolution.initialRunners);
+  Promise.all(movers.map(outcome=>animateExistingRunnerOutcome(outcome,options))).then(()=>{
+    if(options.isCancelled?.())return;
+    movers.forEach(outcome=>_animSuppressedBases.delete(outcome.startingBase));
+    renderBaseRunners(resolution.existingFinalRunners);
+    onDone?.(resolution.existingFinalRunners);
+  });
+}
+
+function animateBatterOutcome(batterResult,onDone,options={}){
+  animateBatterAdvance(outcomeAdvanceFromBatter(batterResult),()=>onDone?.(batterResult),options);
 }
 
 /**
@@ -1685,6 +2079,7 @@ function normalizeSituation(sRaw, i){
   safe.relatedCategories = [...new Set(Array.isArray(safe.relatedCategories) ? safe.relatedCategories : ['backups-rotations','base-coverage'])]
     .map(String)
     .filter(category=>validCategoryIds.has(category) && category !== safe.primaryCategory);
+  ensureSituationOutcomeModel(safe);
 
   // Phase 2: sequence + note
   const rawSeq = Array.isArray(safe.playSeq) ? safe.playSeq : String(safe.playSeq || '')
@@ -1916,6 +2311,7 @@ function syncSituationInputsFromCurrent(){
   // Coach tools: keep Play Sequence + notes inputs in sync with the selected situation
   if (seqNoteInput) seqNoteInput.value = (typeof currentSituation.seqNote === 'string') ? currentSituation.seqNote : '';
   if (typeof renderSeqBuilder === 'function') renderSeqBuilder();
+  syncSituationOutcomeEditor();
 }
 
 function startsToTargets(starts, tol=DEFAULT_TOL){
@@ -1983,6 +2379,8 @@ function makeBlankSituation(){
     hit: { x:1600, y:700 },
     hitType: 'line',
     batterAdvance: 1,
+    playOutcome:{result:'single',batterResult:'first',outsRecorded:0,reviewStatus:'ready'},
+    runnerOutcomes:presentOutcomeBases({runnersOn:normalizeRunnersOn(runnersInit)}).map(base=>defaultRunnerOutcome(base,1)),
     outs: outsInit,
     runnersOn: normalizeRunnersOn(runnersInit)
   };
@@ -2125,15 +2523,13 @@ function populateSituationTeachingCategoryControls(){
     situationRelatedCategories.replaceChildren(...categories
       .filter(category=>category.id !== primary)
       .map(category=>{
-        const label = document.createElement('label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = category.id;
-        checkbox.checked = selected.has(category.id);
-        const text = document.createElement('span');
-        text.textContent = category.label;
-        label.append(checkbox, text);
-        return label;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'situation-category-toggle';
+        button.dataset.category = category.id;
+        button.setAttribute('aria-pressed', String(selected.has(category.id)));
+        button.textContent = category.label;
+        return button;
       }));
   }
 }
@@ -2206,8 +2602,7 @@ function renderPlaybookBrowser(){
     description.textContent = `${runnerLabel} · ${outLabel}`;
     const metadata = document.createElement('span');
     metadata.className = 'playbook-card-metadata';
-    const related = (situation.relatedCategories || []).map(teachingCategoryLabel);
-    metadata.textContent = `${teachingCategoryLabel(situation.primaryCategory)}${related.length ? ` · ${related.join(' · ')}` : ''} · ${situation.category || 'General'}`;
+    metadata.textContent = teachingCategoryLabel(situation.primaryCategory);
     button.append(heading, description, metadata);
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
     playbookBrowserList.appendChild(button);
@@ -2637,7 +3032,8 @@ function refreshSituationAll(){
     currentSituation.primaryCategory = situationPrimaryCategorySelect.value;
   }
   if(situationRelatedCategories){
-    currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('input:checked')].map(input=>input.value);
+    currentSituation.relatedCategories = [...situationRelatedCategories.querySelectorAll('button[data-category][aria-pressed="true"]')]
+      .map(button=>button.dataset.category);
   }
 
   // 2) Outs (HUD + dropdown sync)
@@ -2680,6 +3076,17 @@ function refreshSituationAll(){
     (advanceSel && advanceSel.value) ?? currentSituation.batterAdvance ?? 1,
     0, 4
   );
+  ensureSituationOutcomeModel(currentSituation);
+  if(playResultSel) currentSituation.playOutcome.result=playResultSel.value;
+  currentSituation.playOutcome.batterResult=outcomeBatterFromAdvance(currentSituation.batterAdvance);
+  if(outsRecordedSel) currentSituation.playOutcome.outsRecorded=clampInt(outsRecordedSel.value,0,3);
+  if(currentSituation.playOutcome.batterResult==='out'){
+    currentSituation.playOutcome.batterOutType=batterOutTypeSel?.value||'batter_first';
+    currentSituation.playOutcome.batterOutOrder=clampInt(batterOutOrderSel?.value||1,1,3);
+  }else{
+    delete currentSituation.playOutcome.batterOutType;
+    delete currentSituation.playOutcome.batterOutOrder;
+  }
   setHitSaved(currentSituation.key, currentSituation.hit);
   saveHits();
 
@@ -2967,7 +3374,7 @@ function watchSolution(){
   if(wrap) wrap.querySelectorAll('.movingRunner').forEach((runner)=>runner.remove());
   renderBaseRunners(liveRunners);
   hideRunner();
-  if(ballSvg) ballSvg.innerHTML = '';
+  clearBallHitPath();
   if(ballEl){
     const home = nativeToCssPoint(HOME_NATIVE);
     ballEl.style.left = `${home.x}px`;
@@ -2977,8 +3384,7 @@ function watchSolution(){
 
   _solutionReview.animating = true;
   const run = ++_solutionAnimationRun;
-  const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-  const duration = reduceMotion ? 0 : 4000;
+  const duration = getPlayAnimationDuration();
   wrap?.classList.add('is-showing-solution');
   if(wrap) wrap.dataset.solutionState = 'animating';
   if(watchSolutionBtn){
@@ -2987,27 +3393,20 @@ function watchSolution(){
   }
 
   const hitType = currentSituation?.hitType || 'line';
-  const advance = mapHitTypeToAdvance(hitType);
+  const resolvedOutcome=resolveSituationOutcome(currentSituation);
   const completed = {
     fielders: false,
     ball: false,
     existingRunners: false,
     batter: false,
   };
-  let finalExisting = { ...initialRunners };
-  let batterDestination = 'home';
   const isCancelled = ()=>run !== _solutionAnimationRun || !_solutionReview;
   const markComplete = (actor)=>{
     if(isCancelled()) return;
     completed[actor] = true;
     if(!Object.values(completed).every(Boolean)) return;
 
-    liveRunners = { ...finalExisting };
-    if(batterDestination === 'first') liveRunners.first = true;
-    else if(batterDestination === 'second') liveRunners.second = true;
-    else if(batterDestination === 'third') liveRunners.third = true;
-    renderBaseRunners(liveRunners);
-    hideRunner();
+    applyResolvedSituationOutcome(resolvedOutcome);
     finishSolutionAnimation(run);
   };
 
@@ -3016,12 +3415,10 @@ function watchSolution(){
     isCancelled,
     onDone: ()=>markComplete('ball'),
   });
-  animateExistingRunnersAdvance(advance, (finalState)=>{
-    finalExisting = finalState;
+  animateExistingRunnersByOutcome(resolvedOutcome, ()=>{
     markComplete('existingRunners');
   }, { duration, isCancelled });
-  animateBatterAdvance(advance, (destination)=>{
-    batterDestination = destination;
+  animateBatterOutcome(resolvedOutcome.batterResult, ()=>{
     markComplete('batter');
   }, { duration, isCancelled });
 
@@ -3064,7 +3461,8 @@ window._diqClearSolutionReview = clearSolutionReview;
 
 function resetBallAndRunnerForSituation(){
   if (animReq){ cancelAnimationFrame(animReq); animReq=null; }
-  if (ballSvg) ballSvg.innerHTML='';
+  clearResolvedSituationOutcome();
+  clearBallHitPath();
   if (ballEl) syncBallToHit();
   if (runnerAnimId){ cancelAnimationFrame(runnerAnimId); runnerAnimId=null; }
   hideRunner();
@@ -3084,6 +3482,7 @@ function resetPlayers(reason='reset'){
   updateTimerHud();
 
   clearSolutionReview();
+  clearResolvedSituationOutcome();
   if (continueBtn) continueBtn.classList.add('hidden');
 
   // existing reset logic
@@ -3117,7 +3516,7 @@ function resetPlayers(reason='reset'){
 
   setChipsLocked(!coachUnlocked);
 
-  if (ballSvg) ballSvg.innerHTML='';
+  clearBallHitPath();
   if (ballEl) syncBallToHit();
 
   hideRunner();

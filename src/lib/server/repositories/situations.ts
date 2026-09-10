@@ -1,8 +1,10 @@
 import type { Situation } from '$lib/domain/models';
+import type { SituationPlayOutcome, SituationRunnerOutcome } from '$lib/domain/models';
 import {
   normalizeDifficulty,
   normalizeTeachingCategories,
 } from '$lib/domain/situation-metadata';
+import { normalizeSituationOutcomes } from '$lib/domain/situation-outcomes';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import { writeAudit } from './audit';
 import {
@@ -28,6 +30,25 @@ interface TeachingCategoryRow {
   category_id: string;
   is_primary: number;
   sort_order: number;
+}
+
+interface PlayOutcomeRow {
+  situation_key: string;
+  play_result: SituationPlayOutcome['result'];
+  batter_result: SituationPlayOutcome['batterResult'];
+  outs_recorded: number;
+  batter_out_type: SituationPlayOutcome['batterOutType'] | null;
+  batter_out_order: number | null;
+  review_status: SituationPlayOutcome['reviewStatus'];
+}
+
+interface RunnerOutcomeRow {
+  situation_key: string;
+  starting_base: SituationRunnerOutcome['startingBase'];
+  runner_result: SituationRunnerOutcome['result'];
+  out_type: SituationRunnerOutcome['outType'] | null;
+  out_order: number | null;
+  tagged_up: number;
 }
 
 export type SituationRecord = Situation & {
@@ -57,15 +78,56 @@ function validateSituation(situation: Situation): Situation {
   if (!category || category.length > 60) {
     throw new RecordValidationError('Situation category is required and must be 60 characters or fewer.');
   }
-  return { ...situation, key, title, category, difficulty, ...teachingCategories } as Situation;
+  let outcomes: ReturnType<typeof normalizeSituationOutcomes>;
+  try {
+    outcomes = normalizeSituationOutcomes(situation);
+  } catch (error) {
+    throw new RecordValidationError(error instanceof Error ? error.message : 'Situation outcomes are invalid.');
+  }
+  if (outcomes.playOutcome.reviewStatus === 'needs_review') {
+    throw new RecordValidationError(
+      'Confirm the play and runner outcomes before publishing this situation.',
+    );
+  }
+  const { displayCode: _clientDisplayCode, ...editableSituation } = situation;
+  return { ...editableSituation, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }
 
-function mapRow(row: SituationRow, categories: TeachingCategoryRow[]): SituationRecord {
+function mapRow(
+  row: SituationRow,
+  categories: TeachingCategoryRow[],
+  playOutcomes: PlayOutcomeRow[],
+  runnerOutcomes: RunnerOutcomeRow[],
+): SituationRecord {
   const assigned = categories
     .filter((category) => category.situation_key === row.key)
     .sort((left, right) => left.sort_order - right.sort_order);
+  const raw = JSON.parse(row.payload_json) as Situation;
+  const play = playOutcomes.find((outcome) => outcome.situation_key === row.key);
+  const runners = runnerOutcomes
+    .filter((runner) => runner.situation_key === row.key)
+    .map((runner) => ({
+      startingBase: runner.starting_base,
+      result: runner.runner_result,
+      ...(runner.out_type ? { outType: runner.out_type } : {}),
+      ...(runner.out_order == null ? {} : { outOrder: Number(runner.out_order) as 1 | 2 | 3 }),
+      taggedUp: runner.tagged_up === 1,
+    }));
+  const relational = play ? {
+    playOutcome: {
+      result: play.play_result,
+      batterResult: play.batter_result,
+      outsRecorded: Number(play.outs_recorded) as 0 | 1 | 2 | 3,
+      ...(play.batter_out_type ? { batterOutType: play.batter_out_type } : {}),
+      ...(play.batter_out_order == null ? {} : { batterOutOrder: Number(play.batter_out_order) as 1 | 2 | 3 }),
+      reviewStatus: play.review_status,
+    },
+    runnerOutcomes: runners,
+  } : {};
+  const outcomes = normalizeSituationOutcomes({ ...raw, ...relational });
   return {
-    ...(JSON.parse(row.payload_json) as Situation),
+    ...raw,
+    ...outcomes,
     displayCode: row.display_code || undefined,
     category: row.category,
     difficulty: row.difficulty_level as Situation['difficulty'],
@@ -84,6 +146,23 @@ export class SqliteSituationRepository {
     return this.database.all<TeachingCategoryRow>(
       `SELECT situation_key, category_id, is_primary, sort_order
          FROM situation_teaching_categories ORDER BY situation_key, is_primary DESC, sort_order`,
+    );
+  }
+
+  private async playOutcomes(): Promise<PlayOutcomeRow[]> {
+    return this.database.all<PlayOutcomeRow>(
+      `SELECT situation_key, play_result, batter_result, outs_recorded,
+              batter_out_type, batter_out_order, review_status
+         FROM situation_play_outcomes ORDER BY situation_key`,
+    );
+  }
+
+  private async runnerOutcomes(): Promise<RunnerOutcomeRow[]> {
+    return this.database.all<RunnerOutcomeRow>(
+      `SELECT situation_key, starting_base, runner_result, out_type, out_order, tagged_up
+         FROM situation_runner_outcomes
+        ORDER BY situation_key,
+          CASE starting_base WHEN 'first' THEN 1 WHEN 'second' THEN 2 ELSE 3 END`,
     );
   }
 
@@ -116,13 +195,77 @@ export class SqliteSituationRepository {
     ];
   }
 
+  private outcomeCommands(situation: Situation, revision: number, payload: string, replaceCurrent = false) {
+    const { playOutcome, runnerOutcomes } = normalizeSituationOutcomes(situation);
+    const playParams = [
+      situation.key, revision, playOutcome.result, playOutcome.batterResult,
+      playOutcome.outsRecorded, playOutcome.batterOutType || null,
+      playOutcome.batterOutOrder || null, playOutcome.reviewStatus, payload,
+    ];
+    return [
+      ...(replaceCurrent ? [{
+        sql: `DELETE FROM situation_runner_outcomes
+               WHERE situation_key = ?1
+                 AND EXISTS (SELECT 1 FROM situations WHERE key = ?1 AND revision = ?2 AND payload_json = ?3)`,
+        params: [situation.key, revision, payload],
+      }, {
+        sql: `DELETE FROM situation_play_outcomes
+               WHERE situation_key = ?1
+                 AND EXISTS (SELECT 1 FROM situations WHERE key = ?1 AND revision = ?2 AND payload_json = ?3)`,
+        params: [situation.key, revision, payload],
+      }] : []),
+      {
+        sql: `INSERT INTO situation_play_outcomes
+          (situation_key, play_result, batter_result, outs_recorded,
+           batter_out_type, batter_out_order, review_status)
+         SELECT ?1, ?3, ?4, ?5, ?6, ?7, ?8
+          WHERE EXISTS (SELECT 1 FROM situations WHERE key = ?1 AND revision = ?2 AND payload_json = ?9)`,
+        params: playParams,
+      },
+      ...runnerOutcomes.map((runner) => ({
+        sql: `INSERT INTO situation_runner_outcomes
+          (situation_key, starting_base, runner_result, out_type, out_order, tagged_up)
+         SELECT ?1, ?3, ?4, ?5, ?6, ?7
+          WHERE EXISTS (SELECT 1 FROM situations WHERE key = ?1 AND revision = ?2 AND payload_json = ?8)`,
+        params: [situation.key, revision, runner.startingBase, runner.result,
+          runner.outType || null, runner.outOrder || null, runner.taggedUp ? 1 : 0, payload],
+      })),
+      {
+        sql: `INSERT OR IGNORE INTO situation_version_play_outcomes
+          (situation_key, situation_revision, play_result, batter_result,
+           outs_recorded, batter_out_type, batter_out_order, review_status)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8
+          WHERE EXISTS (
+            SELECT 1 FROM situation_versions
+             WHERE situation_key = ?1 AND revision = ?2 AND payload_json = ?9
+          )`,
+        params: playParams,
+      },
+      ...runnerOutcomes.map((runner) => ({
+        sql: `INSERT OR IGNORE INTO situation_version_runner_outcomes
+          (situation_key, situation_revision, starting_base, runner_result,
+           out_type, out_order, tagged_up)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7
+          WHERE EXISTS (
+            SELECT 1 FROM situation_version_play_outcomes
+             WHERE situation_key = ?1 AND situation_revision = ?2
+          )`,
+        params: [situation.key, revision, runner.startingBase, runner.result,
+          runner.outType || null, runner.outOrder || null, runner.taggedUp ? 1 : 0],
+      })),
+    ];
+  }
+
   async list(includeArchived = false): Promise<SituationRecord[]> {
     const rows = await this.database.all<SituationRow>(
       `SELECT key, display_code, category, difficulty, difficulty_level, payload_json, revision, active, archived_at
-         FROM situations ${includeArchived ? '' : 'WHERE active = 1'} ORDER BY key`,
+         FROM situations ${includeArchived ? '' : 'WHERE active = 1'}
+        ORDER BY CAST(substr(display_code, 2) AS INTEGER), display_code, key`,
     );
-    const categories = await this.categories();
-    return rows.map((row) => mapRow(row, categories));
+    const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
+      this.categories(), this.playOutcomes(), this.runnerOutcomes(),
+    ]);
+    return rows.map((row) => mapRow(row, categories, playOutcomes, runnerOutcomes));
   }
 
   async get(key: string, includeArchived = false): Promise<SituationRecord | null> {
@@ -131,7 +274,11 @@ export class SqliteSituationRepository {
          FROM situations WHERE key = ?1 ${includeArchived ? '' : 'AND active = 1'}`,
       [key],
     );
-    return row ? mapRow(row, await this.categories()) : null;
+    if (!row) return null;
+    const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
+      this.categories(), this.playOutcomes(), this.runnerOutcomes(),
+    ]);
+    return mapRow(row, categories, playOutcomes, runnerOutcomes);
   }
 
   async create(situationInput: Situation, userId: string): Promise<SituationRecord> {
@@ -157,6 +304,7 @@ export class SqliteSituationRepository {
         params: [situation.key, now],
       },
       ...this.categoryCommands(situation, 1, payload),
+      ...this.outcomeCommands(situation, 1, payload),
     ]);
     if (!result.changes) throw new RecordValidationError('A situation with that key already exists.');
     const created = await this.get(situation.key, true);
@@ -186,6 +334,7 @@ export class SqliteSituationRepository {
         params: [situation.key, expectedRevision, now],
       },
       ...this.categoryCommands(situation, expectedRevision + 1, JSON.stringify(situation), true),
+      ...this.outcomeCommands(situation, expectedRevision + 1, JSON.stringify(situation), true),
     ]);
     if (!result.changes) throw new RevisionConflictError();
     const updated = await this.get(situation.key, true);
@@ -216,6 +365,24 @@ export class SqliteSituationRepository {
           (situation_key, situation_revision, category_id, is_primary, sort_order)
          SELECT situation_key, ?2, category_id, is_primary, sort_order
            FROM situation_teaching_categories WHERE situation_key = ?1`,
+        params: [key, expectedRevision + 1],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO situation_version_play_outcomes
+          (situation_key, situation_revision, play_result, batter_result,
+           outs_recorded, batter_out_type, batter_out_order, review_status)
+         SELECT situation_key, ?2, play_result, batter_result, outs_recorded,
+                batter_out_type, batter_out_order, review_status
+           FROM situation_play_outcomes WHERE situation_key = ?1`,
+        params: [key, expectedRevision + 1],
+      },
+      {
+        sql: `INSERT OR IGNORE INTO situation_version_runner_outcomes
+          (situation_key, situation_revision, starting_base, runner_result,
+           out_type, out_order, tagged_up)
+         SELECT situation_key, ?2, starting_base, runner_result,
+                out_type, out_order, tagged_up
+           FROM situation_runner_outcomes WHERE situation_key = ?1`,
         params: [key, expectedRevision + 1],
       },
     ]);

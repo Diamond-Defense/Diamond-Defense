@@ -2,7 +2,13 @@ import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { displayCodeForSituationKey, normalizeSituationMetadata, TEACHING_CATEGORIES } from './lib/situation-seed.mjs';
+import {
+  buildSituationOutcomeSql,
+  displayCodeForSituationKey,
+  normalizeSituationMetadata,
+  normalizeSituationOutcomeSeed,
+  TEACHING_CATEGORIES,
+} from './lib/situation-seed.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const situations = JSON.parse(await readFile(resolve(root, 'situations.json'), 'utf8'));
@@ -78,9 +84,12 @@ for (const member of [...teams[0].players.map((player) => ({ ...player, role: 'p
 
 for (const rawSituation of situations) {
   const situation = normalizeSituationMetadata(rawSituation);
-  const payload = JSON.stringify(situation);
+  const outcomes = normalizeSituationOutcomeSeed(situation);
+  const payloadSituation = { ...situation, ...outcomes };
+  const payload = JSON.stringify(payloadSituation);
   const displayCode = situation.displayCode || displayCodeForSituationKey(situation.key);
   statements.push(`INSERT INTO situations (key, display_code, title, description, category, difficulty, difficulty_level, payload_json, revision, active, created_at, updated_at) VALUES (${quote(situation.key)}, ${quote(displayCode)}, ${quote(situation.title ?? situation.key)}, ${quote(situation.desc ?? '')}, ${quote(situation.category)}, ${quote(situation.difficulty === 'foundational' ? 'beginner' : situation.difficulty)}, ${quote(situation.difficulty)}, ${quote(payload)}, 1, 1, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(key) DO UPDATE SET display_code=COALESCE(situations.display_code, excluded.display_code), title=excluded.title, description=excluded.description, category=excluded.category, difficulty=excluded.difficulty, difficulty_level=excluded.difficulty_level, payload_json=excluded.payload_json, revision=situations.revision+1, active=1, updated_at=excluded.updated_at;`);
+  statements.push(...buildSituationOutcomeSql(payloadSituation));
   statements.push(`DELETE FROM situation_teaching_categories WHERE situation_key = ${quote(situation.key)};`);
   [situation.primaryCategory, ...situation.relatedCategories].forEach((categoryId, index) => {
     statements.push(`INSERT INTO situation_teaching_categories (situation_key, category_id, is_primary, sort_order) VALUES (${quote(situation.key)}, ${quote(categoryId)}, ${index === 0 ? 1 : 0}, ${index});`);

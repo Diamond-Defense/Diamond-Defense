@@ -57,11 +57,14 @@ CSV exports use D1/SQLite as their source of truth.
   and timing.
 - Completed: paginate recent team activity and individual player history.
 - Completed: coach reports are scoped to the coach's team and filter by player,
-  situation, outcome, and date; administrators can query a selected team.
+  season, assignment, situation, difficulty, teaching category,
+  assigned/free-play source, outcome, and date; administrators can query a
+  selected team.
 - Completed: player and team summary values are calculated from filtered
   database history rather than browser-local data.
 - Completed: CSV export uses the same filters and authorization rules as the
-  visible report.
+  visible report and includes assignment, cycle, season, timing, difficulty,
+  category, and lifecycle context.
 - Completed: reporting indexes and API/browser authorization coverage.
 
 Acceptance criteria: coaches can review trustworthy historical results without
@@ -157,3 +160,46 @@ Acceptance criteria: a player cannot belong to two active teams; transfers
 revoke sessions and release current practice; completed history remains on its
 original team and season; advancing a roster preserves the source season while
 moving only selected accounts.
+
+## Phase 10: structured situation outcomes
+
+Status: implemented in application code; migration pending environment rollout. See
+`docs/situation-outcomes.md` for the phased plan and rollout notes.
+
+- Relational current and immutable-version records for batter and runner results.
+- Conservative compatibility conversion for existing situations.
+- Shared validation for outs, forces, sacrifices, tag-ups, base occupancy, and
+  inning-ending force plays.
+- Shared Play Outcome and Runner Outcomes editor for coach drafts and
+  administrator publishing, with recommended defaults and validation.
+- Normal play and Watch Solution resolve each batter and runner independently
+  from relational outcome records. Legacy `batterAdvance` remains only for
+  compatibility and conversion.
+- Administrator proposal review names exact geometry changes and can switch
+  between runnable published and selected-change field versions without saving
+  preview attempts. Leaving preview restores any unsaved editor draft.
+- Ambiguous converted situations appear in a review queue and cannot be
+  submitted or published until their outcomes are confirmed.
+
+## Phase 11: reporting optimization and release readiness
+
+Status: implemented in application code; migrations and environment rollout
+pending.
+
+- Assignment, cycle, season, lifecycle, difficulty, category, and free-play
+  context in Team Activity and CSV exports.
+- Coach team-development and individual player-development summaries based on
+  filtered database history.
+- Bounded server-side report and practice-queue pagination.
+- Focused reporting and queue indexes with repeatable query-plan verification.
+- A focused desktop/mobile and cross-browser release suite covering responsive
+  overflow, accessible login controls, session continuity, permission
+  boundaries, and coach-report loading.
+- Documented local, preview, and production validation, migration, backup,
+  smoke-test, and rollback sequence in `docs/release-checklist.md`.
+
+Acceptance criteria: routine report and queue reads remain bounded; query-plan
+checks confirm the expected indexes; players and coaches cannot cross role
+boundaries; the release candidate passes the full Chromium suite and the
+focused Chromium, Firefox, WebKit, Android-sized, and iPhone-sized checks before
+production rollout.
