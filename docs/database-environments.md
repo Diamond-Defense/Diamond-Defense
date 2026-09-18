@@ -40,6 +40,9 @@ environment, in filename order. There is no need to apply each file manually.
 Migrations `0019_structured_situation_outcomes.sql` and
 `0020_reporting_and_queue_indexes.sql` belong to the current release line and
 must be applied before deploying the matching gameplay/reporting code.
+Migration `0021_reference_situation_corrections.sql` publishes the reviewed
+playbook corrections as new situation revisions and must be applied with the
+matching situation data.
 
 Migration files are immutable after reaching preview. If preview testing finds
 a problem, create a new migration rather than editing one that may already be

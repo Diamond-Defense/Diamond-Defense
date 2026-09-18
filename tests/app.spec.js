@@ -46,6 +46,7 @@ test.describe('Diamond Defense regression behavior', () => {
     });
 
     await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
 
     await expect
@@ -138,7 +139,7 @@ test.describe('Diamond Defense regression behavior', () => {
   });
 
   test('Playbook browser filters database situations and selects one for practice', async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 1180, height: 820 });
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
@@ -151,7 +152,11 @@ test.describe('Diamond Defense regression behavior', () => {
       const [first, second] = cards.map((card) => card.getBoundingClientRect());
       return {
         pageOverflows: document.documentElement.scrollWidth > window.innerWidth,
-        cardsOverlap: Boolean(first && second && second.top < first.bottom),
+        cardsOverlap: Boolean(
+          first && second &&
+          first.left < second.right && first.right > second.left &&
+          first.top < second.bottom && first.bottom > second.top
+        ),
       };
     });
     expect(layout).toEqual({ pageOverflows: false, cardsOverlap: false });
@@ -255,9 +260,9 @@ test.describe('Diamond Defense regression behavior', () => {
       await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
       await expect(page.locator('#resetBtn')).toBeDisabled();
 
-      await page.setViewportSize({ width: 390, height: 844 });
+      await page.setViewportSize({ width: 1024, height: 768 });
       await expect(page.locator('#practiceToggle')).toBeVisible();
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024);
 
       const closed = await coach.patch(`/api/practice/assignments/${assignmentId}`, {
         headers: { Origin: origin },
@@ -335,7 +340,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1920);
 
-    await page.setViewportSize({ width: 390, height: 844 });
+    await page.setViewportSize({ width: 1024, height: 768 });
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
@@ -345,14 +350,34 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.getByRole('button', { name: 'Coach Tools' })).toBeHidden();
     await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeHidden();
     await expect(page.locator('#descHud')).toHaveText('S01 · Single to LF');
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024);
   });
 
-  test('field geometry keeps every token aligned on desktop and mobile', async ({ page }) => {
+  test('small and portrait screens show the supported-screen boundary', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    await expect(page.locator('#screenSizeGate')).toBeVisible();
+    await expect(page.locator('#screenSizeGateTitle')).toHaveText(
+      'Open Diamond Defense on a tablet or computer',
+    );
+    await expect(page.locator('body > header')).toBeHidden();
+    await expect(page.locator('#fieldImg')).toBeHidden();
+
+    await page.setViewportSize({ width: 1024, height: 1366 });
+    await expect(page.locator('#screenSizeGate')).toBeVisible();
+
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await expect(page.locator('#screenSizeGate')).toBeHidden();
+    await expect(page.locator('#fieldImg')).toBeVisible();
+  });
+
+  test('field geometry keeps every token aligned on supported screens', async ({ page }) => {
     for (const viewport of [
       { width: 1920, height: 1200 },
       { width: 1280, height: 900 },
-      { width: 390, height: 844 },
+      { width: 1024, height: 768 },
     ]) {
       await page.setViewportSize(viewport);
       await openCleanApp(page);
@@ -1261,15 +1286,15 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#adminArchivedSituationSelect')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
 
-    await page.setViewportSize({ width: 390, height: 844 });
-    const mobileDrawer = await page.locator('#toolsDrawer').evaluate((drawer) => {
+    await page.setViewportSize({ width: 1024, height: 768 });
+    const compactDrawer = await page.locator('#toolsDrawer').evaluate((drawer) => {
       const rect = drawer.getBoundingClientRect();
       return { left: rect.left, right: rect.right, bottom: rect.bottom, width: rect.width };
     });
-    expect(mobileDrawer.left).toBeGreaterThanOrEqual(9);
-    expect(mobileDrawer.right).toBeLessThanOrEqual(381);
-    expect(mobileDrawer.bottom).toBeLessThanOrEqual(844);
-    expect(mobileDrawer.width).toBeLessThanOrEqual(370);
+    expect(compactDrawer.left).toBeGreaterThanOrEqual(9);
+    expect(compactDrawer.right).toBeLessThanOrEqual(1015);
+    expect(compactDrawer.bottom).toBeLessThanOrEqual(768);
+    expect(compactDrawer.width).toBeLessThanOrEqual(560);
   });
 
   test('login service failures do not masquerade as a database outage', async ({ page }) => {

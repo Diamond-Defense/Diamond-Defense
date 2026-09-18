@@ -67,4 +67,32 @@ test.describe('static data contracts', () => {
     }
   });
 
+  test('reference-reviewed situations retain their corrected coaching data', () => {
+    const situations = readJson('situations.json');
+    const situation = (key) => situations.find((item) => item.key === key);
+
+    expect(situation('BD-02').targets['1B'].notes).toContain('possible back pick');
+    expect(situation('BD-02').targets['2B'].notes).toContain('SS side of 2B, cover the bag');
+    expect(situation('BD-02').targets['2B'].notes).toContain('2B side of the field, you are the cut/relay');
+    expect(situation('BD-04').playSeq).toEqual(['LF', 'SS', '3B']);
+
+    expect(situation('BD-06').targets['1B']).toEqual(expect.objectContaining({ x: 2166, y: 1184 }));
+    expect(situation('BD-07').targets['1B']).toEqual(expect.objectContaining({ x: 2166, y: 1184 }));
+    expect(situation('BD-17').targets.RF).toEqual(expect.objectContaining({ x: 2127, y: 762 }));
+    expect(situation('BD-18').targets.RF).toEqual(expect.objectContaining({ x: 2127, y: 762 }));
+
+    expect(situation('BD-15').playSeq).toEqual(['RF', '2B', '3B']);
+    expect(situation('BD-16').playSeq).toEqual(['RF', '2B', 'SS']);
+    expect(situation('BD-12').seqNote).toContain('tying or winning run');
+
+    for (const key of ['BD-06', 'BD-12']) {
+      expect(situation(key).playOutcome).toEqual(expect.objectContaining({
+        result: 'single',
+        batterResult: 'second',
+        outsRecorded: 0,
+        reviewStatus: 'ready',
+      }));
+    }
+  });
+
 });

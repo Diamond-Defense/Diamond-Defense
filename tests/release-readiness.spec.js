@@ -123,4 +123,16 @@ test.describe('release readiness', () => {
     await expect(page.locator('#coachDevelopmentInsights')).toBeVisible();
     await expect(page.locator('#coachResultsPlayerSelect')).toBeVisible();
   });
+
+  test('unsupported screens receive a clear non-interactive boundary', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+    await page.evaluate(() => window.__DIQ_READY__);
+    await expect(page.locator('#screenSizeGate')).toBeVisible();
+    await expect(page.locator('#screenSizeGateTitle')).toHaveText(
+      'Open Diamond Defense on a tablet or computer',
+    );
+    await expect(page.locator('#fieldImg')).toBeHidden();
+  });
 });

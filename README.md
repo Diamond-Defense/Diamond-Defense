@@ -64,8 +64,8 @@ Detailed documentation:
 | `npm run dev:local` | Migrate, conditionally seed, build, and start local D1 |
 | `npm run verify` | Run checks, isolated tests, and a production build |
 | `npm test` | Run script tests and browser/API tests against isolated D1 |
-| `npm run test:acceptance` | Run focused desktop and mobile release checks |
-| `npm run test:cross-browser` | Run focused Chromium, Firefox, WebKit, Android, and iPhone checks |
+| `npm run test:acceptance` | Run focused desktop and compact-screen release checks |
+| `npm run test:cross-browser` | Run focused Chromium, Firefox, WebKit, compact-laptop, and tablet-landscape checks |
 | `npm run deploy:cloudflare -- --dry-run` | Show the branch deployment target without changing Cloudflare |
 | `npm run deploy:cloudflare` | Verify, migrate, and deploy `main` or `preview` |
 | `npm run admin:password` | Update the local administrator password |

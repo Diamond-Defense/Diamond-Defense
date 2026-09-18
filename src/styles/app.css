@@ -1,8 +1,61 @@
 /* --- Base UI --- */
+  .screen-size-gate{display:none}
   body{
     margin:0;
     font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
     background:#f6f7fb;color:#1f2937;
+  }
+
+  /* Gameplay is intentionally supported only on tablet-landscape and larger
+     viewports. This replaces phone-specific shrinking with a clear boundary. */
+  @media (max-width:1023px), (orientation:portrait){
+    body{min-height:100dvh;overflow:hidden}
+    body header,
+    body main,
+    body .playbook-browser-overlay,
+    body .modalOverlay{display:none!important}
+    body .screen-size-gate{
+      position:fixed;
+      inset:0;
+      z-index:2147483000;
+      display:grid;
+      place-items:center;
+      box-sizing:border-box;
+      padding:24px;
+      overflow:auto;
+      color:#eaf8ff;
+      background:
+        radial-gradient(circle at 50% 18%,rgba(47,185,226,.18),transparent 38%),
+        linear-gradient(160deg,#07162c,#030916 72%);
+    }
+    .screen-size-gate-card{
+      display:grid;
+      justify-items:center;
+      width:min(560px,100%);
+      box-sizing:border-box;
+      padding:36px;
+      border:1px solid rgba(77,208,239,.32);
+      border-radius:20px;
+      text-align:center;
+      background:linear-gradient(145deg,rgba(12,42,72,.94),rgba(5,22,44,.97));
+      box-shadow:0 24px 70px rgba(0,3,16,.55),0 0 32px rgba(67,231,244,.1);
+    }
+    .screen-size-gate-mark{
+      display:grid;
+      width:54px;
+      height:54px;
+      margin-bottom:18px;
+      place-items:center;
+      border:1px solid rgba(97,238,255,.7);
+      border-radius:17px 17px 23px 23px;
+      color:#67edff;
+      background:rgba(15,71,110,.5);
+      box-shadow:0 0 24px rgba(67,231,244,.2);
+      font-size:23px;
+    }
+    .screen-size-gate-card h1{margin:7px 0 12px;font-size:clamp(24px,5vw,34px);line-height:1.15}
+    .screen-size-gate-card p{max-width:470px;margin:0;color:#b3cce0;font-size:15px;line-height:1.55}
+    .screen-size-gate-card .screen-size-gate-hint{margin-top:12px;color:#83a5be;font-size:13px}
   }
 
   /* ---- Header (DOM-order driven) ---- */
@@ -1333,7 +1386,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .practice-choice-group{min-width:0;margin:0;padding:12px;border:1px solid rgba(92,180,255,.18);border-radius:12px}.practice-choice-group legend{padding:0 6px}
 .practice-choice-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.practice-choice-list label{display:flex;align-items:center;gap:7px;padding:8px;border-radius:8px;background:rgba(8,32,60,.68);color:#dceaf5;font-weight:750}.practice-choice-list input{width:auto;accent-color:#43e7f4}
 .practice-situation-choices{max-height:330px;display:grid;gap:6px;overflow:auto;overscroll-behavior:contain}
-.practice-situation-filters{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(160px,1fr) minmax(130px,.7fr);gap:8px;margin-bottom:7px}.practice-filter-summary{margin:0 0 7px;color:#829fb6;font-size:10px;font-weight:800}.practice-situation-choice.hidden{display:none}
+.practice-situation-filters{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,.72fr);gap:8px;margin-bottom:7px}.practice-situation-filters .field,.practice-situation-filters input,.practice-situation-filters select{min-width:0;width:100%;box-sizing:border-box}.practice-filter-summary{margin:0 0 7px;color:#829fb6;font-size:10px;font-weight:800}.practice-situation-choice.hidden{display:none}
 .practice-situation-choice{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:center;padding:9px;border:1px solid rgba(92,180,255,.14);border-radius:9px;background:rgba(6,25,49,.72)}
 .practice-situation-choice>input{width:auto;accent-color:#43e7f4}.practice-situation-choice>span{min-width:0;display:grid;gap:2px}.practice-situation-choice strong{overflow:hidden;color:#eaf9ff;font-size:12px;text-overflow:ellipsis;white-space:nowrap}.practice-situation-choice small{color:#829fb6;font-size:10px}
 .practice-form-actions,.practice-card-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
@@ -1399,7 +1452,7 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
   .situation-controls{grid-column:1/-1}
   .game-controls{grid-column:1;justify-content:flex-start}
   .status-strip{grid-column:2}
-  #wrap{width:min(100%,calc((100dvh - var(--app-header-height) - 28px) * 1.5003))}
+  #wrap{width:min(100%,calc((100dvh - var(--app-header-height) - 40px) * 1.5003))}
 }
 
 @media (max-width:700px){

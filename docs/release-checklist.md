@@ -26,10 +26,11 @@ npm run build
 ```
 
 `npm test` remains the complete Chromium behavior and API suite.
-`test:acceptance` adds a quick desktop/mobile release smoke test. The broader
-`test:cross-browser` command runs that focused smoke test in Chromium, Firefox,
-WebKit, Android-sized Chromium, and iPhone-sized WebKit. It intentionally does
-not repeat the entire behavior suite five times.
+`test:acceptance` adds a quick desktop and minimum-supported-screen release
+smoke test. The broader `test:cross-browser` command runs that focused smoke
+test in Chromium, Firefox, WebKit, a 1024 x 768 compact Chromium viewport, and
+an 11-inch iPad-sized landscape WebKit viewport. It intentionally does not
+repeat the entire behavior suite five times.
 
 Before leaving local testing, manually verify:
 
@@ -40,8 +41,9 @@ Before leaving local testing, manually verify:
   pagination, and CSV export;
 - administrator roster, season, situation, and proposal-preview workflows;
 - keyboard focus order, visible focus indicators, dialogs, and form labels;
-- no clipped text or horizontal scrolling at approximately `390 x 844` and at
-  a normal desktop width; and
+- no clipped text or horizontal scrolling at `1024 x 768`, approximately
+  `1194 x 834`, and a normal desktop width;
+- the larger-screen notice at phone widths and in portrait orientation; and
 - animation timing, runner destinations, and solution replay for at least one
   situation with runners on base.
 
@@ -81,13 +83,15 @@ Preview is the required rehearsal for schema and application changes.
    ```
 
 7. Repeat the high-value manual checks from the local list using sanitized
-   preview accounts and real mobile browsers where available.
+   preview accounts and an 11-inch tablet in landscape where available.
 
 The migration command applies every unapplied migration in one run; individual
 migration commands are not needed. For this release line, migrations
 `0019_structured_situation_outcomes.sql` and
 `0020_reporting_and_queue_indexes.sql` must be applied before the matching code
-is deployed.
+is deployed. Migration `0021_reference_situation_corrections.sql` must accompany
+the reviewed playbook situation data so existing databases receive the same new
+revisions as fresh seeds.
 
 ## 3. Production rollout
 
@@ -120,7 +124,8 @@ Schedule production migration and deployment together after preview acceptance:
    ```
 
 6. Perform a short, non-destructive smoke test: public load, one login per role,
-   report loading, practice queue loading, logout, and a read-only mobile check.
+   report loading, practice queue loading, logout, and a compact landscape
+   screen check.
 7. Confirm error rates and D1 usage in Cloudflare before declaring the release
    complete.
 

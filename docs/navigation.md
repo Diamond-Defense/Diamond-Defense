@@ -27,8 +27,8 @@ the password is changed.
 
 Players use the strategy board and do not see a staff workspace control.
 Coaches see **Coach workspace** and administrators see **Admin workspace**.
-Compact mobile labels shorten these to **Coach** and **Admin** without changing
-their accessible names.
+The interactive application requires a landscape viewport at least 1024 CSS
+pixels wide; narrower or portrait screens display a larger-screen notice.
 
 Guide, account security, and staff drawers are mutually exclusive so only one
 navigation surface competes with the strategy board at a time.

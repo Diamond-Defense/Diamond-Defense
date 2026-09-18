@@ -17,7 +17,7 @@
     "test:scripts": "node --test scripts/*.test.mjs",
     "test:password-script": "node --test scripts/update-admin-password.test.mjs",
     "test:live": "playwright test tests/app.spec.js",
-    "test:acceptance": "playwright test --config=playwright.release.config.js --project=desktop-chromium --project=mobile-chromium",
+    "test:acceptance": "playwright test --config=playwright.release.config.js --project=desktop-chromium --project=compact-chromium",
     "test:cross-browser": "playwright test --config=playwright.release.config.js",
     "test:ui": "playwright test --ui",
     "db:seed:generate": "node scripts/generate-seed-sql.mjs",

@@ -127,12 +127,19 @@ export function validateSituationOutcomes(
     issues.push('A double play cannot be selected with two outs.');
   }
   const expectedBatterResult: Partial<Record<SituationPlayOutcome['result'], SituationPlayOutcome['batterResult']>> = {
-    single: 'first', double: 'second', ground_rule_double: 'second', triple: 'third', home_run: 'home',
+    ground_rule_double: 'second', home_run: 'home',
     groundout: 'out', caught_fly: 'out', caught_line: 'out', sacrifice_bunt: 'out',
     squeeze_bunt: 'out', sacrifice_fly: 'out', double_play: 'out',
   };
-  if (expectedBatterResult[playOutcome.result]
-    && playOutcome.batterResult !== expectedBatterResult[playOutcome.result]) {
+  const minimumHitBase: Partial<Record<SituationPlayOutcome['result'], number>> = {
+    single: 1, double: 2, triple: 3,
+  };
+  const batterBase = { out: 0, first: 1, second: 2, third: 3, home: 4 }[playOutcome.batterResult];
+  const batterResultMismatch = expectedBatterResult[playOutcome.result]
+    ? playOutcome.batterResult !== expectedBatterResult[playOutcome.result]
+    : minimumHitBase[playOutcome.result] !== undefined
+      && batterBase < minimumHitBase[playOutcome.result]!;
+  if (batterResultMismatch) {
     issues.push('The batter result does not match the selected play result.');
   }
   if (['single', 'double', 'triple', 'home_run', 'ground_rule_double'].includes(playOutcome.result)

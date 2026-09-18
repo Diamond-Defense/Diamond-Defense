@@ -69,6 +69,12 @@ if that level of replay detail becomes useful.
 - Safe-hit, double-play, and fielder's-choice selections must agree with the
   configured batter, runner, and out results.
 
+For singles, doubles, and triples, the named result records the credited hit
+while the batter result records where the batter finishes the entire play. A
+batter may therefore finish beyond the credited base after a throw or other
+continuing action, but cannot finish short of it. Ground-rule doubles and home
+runs retain their exact required destinations.
+
 ## Coach and administrator editor
 
 The shared situation editor now separates the outcome workflow into two steps:
@@ -111,6 +117,19 @@ from publishing, a record until its play and runner outcomes have been confirmed
 Fresh database seeds write the same relational play and runner outcome records
 as migrated databases. The compatibility payload remains populated, but it is
 not the authoritative outcome store.
+
+## Original playbook reconciliation
+
+The original coaching pages were reviewed against the seeded situation library.
+Migration `0021_reference_situation_corrections.sql` publishes the confirmed
+note, target, sequence, and outcome-label corrections as new situation revisions.
+Earlier revisions remain unchanged so assigned practices and historical attempts
+continue to use the situation that was published when they were created.
+
+Situations 6 and 12 remain animated with the batter taking second on the selected
+throw, but their named play result is correctly stored as a single. The migration
+does not invent safe/out results for routes that the printed reference leaves
+open to defensive reads.
 
 ## Existing situation conversion
 

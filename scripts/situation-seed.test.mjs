@@ -42,6 +42,23 @@ test('flags ambiguous legacy outcomes for administrator review', () => {
   assert.match(sql, /'first', 'hold', NULL, NULL, 0/);
 });
 
+test('preserves a single when the batter takes second on the selected throw', () => {
+  const sql = buildSituationSeedSql([{
+    key: 'BD-06', title: 'Situation #6', desc: 'Single to RF',
+    hitType: 'line', batterAdvance: 2,
+    runnersOn: { first: true, second: false, third: false },
+    playOutcome: {
+      result: 'single', batterResult: 'second', outsRecorded: 0, reviewStatus: 'ready',
+    },
+    runnerOutcomes: [
+      { startingBase: 'first', result: 'third', taggedUp: false },
+    ],
+  }]);
+
+  assert.match(sql, /'single', 'second', 0, NULL, NULL, 'ready'/);
+  assert.match(sql, /'first', 'third', NULL, NULL, 0/);
+});
+
 test('rejects empty and duplicate situation collections', () => {
   assert.throws(() => buildSituationSeedSql([]), /at least one situation/i);
   assert.throws(

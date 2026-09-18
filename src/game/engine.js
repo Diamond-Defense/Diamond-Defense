@@ -652,8 +652,12 @@ function validateClientSituationOutcomes(situation){
   if(['sacrifice_bunt','squeeze_bunt','sacrifice_fly'].includes(play.result)&&Number(situation?.outs)>=2)add('A sacrifice result cannot be used with two outs.');
   if(play.result==='squeeze_bunt'&&!situation?.runnersOn?.third)add('A squeeze bunt requires a runner starting on third.','sbRunnersSubsec');
   if(play.result==='double_play'&&Number(situation?.outs)>=2)add('A double play cannot be selected with two outs.');
-  const expectedBatter={single:'first',double:'second',ground_rule_double:'second',triple:'third',home_run:'home',groundout:'out',caught_fly:'out',caught_line:'out',sacrifice_bunt:'out',squeeze_bunt:'out',sacrifice_fly:'out',double_play:'out'};
-  if(expectedBatter[play.result]&&play.batterResult!==expectedBatter[play.result])add('The batter result does not match the selected play result.');
+  const expectedBatter={ground_rule_double:'second',home_run:'home',groundout:'out',caught_fly:'out',caught_line:'out',sacrifice_bunt:'out',squeeze_bunt:'out',sacrifice_fly:'out',double_play:'out'};
+  const minimumHitBase={single:1,double:2,triple:3},batterBase={out:0,first:1,second:2,third:3,home:4}[play.batterResult]??0;
+  const batterMismatch=expectedBatter[play.result]
+    ?play.batterResult!==expectedBatter[play.result]
+    :minimumHitBase[play.result]!==undefined&&batterBase<minimumHitBase[play.result];
+  if(batterMismatch)add('The batter result does not match the selected play result.');
   if(['single','double','triple','home_run','ground_rule_double'].includes(play.result)&&Number(play.outsRecorded)!==0)add('A safe-hit result cannot record an out.');
   if(play.result==='double_play'&&Number(play.outsRecorded)!==2)add('A double play must record exactly two outs.');
   if(play.result==='fielders_choice'&&(play.batterResult!=='first'||!runners.some(item=>item.result==='out')))add("A fielder's choice requires the batter to reach first and a runner to be retired.",'sbRunnerOutcomesSubsec');

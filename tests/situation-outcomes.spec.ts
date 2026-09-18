@@ -73,9 +73,16 @@ test.describe('structured situation outcome rules', () => {
   });
 
   test('requires result-specific batter and out behavior', () => {
+    const advancedSingleIssues = validateSituationOutcomes(
+      { outs: 0, runnersOn: { first: false, second: false, third: false } },
+      { result: 'single', batterResult: 'second', outsRecorded: 0, reviewStatus: 'ready' },
+      [],
+    );
+    expect(advancedSingleIssues.join(' ')).not.toContain('batter result does not match');
+
     const safeHitIssues = validateSituationOutcomes(
       { outs: 0, runnersOn: { first: false, second: false, third: false } },
-      { result: 'single', batterResult: 'second', outsRecorded: 1, reviewStatus: 'ready' },
+      { result: 'single', batterResult: 'out', outsRecorded: 1, reviewStatus: 'ready' },
       [],
     );
     expect(safeHitIssues.join(' ')).toContain('batter result does not match');

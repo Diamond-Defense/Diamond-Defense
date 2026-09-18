@@ -21,12 +21,16 @@ export default defineConfig({
       use: { ...devices['Desktop Safari'] },
     },
     {
-      name: 'mobile-chromium',
-      use: { ...devices['Pixel 5'] },
+      name: 'compact-chromium',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1024, height: 768 },
+        screen: { width: 1024, height: 768 },
+      },
     },
     {
-      name: 'mobile-webkit',
-      use: { ...devices['iPhone 13'] },
+      name: 'tablet-webkit',
+      use: { ...devices['iPad Pro 11 landscape'] },
     },
   ],
 });

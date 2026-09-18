@@ -1,0 +1,108 @@
+
+> pretest
+> npm run test:scripts
+
+
+> test:scripts
+> node --test scripts/*.test.mjs
+
+✔ accepts only preview and local refresh targets (0.851333ms)
+✔ creates a verifiable password record without retaining plaintext (18.093583ms)
+✔ allows only approved production tables and refuses an empty core export (0.472209ms)
+✔ replacement SQL preserves migrations and strips sensitive target state (8.70425ms)
+✔ post-import validation enforces counts, safety rules, and migration history (0.548333ms)
+✔ generated replacement SQL executes against the portable SQLite schema (18.893917ms)
+✔ development insights compare progress, phases, trends, and missed situations (2.933875ms)
+✔ development insights keep unavailable values null instead of reporting zero (0.296333ms)
+✔ migration filenames form one contiguous deployment sequence (4.913208ms)
+✔ creates and verifies Cloudflare-compatible password hashes (22.989917ms)
+✔ rejects PBKDF2 iteration counts Cloudflare cannot execute (0.227666ms)
+✔ backfills legacy and custom display codes and numbers future situations (2.163708ms)
+✔ backfills structured outcomes while preserving historical revision behavior (2.609375ms)
+✔ reference corrections publish new revisions without changing history (2.716125ms)
+✔ builds an idempotent situation-only seed (0.91125ms)
+✔ flags ambiguous legacy outcomes for administrator review (1.33325ms)
+✔ preserves a single when the batter takes second on the selected throw (0.153125ms)
+✔ rejects empty and duplicate situation collections (0.391958ms)
+✔ parses local and remote command options (0.722042ms)
+✔ rejects short passwords and creates a verifiable PBKDF2 record (15.597709ms)
+✔ builds password-free SQL scoped to the administrator account (7.42525ms)
+✔ can initialize a missing administrator without embedding plaintext (7.366416ms)
+✔ query-plan verification accepts Wrangler JSON and identifies missing indexes (0.745583ms)
+✔ reporting migration defines every new index required by the query-plan checks (1.436917ms)
+✔ uses the SvelteKit Worker entry point and static asset directory (1.821208ms)
+✔ maps only the main and preview branches to Cloudflare environments (0.610292ms)
+✔ parses and validates workflow options (0.116792ms)
+✔ selects environment-specific D1 bindings and rejects placeholders (0.211291ms)
+✔ uses project-local Wrangler logs while respecting explicit overrides (0.128292ms)
+ℹ tests 29
+ℹ suites 0
+ℹ pass 29
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 147.825458
+
+> test
+> playwright test
+
+[WebServer] [plugin builtin:vite-reporter] 
+[WebServer] (!) Some chunks are larger than 500 kB after minification. Consider:
+[WebServer] - Using dynamic import() to code-split the application
+[WebServer] - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+[WebServer] - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+Running 49 tests using 6 workers
+
+  ✓   3 tests/situation-outcomes.spec.ts:30:3 › structured situation outcome rules › converts a legacy safe hit without changing its behavior (2ms)
+  ✓   7 tests/situation-outcomes.spec.ts:43:3 › structured situation outcome rules › flags ambiguous legacy outs for review instead of inventing runner movement (0ms)
+  ✓   8 tests/situation-outcomes.spec.ts:58:3 › structured situation outcome rules › rejects impossible force, sacrifice, and tag-up combinations (0ms)
+  ✓   9 tests/situation-outcomes.spec.ts:75:3 › structured situation outcome rules › requires result-specific batter and out behavior (2ms)
+  ✓  10 tests/situation-outcomes.spec.ts:106:3 › structured situation outcome rules › does not allow a run on an inning-ending force out (0ms)
+  ✓   5 tests/database-api.spec.js:4:3 › portable SQLite API › serves seeded situations and password-free roster options (105ms)
+  ✓  11 tests/database-api.spec.js:33:3 › portable SQLite API › authenticates a player and persists a result (165ms)
+  ✓   4 tests/data-contract.spec.js:22:3 › static data contracts › all 22 situations have unique keys and complete field coordinates (361ms)
+  ✓  13 tests/data-contract.spec.js:70:3 › static data contracts › reference-reviewed situations retain their corrected coaching data (1ms)
+  ✓  12 tests/database-api.spec.js:121:3 › portable SQLite API › authenticates seeded player, coach, and admin accounts from D1 (109ms)
+  ✓   2 tests/administration-api.spec.js:19:3 › record-level administration API › uses revisions, archives records, manages members, and records audits (431ms)
+  ✓   1 tests/sveltekit.spec.js:4:3 › SvelteKit application boundary › serves the application metadata and compatibility runtime (481ms)
+  ✓  16 tests/sveltekit.spec.js:16:3 › SvelteKit application boundary › does not expose seed JSON as a runtime data source (38ms)
+  ✓   6 tests/app.spec.js:32:3 › Diamond Defense regression behavior › ignores legacy browser data and loads authoritative D1 records (556ms)
+  ✓  15 tests/administration-api.spec.js:135:3 › record-level administration API › creates, updates, archives, and restores a situation without deleting it (210ms)
+  ✓  14 tests/database-api.spec.js:158:3 › portable SQLite API › marks assigned practice incomplete at start and completes it by finalizing the same attempt (286ms)
+  ✓  17 tests/app.spec.js:60:3 › Diamond Defense regression behavior › shows a blocking state when the database API is unavailable (335ms)
+  ✓  18 tests/administration-api.spec.js:235:3 › record-level administration API › gives each coach a team account and routes situation proposals through admin review (431ms)
+  ✓  19 tests/database-api.spec.js:343:3 › portable SQLite API › guides, advances interrupted attempts, orders, and releases player practice without API bypasses (479ms)
+  ✓  21 tests/administration-api.spec.js:539:3 › record-level administration API › previews and atomically imports modern team CSV records (229ms)
+  ✓  20 tests/app.spec.js:77:3 › Diamond Defense regression behavior › boots without JavaScript errors and renders the complete game (475ms)
+  ✓  22 tests/database-api.spec.js:560:3 › portable SQLite API › supports the complete coach assignment lifecycle without losing history (288ms)
+  ✓  24 tests/database-api.spec.js:674:3 › portable SQLite API › limits team reports to staff roles (135ms)
+  ✓  25 tests/database-api.spec.js:847:3 › portable SQLite API › enforces temporary passwords, lockouts, password changes, and global sign-out (217ms)
+  ✓  26 tests/database-api.spec.js:974:3 › portable SQLite API › manages seasons and the complete player data lifecycle without crossing season boundaries (254ms)
+  ✓  23 tests/app.spec.js:123:3 › Diamond Defense regression behavior › changing situations updates the situation HUD (746ms)
+  ✓  27 tests/database-api.spec.js:1143:3 › portable SQLite API › moves stable player accounts between teams and advances a closed-season roster (186ms)
+  ✓  29 tests/database-api.spec.js:1312:3 › portable SQLite API › imports new teams and accounts into an active season with stable login IDs (62ms)
+  ✓  30 tests/database-api.spec.js:1371:3 › portable SQLite API › deletes closed seasons and teams only after explicit destructive confirmation (205ms)
+  ✓  28 tests/app.spec.js:141:3 › Diamond Defense regression behavior › Playbook browser filters database situations and selects one for practice (724ms)
+  ✓  31 tests/app.spec.js:182:3 › Diamond Defense regression behavior › guides a player through required practice and restores free play when staff closes it (1.2s)
+  ✓  32 tests/app.spec.js:287:3 › Diamond Defense regression behavior › modern strategy-board shell keeps controls organized and help accessible (1.2s)
+  ✓  33 tests/app.spec.js:356:3 › Diamond Defense regression behavior › small and portrait screens show the supported-screen boundary (331ms)
+  ✓  34 tests/app.spec.js:376:3 › Diamond Defense regression behavior › field geometry keeps every token aligned on supported screens (1.0s)
+  ✓  35 tests/app.spec.js:436:3 › Diamond Defense regression behavior › dark neon field preserves coordinate geometry and default alignment (401ms)
+  ✓  36 tests/app.spec.js:640:3 › Diamond Defense regression behavior › start, check, and reset preserve the round state contract (4.9s)
+  ✓  37 tests/app.spec.js:689:3 › Diamond Defense regression behavior › resetting an active situation records one abandoned play attempt (645ms)
+  ✓  38 tests/app.spec.js:745:3 › Diamond Defense regression behavior › a positioning-only failure is saved without requiring a sequence (5.4s)
+  ✓  39 tests/app.spec.js:843:3 › Diamond Defense regression behavior › player login rejects a wrong password and accepts a roster password (1.3s)
+  ✓  40 tests/app.spec.js:930:3 › Diamond Defense regression behavior › coach and admin tools enforce their current password gates (4.8s)
+  ✓  41 tests/app.spec.js:1300:3 › Diamond Defense regression behavior › login service failures do not masquerade as a database outage (602ms)
+  ✓  42 tests/app.spec.js:1328:3 › Diamond Defense regression behavior › admin team edits use record-level APIs and preserve stable IDs (1.1s)
+  ✓  43 tests/app.spec.js:1397:3 › Diamond Defense regression behavior › current pure helpers retain their established output (356ms)
+  ✓  44 tests/app.spec.js:1444:3 › Diamond Defense regression behavior › structured outcomes independently resolve runner animation and play totals (362ms)
+  ✓  45 tests/app.spec.js:1503:3 › Diamond Defense regression behavior › situation normalization retains the current data contract (379ms)
+  ✓  46 tests/app.spec.js:1544:3 › Diamond Defense regression behavior › team and roster operations add, update, and remove records (382ms)
+  ✓  47 tests/app.spec.js:1580:3 › Diamond Defense regression behavior › coach reviews replace the field and proposals restore it (4.1s)
+  ✓  48 tests/app.spec.js:1725:3 › Diamond Defense regression behavior › a correct phase-one placement proceeds through the phase-two sequence (7.0s)
+  ✓  49 tests/app.spec.js:1859:3 › Diamond Defense regression behavior › recorded attempts persist with a summary for their situation (744ms)
+
+  49 passed (47.5s)

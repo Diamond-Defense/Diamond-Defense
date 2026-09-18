@@ -189,13 +189,13 @@
         "x": 2166,
         "y": 1184,
         "tol": 67,
-        "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane."
+        "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
       },
       "2B": {
         "x": 1699,
         "y": 730,
         "tol": 67,
-        "notes": "Cover 2B (or be ready to handle the relay depending on side)."
+        "notes": "If the ball is hit to the SS side of 2B, cover the bag. If the ball is hit to the 2B side of the field, you are the cut/relay."
       },
       "SS": {
         "x": 1589,
@@ -364,6 +364,7 @@
     "batterAdvance": 1,
     "playSeq": [
       "LF",
+      "SS",
       "3B"
     ],
     "seqNote": "",
@@ -601,6 +602,19 @@
       "3B"
     ],
     "seqNote": "",
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "second",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": [
+      {
+        "startingBase": "first",
+        "result": "third",
+        "taggedUp": false
+      }
+    ],
     "starts": {
       "P": {
         "x": 1570,
@@ -653,8 +667,8 @@
         "notes": "Protect home plate. Give runner a lane for play at the plate."
       },
       "1B": {
-        "x": 1953,
-        "y": 794,
+        "x": 2166,
+        "y": 1184,
         "tol": 82,
         "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
       },
@@ -770,8 +784,8 @@
         "notes": "Protect home plate. Be ready for throw. Give the runner a lane."
       },
       "1B": {
-        "x": 1682,
-        "y": 928,
+        "x": 2166,
+        "y": 1184,
         "tol": 77,
         "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
       },
@@ -1536,7 +1550,25 @@
       "SS",
       "3B"
     ],
-    "seqNote": "",
+    "seqNote": "With fewer than two outs, keep the tying or winning run from advancing to third.",
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "second",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": [
+      {
+        "startingBase": "first",
+        "result": "third",
+        "taggedUp": false
+      },
+      {
+        "startingBase": "second",
+        "result": "home",
+        "taggedUp": false
+      }
+    ],
     "starts": {
       "P": {
         "x": 1570,
@@ -1884,7 +1916,8 @@
     "batterAdvance": 2,
     "playSeq": [
       "RF",
-      "2B"
+      "2B",
+      "3B"
     ],
     "seqNote": "",
     "starts": {
@@ -2000,7 +2033,8 @@
     "batterAdvance": 2,
     "playSeq": [
       "RF",
-      "2B"
+      "2B",
+      "SS"
     ],
     "seqNote": "",
     "starts": {
@@ -2208,8 +2242,8 @@
         "notes": "Sprint to back up LF."
       },
       "RF": {
-        "x": 2166,
-        "y": 1184,
+        "x": 2127,
+        "y": 762,
         "tol": 113,
         "notes": "Move into position to back up or possibly cover 2B."
       }
@@ -2325,8 +2359,8 @@
         "notes": "If you\u2019re the fielder: make a good, hard, low throw toward either 3B or home. Keep it low enough for the cut/relay."
       },
       "RF": {
-        "x": 2166,
-        "y": 1184,
+        "x": 2127,
+        "y": 762,
         "tol": 113,
         "notes": "Move into position to possibly cover 2B."
       }

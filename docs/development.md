@@ -113,9 +113,18 @@ npm run test:cross-browser
 ```
 
 These commands cover a deliberately small release-readiness path across desktop
-and mobile engines. They do not replace the full Chromium behavior/API suite in
-`npm test`. See the [release checklist](release-checklist.md) for the manual
-mobile, accessibility, permission, preview, and production checks.
+engines, a 1024 x 768 compact layout, and an 11-inch tablet-sized landscape
+layout. They do not replace the full Chromium behavior/API suite in `npm test`.
+See the [release checklist](release-checklist.md) for the manual compact-screen,
+accessibility, permission, preview, and production checks.
+
+## Supported screen size
+
+The interactive field requires a landscape viewport at least 1024 CSS pixels
+wide. Narrower windows and portrait screens show a larger-screen notice instead
+of shrinking tokens and targets below a usable size. Phone gameplay is not a
+supported product requirement. Verify the lower boundary at 1024 x 768 and the
+tablet target at approximately 1194 x 834.
 
 ## UI-only Vite mode
 

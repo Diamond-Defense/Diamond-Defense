@@ -192,14 +192,14 @@ pending.
   filtered database history.
 - Bounded server-side report and practice-queue pagination.
 - Focused reporting and queue indexes with repeatable query-plan verification.
-- A focused desktop/mobile and cross-browser release suite covering responsive
-  overflow, accessible login controls, session continuity, permission
-  boundaries, and coach-report loading.
+- A focused desktop, compact-landscape, and cross-browser release suite covering
+  the supported-screen boundary, responsive overflow, accessible login
+  controls, session continuity, permission boundaries, and coach-report loading.
 - Documented local, preview, and production validation, migration, backup,
   smoke-test, and rollback sequence in `docs/release-checklist.md`.
 
 Acceptance criteria: routine report and queue reads remain bounded; query-plan
 checks confirm the expected indexes; players and coaches cannot cross role
 boundaries; the release candidate passes the full Chromium suite and the
-focused Chromium, Firefox, WebKit, Android-sized, and iPhone-sized checks before
-production rollout.
+focused Chromium, Firefox, WebKit, 1024 x 768 compact, and 11-inch
+tablet-landscape checks before production rollout.

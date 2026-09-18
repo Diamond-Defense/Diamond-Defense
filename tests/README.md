@@ -29,21 +29,22 @@ Run the complete release verification sequence:
 npm run verify
 ```
 
-Run the focused desktop/mobile acceptance checks:
+Run the focused desktop and compact-screen acceptance checks:
 
 ```sh
 npm run test:acceptance
 ```
 
-Run the same focused checks in Chromium, Firefox, WebKit, Android-sized
-Chromium, and iPhone-sized WebKit:
+Run the same focused checks in Chromium, Firefox, WebKit, a 1024 x 768 compact
+Chromium viewport, and an 11-inch iPad-sized landscape WebKit viewport:
 
 ```sh
 npx playwright install chromium firefox webkit
 npm run test:cross-browser
 ```
 
-The release suite checks responsive overflow, keyboard-accessible login,
+The release suite checks the minimum supported layout, the unsupported-screen
+boundary, keyboard-accessible login,
 accessible control names, session refresh/logout, player and coach permission
 boundaries, and coach-report loading. It is intentionally separate from
 `npm test`, so the full mutation-heavy behavior suite still runs once against
