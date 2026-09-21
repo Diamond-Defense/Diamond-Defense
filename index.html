@@ -73,37 +73,47 @@
     <div class="coach-results-header">
       <div>
         <span class="eyebrow">Coach review</span>
-        <h2 id="coachResultsTitle">Team Activity</h2>
-        <p id="coachResultsSubtitle">The latest saved result for each player.</p>
+        <h2 id="coachResultsTitle">Team Reviews</h2>
+        <p id="coachResultsSubtitle"></p>
       </div>
       <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button">Refresh</button>
     </div>
+    <nav class="coach-review-views" aria-label="Review views">
+      <button id="coachOverviewTab" type="button" class="btn-green" data-review-view="overview" aria-pressed="true">Overview</button>
+      <button id="coachAttemptsTab" type="button" class="btn btn-ghost" data-review-view="attempts" aria-pressed="false">Attempts</button>
+    </nav>
     <div class="coach-results-filter">
       <label class="field">
-        <span>Player</span>
-        <select id="coachResultsPlayerSelect" class="select">
+        <span>Players</span>
+        <details id="coachPlayerPicker"><summary id="coachPlayerPickerLabel">All players</summary><div id="coachPlayerChoices"></div></details>
+        <select id="coachResultsPlayerSelect" class="select" multiple hidden aria-label="Players">
           <option value="">All recent team activity</option>
         </select>
       </label>
-      <label class="field">
+      <label class="field"><span>Date range</span><select id="coachDatePreset"><option value="">All dates</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom dates</option></select></label>
+      <details id="coachMoreFilters"><summary>More filters <span id="coachExtraFilterCount"></span></summary><div class="coach-extra-filters"><fieldset><legend>Practice context</legend><label class="field">
         <span>Season</span>
         <select id="coachResultsSeasonSelect" class="select">
           <option value="">All seasons</option>
         </select>
-      </label>
-      <label class="field">
+      </label><label class="field">
         <span>Assignment</span>
         <select id="coachResultsAssignmentSelect" class="select">
           <option value="">All assignments</option>
         </select>
-      </label>
-      <label class="field">
+      </label><label class="field">
+        <span>Activity</span>
+        <select id="coachResultsActivitySelect" class="select">
+          <option value="">Assigned and free play</option>
+          <option value="assigned">Assigned practice</option>
+          <option value="free_play">Free play</option>
+        </select>
+      </label></fieldset><fieldset><legend>Situation</legend><label class="field">
         <span>Situation</span>
         <select id="coachResultsSituationSelect" class="select">
           <option value="">All situations</option>
         </select>
-      </label>
-      <label class="field">
+      </label><label class="field">
         <span>Difficulty</span>
         <select id="coachResultsDifficultySelect" class="select">
           <option value="">All levels</option>
@@ -111,32 +121,21 @@
           <option value="intermediate">Intermediate</option>
           <option value="advanced">Advanced</option>
         </select>
-      </label>
-      <label class="field">
+      </label><label class="field">
         <span>Teaching category</span>
         <select id="coachResultsCategorySelect" class="select">
           <option value="">All categories</option>
         </select>
-      </label>
-      <label class="field">
-        <span>Activity</span>
-        <select id="coachResultsActivitySelect" class="select">
-          <option value="">Assigned and free play</option>
-          <option value="assigned">Assigned practice</option>
-          <option value="free_play">Free play</option>
-        </select>
-      </label>
-      <label class="field">
+      </label></fieldset><fieldset><legend>Outcome</legend><label class="field">
         <span>Result</span>
         <select id="coachResultsOutcomeSelect" class="select">
           <option value="">All results</option>
           <option value="passed">Passed</option>
           <option value="failed">Failed</option>
-          <option value="abandoned">Abandoned</option>
+          <option value="abandoned">Not finished</option>
           <option value="incomplete">In progress</option>
         </select>
-      </label>
-      <label class="field">
+      </label></fieldset></div></details><div id="coachCustomDates" class="coach-custom-dates" hidden>      <label class="field">
         <span>From</span>
         <input id="coachResultsDateFrom" type="date">
       </label>
@@ -144,13 +143,17 @@
         <span>Through</span>
         <input id="coachResultsDateTo" type="date">
       </label>
+</div>
       <div class="coach-results-filter-actions">
         <button id="coachResultsApplyBtn" class="btn-green" type="button">Apply</button>
         <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear filters</button>
         <button id="coachResultsExportBtn" class="btn btn-ghost" type="button">Export CSV</button>
       </div>
     </div>
+    <p id="coachFilterPending" class="coach-filter-pending" hidden role="status">Changes not applied. Select Apply to update results.</p>
+    <div id="coachActiveFilters" class="coach-active-filters" aria-label="Active filters"></div>
     <div id="coachResultsStatus" class="operation-status" role="status" aria-live="polite"></div>
+    <section id="coachReviewOverview" aria-label="Review overview">
     <div id="coachResultsSummary" class="coach-results-summary" aria-label="Filtered results summary"></div>
     <section id="coachDevelopmentInsights" class="coach-development-insights" aria-labelledby="coachDevelopmentTitle">
       <div class="coach-development-heading">
@@ -162,11 +165,15 @@
       </div>
       <div id="coachDevelopmentContent"></div>
     </section>
+    </section>
+    <section id="coachReviewAttempts" hidden aria-label="Attempts">
+    <div id="coachSelectedPlayerSummary" class="coach-selected-player-summary" hidden></div>
     <section class="coach-attempts-section" aria-labelledby="coachAttemptsTitle">
-      <div class="coach-section-heading"><span class="eyebrow">Attempt review</span><h3 id="coachAttemptsTitle">Saved attempts</h3><p>Compare positioning, throwing sequence, tries, and time for each recorded result.</p></div>
+      <div class="coach-section-heading"><span class="eyebrow">Attempt review</span><h3 id="coachAttemptsTitle">Recent attempts</h3><label class="field"><span>Show</span><select id="coachAttemptView"><option value="all">All attempts</option><option value="latest">Latest per player</option></select></label></div>
       <div id="coachResultsList"></div>
     </section>
     <div id="coachResultsPagination" class="coach-results-pagination"></div>
+    </section>
   </section>
   <section id="practiceWorkspace" class="card practice-workspace hidden" aria-labelledby="practiceWorkspaceTitle">
     <div class="practice-workspace-header">
@@ -186,25 +193,36 @@
 
     <div id="coachPracticeView" class="practice-role-view hidden">
       <div class="practice-coach-layout">
-        <form id="practiceAssignmentForm" class="practice-assignment-form">
+        <div id="coachPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
+        <section id="practiceProgressDetail" class="hidden" aria-label="Assignment progress"></section>
+        <form id="practiceAssignmentForm" class="practice-assignment-form hidden">
           <div class="practice-form-heading">
             <div>
               <span id="practiceFormEyebrow" class="eyebrow">New assignment</span>
-              <h3 id="practiceFormTitle">Build a practice queue</h3>
+              <h3 id="practiceFormTitle">Build a practice</h3>
             </div>
-            <button id="practiceSelectTeam" class="btn btn-ghost" type="button">Select team</button>
+            <button id="practiceBuilderBack" class="btn btn-ghost" type="button">Back to assignments</button>
           </div>
+          <div class="practice-builder-overview">
+          <fieldset class="practice-choice-group practice-builder-details">
+            <legend>1. Details</legend>
           <div class="practice-form-grid">
             <label class="field"><span>Assignment name</span><input id="practiceTitle" maxlength="120" placeholder="e.g., Cutoff and relay review" required></label>
-            <label class="field"><span>Due date (optional)</span><input id="practiceDueAt" type="date"></label>
+            <div class="field practice-due-field">
+              <label for="practiceDueAt">Due date (optional)</label>
+              <input id="practiceDueAt" type="date" aria-describedby="practiceDueStatus">
+              <div class="practice-due-controls"><span id="practiceDueStatus" role="status" aria-live="polite">No due date</span><button id="practiceRemoveDueDate" class="btn btn-ghost hidden" type="button">Remove date</button></div>
+            </div>
           </div>
           <label class="field"><span>Instructions (optional)</span><textarea id="practiceInstructions" rows="2" maxlength="1000" placeholder="What should players focus on?"></textarea></label>
-          <fieldset class="practice-choice-group">
-            <legend>Players</legend>
-            <div id="practicePlayerChoices" class="practice-choice-list"></div>
           </fieldset>
           <fieldset class="practice-choice-group">
-            <legend>Situations</legend>
+            <legend>2. Players</legend><div class="practice-list-heading"><span id="practicePlayerCount" aria-live="polite"></span><button id="practiceSelectTeam" class="btn btn-ghost" type="button">Select all players</button></div>
+            <div id="practicePlayerChoices" class="practice-choice-list"></div>
+          </fieldset>
+          </div>
+          <fieldset class="practice-choice-group">
+            <legend>3. Situations</legend><p id="practiceQueueCount" aria-live="polite"></p><ol id="practiceSelectedQueue" class="practice-selected-queue"></ol>
             <div class="practice-situation-filters">
               <label class="field"><span>Search</span><input id="practiceSituationSearch" type="search" placeholder="Search situations"></label>
               <label class="field"><span>Teaching category</span><select id="practiceSituationCategory"><option value="">All categories</option></select></label>
@@ -213,25 +231,23 @@
             <div id="practiceSituationFilterSummary" class="practice-filter-summary"></div>
             <div id="practiceSituationChoices" class="practice-situation-choices"></div>
           </fieldset>
-          <div id="coachPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
           <div class="practice-form-actions">
             <button id="practiceCancelEdit" class="btn btn-ghost hidden" type="button">Cancel edit</button>
             <button id="practiceSaveDraft" class="btn btn-ghost" type="button">Save draft</button>
-            <button id="practicePublish" class="btn-green" type="submit">Publish assignment</button>
+            <button id="practicePublish" class="btn-green" type="submit">Assign to players</button>
           </div>
         </form>
         <section class="practice-manage-list" aria-labelledby="practiceManageTitle">
           <div class="practice-list-heading">
-            <div><span class="eyebrow">Coach view</span><h3 id="practiceManageTitle">Assignments</h3></div>
+            <h3 id="practiceManageTitle">Assignments</h3><button id="practiceNewAssignment" class="btn-green" type="button">New assignment</button>
             <button id="practiceCoachRefresh" class="btn btn-ghost" type="button">Refresh</button>
           </div>
           <div id="practiceLifecycleTabs" class="practice-lifecycle-tabs" role="tablist" aria-label="Assignment status">
             <button class="is-active" type="button" role="tab" aria-selected="true" data-practice-view="active">Active</button>
             <button type="button" role="tab" aria-selected="false" data-practice-view="draft">Drafts</button>
-            <button type="button" role="tab" aria-selected="false" data-practice-view="completed">Completed</button>
-            <button type="button" role="tab" aria-selected="false" data-practice-view="closed">Closed</button>
-            <button type="button" role="tab" aria-selected="false" data-practice-view="archived">Archived</button>
+            <button type="button" role="tab" aria-selected="false" data-practice-view="history">History</button>
           </div>
+          <label id="practiceHistoryField" class="field hidden"><span>History status</span><select id="practiceHistoryStatus"><option value="completed">Completed</option><option value="closed">Closed / cancelled</option><option value="archived">Archived</option></select></label>
           <div class="practice-list-filters">
             <label class="field"><span>Search</span><input id="practiceSearch" type="search" maxlength="120" placeholder="Search assignments"></label>
             <label class="field"><span>Sort</span><select id="practiceSort">
@@ -360,13 +376,13 @@
       <div class="coachGrid">
   <div class="tools-panel-header">
     <div>
-      <strong>Coach Tools</strong>
+      <strong>Coach workspace</strong>
       <div id="coachIdentity" class="muted">Not logged in</div>
       <span id="coachStatus" class="sr-only">locked</span>
     </div>
     <div class="tools-panel-actions">
-      <button id="coachLogoutBtn" class="btn btn-ghost" type="button">Log out</button>
-      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
+      <button id="coachLogoutBtn" class="btn btn-ghost hidden" type="button">Log out</button>
+      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Field</button>
     </div>
   </div>
 
@@ -407,15 +423,15 @@
       </div>
       <span id="situationDirtyBadge" class="dirty-state-badge is-clean">Saved</span>
     </section>
+    <button id="situationLibraryBack" class="btn btn-ghost" type="button">Back to situations</button>
     <nav id="situationEditorSteps" class="situation-editor-steps" aria-label="Situation editor sections">
       <button type="button" data-editor-step="sbDetailsSection">1. Details</button>
-      <button type="button" data-editor-step="sbRunnersSubsec">2. Game state</button>
-      <button type="button" data-editor-step="sbTargetsSubsec">3. Alignment &amp; targets</button>
-      <button type="button" data-editor-step="sbBallHitSubsec">4. Play outcome</button>
-      <button type="button" data-editor-step="sbRunnerOutcomesSubsec">5. Runner outcomes</button>
-      <button type="button" data-editor-step="seqSubsec">6. Sequence</button>
-      <button type="button" data-editor-step="situationReviewSection">7. Review</button>
+      <button type="button" data-editor-step="sbRunnersSubsec">2. Starting situation</button>
+      <button type="button" data-editor-step="sbBallHitSubsec">3. The play</button>
+      <button type="button" data-editor-step="sbTargetsSubsec">4. Defense &amp; throws</button>
+      <button type="button" data-editor-step="situationReviewSection">5. Review</button>
     </nav>
+    <div id="situationEditingMode" class="outcome-context-summary" role="status"></div>
     <div class="situation-editor-actions">
       <button id="newSituationBtn" class="btn-slate">New situation</button>
       <button id="deleteSituationBtn" class="btn btn-danger hidden" title="Archive the published situation">Archive situation</button>
@@ -451,7 +467,7 @@
             <label><input id="run2B" type="checkbox"> 2B</label>
             <label><input id="run3B" type="checkbox"> 3B</label>
           </div><div id="situationForceSummary" class="outcome-context-summary" aria-live="polite"></div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbTargetsSubsec" data-diq-collapsible="1">
-          <div class="title">Targets &amp; Tolerance<span class="diq-chevron">▾</span></div>
+          <div class="title">Defensive targets<span class="diq-chevron">▾</span></div>
           
 
           
@@ -470,12 +486,12 @@
               <select id="tolTargetSel"><option value="P">P</option><option value="C">C</option><option value="1B">1B</option><option value="2B">2B</option><option value="SS">SS</option><option value="3B">3B</option><option value="LF">LF</option><option value="CF">CF</option><option value="RF">RF</option></select>
             </div>
             <div class="row">
-              <label class="hint">Tolerance:</label>
+              <label class="hint" for="tolNum">Allowed distance from target</label><details class="editor-info"><summary aria-label="About allowed distance">ⓘ</summary><p>The target ring shows the accepted area. A larger ring allows more positioning error.</p></details>
               <input id="tolNum" type="number" min="5" max="400" step="1" value="69">
               <input id="tolRange" type="range" min="5" max="400" step="1" value="69" style="flex:1">
             </div>
           </div><div class="row" style="flex-direction:column; align-items:stretch; gap:6px">
-            <label class="hint" style="font-weight:800">Target note <span style="font-weight:600; opacity:.8">(required for review)</span></label>
+            <label class="hint" style="font-weight:800">Coaching note <span style="font-weight:600; opacity:.8">(required for review)</span></label>
             <textarea id="tolNotes" rows="3" placeholder="Enter coaching notes for this target…" style="width:100%; min-height:72px; resize:vertical"></textarea>
 </div></div></div><div class="subsec diq-collapsible diq-collapsed" id="sbBallHitSubsec" data-diq-collapsible="1">
           <div class="title">Play Outcome<span class="diq-chevron">▾</span></div>
@@ -515,7 +531,7 @@
 
           <!-- Optional overall coach note (keeps the same id you already use) -->
           
-        <div class="diq-body"><span class="hint" style="color:#dc2626">Leave the sequence empty to disable Phase 2 for this situation.</span><div class="hint">Click positions below to add; drag items to reorder; remove with the ❌ button.</div><div id="seqPosGrid" class="pos-grid" style="margin-top:6px"><button type="button" class="pos-btn" data-group="Battery">P</button><button type="button" class="pos-btn" data-group="Battery">C</button><button type="button" class="pos-btn" data-group="Infield">1B</button><button type="button" class="pos-btn" data-group="Infield">2B</button><button type="button" class="pos-btn" data-group="Infield">SS</button><button type="button" class="pos-btn" data-group="Infield">3B</button><button type="button" class="pos-btn" data-group="Outfield">LF</button><button type="button" class="pos-btn" data-group="Outfield">CF</button><button type="button" class="pos-btn" data-group="Outfield">RF</button></div><div id="seqList" class="seq-list" aria-live="polite"><div class="seq-item" draggable="true" data-index="0"><div class="seq-num">1</div><div class="seq-tag">LF</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="1"><div class="seq-num">2</div><div class="seq-tag">SS</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="2"><div class="seq-num">3</div><div class="seq-tag">2B</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div></div><div class="seq-toolbar">
+        <div class="diq-body"><label class="sequence-challenge-toggle"><input id="sequenceChallengeEnabled" type="checkbox" role="switch" aria-label="Throw-sequence challenge" aria-describedby="sequenceChallengeHelp"><span class="sequence-switch-track" aria-hidden="true"></span><span class="sequence-switch-copy"><strong>Throw-sequence challenge</strong><span id="sequenceChallengeHelp">After positioning the defense, players choose the correct throw order.</span></span><span class="sequence-switch-state" aria-hidden="true"><span class="sequence-state-on">On</span><span class="sequence-state-off">Off</span></span></label><p class="sequence-disabled-help">Off: this situation ends after the positioning challenge.</p><div class="hint sequence-order-help">Choose positions in throw order. Use the arrows or drag steps to reorder.</div><div id="seqPosGrid" class="pos-grid" style="margin-top:6px"><button type="button" class="pos-btn" data-group="Battery">P</button><button type="button" class="pos-btn" data-group="Battery">C</button><button type="button" class="pos-btn" data-group="Infield">1B</button><button type="button" class="pos-btn" data-group="Infield">2B</button><button type="button" class="pos-btn" data-group="Infield">SS</button><button type="button" class="pos-btn" data-group="Infield">3B</button><button type="button" class="pos-btn" data-group="Outfield">LF</button><button type="button" class="pos-btn" data-group="Outfield">CF</button><button type="button" class="pos-btn" data-group="Outfield">RF</button></div><div id="seqList" class="seq-list" aria-live="polite"><div class="seq-item" draggable="true" data-index="0"><div class="seq-num">1</div><div class="seq-tag">LF</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="1"><div class="seq-num">2</div><div class="seq-tag">SS</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div><div class="seq-item" draggable="true" data-index="2"><div class="seq-num">3</div><div class="seq-tag">2B</div><button type="button" class="seq-remove" title="Remove this step">❌</button></div></div><div class="seq-toolbar">
             <select id="seqTemplateSel" title="Load a common relay">
               <option value="">Template…</option>
               <option value="LF,SS,2B,C">LF → SS → 2B → C (relay home)</option>
@@ -559,11 +575,11 @@
   <div id="adminCard" class="card hidden">
     <div class="tools-panel-header">
       <div>
-        <strong>Admin Tools</strong>
+        <strong>Admin workspace</strong>
         <div class="muted">Teams, accounts, and published playbook</div>
         <span id="adminStatus" class="sr-only">locked</span>
       </div>
-      <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Close</button>
+      <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Back to field</button>
     </div>
 
     <nav class="admin-tabs" aria-label="Admin tool sections">
@@ -593,12 +609,12 @@
       <div class="admin-section-heading">
         <div>
           <h3>Teams and accounts</h3>
-          <p>Select a team, then choose the specific management task you need.</p>
+          <p>Choose a team to manage players, coaches, seasons, and records.</p>
         </div>
       </div>
 
       <section class="admin-record-card admin-team-context" aria-label="Selected team">
-        <label class="field"><span>Team and season</span><select id="adminTeamSelect" class="select"></select></label>
+        <label class="field"><span>Selected team</span><select id="adminTeamSelect" class="select"></select></label>
         <div id="adminTeamContextSummary" class="admin-team-context-summary muted">Select a team to manage its roster, seasons, and records.</div>
         <div id="adminTeamHeaderFields" class="admin-record-grid admin-team-header-fields hidden">
           <label class="field"><span>Team name</span><input id="adminTeamName" class="input" type="text" maxlength="100" autocomplete="off" placeholder="e.g., 14U Black"></label>
@@ -817,11 +833,11 @@
     </section>
 
     <section class="admin-view hidden" data-admin-view="recovery">
-      <div class="admin-section-heading"><div><h3>Recovery</h3><p>Reactivate accidentally archived records without losing their IDs or historical results.</p></div></div>
+      <div class="admin-section-heading"><div><h3>Recovery</h3><p>Restore archived teams, accounts, or situations. Existing records and history are preserved.</p></div></div>
       <div class="admin-account-grid">
-        <section class="admin-record-card"><label class="field"><span>Archived team</span><select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select></label><button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button">Restore team</button></section>
-        <section class="admin-record-card"><label class="field"><span>Archived player or coach</span><select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select></label><button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button">Restore account</button></section>
-        <section class="admin-record-card"><label class="field"><span>Archived situation</span><select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select></label><button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore situation</button></section>
+        <section class="admin-record-card recovery-card"><h3>Teams</h3><p>Restore an archived team so it can be managed again.</p><label class="field"><span>Archived team</span><select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select></label><button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button">Restore team</button></section>
+        <section class="admin-record-card recovery-card"><h3>Player & coach accounts</h3><p>Restore an archived account. Review its team membership afterward.</p><label class="field"><span>Archived player or coach</span><select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select></label><button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button">Restore account</button></section>
+        <section class="admin-record-card recovery-card"><h3>Situations</h3><p>Restore an archived situation to the playbook.</p><label class="field"><span>Archived situation</span><select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select></label><button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore situation</button></section>
       </div>
     </section>
   </div>

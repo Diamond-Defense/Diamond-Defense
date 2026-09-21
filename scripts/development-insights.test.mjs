@@ -51,7 +51,15 @@ test('development insights compare progress, phases, trends, and missed situatio
   ]);
 
   assert.equal(insights.finalizedAttempts, 4);
-  assert.equal(insights.trend.length, 2);
+  assert.deepEqual(
+    insights.trend.map(({ period, interval, attempts, passRate }) => ({ period, interval, attempts, passRate })),
+    [
+      { period:'2026-01-10', interval:'day', attempts:1, passRate:0 },
+      { period:'2026-01-20', interval:'day', attempts:1, passRate:100 },
+      { period:'2026-02-01', interval:'day', attempts:1, passRate:100 },
+      { period:'2026-02-10', interval:'day', attempts:1, passRate:100 },
+    ],
+  );
   assert.equal(insights.phases.positioning.passRate, 75);
   assert.equal(insights.phases.sequence.passRate, 100);
   assert.equal(insights.improvement.sampleSize, 4);

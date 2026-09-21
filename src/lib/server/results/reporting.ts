@@ -19,7 +19,9 @@ function validDate(value: string): boolean {
 }
 
 export function parseAttemptReportFilters(searchParams: URLSearchParams): AttemptReportFilters {
-  const playerId = String(searchParams.get('playerId') || '').trim();
+  const selectedPlayers = [...new Set(String(searchParams.get('playerId') || '').split(',').map(id=>id.trim()).filter(Boolean))];
+  if(selectedPlayers.length > 100 || selectedPlayers.some(id=>id.length > 100)) throw error(400, 'Too many players or an invalid player ID.');
+  const playerId = selectedPlayers.length === 1 ? selectedPlayers[0] : '';
   const seasonId = String(searchParams.get('seasonId') || '').trim();
   const assignmentId = String(searchParams.get('assignmentId') || '').trim();
   const situationKey = String(searchParams.get('situationKey') || '').trim();
@@ -52,6 +54,7 @@ export function parseAttemptReportFilters(searchParams: URLSearchParams): Attemp
   }
   return {
     ...(playerId ? { playerId } : {}),
+    ...(selectedPlayers.length > 1 ? {playerIds:selectedPlayers} : {}),
     ...(seasonId ? { seasonId } : {}),
     ...(assignmentId ? { assignmentId } : {}),
     ...(situationKey ? { situationKey } : {}),

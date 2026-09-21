@@ -1156,6 +1156,7 @@ function makeChipDraggable(el,id){
   // --- drag for Phase 1 / coach ---
   el.addEventListener('pointerdown', e=>{
     if (!canDrag()) return;
+    if(document.body.classList.contains('situation-editing-open') && !document.body.classList.contains('situation-player-preview') && document.body.dataset.situationEditSection !== 'sbRunnersSubsec') return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
 
@@ -1267,6 +1268,7 @@ function makeTargetDraggable(el,id){
   let preSnap=null;
   el.addEventListener('pointerdown',e=>{
     if(!coachUnlocked) return;
+    if(document.body.classList.contains('situation-editing-open') && document.body.dataset.situationEditSection !== 'sbTargetsSubsec') return;
     e.preventDefault();
     el.setPointerCapture(e.pointerId);
     drag={cx:e.clientX,cy:e.clientY,left:parseFloat(el.style.left),top:parseFloat(el.style.top)};
@@ -1581,6 +1583,7 @@ function makeBallDraggable(el){
   let drag=null;
   el.addEventListener('pointerdown',e=>{
     if (!coachUnlocked) return;
+    if(document.body.classList.contains('situation-editing-open') && document.body.dataset.situationEditSection !== 'sbBallHitSubsec') return;
     e.preventDefault(); el.setPointerCapture(e.pointerId);
     drag={cx:e.clientX,cy:e.clientY,left:parseFloat(el.style.left)||0, top:parseFloat(el.style.top)||0};
     window.addEventListener('pointermove',onMove);
@@ -2691,6 +2694,7 @@ function resetStartsToDefaults(){
   }
 }
 function pickRandomSituation(){
+  if(document.body.classList.contains('situation-player-preview')) return;
   if(!requireFreePlayAccess()) return;
   if (!Array.isArray(SITUATIONS) || SITUATIONS.length === 0) return;
   const cur = currentSituation && currentSituation.key;
@@ -2837,6 +2841,7 @@ function renderPlaybookBrowser(){
 }
 
 function openPlaybookBrowser(){
+  if(document.body.classList.contains('situation-player-preview')) return;
   if (!playbookBrowserOverlay) return;
   if(!requireFreePlayAccess()) return;
   window._diqCloseAccountMenu?.();
@@ -3955,7 +3960,8 @@ else { window.addEventListener('load', init, { once:true }); }
 function refreshPlayerPresentation(){
   refreshGuideText();
   const user = window.__DIQ_AUTH_USER__;
-  const player = !user || user.role === 'player';
+  // Shared field presentation only; role permissions remain in the account handlers.
+  const player = !user || ['player', 'coach', 'admin'].includes(user.role);
   document.body.classList.toggle('player-experience', player);
   const panel = document.getElementById('trainingPanel');
   const guide = document.getElementById('playbookRail');
@@ -3963,7 +3969,7 @@ function refreshPlayerPresentation(){
   const workspace = document.getElementById('appWorkspace');
   const board = document.querySelector('.training-board');
   const situationHud = document.getElementById('trainingHud');
-  // Reuse the same indicators and restore the original location for staff views.
+  // Use the same compact field HUD for players, coaches, and administrators.
   if(player && panel && situationHud && situationHud.parentElement !== panel) panel.prepend(situationHud);
   else if(!player && board && situationHud && situationHud.parentElement !== board) board.prepend(situationHud);
   document.body.classList.toggle('player-before-start', !gameActive && !phase2Active);
@@ -3981,10 +3987,11 @@ function refreshPlayerPresentation(){
   const unchecked = !phase2Active && !solution && (!startBtn?.disabled || (gameActive && remainingTries === MAX_TRIES));
   document.body.classList.toggle('player-unchecked-state', unchecked);
   document.body.classList.toggle('player-solution-state', solution);
-  const complete = _completedFreePlay || (_phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary));
+  const staffPositioningComplete = ['coach','admin'].includes(user?.role) && Boolean(_phase1Summary) && !currentSituation?.playSeq?.length;
+  const complete = _completedFreePlay || staffPositioningComplete || (_phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary));
   const beforeStart = !gameActive && !phase2Active && !startBtn?.disabled;
   const chooseNext = document.getElementById('chooseNextSituationBtn');
-  if(chooseNext) chooseNext.classList.toggle('hidden', !player || !_completedFreePlay || beforeStart);
+  if(chooseNext) chooseNext.classList.toggle('hidden', document.body.classList.contains('situation-player-preview') || !player || !(_completedFreePlay || (['coach','admin'].includes(user?.role) && complete)) || beforeStart);
   setText('playerStepLabel', beforeStart ? 'Position the defense' : complete ? 'Situation complete'
     : phase2Active ? 'Choose the throw sequence'
     : solution || _phase1Summary ? 'Review positions' : 'Position the defense');

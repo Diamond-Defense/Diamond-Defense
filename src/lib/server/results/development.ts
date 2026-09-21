@@ -2,6 +2,7 @@ import type { CoachAttempt } from '$lib/server/repositories/attempts';
 
 export interface DevelopmentTrendPoint {
   period: string;
+  interval?: 'day' | 'week' | 'month';
   attempts: number;
   passed: number;
   passRate: number | null;
@@ -203,22 +204,30 @@ function difference(recent: number | null, earlier: number | null): number | nul
   return recent == null || earlier == null ? null : recent - earlier;
 }
 
-function summarizeDevelopmentMetrics(metrics: AttemptMetrics[]): AttemptDevelopmentInsights {
+function summarizeDevelopmentMetrics(metrics: AttemptMetrics[], range: {dateFrom?:string;dateTo?:string} = {}): AttemptDevelopmentInsights {
   const finalized = metrics
     .sort((left, right) => (left.date?.valueOf() || 0) - (right.date?.valueOf() || 0));
 
+  const dated = finalized.filter(metric=>metric.date);
+  const start = range.dateFrom ? new Date(`${range.dateFrom}T00:00:00Z`) : dated[0]?.date;
+  const end = range.dateTo ? new Date(`${range.dateTo}T23:59:59Z`) : dated[dated.length-1]?.date;
+  const days = start && end ? (end.valueOf()-start.valueOf())/86400000 : 0;
+  const interval = days <= 31 ? 'day' : days <= 92 ? 'week' : 'month';
   const byMonth = new Map<string, AttemptMetrics[]>();
   for (const metric of finalized) {
     if (!metric.date) continue;
-    const period = `${metric.date.getUTCFullYear()}-${String(metric.date.getUTCMonth() + 1).padStart(2, '0')}`;
+    const bucket = new Date(metric.date);
+    if(interval === 'week') bucket.setUTCDate(bucket.getUTCDate() - (bucket.getUTCDay()+6)%7);
+    const period = bucket.toISOString().slice(0, interval === 'month' ? 7 : 10);
     const current = byMonth.get(period) || [];
     current.push(metric);
     byMonth.set(period, current);
   }
-  const trend = [...byMonth.entries()].slice(-6).map(([period, metrics]) => {
+  const trend = [...byMonth.entries()].map(([period, metrics]) => {
     const summary = summarizeRange(metrics);
     return {
       period,
+      interval: interval as 'day' | 'week' | 'month',
       attempts: metrics.length,
       passed: metrics.filter((metric) => metric.passed).length,
       passRate: summary.passRate,
@@ -306,12 +315,13 @@ function summarizeDevelopmentMetrics(metrics: AttemptMetrics[]): AttemptDevelopm
 
 export function buildDevelopmentInsights(attempts: CoachAttempt[]): AttemptDevelopmentInsights {
   return summarizeDevelopmentMetrics(attempts
-    .filter((attempt) => attempt.lifecycleStatus !== 'incomplete')
+    .filter((attempt) => attempt.lifecycleStatus !== 'incomplete' && attempt.outcome !== 'abandoned')
     .map(metricsFor));
 }
 
 export function buildDevelopmentInsightsFromMetrics(
   metrics: DevelopmentMetricInput[],
+  range: {dateFrom?:string;dateTo?:string} = {},
 ): AttemptDevelopmentInsights {
-  return summarizeDevelopmentMetrics(metrics.map(metricsFromInput));
+  return summarizeDevelopmentMetrics(metrics.map(metricsFromInput), range);
 }

@@ -487,6 +487,68 @@
       : `${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}A7`;
   }
 
+  function closeMemberEditor(){
+    document.querySelector('[data-admin-team-view="roster"]')?.removeAttribute('data-member-editor');
+    for(const id of ['adminPlayerPass','adminCoachPass']){const input=byId(id);if(input) input.value='';}
+  }
+  function openMemberEditor(role, id='', resetPassword=false){
+    const view=document.querySelector('[data-admin-team-view="roster"]');
+    view.dataset.memberEditor=role;
+    byId('adminMemberType').value=role;
+    byId('adminMemberType').closest('label').hidden=Boolean(id);
+    byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':role==='existing'?'Add existing player':'Create account';
+    if(role==='existing') { byId('adminUnassignedPlayerSelect').focus(); return; }
+    const select=role==='coach'?coachSelect:playerSelect;
+    select.value=id;
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+    const password=byId(role==='coach'?'adminCoachPass':'adminPlayerPass');
+    password.value='';
+    password.closest('label').classList.toggle('member-password-hidden',Boolean(id)&&!resetPassword);
+    byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':'Create account';
+    (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
+  }
+  function renderRosterBrowser(){
+    const team=selectedTeam();
+    const root=byId('adminRosterBrowser');if(!root)return;
+    document.querySelector('[data-admin-view="teams"]')?.classList.toggle('no-team-selected',!team);
+    const members=(team?.roster||[]).filter(member=>member.active!==false);
+    byId('adminRosterCounts').textContent=team?`${members.filter(m=>m.role==='player').length} players · ${members.filter(m=>m.role==='coach').length} coaches`:'';
+    const query=byId('adminRosterSearch').value.toLowerCase(), role=byId('adminRosterRole').value;
+    const body=byId('adminRosterRows');body.replaceChildren();
+    members.filter(member=>(!role||member.role===role)&&String(member.name).toLowerCase().includes(query)).forEach(member=>{
+      const row=document.createElement('tr');row.dataset.memberId=member.playerId;row.dataset.memberRole=member.role;
+      [member.name,member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
+      const actions=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Edit';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
+      const more=document.createElement('details');const summary=document.createElement('summary');summary.textContent='More actions';more.appendChild(summary);
+      [['Reset password','Set a temporary password. The member must change it at their next login.',()=>openMemberEditor(member.role,member.playerId,true)],['Remove from team','Remove membership and sign out active sessions. The account and historical results are kept.',()=>{openMemberEditor(member.role,member.playerId);byId(member.role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn').click();}]].forEach(([label,help,action])=>{
+        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;button.onclick=action;
+        const info=document.createElement('details');const icon=document.createElement('summary');icon.textContent='ⓘ';icon.setAttribute('aria-label',`About ${label}`);const text=document.createElement('p');text.textContent=help;info.append(icon,text);more.append(button,info);
+      });actions.appendChild(more);row.appendChild(actions);body.appendChild(row);
+    });
+    if(!body.children.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=4;cell.textContent=members.length?'No members match these filters.':'No members yet. Select Add member to build the roster.';row.appendChild(cell);body.appendChild(row);}
+  }
+  const rosterView=document.querySelector('[data-admin-team-view="roster"]');
+  if(rosterView){
+    rosterView.querySelector('.admin-section-heading')?.remove();
+    const browser=document.createElement('section');browser.id='adminRosterBrowser';browser.innerHTML=`<div class="admin-roster-toolbar"><strong id="adminRosterCounts"></strong><button type="button" class="btn btn-brand" id="adminAddMember">Add member</button></div><div class="admin-roster-filters"><label class="field"><span>Search members</span><input id="adminRosterSearch" type="search" placeholder="Search by name"></label><label class="field"><span>Role</span><select id="adminRosterRole"><option value="">All members</option><option value="player">Players</option><option value="coach">Coaches</option></select></label></div><table class="admin-roster-table"><thead><tr><th>Name</th><th>Number</th><th>Role</th><th>Actions</th></tr></thead><tbody id="adminRosterRows"></tbody></table>`;
+    rosterView.prepend(browser);
+    const editorHeader=document.createElement('div');editorHeader.id='adminMemberEditorHeader';editorHeader.innerHTML=`<strong id="adminMemberEditorTitle">Add member</strong><button type="button" class="btn btn-ghost" id="adminMemberCancel">Cancel</button><label class="field"><span>Account type</span><select id="adminMemberType"><option value="player">Create player account</option><option value="coach">Create coach account</option><option value="existing">Add existing unassigned player</option></select></label>`;browser.after(editorHeader);
+    playerSelect.closest('.admin-record-card').dataset.memberForm='player';coachSelect.closest('.admin-record-card').dataset.memberForm='coach';
+    playerSelect.closest('label').hidden=true;coachSelect.closest('label').hidden=true;
+    byId('adminAddMember').onclick=()=>{byId('adminMemberType').value='player';openMemberEditor('player');};
+    byId('adminMemberCancel').onclick=closeMemberEditor;
+    byId('adminMemberType').onchange=event=>openMemberEditor(event.target.value);
+    byId('adminRosterSearch').oninput=renderRosterBrowser;byId('adminRosterRole').onchange=renderRosterBrowser;
+    const teamSettings=document.createElement('details');teamSettings.id='adminTeamSettings';
+    const settingsSummary=document.createElement('summary');settingsSummary.textContent='Team settings';teamSettings.appendChild(settingsSummary);
+    const context=document.querySelector('.admin-team-context');context.appendChild(teamSettings);
+    teamSettings.appendChild(teamHeaderFields);
+    const settingsActions=document.createElement('div');settingsActions.className='admin-actions';
+    for(const id of ['adminTeamUpdateBtn','adminTeamRemoveBtn'])settingsActions.appendChild(byId(id));
+    teamSettings.appendChild(settingsActions);
+
+  }
+
   function renderTeamSelect(preferredId = '') {
     if (!teamSelect) return;
     const previous = preferredId || teamSelect.value;
@@ -548,6 +610,7 @@
       hasTeam,
     );
     setVisible(addButton, hasTeam && !member);
+    setVisible(byId('adminPlayerUpdateBtn'), Boolean(member));
     setEnabled(
       [byId('adminPlayerUpdateBtn'), byId('adminPlayerRemoveBtn')],
       Boolean(member),
@@ -574,6 +637,7 @@
       hasTeam,
     );
     setVisible(addButton, hasTeam && !member);
+    setVisible(byId('adminCoachUpdateBtn'), Boolean(member));
     setEnabled(
       [byId('adminCoachUpdateBtn'), byId('adminCoachRemoveBtn')],
       Boolean(member),
@@ -766,8 +830,12 @@
   }
 
   function renderSelectedTeam() {
+    closeMemberEditor();
+    renderRosterBrowser();
     const team = selectedTeam();
     const newTeamButton = byId('adminNewTeamBtn');
+    const settings=byId('adminTeamSettings');
+    if(settings){settings.hidden=!team&&!creatingTeam;settings.open=creatingTeam;settings.querySelector('summary').textContent=creatingTeam?'New team details':'Team settings';}
     [teamName, initialSeasonName, playerName, playerNumber, playerPassword, coachName, coachPassword]
       .forEach(clearFieldError);
     if (teamName) teamName.value = team?.name || '';
@@ -913,6 +981,7 @@
       populateSituations(situation.key);
       if (situation.hit && typeof setHitSaved === 'function') setHitSaved(situation.key, situation.hit);
       setSituation(situation.key, clone(situation));
+      openSituationEditorPane();
       focusEditorSection('sbBallHitSubsec');
     };
     records.forEach((situation) => {
@@ -985,7 +1054,7 @@
     populateRecovery();
     renderProposals();
     renderOutcomeReviewQueue();
-    setStatus('Database records are up to date.', 'success');
+    setStatus('Up to date', 'idle');
   }
 
   async function perform(label, action, successMessage, preferredTeamId = '') {
@@ -1065,7 +1134,7 @@
     const password = String(
       role === 'coach' ? coachPassword?.value || '' : playerPassword?.value || '',
     );
-    if (!validateMemberFields(role)) {
+    if (!validateMemberFields(role, { requirePassword: byId('adminMemberEditorTitle')?.textContent === 'Reset password' })) {
       return setStatus('Correct the highlighted account fields.', 'error');
     }
     const body = { name, number, role };
@@ -1167,6 +1236,7 @@
   deletePlayerSelect?.addEventListener('change', () =>
     setEnabled([byId('adminPlayerDeleteBtn')], Boolean(selectedDeletionPlayer())),
   );
+  if(playerSelect) new MutationObserver(renderRosterBrowser).observe(playerSelect,{childList:true});
   playerSelect?.addEventListener('change', renderPlayerForm);
   coachSelect?.addEventListener('change', renderCoachForm);
   unassignedPlayerSelect?.addEventListener('change', renderPlayerMovement);
@@ -2220,16 +2290,76 @@
     return issues;
   }
 
+  const startingOutsRow = byId('outsSelSituation')?.closest('.row');
+  if(startingOutsRow) byId('sbRunnersSubsec')?.querySelector(':scope > .diq-body')?.prepend(startingOutsRow);
+  const resetStartsControl=byId('resetStartsBtn');
+  if(resetStartsControl) byId('sbRunnersSubsec')?.querySelector(':scope > .diq-body')?.appendChild(resetStartsControl);
+  const editorSectionGroups = {
+    sbDetailsSection:['sbDetailsSection'],
+    sbRunnersSubsec:['sbRunnersSubsec'],
+    sbBallHitSubsec:['sbBallHitSubsec','sbRunnerOutcomesSubsec'],
+    sbTargetsSubsec:['sbTargetsSubsec','seqSubsec'],
+    situationReviewSection:['situationReviewSection'],
+  };
   function focusEditorSection(sectionId) {
-    const section = byId(sectionId);
-    if (!section) return;
-    section.classList.remove('diq-collapsed');
-    section.querySelector(':scope > .diq-body')?.removeAttribute('hidden');
-    document.querySelectorAll('[data-editor-step]').forEach((button) => {
-      button.classList.toggle('is-current', button.dataset.editorStep === sectionId);
+    const group = Object.keys(editorSectionGroups).find(key=>editorSectionGroups[key].includes(sectionId)) || 'sbDetailsSection';
+    Object.values(editorSectionGroups).flat().forEach(id=>{
+      const section = byId(id);
+      if(!section) return;
+      section.classList.toggle('editor-section-hidden', !editorSectionGroups[group].includes(id));
+      section.classList.remove('diq-collapsed');
+      section.querySelector(':scope > .diq-body')?.removeAttribute('hidden');
     });
-    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.querySelectorAll('[data-editor-step]').forEach(button=>{
+      button.classList.toggle('is-current',button.dataset.editorStep===group);
+      button.setAttribute('aria-current',button.dataset.editorStep===group ? 'step' : 'false');
+    });
+    const labels={sbDetailsSection:'Situation details · Name the play and its teaching focus.',sbRunnersSubsec:'Starting positions · Set outs and runners, then drag the blue fielders to their starting positions.',sbBallHitSubsec:'Ball location · Drag the ball marker and choose where the batter and runners finish.',sbTargetsSubsec:'Defensive targets · Drag a target ring. Select a position to edit its allowed distance and coaching note.',situationReviewSection:'Review · Check changes and completeness before previewing or submitting.'};
+    byId('situationEditingMode').textContent=labels[group];
+    document.body.dataset.situationEditSection=group;
+    if(group==='situationReviewSection') renderEditorState(currentSnapshot(),true);
   }
+
+  function showSituationLibrary(){
+    document.body.classList.add('situation-library-open');
+    document.body.classList.remove('situation-editing-open');
+    let library=byId('situationLibrary');
+    if(!library){library=document.createElement('section');library.id='situationLibrary';situationEditor.parentElement.prepend(library);}
+    else situationEditor.parentElement.prepend(library);
+    library.replaceChildren();
+    const heading=document.createElement('h2');heading.textContent=editorRole==='coach'?'Situation proposals':'Situation library';library.appendChild(heading);
+    const explanation=document.createElement('p');explanation.textContent=editorRole==='coach'?'Choose a published situation to propose changes, or create a new situation. Draft changes remain local until submitted.':'Choose a situation to edit. Changes reach players only after publishing.';library.appendChild(explanation);
+    if(editorRole==='admin'){
+      const tabs=document.createElement('div');tabs.className='situation-library-tabs';
+      [['library','Situation library'],['proposals','Proposals to review']].forEach(([value,label])=>{
+        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;
+        button.onclick=()=>{document.body.dataset.situationLibraryTab=value;tabs.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));};
+        button.setAttribute('aria-pressed',String(value==='library'));tabs.appendChild(button);
+      });library.appendChild(tabs);document.body.dataset.situationLibraryTab='library';
+    }
+    const create=document.createElement('button');create.type='button';create.className='btn btn-brand';create.textContent='New situation';create.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',actionLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();};create.classList.add('situation-library-create');library.appendChild(create);
+    if(editorDirty){const resume=document.createElement('button');resume.type='button';resume.className='btn btn-ghost';resume.textContent='Continue local draft';resume.onclick=openSituationEditorPane;library.appendChild(resume);}
+    const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.appendChild(search);
+    const list=document.createElement('div');list.className='situation-library-list';library.appendChild(list);
+    const draw=()=>{
+      list.replaceChildren();
+      (Array.isArray(SITUATIONS)?SITUATIONS:[]).filter(item=>`${item.title} ${item.desc} ${item.displayCode||''}`.toLowerCase().includes(search.value.toLowerCase())).forEach(item=>{
+        const row=document.createElement('div');row.className='situation-library-row';
+        const title=document.createElement('strong');title.textContent=`${item.displayCode||item.key} · ${item.desc||item.title}`;
+        const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent=editorRole==='coach'?'Propose changes':'Edit situation';
+        edit.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',actionLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();};
+        row.append(title,edit);list.appendChild(row);
+      });
+      if(!list.children.length) list.textContent='No situations match this search.';
+    };search.addEventListener('input',draw);draw();
+    if(editorRole==='coach' && coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
+  }
+  function openSituationEditorPane(){
+    document.body.classList.remove('situation-library-open');
+    document.body.classList.add('situation-editing-open');
+    focusEditorSection('sbDetailsSection');
+  }
+  byId('situationLibraryBack')?.addEventListener('click',showSituationLibrary);
 
   function renderPositionCompleteness(snapshot) {
     if (!positionCompleteness) return;
@@ -2251,7 +2381,9 @@
       name.textContent = id;
       const summary = document.createElement('span');
       summary.className = 'position-check-summary';
-      summary.innerHTML = checks.map(([label, complete]) => `<span class="${complete ? 'is-complete' : 'is-missing'}">${complete ? '✓' : '○'} ${label}</span>`).join(' · ');
+      summary.textContent = checks.every(([,complete])=>complete) ? '✓ Ready' : 'Needs details';
+      button.setAttribute('aria-pressed',String(selected===id));
+      button.title = checks.filter(([,complete])=>!complete).map(([label])=>`Missing ${label}`).join(', ') || 'All position details are set';
       button.append(name, summary);
       button.addEventListener('click', () => {
         const select = byId('tolTargetSel');
@@ -2364,9 +2496,14 @@
         coachHistory.appendChild(empty);
         return;
       }
-      records.slice(0, 8).forEach((record) => {
+      const filter=document.createElement('select');filter.setAttribute('aria-label','Proposal status');
+      [['all','All proposals'],['pending','Submitted'],['reviewed','Reviewed']].forEach(([value,label])=>filter.appendChild(new Option(label,value)));
+      coachHistory.appendChild(filter);
+      filter.onchange=()=>coachHistory.querySelectorAll('.proposal-history-row').forEach(row=>{row.hidden=filter.value==='pending'?row.dataset.status!=='pending':filter.value==='reviewed'?row.dataset.status==='pending':false;});
+      records.forEach((record) => {
         const row = document.createElement('div');
         row.className = 'proposal-history-row';
+        row.dataset.status = record.status;
         const text = document.createElement('span');
         const title = document.createElement('strong');
         title.textContent = record.situation.title;
@@ -2501,6 +2638,7 @@
   function setPlayerPreview(active) {
     playerPreviewActive = Boolean(active);
     document.body.classList.toggle('situation-player-preview', playerPreviewActive);
+    window._diqRefreshPlayerPresentation?.();
     document.querySelector('.situation-preview-bar')?.remove();
     if (playerPreviewActive) {
       const bar = document.createElement('div');
@@ -2589,6 +2727,7 @@
     window._diqSetEditorMode?.(null);
     if (snapshot.hit && typeof setHitSaved === 'function') setHitSaved(snapshot.key, snapshot.hit);
     setSituation(snapshot.key, clone(snapshot));
+    document.body.classList.remove('situation-library-open');
     document.body.classList.add('situation-player-preview', 'proposal-field-preview');
     proposalPreviewBar();
   }
@@ -2611,6 +2750,7 @@
     editorDirty = state.returnDirty;
     renderEditorState(currentSnapshot());
     renderProposalDetails();
+    showSituationLibrary();
   }
 
   submitSituation?.addEventListener('click', () => void submitCurrentSituation());
@@ -2690,6 +2830,7 @@
       : 'Edit the published playbook, validate it, and publish when ready.');
     window._diqSetEditorMode?.(role);
     renderEditorState(currentSnapshot());
+    showSituationLibrary();
     if (role === 'coach') void loadCoachProposalHistory();
   };
 
@@ -2698,6 +2839,7 @@
     const key = currentSnapshot()?.key || '';
     if (playerPreviewActive) setPlayerPreview(false);
     if (proposalPreviewState) closeProposalFieldPreview(false);
+    document.body.classList.remove('situation-library-open','situation-editing-open');
     editorRole = null;
     editorDirty = false;
     editorBaseline = null;

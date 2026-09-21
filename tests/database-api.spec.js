@@ -749,6 +749,32 @@ test.describe('portable SQLite API', () => {
     expect(new Set(activity.attempts.map((attempt) => attempt.playerId)).size)
       .toBe(activity.attempts.length);
 
+    const completedPlays = activity.summary.passed + activity.summary.failed;
+    if (completedPlays) {
+      expect(activity.summary.passRate).toBeCloseTo(activity.summary.passed / completedPlays * 100);
+    } else {
+      expect(activity.summary.passRate).toBeNull();
+    }
+
+    const allReport = await request.get('/api/reports/team/13u-black?view=all');
+    expect(allReport.ok()).toBeTruthy();
+    const allActivity = await allReport.json();
+    expect(allActivity.mode).toBe('all');
+    expect(allActivity.total).toBe(activity.summary.attempts);
+    expect(allActivity.attempts).toHaveLength(Math.min(5, allActivity.total));
+    expect(allActivity.totalPages).toBe(Math.max(1, Math.ceil(allActivity.total / 5)));
+
+    const selectedIds = activity.options.players.slice(0, 2).map(player=>player.id);
+    if(selectedIds.length === 2){
+      const subsetResponse = await request.get(`/api/reports/team/13u-black?view=all&playerId=${encodeURIComponent(selectedIds.join(','))}&dateFrom=2026-09-01&dateTo=2026-09-30`);
+      expect(subsetResponse.ok()).toBeTruthy();
+      const subset = await subsetResponse.json();
+      expect(subset.playerIds).toEqual(selectedIds);
+      expect(subset.attempts.every(attempt=>selectedIds.includes(attempt.playerId))).toBe(true);
+      expect(subset.summary.players).toBeLessThanOrEqual(2);
+      expect(subset.insights.trend.every(point=>point.interval === 'day')).toBe(true);
+    }
+
     const pageOnlyReport = await request.get(
       '/api/reports/team/13u-black?page=1&includeAggregates=0',
     );

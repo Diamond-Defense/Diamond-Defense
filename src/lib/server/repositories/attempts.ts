@@ -145,6 +145,7 @@ export interface PaginatedCoachAttempts {
 }
 
 export interface AttemptReportFilters {
+  playerIds?: string[];
   playerId?: string;
   seasonId?: string;
   assignmentId?: string;
@@ -260,6 +261,10 @@ function reportWhere(teamId: string, filters: AttemptReportFilters = {}): {
     conditions.push(condition(`?${params.length}`));
   };
   if (filters.playerId) add((placeholder) => `a.player_id = ${placeholder}`, filters.playerId);
+  if(filters.playerIds?.length){
+    const placeholders = filters.playerIds.map(id=>{params.push(id);return `?${params.length}`;});
+    conditions.push(`a.player_id IN (${placeholders.join(',')})`);
+  }
   if (filters.seasonId) add((placeholder) => `a.season_id = ${placeholder}`, filters.seasonId);
   if (filters.assignmentId) add((placeholder) => `a.assignment_id = ${placeholder}`, filters.assignmentId);
   if (filters.situationKey) add((placeholder) => `a.situation_key = ${placeholder}`, filters.situationKey);
@@ -739,7 +744,7 @@ export class SqliteAttemptRepository {
                 WHEN a.completed_at IS NOT NULL AND pa.due_at IS NOT NULL
                   AND datetime(a.completed_at) > datetime(pa.due_at) THEN 1 ELSE 0 END) AS late_completions,
               SUM(CASE WHEN COALESCE(pa.cycle_number, 0) > 1 THEN 1 ELSE 0 END) AS retakes,
-              AVG(CASE WHEN a.total > 0 THEN (a.score * 100.0) / a.total END)
+              AVG(CASE WHEN a.total > 0 AND a.outcome IN ('passed', 'failed') THEN (a.score * 100.0) / a.total END)
                 AS average_score_percent,
               AVG(CASE WHEN a.lifecycle_status <> 'incomplete' THEN
                 CASE
@@ -756,7 +761,7 @@ export class SqliteAttemptRepository {
     );
     const attempts = Number(row?.attempts || 0);
     const passed = Number(row?.passed || 0);
-    const finalizedAttempts = Math.max(0, attempts - Number(row?.incomplete || 0));
+    const finalizedAttempts = passed + Number(row?.failed || 0);
     return {
       attempts,
       players: Number(row?.players || 0),
@@ -845,7 +850,7 @@ export class SqliteAttemptRepository {
                 ELSE NULL
               END AS completion_seconds
          FROM attempts a ${reportFilterJoins(filters)}
-        WHERE ${where.clause} AND a.lifecycle_status <> 'incomplete'
+        WHERE ${where.clause} AND a.lifecycle_status <> 'incomplete' AND (a.outcome IS NULL OR a.outcome IN ('passed', 'failed'))
         ORDER BY COALESCE(a.completed_at, a.started_at, a.created_at), a.id`,
       where.params,
     );
@@ -861,7 +866,7 @@ export class SqliteAttemptRepository {
       sequencePassed: row.sequence_passed == null ? null : Boolean(row.sequence_passed),
       scorePercent: row.score_percent == null ? null : Number(row.score_percent),
       completionSeconds: row.completion_seconds == null ? null : Number(row.completion_seconds),
-    })));
+    })), filters);
   }
 
   async reportOptionsForTeam(teamId: string): Promise<AttemptReportOptions> {

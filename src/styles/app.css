@@ -3175,12 +3175,12 @@ body.player-experience.player-before-start .player-unchecked{display:none}
 .review-runner-number{fill:var(--text-on-accent);font-size:27px;text-anchor:middle;font-weight:800;dominant-baseline:central}
 
 /* Player layout polish: consistent navigation and a compact action hierarchy. */
-body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle){
+body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn){
  min-height:40px;padding:8px 12px;border:1px solid var(--border-emphasis);
  border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);
  box-shadow:none;transition:background-color .15s ease,color .15s ease,border-color .15s ease;
 }
-body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle):is(:hover,:focus-visible,[aria-expanded="true"]):not(:disabled),
+body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn):is(:hover,:focus-visible,[aria-expanded="true"]):not(:disabled),
 body.player-experience:has(#practiceWorkspace:not(.hidden)) .training-navigation #practiceToggle:not(:disabled){
  background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);box-shadow:none;
 }
@@ -3198,7 +3198,7 @@ body.player-experience .training-actions :is(#startBtn,#checkBtn,#continueBtn,#v
 body.player-experience .training-actions #watchSolutionBtn{order:5}
 body.player-experience .training-panel:has(#playbookRail.is-open)>.player-step-label{display:none}
 @media(prefers-reduced-motion:reduce){
- body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle){transition:none}
+ body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn){transition:none}
 }
 
 
@@ -3264,3 +3264,307 @@ body.guide-open.guide-play-paused .playbook-rail-heading::after{content:"Play pa
 
 body.guide-open .playbook-rail-heading{flex-wrap:wrap}
 body.guide-open .playbook-rail-heading::after{flex-basis:100%}
+
+/* Coach field navigation shares the player shell while retaining its workspace entry. */
+body.player-experience .training-navigation #staffToolsBtn{order:0}
+body.player-experience .training-navigation #playbookToggle{order:1}
+body.player-experience .training-navigation #staffToolsBtn .staff-tools-label-full{display:inline}
+body.player-experience .training-navigation #staffToolsBtn .staff-tools-label-short{display:none}
+
+/* Coach review dashboard: overview first, detail on demand. */
+#coachCard:has([data-coach-tab="reviews"].is-active){padding:12px 18px;background:var(--app-background);border-color:var(--border)}
+#coachCard:has([data-coach-tab="reviews"].is-active)>.coachGrid{display:grid;grid-template-columns:1fr;max-width:none;width:100%;gap:8px}
+#coachCard:has([data-coach-tab="reviews"].is-active) .tools-panel-header{padding:0;border:0;margin:0}
+#coachCard:has([data-coach-tab="reviews"].is-active) [data-coach-view="reviews"]{display:none}
+#coachCard .coach-tabs{display:flex;gap:8px;margin:0;border:0;padding:0}
+#coachCard .coach-tab{min-height:38px;padding:8px 20px;flex:none}
+#coachLogoutBtn{display:none!important}
+#coachResultsWorkspace{padding:18px;background:var(--app-background)!important;border-color:var(--border)!important}
+#coachResultsWorkspace .coach-results-header{padding-bottom:10px;border:0}
+#coachResultsWorkspace h2{font-size:24px;margin:0}
+#coachResultsWorkspace .coach-results-header .eyebrow{display:none}
+#coachResultsWorkspace .coach-results-header p{font-size:12px;margin:4px 0 0}
+#coachResultsWorkspace .coach-results-filter{display:flex;align-items:end;flex-wrap:wrap;gap:12px;padding:12px 0}
+#coachResultsWorkspace .coach-results-filter>.field{flex:1;min-width:180px}
+#coachResultsWorkspace :is(select,input){min-height:38px;padding:8px 10px;font:inherit;border-radius:8px}
+#coachMoreFilters{flex:1;min-width:160px}
+#coachResultsWorkspace summary{cursor:pointer;color:var(--text-secondary);font-weight:650;padding:8px 0}
+.coach-extra-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:12px 0}
+#coachMoreFilters[open]{flex-basis:100%;order:3}
+.coach-custom-dates:not([hidden]){display:flex;gap:12px}
+#coachResultsWorkspace .coach-results-filter-actions{display:flex;gap:8px;flex-wrap:wrap}
+.coach-active-filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.coach-active-filters:empty{display:none}
+.coach-active-filters button{font-size:11px;padding:4px 8px;min-height:28px;border-radius:999px}
+#coachResultsSummary{grid-template-columns:repeat(4,minmax(0,1fr));margin:8px 0 16px;gap:10px}
+#coachResultsSummary>.coach-summary-card{background:var(--surface-raised);padding:14px;border-color:var(--border)}
+#coachResultsSummary>.coach-summary-card strong{font-size:26px;color:var(--text-primary)}
+#coachDevelopmentInsights{padding:0;border:0;background:none;margin-bottom:16px}
+#coachDevelopmentInsights .coach-development-heading{display:none}
+#coachDevelopmentContent .coach-insight-grid{grid-template-columns:1fr 1fr;gap:12px}
+#coachDevelopmentContent .coach-attention-card{grid-column:1;grid-row:1}
+#coachDevelopmentContent .coach-phases-card{grid-column:2;grid-row:1}
+#coachDevelopmentContent .coach-attention-list li{flex-wrap:wrap;background:var(--surface-raised)}
+#coachDevelopmentContent .coach-attention-list strong{font-size:13px}
+#coachDevelopmentContent .coach-attention-list small{font-size:11px}
+#coachDevelopmentContent .coach-attention-list>li>span{color:#e8c477}
+#coachDevelopmentContent .coach-trend-chart{min-height:90px}
+#coachDevelopmentContent :is(.coach-insight-meter span,.coach-trend-track span){background:#9cbdab}
+#coachDevelopmentContent .is-positive{color:#b8ddb5}
+#coachDevelopmentContent .is-negative{color:#f0ac98}
+#coachResultsWorkspace .coach-review-badge.is-success{color:#b8ddb5;background:#284333;border-color:#607e64}
+#coachResultsWorkspace .coach-review-badge.is-fail{color:#f0ac98;background:#4a302c;border-color:#895f54}
+#coachResultsWorkspace .coach-review-badge.is-warning{color:#e8c477;background:#483a24;border-color:#88754b}
+#coachResultsWorkspace .coach-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#coachResultsWorkspace .coach-section-heading>.eyebrow{display:none}
+#coachResultsWorkspace .coach-section-heading .field{display:flex;align-items:center;gap:8px}
+#coachResultsWorkspace .coach-results-table{min-width:0}
+#coachResultsWorkspace .attempt-review-open{margin:0;white-space:nowrap}
+
+/* Reviews has two focused views sharing the same filter context. */
+#coachResultsWorkspace [hidden]{display:none!important}
+.coach-review-views{display:flex;gap:8px;margin:8px 0 12px}
+.coach-review-views button{min-height:38px;padding:8px 20px}
+#coachResultsSubtitle:empty{display:none}
+.coach-summary-card{position:relative}
+.coach-metric-definition summary{position:absolute;top:6px;right:9px;list-style:none;font-size:13px}
+.coach-metric-definition summary::-webkit-details-marker{display:none}
+.coach-metric-definition p{font-size:12px;line-height:1.5;color:var(--text-secondary);margin:10px 0 0}
+#coachSelectedPlayerSummary .coach-results-summary{grid-template-columns:repeat(4,minmax(0,1fr))}
+#coachSelectedPlayerSummary h3{font-size:16px;margin:12px 0}
+#coachDevelopmentContent .coach-phases-card h5{margin:20px 0 6px;color:var(--text-secondary);font-size:13px}
+#coachDevelopmentContent .coach-attention-card,#coachDevelopmentContent .coach-phases-card{align-self:start}
+
+/* Filter choices and applied context remain distinct and readable. */
+#coachResultsWorkspace .coach-results-filter{padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px}
+#coachResultsWorkspace .coach-results-filter :is(select,input){height:40px!important;min-height:40px!important;line-height:1.4;font-size:14px;padding:8px 10px!important}
+#coachResultsWorkspace .coach-extra-filters{grid-template-columns:1fr 1fr .8fr;gap:20px}
+.coach-extra-filters fieldset{display:grid;gap:12px;align-content:start;margin:0;padding:12px;border:1px solid var(--border);border-radius:8px;min-width:0}
+.coach-extra-filters legend{padding:0 6px;color:var(--accent-primary-hover);font-size:12px;font-weight:700}
+#coachExtraFilterCount{color:var(--accent-primary-hover);margin-left:6px}
+#coachActiveFilters{display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid var(--border);border-left:3px solid var(--accent-primary);border-radius:8px;background:var(--surface-raised);margin:12px 0 16px}
+.coach-active-filter-heading{width:100%;font-size:12px;color:var(--text-secondary)}
+#coachActiveFilters .coach-filter-chip{font-size:13px;font-weight:650;line-height:1.4;padding:7px 11px;min-height:34px;border:1px solid var(--accent-primary);border-radius:7px;background:#3b3425;color:#f0d49a}
+#coachActiveFilters .coach-filter-chip:hover{background:var(--accent-primary);color:var(--text-on-accent)}
+#coachActiveFilters .coach-filter-chip:focus-visible{outline:2px solid var(--text-primary);outline-offset:3px}
+#coachResultsWorkspace .coach-results-filter .is-applied-filter{border-color:var(--accent-primary);background:#222c32}
+.coach-filter-pending{color:var(--accent-primary-hover);font-size:13px;margin:8px 0}
+#coachPlayerPicker{position:relative;border:1px solid var(--border-emphasis);border-radius:8px;background:var(--surface)}
+#coachResultsWorkspace #coachPlayerPicker>summary{min-height:40px;padding:9px 12px;box-sizing:border-box;color:var(--text-primary);font-size:14px}
+#coachPlayerChoices{position:absolute;top:100%;left:0;right:0;z-index:30;max-height:280px;overflow:auto;padding:10px;display:grid;gap:8px;background:var(--surface-raised);border:1px solid var(--accent-primary);border-radius:8px;box-shadow:0 8px 20px #0006}
+#coachPlayerChoices label{display:flex;align-items:center;gap:10px;padding:6px;cursor:pointer;color:var(--text-primary);font-size:14px}
+#coachResultsWorkspace #coachPlayerChoices input{width:18px;height:18px!important;min-height:18px!important;margin:0;accent-color:var(--accent-primary)}
+#coachDevelopmentContent .coach-trend-chart{overflow-x:auto;justify-content:flex-start}
+#coachDevelopmentContent .coach-trend-column{min-width:60px;max-width:110px}
+#coachActiveFilters .coach-filter-chip{white-space:normal;text-align:left;max-width:100%}
+
+/* Do not let explicit grid display expose the closed details popup. */
+#coachPlayerPicker:not([open]) #coachPlayerChoices{display:none}
+
+/* Coach assignments: list, editor, and progress share one workspace. */
+#coachPracticeView .practice-coach-layout{display:block}
+#coachPracticeView .hidden{display:none!important}
+#coachPracticeStatus:empty{display:none}
+#coachPracticeView .practice-assignment-card{background:var(--surface);box-shadow:none}
+#coachPracticeView .practice-progress>span{background:#9ebdab}
+#coachPracticeView .practice-lifecycle-tabs{grid-template-columns:repeat(3,minmax(0,1fr));max-width:600px}
+#coachPracticeView .practice-list-filters :is(input,select){min-height:42px}
+#coachPracticeView .practice-list-heading{gap:12px}
+#coachPracticeView .practice-list-heading h3{margin-right:auto}
+#coachPracticeView .practice-assignment-form{max-width:none;width:100%;box-sizing:border-box;margin:0}
+#coachPracticeView .practice-builder-overview{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px;align-items:stretch}
+#coachPracticeView .practice-builder-details{display:grid;gap:14px;align-content:start}
+#coachPracticeView .practice-form-actions{position:sticky;bottom:0;padding:16px;background:var(--surface);border-top:1px solid var(--border);z-index:2}
+#coachPracticeView .practice-card-actions{align-items:flex-start}
+#coachPracticeView .practice-card-actions>button{align-self:flex-start;flex:0 0 auto}
+.practice-more-actions{margin-left:auto;min-width:180px}
+.practice-more-actions>summary{cursor:pointer;padding:10px 14px;border:1px solid var(--border);border-radius:8px;width:max-content;margin-left:auto;box-sizing:border-box}
+.practice-more-actions[open]{flex:1 1 620px}
+.practice-more-actions:not([open])>.practice-action-options{display:none}
+.practice-more-actions[open]>.practice-action-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:start;gap:12px;margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface)}
+.practice-action-option{display:grid;grid-template-columns:minmax(0,1fr) 32px;gap:8px;align-items:start}
+.practice-action-option>button{width:100%;min-height:40px}
+.practice-action-help{display:contents}
+.practice-action-help>summary{cursor:pointer;list-style:none;text-align:center;padding:10px 0;color:var(--text-secondary);border-radius:6px}
+.practice-action-help>summary::-webkit-details-marker{display:none}
+.practice-action-help>summary:hover,.practice-action-help>summary:focus-visible{color:var(--accent-primary);outline:1px solid var(--accent-primary)}
+.practice-action-help>p{grid-column:1 / -1;margin:0;padding:10px;border-left:2px solid var(--accent-primary);font-size:13px;line-height:1.5}
+.practice-action-help:not([open])>p{display:none}
+.practice-selected-queue li{padding:8px; margin:6px 0;background:var(--surface);border-bottom:1px solid var(--border)}
+.practice-selected-queue li span{display:inline-block;width:65%}
+.practice-selected-queue button{margin-left:6px}
+.practice-progress-table{width:100%;border-collapse:collapse;text-align:left}
+.practice-progress-table :is(th,td){padding:14px;border-bottom:1px solid var(--border)}
+#practiceProgressDetail{padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:14px}
+#practiceHistoryField{display:grid;gap:6px;max-width:280px;margin:12px 0}
+#practiceHistoryStatus{padding:10px;color:var(--text-primary);background:var(--surface);border:1px solid var(--border);border-radius:8px}
+
+.practice-due-field>label{color:var(--text-secondary);font-size:var(--type-label);font-weight:var(--weight-control)}
+.practice-due-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-height:32px}
+#practiceDueStatus{font-size:12px;color:var(--text-secondary)}
+.practice-due-field.has-due-date #practiceDueStatus{color:var(--accent-primary);font-weight:750}
+#coachPracticeView .practice-due-field.has-due-date input{border-color:var(--accent-primary)}
+#practiceRemoveDueDate{padding:5px 8px;font-size:12px}
+
+/* Shared situation workspace */
+body.situation-editing-open:not(.situation-player-preview) :is(.training-panel,#trainingHud,.training-hint){display:none!important}
+body.situation-library-open .field-card,body.situation-library-open #situationBuilderSubsec,body.situation-editing-open #situationLibrary{display:none!important}
+body.situation-library-open main#appWorkspace:has(#coachCard:not(.hidden)){grid-template-columns:minmax(0,1fr)}
+body.situation-library-open main#appWorkspace #coachCard{grid-column:1;grid-row:1;position:static;width:100%;max-height:none}
+body.situation-editing-open main#appWorkspace:has(#coachCard:not(.hidden)){grid-template-columns:minmax(0,1.65fr) minmax(480px,1fr)}
+body.situation-editing-open #coachCard{max-height:calc(100dvh - 100px);overflow:auto}
+#situationBuilderSubsec .editor-section-hidden{display:none!important}
+#situationBuilderSubsec .builder-field-help,#situationBuilderSubsec>.title .diq-chevron,#situationBuilderSubsec .subsec>.title .diq-chevron,#coachProposalChangeSummary{display:none!important}
+#situationBuilderSubsec .subsec>.title{pointer-events:none}
+#situationBuilderSubsec #situationEditorSteps{display:flex;flex-wrap:wrap;position:sticky;top:0;background:var(--surface);z-index:3;padding:10px 0}
+#situationBuilderSubsec #situationEditorSteps button{flex:1 1 100px;text-align:center}
+#situationBuilderSubsec :is(input:not([type=checkbox]):not([type=range]),select,textarea){min-height:40px;font:inherit;box-sizing:border-box}
+#situationBuilderSubsec .position-completeness{grid-template-columns:repeat(3,minmax(0,1fr))}
+#situationBuilderSubsec .position-check-summary{font-size:11px;color:var(--text-secondary)}
+#situationBuilderSubsec .seq-num{background:var(--accent-primary);color:var(--text-on-accent)}
+#situationBuilderSubsec .pos-btn{background:var(--surface);color:var(--text-primary);border-color:var(--border)}
+#situationBuilderSubsec .seq-item{display:flex;gap:8px;align-items:center}
+#situationBuilderSubsec .seq-tag{margin-right:auto}
+#situationBuilderSubsec .seq-remove{color:#df998d;background:var(--surface);font-size:20px}
+#situationBuilderSubsec .sequence-challenge-toggle{display:flex;align-items:center;gap:8px;margin:12px 0}
+#seqSubsec:has(#sequenceChallengeEnabled:not(:checked)) :is(#seqPosGrid,#seqList,.seq-toolbar,#seqNoteInput){display:none}
+#situationLibrary{padding:20px}
+#situationLibrary>input{display:block;width:100%;box-sizing:border-box;margin:16px 0;padding:12px;background:var(--surface);color:var(--text-primary);border:1px solid var(--border);border-radius:8px}
+.situation-library-list{display:grid;gap:10px}
+.situation-library-row{display:flex;align-items:center;justify-content:space-between;padding:14px;border:1px solid var(--border);border-radius:10px;gap:16px}
+#situationBuilderSubsec .situation-review-actions{position:sticky;bottom:0;background:var(--surface);padding:12px 0}
+
+body.situation-library-open main#appWorkspace:has(#adminCard:not(.hidden)){display:block}
+body.situation-library-open #adminCard{position:static;width:100%;max-width:none;max-height:none}
+body.situation-library-open #adminCard .admin-grid{max-width:none}
+body.situation-editing-open main#appWorkspace:has(#adminCard:not(.hidden)){display:grid;grid-template-columns:minmax(0,1.65fr) minmax(480px,1fr);gap:18px;align-items:start}
+body.situation-editing-open #adminCard{position:sticky;top:12px;grid-column:2;width:100%;max-width:none;max-height:calc(100dvh - 100px);overflow:auto}
+body.situation-editing-open #adminCard :is(.admin-section-heading,.proposal-review-card,#adminOutcomeReviewQueue){display:none}
+body.situation-editing-open .field-card{min-width:0}
+body.situation-editing-open:not(.situation-player-preview) .field-card .tgt{pointer-events:none}
+body.situation-editing-open[data-situation-edit-section="sbTargetsSubsec"]:not(.situation-player-preview) .field-card .tgt{pointer-events:auto}
+body.situation-editing-open[data-situation-edit-section="sbRunnersSubsec"] .field-card .tgt{visibility:hidden}
+.proposal-history-row[hidden]{display:none!important}
+#situationLibrary .proposal-history{margin-top:12px}
+#situationLibrary .proposal-history select{padding:10px;background:var(--surface);color:var(--text-primary);border:1px solid var(--border)}
+
+.situation-library-tabs{display:flex;gap:8px;margin-bottom:16px}
+.situation-library-tabs button[aria-pressed=true]{background:var(--accent-primary);color:var(--text-on-accent)}
+body.situation-library-open[data-situation-library-tab=library] #adminCard .proposal-review-card{display:none}
+body.situation-library-open[data-situation-library-tab=proposals] #situationLibrary :is(.situation-library-list,.situation-library-create,input[type=search]){display:none}
+body.situation-library-open #coachCard>.coachGrid{max-width:none;width:100%}
+body.situation-editing-open .builder-field-help{display:none}
+#situationBuilderSubsec .situation-related-categories{margin:6px 0}
+#situationBuilderSubsec .situation-category-checklist{grid-template-columns:repeat(2,minmax(0,1fr))}
+#situationBuilderSubsec .editor-info summary{cursor:pointer;color:var(--accent-primary)}
+#situationBuilderSubsec .editor-info p{font-size:13px;line-height:1.5}
+
+body.situation-editing-open #newSituationBtn{display:none}
+body.situation-editing-open #coachProposalSummary>.sectionTitle{display:none}
+
+/* Place the outer drawer in the library column, not only its nested card. */
+body.situation-library-open main#appWorkspace > .tools-drawer:has(> :is(#coachCard,#adminCard):not(.hidden)){
+  position:relative;top:auto;right:auto;grid-column:1;grid-row:1;
+  width:100%;min-width:0;max-width:none;max-height:none;transform:none;
+}
+body.situation-library-open :is(#coachCard,#adminCard){box-sizing:border-box;min-width:0;max-width:100%}
+body.situation-editing-open:not(.situation-player-preview) main#appWorkspace > .tools-drawer:has(> :is(#coachCard,#adminCard):not(.hidden)){
+  position:sticky;top:12px;right:auto;grid-column:2;grid-row:1;
+  width:100%;min-width:0;max-width:none;transform:none;
+}
+
+/* Keep the challenge control together despite generic editor label rules. */
+#situationBuilderSubsec label.sequence-challenge-toggle{position:relative;display:flex;flex-direction:row;justify-content:flex-start;align-items:center;gap:14px;width:100%;box-sizing:border-box;padding:14px 16px;margin:12px 0;border:1px solid var(--border);border-radius:10px;background:var(--surface);cursor:pointer}
+#situationBuilderSubsec #sequenceChallengeEnabled{position:absolute;width:1px;height:1px;min-height:0;opacity:0;margin:0;padding:0}
+#situationBuilderSubsec .sequence-switch-track{display:block;position:relative;flex:0 0 48px;width:48px;height:28px;border-radius:20px;background:var(--border);border:1px solid var(--text-secondary);box-sizing:border-box}
+#situationBuilderSubsec .sequence-switch-track::after{content:'';position:absolute;width:20px;height:20px;top:3px;left:3px;border-radius:50%;background:var(--text-primary);transition:transform .15s}
+#sequenceChallengeEnabled:checked+.sequence-switch-track{background:var(--accent-primary);border-color:var(--accent-primary)}
+#sequenceChallengeEnabled:checked+.sequence-switch-track::after{transform:translateX(20px);background:var(--text-on-accent)}
+#sequenceChallengeEnabled:focus-visible+.sequence-switch-track{outline:2px solid var(--text-primary);outline-offset:4px}
+#situationBuilderSubsec .sequence-switch-copy{display:grid;gap:4px;flex:1;min-width:0;text-align:left}
+#situationBuilderSubsec .sequence-switch-copy strong{font-size:14px;color:var(--text-primary)}
+#situationBuilderSubsec .sequence-switch-copy>span{font-size:12px;line-height:1.5;color:var(--text-secondary)}
+#situationBuilderSubsec .sequence-switch-state{flex:0 0 auto;font-weight:800;color:var(--text-secondary)}
+#sequenceChallengeEnabled:checked~.sequence-switch-state{color:var(--accent-primary)}
+#sequenceChallengeEnabled:not(:checked)~.sequence-switch-state .sequence-state-on,#sequenceChallengeEnabled:checked~.sequence-switch-state .sequence-state-off{display:none}
+#seqSubsec:has(#sequenceChallengeEnabled:checked) .sequence-disabled-help,#seqSubsec:has(#sequenceChallengeEnabled:not(:checked)) .sequence-order-help{display:none}
+#seqList:empty::before{content:'No throws added yet. Choose the first fielder above or select a template.';padding:12px;color:var(--text-secondary);font-size:13px}
+
+/* A player preview stays within the situation being edited. */
+body.situation-player-preview :is(#chooseNextSituationBtn,#playbookBrowserToggle,#randomSitBtn){display:none!important}
+
+/* Full-width administration with shared navigation above the active page. */
+main#appWorkspace:has(#adminWorkspace:not(.hidden)):has(#adminCard:not(.hidden)){
+  display:grid;grid-template-columns:minmax(0,1fr);gap:16px;
+}
+main#appWorkspace:has(#adminWorkspace:not(.hidden)) > .tools-drawer:has(#adminCard:not(.hidden)){
+  position:relative;top:auto;right:auto;grid-column:1;grid-row:1;
+  width:100%;max-width:none;max-height:none;min-width:0;transform:none;
+}
+main#appWorkspace:has(#adminCard:not(.hidden)) > #adminWorkspace:not(.hidden){grid-column:1;grid-row:2;width:100%;min-width:0;box-sizing:border-box}
+main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard{padding:16px 20px;max-height:none;width:100%;box-sizing:border-box}
+main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .tools-panel-header{padding-bottom:12px;margin-bottom:12px}
+main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .admin-tabs{display:flex;gap:8px;justify-content:flex-start}
+main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .admin-tabs button{flex:0 0 auto;min-height:40px;padding:8px 20px}
+#adminWorkspace :is(input:not([type=checkbox]),select){min-height:42px;padding:9px 12px;font:inherit;box-sizing:border-box}
+#adminWorkspace .admin-team-context{border-left:3px solid var(--accent-primary)}
+#adminWorkspace .admin-team-tabs{display:flex;gap:8px;justify-content:flex-start}
+#adminWorkspace .admin-team-tabs button{flex:0 0 auto;min-width:140px;min-height:40px}
+#adminWorkspace .recovery-card{display:flex;flex-direction:column;gap:14px;background:var(--surface);min-width:0}
+#adminWorkspace .recovery-card h3{margin:0;font-size:18px}
+#adminWorkspace .recovery-card p{margin:0;color:var(--text-secondary);font-size:14px;line-height:1.5}
+#adminWorkspace .recovery-card button{align-self:flex-start;margin-top:auto}
+#adminWorkspace [data-admin-view=recovery] .admin-account-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+
+/* The editor grid already reserves space for staff controls. Do not reserve it again inside the board. */
+body.situation-editing-open:not(.situation-player-preview) main#appWorkspace > .field-card.training-board{
+  grid-column:1;grid-row:1;width:100%;max-width:none;min-width:0;margin:0;
+  grid-template-columns:minmax(0,1fr);grid-template-rows:auto;justify-self:stretch;
+}
+body.situation-editing-open:not(.situation-player-preview) main#appWorkspace > .training-board #wrap{
+  grid-column:1;grid-row:1;width:100%;max-width:none;margin:0;align-self:start;
+}
+
+[data-admin-view=teams].no-team-selected :is(.admin-team-tabs,.admin-team-view){display:none!important}
+.admin-roster-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px}.admin-roster-toolbar strong{margin-right:auto}
+.admin-roster-filters{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:16px}
+.admin-roster-table{width:100%;border-collapse:collapse;text-align:left}.admin-roster-table :is(th,td){padding:12px;border-bottom:1px solid var(--border)}
+.admin-roster-table td:last-child>details{display:inline-block;vertical-align:top;margin-left:12px}.admin-roster-table summary{cursor:pointer;padding:8px}.admin-roster-table details details{display:inline-block}.admin-roster-table details p{max-width:280px}
+[data-admin-team-view=roster]:not([data-member-editor]) :is(.admin-account-grid,#adminAddExistingPlayerWorkflow,#adminMemberEditorHeader){display:none!important}
+[data-admin-team-view=roster][data-member-editor] #adminRosterBrowser{display:none}
+[data-admin-team-view=roster][data-member-editor] .admin-account-grid{grid-template-columns:1fr}
+[data-member-editor=player] [data-member-form=coach],[data-member-editor=coach] [data-member-form=player],
+[data-member-editor=existing] .admin-account-grid,[data-member-editor=player] #adminAddExistingPlayerWorkflow,[data-member-editor=coach] #adminAddExistingPlayerWorkflow{display:none!important}
+.member-password-hidden{display:none!important}
+#adminMemberEditorHeader{display:flex;align-items:center;gap:14px;flex-wrap:wrap}#adminMemberEditorHeader>strong{margin-right:auto}
+#adminMemberEditorHeader .field{flex-basis:100%}
+#adminWorkspace .admin-team-context>.admin-actions{justify-content:flex-start}
+
+/* Focused roster forms and compact team context. */
+#adminWorkspace [hidden]{display:none!important}
+#adminMemberEditorHeader{margin:16px 0}
+#adminWorkspace :is(#adminPlayerRemoveBtn,#adminCoachRemoveBtn){display:none}
+#adminWorkspace .admin-team-context{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:12px;align-items:end}
+#adminWorkspace .admin-team-context>.field{grid-column:1;grid-row:1}
+#adminWorkspace .admin-team-context>.admin-actions{grid-column:2;grid-row:1;flex-wrap:wrap}
+#adminWorkspace :is(#adminTeamContextSummary,#adminTeamHeaderFields,#adminCsvImportPanel){grid-column:1/-1}
+#adminWorkspace .admin-team-context #adminTeamHeaderFields{grid-row:3}
+#adminOperationStatus.is-idle{background:transparent;border:0;padding:4px 0;color:var(--text-secondary);font-size:12px}
+.admin-roster-table td:last-child{min-width:210px}
+.admin-roster-table td>details[open]{padding:8px;border:1px solid var(--border);border-radius:8px}
+.admin-roster-table td>details>button{display:inline-block;margin:4px}
+.admin-roster-table td>details>details>summary{display:inline-block}
+.admin-roster-table td>details>details[open]{display:block}
+.admin-roster-toolbar{flex-wrap:wrap}
+#adminRosterBrowser{overflow-x:auto}
+@media(max-width:700px){
+ #adminWorkspace .admin-team-context{grid-template-columns:minmax(0,1fr)}
+ #adminWorkspace .admin-team-context>.admin-actions{grid-column:1;grid-row:auto}
+ .admin-roster-filters{grid-template-columns:1fr}
+ .admin-roster-toolbar strong{flex-basis:100%}
+}
+
+#adminWorkspace #adminTeamSettings{grid-column:1/-1}
+#adminTeamSettings>summary{cursor:pointer;padding:10px 0;font-weight:600}
+#adminTeamSettings>.admin-actions{margin-top:12px;justify-content:flex-start}
+#adminWorkspace .admin-team-context>#adminCsvImportPanel{margin:0;padding:10px 12px}

@@ -17,12 +17,13 @@ export const GET: RequestHandler = async (event) => {
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const filters = parseAttemptReportFilters(event.url.searchParams);
   const playerId = filters.playerId || '';
+  const allAttempts = event.url.searchParams.get('view') === 'all';
   const pageSize = playerId ? 3 : 5;
   const repository = new SqliteAttemptRepository(databaseFor(event));
   const includeOptions = event.url.searchParams.get('includeOptions') === '1';
   const includeAggregates = event.url.searchParams.get('includeAggregates') !== '0';
   const [result, summary, insights, options] = await Promise.all([
-    playerId
+    playerId || allAttempts
       ? repository.listForTeamPlayer(teamId, playerId, pageSize, (page - 1) * pageSize, filters)
       : repository.listLatestPerPlayer(teamId, pageSize, (page - 1) * pageSize, filters),
     includeAggregates ? repository.summarizeForTeam(teamId, filters) : Promise.resolve(null),
@@ -34,7 +35,8 @@ export const GET: RequestHandler = async (event) => {
     {
       teamId,
       playerId: playerId || null,
-      mode: playerId ? 'player' : 'activity',
+      playerIds: filters.playerIds || (playerId ? [playerId] : []),
+      mode: playerId ? 'player' : allAttempts ? 'all' : 'activity',
       filters,
       ...(options ? { options } : {}),
       ...(summary ? { summary } : {}),
