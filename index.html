@@ -1,16 +1,16 @@
 <html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diamond Defense — Baseball Situation Simulator</title>
+<title>Diamond Defence — Baseball Situation Simulator</title>
 <link rel="stylesheet" href="./src/styles/app.css">
 
 </head>
 <body>
 <section id="screenSizeGate" class="screen-size-gate" aria-labelledby="screenSizeGateTitle">
   <div class="screen-size-gate-card">
-    <div class="screen-size-gate-mark" aria-hidden="true">◆</div>
+    <div class="screen-size-gate-mark dd-monogram" aria-hidden="true"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101c2e"/><path d="M32 5 59 32 32 59 5 32Z" fill="none" stroke="#c7a566" stroke-width="2"/><g fill="none" stroke="#c7a566" stroke-width="4" stroke-linejoin="round"><path d="M17 22h5c13 0 13 20 0 20h-5Z"/><path d="M34 22h5c13 0 13 20 0 20h-5Z"/></g></svg></div>
     <span class="eyebrow">Larger screen required</span>
-    <h1 id="screenSizeGateTitle">Open Diamond Defense on a tablet or computer</h1>
+    <h1 id="screenSizeGateTitle">Open Diamond Defence on a tablet or computer</h1>
     <p>Please use a tablet or computer in landscape mode so the field, player tokens, and coaching notes are easy to see and use.</p>
     <p class="screen-size-gate-hint">Rotate a tablet to landscape, maximize the browser window, or continue on a larger device.</p>
   </div>
@@ -22,7 +22,7 @@
   Keep these markers intact to enable reliable copy/paste patching.
 -->
 
-<header><h1>Diamond Defense</h1>
+<header id="appHeader"><h1>Diamond Defence</h1>
 
   <!-- @diq:begin [H_PLAYER_BTN] Player Login button -->
       <button id="playerBtn" class="btn-small btn-orange" title="Log in">Login</button>
@@ -56,7 +56,7 @@
     <!-- @diq:end control:continueBtn -->
 </header>
 
-<main class="app">
+<main id="appWorkspace" class="app">
   <section id="contextBar" class="context-bar" aria-live="polite">
     <!-- Selected target notes and sequence feedback appear here contextually. -->
     <div id="targetPanel" class="card hidden">
@@ -146,7 +146,7 @@
       </label>
       <div class="coach-results-filter-actions">
         <button id="coachResultsApplyBtn" class="btn-green" type="button">Apply</button>
-        <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear</button>
+        <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear filters</button>
         <button id="coachResultsExportBtn" class="btn btn-ghost" type="button">Export CSV</button>
       </div>
     </div>
@@ -162,7 +162,10 @@
       </div>
       <div id="coachDevelopmentContent"></div>
     </section>
-    <div id="coachResultsList"></div>
+    <section class="coach-attempts-section" aria-labelledby="coachAttemptsTitle">
+      <div class="coach-section-heading"><span class="eyebrow">Attempt review</span><h3 id="coachAttemptsTitle">Saved attempts</h3><p>Compare positioning, throwing sequence, tries, and time for each recorded result.</p></div>
+      <div id="coachResultsList"></div>
+    </section>
     <div id="coachResultsPagination" class="coach-results-pagination"></div>
   </section>
   <section id="practiceWorkspace" class="card practice-workspace hidden" aria-labelledby="practiceWorkspaceTitle">
@@ -246,12 +249,35 @@
     </div>
   </section>
   <section id="adminWorkspace" class="card admin-workspace hidden" aria-label="Administrator workspace"></section>
-  <section class="card field-card">
+  <section class="card field-card training-board">
+    <div id="trainingHud" class="training-hud" aria-label="Situation conditions">
+      <span class="training-board-label"><span class="eyebrow">Read the situation</span><strong>Make the play.</strong></span><div id="playerSituationHeading" class="player-situation-heading"><strong id="playerSituationName"></strong><span id="playerSituationReference"></span></div>
+    </div>
+    <aside id="trainingPanel" class="training-panel" aria-label="Training situation and actions">
+      <section id="trainingSituation" class="training-situation" aria-labelledby="trainingSituationTitle">
+        <h2 id="trainingSituationTitle">Current Situation</h2>
+      </section>
+      <p id="playerStepLabel" class="player-step-label"></p>
+      <p id="playerCoachingPrompt" class="player-coaching-prompt" hidden role="status">Select a target ring for coaching notes.<span>Choose a position label on the field to learn its responsibility.</span></p>
+      <p id="playerStepMessage" class="player-step-message" role="status" aria-live="polite"></p>
+      <section class="training-objective" aria-label="Your objective">
+        <span class="eyebrow">Your objective</span>
+        <p class="position-objective">Position the defense</p>
+        <p class="sequence-objective">Build the play sequence</p>
+        <span class="position-objective">Drag the defenders into position, then select Check Positions.</span>
+        <span class="sequence-objective">Select defenders in throwing order, then select Verify Sequence.</span>
+      </section>
+      <div id="trainingMetrics" class="training-metrics" aria-label="Training progress"></div><span id="playerUnchecked" class="player-unchecked">Not checked yet</span>
+      <div id="trainingActions" class="training-actions" role="group" aria-label="Training controls"></div>
+    </aside>
+    <div id="trainingHelp" class="training-help">
+      <p>Need help? Open Guide. After checking, select a revealed target ring for coaching notes.</p>
+    </div>
     <div id="practiceAdvancePanel" class="practice-advance-panel hidden" role="status" aria-live="polite">
       <span class="eyebrow">Assigned practice</span>
       <strong id="practiceAdvanceTitle">Situation complete</strong>
       <span id="practiceAdvanceMessage"></span>
-      <button id="practiceAdvanceButton" class="btn-green" type="button">Continue to next situation</button>
+      <button id="practiceAdvanceButton" class="btn-green" type="button">Next assigned situation</button>
     </div>
     <div id="gameLoginGate" class="game-login-gate hidden" role="status" aria-live="polite">
       <strong>Log in to play</strong>
@@ -259,7 +285,7 @@
       <button id="gameLoginGateBtn" class="btn-green" type="button">Log in</button>
     </div>
     <div id="wrap">
-      <img id="fieldImg" alt="Diamond Defense baseball strategy field">
+      <img id="fieldImg" alt="Diamond Defence baseball strategy field">
       <div id="fieldNotice" class="field-notice hidden" role="status" aria-live="polite"></div>
       <!-- visual-only layers kept for z-ordering -->
       <div id="targetsLayer" class="overlay"></div>
@@ -284,20 +310,7 @@
           <span class="htp-caret" aria-hidden="true">▸</span>
         </summary>
 
-        <div class="howto-body">
-  <ol style="margin:6px 0 0 1.2em">
-    <li>Log in, then open <em>Playbook</em> to browse situations or use <em>Random</em> for a quick selection.</li>
-    <li>Confirm the selected situation’s S-number and title, then review Runners and Outs in the header.</li>
-    <li>Press <em>Start Situation</em> to begin.</li>
-    <li>Drag the 9 player chips into the correct defensive positions.</li>
-    <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
-    <li>Select <em>Watch Solution</em> to replay the ball, runners, and fielders together, then compare any missed positions.</li>
-    <li>Select a target ring for coaching notes, then continue to the throw-sequence challenge when one is included.</li>
-  </ol>
-  <div class="hint" style="margin-top:8px">
-    Note: Correct chips will display within a highlighted target ring
-  </div>
-</div>
+        <div class="howto-body"></div>
       </details>
     </div>
 
@@ -373,6 +386,7 @@
 
 <div id="coachSituationEditorMount" class="hidden" data-coach-view="proposals"><div class="subsec diq-collapsible" id="situationBuilderSubsec" data-diq-collapsible="1" data-shared-situation-editor="1">
     <div class="title"><span id="situationBuilderTitle">Situation Proposal</span><span class="diq-chevron">▾</span></div>
+    <p class="builder-field-help">Build on the same field your players use. Choose a section below to edit game state, defensive targets, hit information, or the play sequence.</p>
 
     
 
@@ -819,21 +833,21 @@
   <section class="playbook-browser">
     <div class="playbook-browser-header">
       <div>
-        <span class="eyebrow">Practice library</span>
+        
         <h2 id="playbookBrowserTitle">Playbook</h2>
-        <p>Find a situation by teaching category, game state, or difficulty.</p>
+        <p>Choose a situation, then select Start Situation to begin.</p>
       </div>
       <button id="playbookBrowserClose" class="btn btn-ghost" type="button">Close</button>
     </div>
     <div class="playbook-browser-filters">
       <label class="field playbook-search"><span>Search</span><input id="playbookSearch" type="search" placeholder="Search situations" autocomplete="off"></label>
-      <label class="field"><span>Teaching category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
-      <label class="field"><span>Hit outcome</span><select id="playbookHitOutcome"><option value="">All outcomes</option><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base hits</option><option value="General">General / Other</option></select></label>
+      <label class="field"><span>Category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
+
       <label class="field"><span>Difficulty</span><select id="playbookDifficulty"><option value="">All levels</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
-      <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label>
+      <details class="playbook-more-filters" id="playbookMoreFilters"><summary>More filters <span id="playbookMoreFilterCount"></span></summary><div>      <label class="field"><span>Hit outcome</span><select id="playbookHitOutcome"><option value="">All outcomes</option><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base hits</option><option value="General">General / Other</option></select></label>      <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label></div></details>
       <button id="playbookClearFilters" class="btn btn-ghost" type="button">Clear</button>
     </div>
-    <div class="playbook-browser-summary"><strong id="playbookResultCount">0 situations</strong><button id="playbookRandomFiltered" class="btn-slate" type="button">Choose for me</button></div>
+    <div class="playbook-browser-summary"><strong id="playbookResultCount">0 situations</strong><button id="playbookRandomFiltered" class="btn-slate" type="button">Random from results</button></div>
     <div id="playbookBrowserList" class="playbook-browser-list"></div>
     <div id="playbookBrowserEmpty" class="playbook-browser-empty hidden">No situations match these filters.</div>
   </section>
@@ -842,8 +856,17 @@
 <!-- Unified account login modal -->
 <div id="playerModalOverlay" class="modalOverlay auth-modal hidden" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="playerModalTitle" aria-hidden="true">
   <div class="modalPanel auth-modal-panel">
+    <aside class="auth-brand-panel" aria-label="Diamond Defence">
+      <span class="dd-monogram auth-brand-mark" aria-hidden="true"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#101c2e"/><path d="M32 5 59 32 32 59 5 32Z" fill="none" stroke="#c7a566" stroke-width="2"/><g fill="none" stroke="#c7a566" stroke-width="4" stroke-linejoin="round"><path d="M17 22h5c13 0 13 20 0 20h-5Z"/><path d="M34 22h5c13 0 13 20 0 20h-5Z"/></g></svg></span>
+      <span class="auth-wordmark">Diamond Defence</span>
+      <span class="eyebrow">Baseball situation simulator</span>
+      <p class="auth-brand-heading">Know the situation.<br>Make the play.</p>
+      <p class="auth-brand-description">An interactive playbook trainer for players and coaches.</p>
+    </aside>
+    <div class="auth-form-panel">
     <div class="modalHeader">
       <div>
+        <span class="eyebrow">Welcome back</span>
         <div id="playerModalTitle" class="modal-title">Login</div>
         <div class="muted">Choose your account type to continue.</div>
       </div>
@@ -880,6 +903,7 @@
       </section>
     </div>
   </div>
+</div>
 </div>
 
 <!-- Password and session management for the authenticated account -->

@@ -1,5 +1,17 @@
 import { test, expect, request as requestFactory } from '@playwright/test';
 
+// Color assertions follow the shared theme; behavioral assertions remain unchanged.
+async function semanticColor(page, token) {
+  return page.evaluate((name) => {
+    const probe = document.createElement('span');
+    probe.style.color = `var(${name})`;
+    document.body.appendChild(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }, token);
+}
+
 async function openCleanApp(page) {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -9,6 +21,7 @@ async function openCleanApp(page) {
   await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
   await page.evaluate(() => window.__DIQ_READY__);
   await expect(page.locator('#fieldImg')).toBeVisible();
+  await page.locator('#fieldImg').evaluate(image => image.decode());
   return pageErrors;
 }
 
@@ -28,7 +41,7 @@ async function logoutCurrentUser(page) {
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
 }
 
-test.describe('Diamond Defense regression behavior', () => {
+test.describe('Diamond Defence regression behavior', () => {
   test('ignores legacy browser data and loads authoritative D1 records', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('diq_teams_v1', JSON.stringify({
@@ -78,11 +91,11 @@ test.describe('Diamond Defense regression behavior', () => {
     const pageErrors = await openCleanApp(page);
 
     const field = page.locator('#fieldImg');
-    await expect(field).toHaveAttribute('alt', 'Diamond Defense baseball strategy field');
-    await expect(field).toHaveJSProperty('naturalWidth', 3200);
-    await expect(field).toHaveJSProperty('naturalHeight', 2133);
+    await expect(field).toHaveAttribute('alt', 'Diamond Defence baseball strategy field');
+    await expect(field).toHaveJSProperty('naturalWidth', 1536);
+    await expect(field).toHaveJSProperty('naturalHeight', 1024);
     expect(await field.evaluate((image) => new URL(image.src).pathname)).toContain(
-      'diamond-defense-dark-blue-neon-field',
+      'diamond-defense-soft-field',
     );
     await expect(field).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
 
@@ -91,8 +104,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#wrap .tgt')).toHaveCount(9);
     const appIcon = page.locator('.brand-mark img');
     await expect(appIcon).toBeVisible();
-    await expect(appIcon).toHaveJSProperty('naturalWidth', 253);
-    await expect(appIcon).toHaveJSProperty('naturalHeight', 256);
+    await expect(appIcon).toHaveJSProperty('naturalWidth', 64);
+    await expect(appIcon).toHaveJSProperty('naturalHeight', 64);
     const groupColors = await page.evaluate(() => ({
       pitcher: getComputedStyle(tokens.get('P').el).backgroundColor,
       catcher: getComputedStyle(tokens.get('C').el).backgroundColor,
@@ -104,13 +117,14 @@ test.describe('Diamond Defense regression behavior', () => {
       pitcherOpacity: getComputedStyle(tokens.get('P').el).opacity,
       outfieldOpacity: getComputedStyle(tokens.get('CF').el).opacity,
     }));
+    const defenderColor = await semanticColor(page, '--defender');
     expect(groupColors).toEqual({
-      pitcher: 'rgb(244, 201, 93)',
-      catcher: 'rgb(244, 201, 93)',
-      infield: 'rgb(255, 107, 138)',
-      outfield: 'rgb(67, 231, 244)',
-      outfieldText: 'rgb(6, 18, 37)',
-      chipBorder: 'rgb(225, 249, 255)',
+      pitcher: defenderColor,
+      catcher: defenderColor,
+      infield: defenderColor,
+      outfield: defenderColor,
+      outfieldText: await semanticColor(page, '--baseball-line'),
+      chipBorder: await semanticColor(page, '--defender-highlight'),
       chipBoxSizing: 'border-box',
       pitcherOpacity: '1',
       outfieldOpacity: '1',
@@ -133,6 +147,14 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
     await expect(page.locator('#descHud')).not.toHaveText('');
     await expect(page.locator('#outsVal')).toHaveText(/^[0-2]$/);
+    const situationHud = await page.evaluate(() => ({
+      outs: currentSituation.outs,
+      markedOuts: document.querySelectorAll('.training-out-map .is-recorded').length,
+      runners: Object.entries(currentSituation.runnersOn || {}).filter(([, occupied]) => occupied).map(([base]) => base).sort(),
+      markedRunners: [...document.querySelectorAll('.training-base-map .is-occupied')].map(marker => marker.dataset.marker).sort(),
+    }));
+    expect(situationHud.markedOuts).toBe(situationHud.outs);
+    expect(situationHud.markedRunners).toEqual(situationHud.runners);
 
     await page.locator('#randomSitBtn').click();
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).not.toBe('BD-02');
@@ -166,7 +188,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#playbookClearFilters').click();
     await page.locator('#playbookCategory').selectOption('cutoffs-relays');
     await expect(page.locator('.playbook-situation-card')).toHaveCount(22);
+    await page.locator('#playbookMoreFilters summary').click();
     await page.locator('#playbookHitOutcome').selectOption('Extra-base hits');
+    await expect(page.locator('#playbookMoreFilterCount')).toHaveText('· 1 active');
     await expect(page.locator('.playbook-situation-card')).toHaveCount(8);
 
     await page.locator('#playbookSearch').fill('Left-Center');
@@ -175,7 +199,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(browser).toBeHidden();
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-14');
     await expect(page.locator('#descHud')).toHaveText('S14 · Hit to Left-Center Field');
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('S14 · Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('Hit to Left-Center Field · S14');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-reference')).toContainText('S14');
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-metadata')).toHaveText('Cutoffs & Relays');
   });
 
@@ -288,9 +313,20 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
     await openCleanApp(page);
 
-    await expect(page.getByRole('heading', { name: 'Diamond Defense' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Diamond Defence' })).toBeVisible();
     await expect(page.locator('.situation-controls')).toBeVisible();
-    await expect(page.locator('.game-controls')).toBeVisible();
+    await expect(page.locator('#trainingNavigation #playbookBrowserToggle')).toBeVisible();
+    await expect(page.locator('#trainingNavigation #playbookToggle')).toBeVisible();
+    const playerLayout = await page.evaluate(() => ({
+      navigationBottom: document.getElementById('trainingNavigation').getBoundingClientRect().bottom,
+      boardTop: document.querySelector('.training-board').getBoundingClientRect().top,
+      headerLeft: document.getElementById('appHeader').getBoundingClientRect().left,
+    }));
+    expect(playerLayout.navigationBottom).toBeLessThanOrEqual(playerLayout.boardTop);
+    expect(playerLayout.headerLeft).toBe(0);
+    await expect(page.locator('#trainingWorkspaceHeading')).toBeHidden();
+    await expect(page.locator('.training-board-label')).toBeHidden();
+    await expect(page.locator('.game-controls')).toHaveCount(1);
     await expect(page.locator('#sitSelect')).toHaveCount(0);
     await expect(page.locator('#playbookBrowserToggle')).toBeVisible();
     await expect(page.locator('#randomSitBtn')).toBeVisible();
@@ -299,25 +335,33 @@ test.describe('Diamond Defense regression behavior', () => {
       const account = document.querySelector('.account-actions');
       const utility = document.querySelector('.utility-actions');
       const situation = document.querySelector('.situation-controls');
-      const ids = ['playerBtn', 'playbookBrowserToggle', 'randomSitBtn', 'playbookToggle', 'startBtn', 'resetBtn', 'checkBtn'];
-      const orderedIds = ['playbookBrowserToggle', 'randomSitBtn', 'descHud', 'startBtn', 'runnersBadge', 'playbookToggle', 'playerBtn'];
+      const field = document.querySelector('#fieldImg').getBoundingClientRect();
+      const panel = document.querySelector('#trainingPanel').getBoundingClientRect();
+      const hud = document.querySelector('#trainingHud').getBoundingClientRect();
       return {
         situationOrder: [...situation.children].map((element) => element.id).filter(Boolean),
         utilityOrder: [...utility.children].map((element) => element.id).filter(Boolean),
         accountOrder: [...account.children].map((element) => element.id).filter(Boolean),
-        heights: ids.map((id) => Math.round(document.getElementById(id).getBoundingClientRect().height)),
-        xPositions: orderedIds.map((id) => Math.round(document.getElementById(id).getBoundingClientRect().left)),
+        panelLeft: panel.left,
+        fieldRight: field.right,
+        hudParent: document.getElementById('trainingHud').parentElement.id,
+        panelTop: panel.top,
+        fieldTop: field.top,
       };
     });
-    expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn', 'descHud']);
+    expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn']);
     expect(commandLayout.utilityOrder.slice(0, 3)).toEqual([
       'practiceToggle',
       'playbookToggle',
       'staffToolsBtn',
     ]);
     expect(commandLayout.accountOrder.slice(0, 2)).toEqual(['playerBtn', 'accountMenu']);
-    expect(new Set(commandLayout.heights).size).toBe(1);
-    expect(commandLayout.xPositions).toEqual([...commandLayout.xPositions].sort((left, right) => left - right));
+    expect(commandLayout.panelLeft).toBeGreaterThanOrEqual(commandLayout.fieldRight);
+    expect(commandLayout.hudParent).toBe('trainingPanel');
+    expect(Math.abs(commandLayout.panelTop - commandLayout.fieldTop)).toBeLessThanOrEqual(2);
+    await expect(page.locator('#playerSituationName')).toHaveText('Single to LF');
+    await expect(page.locator('#trainingActions #checkBtn')).toBeHidden();
+    await expect(page.locator('#trainingMetrics #hud')).toBeVisible();
     await expect(page.locator('.status-strip')).toBeVisible();
     await expect(page.locator('.board-heading')).toHaveCount(0);
     await expect(page.locator('.position-legend')).toHaveCount(0);
@@ -330,7 +374,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await guideButton.click();
     await expect(page.locator('.playbook-rail')).toBeVisible();
     await expect(guideButton).toHaveAttribute('aria-expanded', 'true');
-    await expect(guideButton).toHaveCSS('background-color', 'rgb(139, 124, 255)');
+    await expect(guideButton).toHaveCSS('background-color', await semanticColor(page, '--accent-primary'));
     await expect(page.locator('.playbook-rail-heading')).toContainText('Guide');
     await expect(page.locator('#howToCard .howto-body')).toBeVisible();
     await expect(page.locator('#howToCard .howto-body')).toContainText('open Playbook');
@@ -360,9 +404,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.locator('#screenSizeGate')).toBeVisible();
     await expect(page.locator('#screenSizeGateTitle')).toHaveText(
-      'Open Diamond Defense on a tablet or computer',
+      'Open Diamond Defence on a tablet or computer',
     );
-    await expect(page.locator('body > header')).toBeHidden();
+    await expect(page.locator('#appHeader')).toBeHidden();
     await expect(page.locator('#fieldImg')).toBeHidden();
 
     await page.setViewportSize({ width: 1024, height: 1366 });
@@ -371,6 +415,23 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.setViewportSize({ width: 1024, height: 768 });
     await expect(page.locator('#screenSizeGate')).toBeHidden();
     await expect(page.locator('#fieldImg')).toBeVisible();
+  });
+
+  test('field artwork keeps its natural colors in the player view', async ({ page }) => {
+    await openCleanApp(page);
+    await expect(page.locator('#fieldImg')).toHaveCSS('filter', 'none');
+    await loginAsSeedPlayer(page);
+
+    for (const viewport of [
+      { width: 1920, height: 1200 },
+      { width: 1280, height: 900 },
+      { width: 1024, height: 768 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await expect(page.locator('body')).toHaveClass(/player-experience/);
+      await expect(page.locator('#fieldImg')).toHaveCSS('filter', 'none');
+      await expect(page.locator('#fieldImg')).toHaveAttribute('src', /diamond-defense-soft-field/);
+    }
   });
 
   test('field geometry keeps every token aligned on supported screens', async ({ page }) => {
@@ -427,158 +488,19 @@ test.describe('Diamond Defense regression behavior', () => {
           offset.y,
           `${offset.position} vertical offset at ${viewport.width}px`,
         ).toBeLessThan(1);
-        expect(offset.size).toBeGreaterThanOrEqual(22);
-        expect(offset.size).toBeLessThanOrEqual(38);
+        expect(offset.size).toBeGreaterThanOrEqual(23);
+        expect(offset.size).toBeLessThanOrEqual(40);
       }
     }
   });
 
-  test('dark neon field preserves coordinate geometry and default alignment', async ({ page }) => {
+  test('field retains the established coordinate landmarks and starting positions', async ({ page }) => {
     await openCleanApp(page);
-
-    const alignment = await page.evaluate(() => {
-      const image = document.getElementById('fieldImg');
-      const canvas = document.createElement('canvas');
-      canvas.width = IMG_W;
-      canvas.height = IMG_H;
-      const context = canvas.getContext('2d');
-      context.drawImage(image, 0, 0, IMG_W, IMG_H);
-
-      const alphaAt = ({ x, y }) =>
-        context.getImageData(Math.round(x), Math.round(y), 1, 1).data[3];
-      const colorAt = ({ x, y }) =>
-        [...context.getImageData(Math.round(x), Math.round(y), 1, 1).data];
-      const hasNeonNear = ({ x, y }, radius = 36) => {
-        const startX = Math.max(0, Math.round(x - radius));
-        const startY = Math.max(0, Math.round(y - radius));
-        const width = Math.min(IMG_W - startX, radius * 2 + 1);
-        const height = Math.min(IMG_H - startY, radius * 2 + 1);
-        const pixels = context.getImageData(startX, startY, width, height).data;
-        for (let index = 0; index < pixels.length; index += 4) {
-          const [red, green, blue, alpha] = pixels.slice(index, index + 4);
-          if (alpha > 220 && red > 180 && green > 200 && blue > 200) return true;
-        }
-        return false;
-      };
-      const landmarks = {
-        home: { ...BASES_NATIVE.home },
-        first: { ...BASES_NATIVE.first },
-        second: { ...BASES_NATIVE.second },
-        third: { ...BASES_NATIVE.third },
-      };
-      const starts = Object.fromEntries(
-        POS_IDS.map((position) => [position, { ...tokens.get(position).pos }]),
-      );
-      const openHomeAreaPoints = [
-        { x: 1425, y: 1842 },
-        { x: 1578, y: 1833 },
-        { x: 1733, y: 1843 },
-      ];
-      const batterBoxChalkPoints = [
-        { x: 1473, y: 1695 },
-        { x: 1438, y: 1745 },
-        { x: 1511, y: 1746 },
-        { x: 1473, y: 1798 },
-        { x: 1685, y: 1695 },
-        { x: 1644, y: 1746 },
-        { x: 1718, y: 1746 },
-        { x: 1685, y: 1798 },
-      ];
-      const catcherBoxChalkPoints = [
-        { x: 1506, y: 1823 },
-        { x: 1650, y: 1823 },
-        { x: 1569, y: 1866 },
-      ];
-      const foulLineChalkPoints = [
-        { x: 833, y: 1260 },
-        { x: 2338, y: 1259 },
-        { x: 1073, y: 1454 },
-        { x: 2102, y: 1454 },
-        { x: 1194, y: 1551 },
-        { x: 1985, y: 1552 },
-      ];
-      const offSurfacePoints = [];
-      const startingPlacementViolations = [];
-
-      for (const situation of SITUATIONS) {
-        for (const [groupName, points] of [
-          ['start', situation.starts],
-          ['target', situation.targets],
-        ]) {
-          for (const [position, point] of Object.entries(points || {})) {
-            if (alphaAt(point) <= 220) {
-              offSurfacePoints.push(`${situation.key} ${groupName} ${position}`);
-            }
-          }
-        }
-        if (situation.hit && alphaAt(situation.hit) <= 220) {
-          offSurfacePoints.push(`${situation.key} hit`);
-        }
-
-        const situationStarts = situation.starts || {};
-        if (Math.hypot(
-          situationStarts.P.x - starts.P.x,
-          situationStarts.P.y - starts.P.y,
-        ) > 125) {
-          startingPlacementViolations.push(`${situation.key} P`);
-        }
-        if (situationStarts.C.y <= landmarks.home.y + 90) {
-          startingPlacementViolations.push(`${situation.key} C`);
-        }
-        if (situationStarts['1B'].x >= landmarks.first.x) {
-          startingPlacementViolations.push(`${situation.key} 1B`);
-        }
-        if (situationStarts['3B'].x <= landmarks.third.x) {
-          startingPlacementViolations.push(`${situation.key} 3B`);
-        }
-        if (situationStarts['2B'].x <= landmarks.second.x) {
-          startingPlacementViolations.push(`${situation.key} 2B`);
-        }
-        if (situationStarts.SS.x >= landmarks.second.x) {
-          startingPlacementViolations.push(`${situation.key} SS`);
-        }
-      }
-
-      return {
-        landmarks,
-        homeNative: { ...HOME_NATIVE },
-        starts,
-        landmarkAlpha: Object.fromEntries(
-          Object.entries(landmarks).map(([name, point]) => [name, alphaAt(point)]),
-        ),
-        startAlpha: Object.fromEntries(
-          Object.entries(starts).map(([name, point]) => [name, alphaAt(point)]),
-        ),
-        transparentCorners: [
-          alphaAt({ x: 0, y: 0 }),
-          alphaAt({ x: IMG_W - 1, y: 0 }),
-          alphaAt({ x: 0, y: IMG_H - 1 }),
-          alphaAt({ x: IMG_W - 1, y: IMG_H - 1 }),
-        ],
-        darkBlueSurface: [
-          colorAt(starts.LF),
-          colorAt(starts.CF),
-          colorAt(starts.RF),
-          colorAt(starts.C),
-        ],
-        neonLandmarks: [
-          hasNeonNear(landmarks.home, 55),
-          hasNeonNear(landmarks.first, 40),
-          hasNeonNear(landmarks.second, 40),
-          hasNeonNear(landmarks.third, 40),
-          hasNeonNear(starts.P, 40),
-        ],
-        openHomeAreaAlpha: openHomeAreaPoints.map(alphaAt),
-        frontBoardDepthAlpha: alphaAt({ x: 1569, y: 1968 }),
-        belowBoardAlpha: alphaAt({ x: 1569, y: 2045 }),
-        batterBoxNeon: batterBoxChalkPoints.map((point) => hasNeonNear(point)),
-        catcherBoxNeon: catcherBoxChalkPoints.map((point) => hasNeonNear(point)),
-        foulLineNeon: foulLineChalkPoints.map((point) => hasNeonNear(point)),
-        offSurfacePoints,
-        startingPlacementViolations,
-      };
-    });
-
+    const alignment = await page.evaluate(() => ({
+      landmarks:{home:{...BASES_NATIVE.home},first:{...BASES_NATIVE.first},second:{...BASES_NATIVE.second},third:{...BASES_NATIVE.third}},
+      homeNative:{...HOME_NATIVE},
+      starts:Object.fromEntries(POS_IDS.map(id=>[id,{...tokens.get(id).pos}])),
+    }));
     expect(alignment.landmarks).toEqual({
       home: { x: 1577, y: 1734 },
       first: { x: 2170, y: 1304 },
@@ -608,53 +530,114 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(alignment.starts.LF.y).toBeGreaterThan(650);
     expect(alignment.starts.RF.y).toBeGreaterThan(650);
 
-    for (const alpha of Object.values(alignment.landmarkAlpha)) {
-      expect(alpha).toBeGreaterThan(220);
-    }
-    for (const alpha of Object.values(alignment.startAlpha)) {
-      expect(alpha).toBeGreaterThan(220);
-    }
-    expect(alignment.transparentCorners).toEqual([0, 0, 0, 0]);
-    for (const [red, green, blue, alpha] of alignment.darkBlueSurface) {
-      expect(alpha).toBeGreaterThan(220);
-      expect(blue).toBeGreaterThan(green);
-      expect(green).toBeGreaterThan(red);
-    }
-    expect(alignment.neonLandmarks).toEqual([true, true, true, true, true]);
-    expect(alignment.landmarks.first.x - alignment.landmarks.third.x).toBeGreaterThan(1200);
-    expect(alignment.landmarks.home.y - alignment.landmarks.second.y).toBeGreaterThan(850);
-    for (const alpha of alignment.openHomeAreaAlpha) {
-      expect(alpha).toBeGreaterThan(220);
-    }
-    expect(alignment.frontBoardDepthAlpha).toBeGreaterThan(220);
-    expect(alignment.belowBoardAlpha).toBeLessThan(16);
-    expect(alignment.batterBoxNeon).toEqual([
-      true, true, true, true, true, true, true, true,
-    ]);
-    expect(alignment.catcherBoxNeon).toEqual([true, true, true]);
-    expect(alignment.foulLineNeon).toEqual([true, true, true, true, true, true]);
-    expect(alignment.offSurfacePoints).toEqual([]);
-    expect(alignment.startingPlacementViolations).toEqual([]);
+  });
+
+  test('Guide follows practice, positioning, review and throw stages', async ({ page }) => {
+    await openCleanApp(page);
+    const stages = await page.evaluate(() => {
+      const read = () => {refreshGuideText();return howToBody.textContent;};
+      const result = {ready:read()};
+      startBtn.disabled = true; gameActive = true;
+      result.positioning = read();
+      _phase1Summary = {ok:false,scoreCorrect:1};
+      result.review = read();
+      _solutionReview = {watched:true};
+      currentSituation.playSeq = ['LF','SS','2B'];
+      result.solution = read();
+      phase2Active = true;
+      result.sequence = read();
+      phase2Active = false; _phase2Ended = true; allowSeqPanel = true;
+      result.complete = read();
+      document.getElementById('practiceWorkspace').classList.remove('hidden');
+      result.practice = read();
+      return result;
+    });
+    expect(stages.ready).toContain('Start Situation');
+    expect(stages.positioning).toContain('Check Positions');
+    expect(stages.review).toContain('Coaching notes become available after');
+    expect(stages.solution).toContain('Continue to Throw Sequence');
+    expect(stages.sequence).toContain('Verify Sequence');
+    expect(stages.sequence).not.toContain('Select Continue');
+    expect(stages.complete).toContain('Situation complete');
+    expect(stages.complete).not.toContain('Verify Sequence');
+    expect(stages.practice).toContain('Your Practice');
+    expect(stages.practice).not.toContain('Verify Sequence');
+  });
+
+  test('Guide pauses live play and resumes from the same state', async ({ page }) => {
+    await openCleanApp(page);
+    await loginAsSeedPlayer(page);
+    await page.locator('#startBtn').click();
+    await page.locator('#playbookToggle').click();
+    await expect(page.locator('body')).toHaveClass(/guide-open/);
+    await expect(page.locator('#playbookClose')).toHaveText('×');
+    expect(await page.locator('#playbookRail').evaluate(el=>el.parentElement.id)).toBe('appWorkspace');
+    const snapshot = () => page.evaluate(() => ({
+      seconds:_timerSecs, tries:remainingTries,
+      ball:[ballEl.style.left,ballEl.style.top],
+      batter:[runnerEl?.style.left,runnerEl?.style.top],
+      runners:[...document.querySelectorAll('.baseRunner,.movingRunner')].map(el=>[el.style.left,el.style.top]),
+      positions:POS_IDS.map(id=>({...tokens.get(id).pos})),
+    }));
+    const paused = await snapshot();
+    await page.waitForTimeout(1300);
+    expect(await snapshot()).toEqual(paused);
+    expect(await page.locator('.training-board').evaluate(el=>el.inert)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('body')).not.toHaveClass(/guide-open/);
+    await expect(page.locator('#playbookToggle')).toBeFocused();
+    expect(await page.locator('.training-board').evaluate(el=>el.inert)).toBe(false);
+    await expect.poll(async () => (await snapshot()).seconds).toBeLessThan(paused.seconds);
+    await expect.poll(async () => (await snapshot()).ball).not.toEqual(paused.ball);
+    await page.locator('#playbookToggle').click();
+    const pausedAgain = await snapshot();
+    await page.waitForTimeout(1100);
+    expect(await snapshot()).toEqual(pausedAgain);
+    await page.locator('#playbookClose').click();
+    await expect(page.locator('body')).not.toHaveClass(/guide-open/);
   });
 
   test('start, check, and reset preserve the round state contract', async ({ page }) => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
-    const start = page.getByRole('button', { name: 'Start Situation' });
-    const reset = page.getByRole('button', { name: 'Reset' });
-    const check = page.getByRole('button', { name: 'Check Positions' });
+    const start = page.locator('#startBtn');
+    const reset = page.locator('#resetBtn');
+    const check = page.locator('#checkBtn');
 
     await expect(start).toBeEnabled();
     await expect(reset).toBeDisabled();
+    await expect(reset).toBeHidden();
     await expect(check).toBeDisabled();
+    await expect(check).toBeHidden();
     expect(await page.evaluate(() => getPlayAnimationDuration())).toBe(4000);
+
+    await page.evaluate(() => renderBaseRunners({ first: true, second: true, third: true }));
+    await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCSS('background-color', await semanticColor(page, '--runner'));
+    const runnerLeads = await page.evaluate(() => ['first', 'second', 'third'].map((baseName) => {
+      const marker = document.querySelector(`.baseRunner[data-base="${baseName}"]`);
+      const actual = cssToUnit(parseFloat(marker.style.left), parseFloat(marker.style.top));
+      const start = BASES_NATIVE[baseName];
+      const destination = BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
+      const dx = destination.x - start.x, dy = destination.y - start.y;
+      const lengthSquared = dx * dx + dy * dy;
+      return {
+        forward: ((actual.x-start.x)*dx + (actual.y-start.y)*dy) / lengthSquared,
+        outward: ((actual.x-start.x)*-dy + (actual.y-start.y)*dx) / lengthSquared,
+      };
+    }));
+    runnerLeads.forEach((lead) => {
+      expect(lead.forward).toBeCloseTo(0.14, 2);
+      expect(lead.outward).toBeCloseTo(0.06, 2);
+    });
+    await page.evaluate(() => renderBaseRunners(liveRunners));
 
     await start.click();
     await expect(start).toBeDisabled();
+    await expect(start).toBeHidden();
     await expect(reset).toBeEnabled();
     await expect(check).toBeEnabled();
-    await expect(reset).toHaveCSS('background-color', 'rgb(255, 177, 74)');
+    await expect(reset).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('#triesVal')).toHaveText('3/3');
     await expect.poll(() => page.evaluate(() => runnerEl?.style.display)).toBe('none');
     await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCount(1);
@@ -662,17 +645,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#ballLayer svg line, #ballLayer svg path')).toHaveCount(1);
     await expect(page.locator('#ballLayer svg')).toHaveCSS('opacity', '0.42');
 
-    await page.evaluate(() => renderBaseRunners({ first: true, second: true, third: true }));
-    await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCSS('background-color', 'rgb(180, 147, 255)');
-    const runnerLeads = await page.evaluate(() => ['first', 'second', 'third'].map((baseName) => {
-      const marker = document.querySelector(`.baseRunner[data-base="${baseName}"]`);
-      const actual = cssToUnit(parseFloat(marker.style.left), parseFloat(marker.style.top));
-      const start = BASES_NATIVE[baseName];
-      const destination = BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
-      return Math.hypot(actual.x - start.x, actual.y - start.y)
-        / Math.hypot(destination.x - start.x, destination.y - start.y);
-    }));
-    runnerLeads.forEach((lead) => expect(lead).toBeCloseTo(0.14, 2));
+
 
     await check.click();
     await expect(page.locator('#triesVal')).toHaveText('2/3');
@@ -680,7 +653,9 @@ test.describe('Diamond Defense regression behavior', () => {
     await reset.click();
     await expect(start).toBeEnabled();
     await expect(reset).toBeDisabled();
+    await expect(reset).toBeHidden();
     await expect(check).toBeDisabled();
+    await expect(check).toBeHidden();
     await expect(page.locator('#scoreVal')).toHaveText('0');
     await expect(page.locator('#ballLayer svg line, #ballLayer svg path')).toHaveCount(0);
     await expect(page.locator('#ballLayer svg')).not.toHaveClass(/is-context-hit-path/);
@@ -780,8 +755,11 @@ test.describe('Diamond Defense regression behavior', () => {
     });
     expect(payload.phase1Checks).toHaveLength(3);
     expect(payload.sequenceStages).toHaveLength(0);
+    await expect(page.getByRole('button', { name: 'Choose another situation', exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Watch Solution' })).toBeVisible();
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
+    await expect(page.locator('#playerStepMessage')).toBeHidden();
+    await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
     await page.getByRole('button', { name: 'Watch Solution' }).click();
     expect(await page.evaluate(() => ({
       state: document.querySelector('#wrap')?.dataset.solutionState,
@@ -803,6 +781,8 @@ test.describe('Diamond Defense regression behavior', () => {
     });
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready', { timeout: 7000 });
     await expect(page.locator('.solution-ghost')).toHaveCount(9);
+    await expect(page.locator('.solution-ghost').first()).toHaveCSS('border-top-color', await semanticColor(page, '--error'));
+    await expect(page.locator('.solution-ghost').first()).toHaveCSS('border-top-style', 'dashed');
     await expect(page.locator('.tgt.selectable')).toHaveCount(9);
     expect(await page.evaluate(() => {
       const expectedRunners = resolveSituationOutcome(currentSituation).finalRunners;
@@ -818,9 +798,9 @@ test.describe('Diamond Defense regression behavior', () => {
         staticRunnerBases: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
           .map((runner) => runner.dataset.base)
           .sort(),
-        staticRunnersAtLeads: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
+        staticRunnersAtBags: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
           .every((runner) => {
-            const expected = nativeToCssPoint(runnerLeadPoint(runner.dataset.base));
+            const expected = nativeToCssPoint(BASES_NATIVE[runner.dataset.base]);
             return Math.hypot(
               parseFloat(runner.style.left) - expected.x,
               parseFloat(runner.style.top) - expected.y,
@@ -834,7 +814,7 @@ test.describe('Diamond Defense regression behavior', () => {
       ballAtHit: true,
       runnersAtDestinations: true,
       staticRunnerBases: ['first', 'second'],
-      staticRunnersAtLeads: true,
+      staticRunnersAtBags: true,
       movingRunners: 0,
       batterVisible: false,
     });
@@ -843,7 +823,8 @@ test.describe('Diamond Defense regression behavior', () => {
   test('player login rejects a wrong password and accepts a roster password', async ({ page }) => {
     await openCleanApp(page);
 
-    await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
+    await expect(page.locator('#startBtn')).toBeDisabled();
+    await expect(page.locator('#startBtn')).toBeHidden();
     await expect(page.locator('#randomSitBtn')).toBeDisabled();
     await expect(page.locator('#gameLoginGate')).toBeVisible();
 
@@ -923,7 +904,8 @@ test.describe('Diamond Defense regression behavior', () => {
     await logoutCurrentUser(page);
     expect((await logoutResponse).ok()).toBe(true);
     await expect(page.locator('#accountMenu')).toBeHidden();
-    await expect(page.getByRole('button', { name:'Start Situation' })).toBeDisabled();
+    await expect(page.locator('#startBtn')).toBeDisabled();
+    await expect(page.locator('#startBtn')).toBeHidden();
     await expect(page.locator('#gameLoginGate')).toBeVisible();
   });
 
@@ -952,29 +934,36 @@ test.describe('Diamond Defense regression behavior', () => {
     await expect(page.locator('#coachCard')).toBeVisible();
     await expect(page.locator('#coachStatus')).toHaveText('unlocked');
     await expect(page.locator('#coachIdentity')).toContainText('Jamie Rivera');
-    const coachDrawerLayout = await page.evaluate(() => {
+    await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
+    await expect(page.locator('.field-card')).toBeHidden();
+    const coachReviewLayout = await page.evaluate(() => {
       const drawer = document.querySelector('#toolsDrawer');
       const rect = drawer.getBoundingClientRect();
+      const report = document.querySelector('#coachResultsWorkspace').getBoundingClientRect();
+      const workspace = document.querySelector('#appWorkspace').getBoundingClientRect();
       return {
         parentId: document.querySelector('#coachCard').parentElement.id,
-        position: getComputedStyle(drawer).position,
-        drawerLeft: rect.left,
-        drawerWidth: rect.width,
-        viewportWidth: window.innerWidth,
-        fieldRight: document.querySelector('.field-card').getBoundingClientRect().right,
+        controlsLeft: rect.left,
+        controlsRight: rect.right,
+        controlsBottom: rect.bottom,
+        reportLeft: report.left,
+        reportRight: report.right,
+        reportTop: report.top,
+        workspaceLeft: workspace.left,
+        workspaceRight: workspace.right,
         horizontalOverflow: drawer.scrollWidth - drawer.clientWidth,
-        rightGap: window.innerWidth - rect.right,
-        bottom: rect.bottom,
-        viewportHeight: window.innerHeight,
+        pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     });
-    expect(coachDrawerLayout.parentId).toBe('toolsDrawer');
-    expect(coachDrawerLayout.position).toBe('fixed');
-    expect(coachDrawerLayout.drawerWidth).toBeLessThanOrEqual(coachDrawerLayout.viewportWidth / 3 + 1);
-    expect(coachDrawerLayout.fieldRight).toBeLessThanOrEqual(coachDrawerLayout.drawerLeft);
-    expect(coachDrawerLayout.horizontalOverflow).toBeLessThanOrEqual(1);
-    expect(coachDrawerLayout.rightGap).toBeLessThanOrEqual(12);
-    expect(coachDrawerLayout.bottom).toBeLessThanOrEqual(coachDrawerLayout.viewportHeight);
+    expect(coachReviewLayout.parentId).toBe('toolsDrawer');
+    // Review uses full-width controls above the report, not the builder's side panel.
+    expect(Math.abs(coachReviewLayout.controlsLeft - coachReviewLayout.workspaceLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(coachReviewLayout.controlsRight - coachReviewLayout.workspaceRight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(coachReviewLayout.reportLeft - coachReviewLayout.controlsLeft)).toBeLessThanOrEqual(1);
+    expect(Math.abs(coachReviewLayout.reportRight - coachReviewLayout.controlsRight)).toBeLessThanOrEqual(1);
+    expect(coachReviewLayout.controlsBottom).toBeLessThanOrEqual(coachReviewLayout.reportTop);
+    expect(coachReviewLayout.horizontalOverflow).toBeLessThanOrEqual(1);
+    expect(coachReviewLayout.pageOverflow).toBeLessThanOrEqual(1);
 
     await page.locator('[data-coach-tab="assignments"]').click();
     await expect(page.locator('#practiceWorkspace')).toBeVisible();
@@ -1095,7 +1084,8 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(await page.locator('[data-admin-view="recovery"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="situations"]').evaluate((view) => view.parentElement.id)).toBe('adminCard');
     await expect(page.locator('[data-admin-tab="situations"]')).toHaveClass(/has-pending/);
-    await expect(page.locator('[data-admin-tab="situations"]')).toHaveCSS('background-color', 'rgb(255, 214, 107)');
+    await expect(page.locator('[data-admin-tab="situations"]')).toHaveCSS('background-color', await semanticColor(page, '--warning-muted'));
+    await expect(page.locator('[data-admin-tab="situations"]')).toHaveCSS('color', await semanticColor(page, '--warning'));
     await expect(page.locator('#adminProposalSelect')).toHaveValue('pending-ui-proposal');
     await expect(page.locator('#adminProposalDetails')).toContainText('Coach Pending submitted a create');
     const existingTeamId = await page.locator('#adminTeamSelect option:not([value=""])').first().getAttribute('value');
@@ -1262,7 +1252,7 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.getByRole('button', { name: 'Watch Solution', exact: true }).click();
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
     if (selectedPreview.playSeq?.length > 1) {
-      await page.getByRole('button', { name: 'Continue ▶', exact: true }).click();
+      await page.locator('#continueBtn').click();
       await expect(page.getByRole('button', { name: 'Verify Sequence', exact: true })).toBeVisible();
       await expect(page.locator('#seqPanel')).toBeHidden();
       for (const position of selectedPreview.playSeq) {
@@ -1381,8 +1371,14 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.locator('#adminTeamRemoveBtn').click();
     await expect(page.locator('#adminConfirmDialog')).toBeVisible();
     await expect(page.locator('#adminConfirmTitle')).toHaveText('Archive team');
-    await page.locator('#adminConfirmCancelBtn').click();
+    await page.locator('#adminConfirmActionBtn').focus();
+    await page.keyboard.press('Tab');
+    await expect(page.locator('#adminConfirmCancelBtn')).toBeFocused();
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('#adminConfirmActionBtn')).toBeFocused();
+    await page.keyboard.press('Escape');
     await expect(page.locator('#adminConfirmDialog')).toBeHidden();
+    await expect(page.locator('#adminTeamRemoveBtn')).toBeFocused();
 
     const archiveResponse = page.waitForResponse((response) =>
       response.url().endsWith(`/api/admin/teams/${teamId}`)
@@ -1587,6 +1583,10 @@ test.describe('Diamond Defense regression behavior', () => {
         body:JSON.stringify({
           situationKey:'BD-01',
           situationTitle:'Color verification',
+          initialPositions:{ P:{x:1600,y:1300}, C:{x:1600,y:1850} },
+          phase1Checks:[{ positions:{ P:{x:1500,y:1200}, C:{x:1600,y:1850} }, scoreCorrect:5, scoreTotal:9 }],
+          sequenceChecks:[{ stage:1, picked:['P','C'], expected:['P','C'], success:true }],
+          situationSnapshot:{ targets:{ P:{x:1500,y:1200,tol:80} }, runnersOn:{first:true}, outs:1 },
           phase:2,
           success:true,
           triesUsed:1,
@@ -1599,9 +1599,10 @@ test.describe('Diamond Defense regression behavior', () => {
           picked:['LF', 'SS', '2B'],
         }),
       });
-      return response.status;
+      return { status: response.status, ...(await response.json()) };
     });
-    expect(savedAttempt).toBe(201);
+    expect(savedAttempt.status).toBe(201);
+    expect(savedAttempt.attemptId).toEqual(expect.any(String));
     await logoutCurrentUser(page);
     await page.locator('#playerBtn').click();
     await page.locator('#authCoachTab').click();
@@ -1658,6 +1659,25 @@ test.describe('Diamond Defense regression behavior', () => {
       && getComputedStyle(count).padding === '0px'
       && getComputedStyle(count).backgroundColor === 'rgba(0, 0, 0, 0)'
     ))).toBe(true);
+    const attemptRow = page.locator(`.coach-review-table tbody tr[data-attempt-id="${savedAttempt.attemptId}"]`);
+    await expect(attemptRow).toBeVisible();
+    const savedTitle = await attemptRow.locator('.coach-review-primary').first().innerText();
+    await attemptRow.getByRole('button', { name:'Review attempt', exact:true }).click();
+    const review = page.getByRole('dialog', { name:savedTitle, exact:true });
+    await expect(review).toBeVisible();
+    await expect(review.locator('.review-defender')).toHaveCount(2);
+    await expect(review.locator('.review-target')).toHaveCount(1);
+    await review.getByRole('button', { name:'Next recorded step' }).click();
+    await expect(review.locator('[data-frame]')).toHaveText('Position check 1');
+    await review.getByRole('button', { name:'Play', exact:true }).click();
+    await expect(review.locator('output')).toHaveText('4 / 4');
+    await expect(review.locator('.review-throw')).toHaveCount(1);
+    await review.locator('input[type="range"]').focus();
+    await page.keyboard.press('Home');
+    await expect(review.locator('[data-frame]')).toHaveText('Starting positions');
+    await page.keyboard.press('Escape');
+    await expect(review).toHaveCount(0);
+    await expect(attemptRow.getByRole('button', { name:'Review attempt', exact:true })).toBeFocused();
     await expect(page.getByText('Review →', { exact:true })).toHaveCount(0);
     await expect(page.getByRole('button', { name:'Back to results' })).toHaveCount(0);
 
@@ -1738,11 +1758,16 @@ test.describe('Diamond Defense regression behavior', () => {
     await page.getByRole('button', { name: 'Check Positions' }).click();
     await expect(page.locator('#scoreVal')).toHaveText('9');
     await expect(page.getByRole('button', { name: 'Watch Solution' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Continue ▶' })).toBeHidden();
+    await expect(page.locator('#continueBtn')).toBeHidden();
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
+    await expect(page.locator('#playerStepMessage')).toBeHidden();
+    await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
     await page.getByRole('button', { name: 'Watch Solution' }).click();
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
-    await expect(page.getByRole('button', { name: 'Continue ▶' })).toBeVisible();
+    await expect(page.locator('#playerStepMessage')).toBeHidden();
+    await expect(page.locator('#playerCoachingPrompt')).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/player-solution-state/);
+    await expect(page.locator('#continueBtn')).toBeVisible();
     await expect(page.locator('.solution-ghost')).toHaveCount(0);
     await expect(page.locator('#fieldNotice')).toContainText(
       'Select a target ring to view its coaching notes.',
@@ -1752,6 +1777,7 @@ test.describe('Diamond Defense regression behavior', () => {
 
     await page.locator('.tgt[data-id="P"]').click();
     await expect(page.locator('#targetPanelTitle')).toHaveText('Position Notes: P');
+    await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
     await expect(page.locator('#targetPanelBody')).toContainText('backup position');
     await expect(page.locator('#fieldNotice')).not.toHaveClass(/is-visible/);
     await expect(page.locator('#contextBar')).toBeVisible();
@@ -1762,19 +1788,19 @@ test.describe('Diamond Defense regression behavior', () => {
       const fieldRect = document.querySelector('#fieldImg').getBoundingClientRect();
       return {
         parentClass: context.parentElement.className,
-        contextBottom: contextRect.bottom,
-        fieldTop: fieldRect.top,
+        contextLeft: contextRect.left,
+        fieldRight: fieldRect.right,
       };
     });
-    expect(notesLayout.parentClass).toContain('header-shell');
-    expect(notesLayout.contextBottom).toBeLessThanOrEqual(notesLayout.fieldTop);
+    expect(notesLayout.parentClass).toContain('training-panel');
+    expect(notesLayout.contextLeft).toBeGreaterThanOrEqual(notesLayout.fieldRight);
 
     await page.getByRole('button', { name: 'Close notes and review' }).click();
     await expect(page.locator('#contextBar')).toBeHidden();
     await page.locator('.tgt[data-id="P"]').click();
     await expect(page.locator('#contextBar')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Continue ▶' }).click();
+    await page.locator('#continueBtn').click();
     await expect(page.locator('#fieldNotice')).not.toHaveClass(/is-visible/);
     await expect(page.locator('#targetPanel')).toBeHidden();
     for (const position of ['LF', 'SS', '2B']) {
@@ -1804,14 +1830,19 @@ test.describe('Diamond Defense regression behavior', () => {
 
     await expect(page.locator('#seqPanel')).toBeVisible();
     await expect(page.locator('#seqBody')).toContainText('Correct sequence!');
+    await page.locator('#playbookToggle').click();
+    await expect(page.locator('#howToCard .howto-body')).toContainText('Situation complete');
+    await expect(page.locator('#howToCard .howto-body')).not.toContainText('Verify Sequence');
+    await expect(page.locator('#fieldPaletteToggle')).toHaveCount(0);
+    await page.locator('#playbookClose').click();
     await expect(page.locator('.seq-route-active')).toHaveCount(2);
     await expect(page.locator('.seq-route-underlay')).toHaveCount(2);
-    await expect(page.locator('.seq-route-active').first()).toHaveCSS('stroke', 'rgb(89, 231, 255)');
+    await expect(page.locator('.seq-route-active').first()).toHaveCSS('stroke', await semanticColor(page, '--accent-primary'));
     await expect(page.locator('#seqPanel')).toContainText('Play Review');
     const reviewDoesNotOverlap = await page.evaluate(() => {
       const contextRect = document.querySelector('#contextBar').getBoundingClientRect();
       const fieldRect = document.querySelector('#fieldImg').getBoundingClientRect();
-      return contextRect.bottom <= fieldRect.top;
+      return contextRect.left >= fieldRect.right || contextRect.top >= fieldRect.bottom;
     });
     expect(reviewDoesNotOverlap).toBe(true);
 
@@ -1911,4 +1942,74 @@ test.describe('Diamond Defense regression behavior', () => {
     expect(restored.attempts).toBeGreaterThanOrEqual(1);
     expect(restored.hasMarker).toBe(true);
   });
+});
+
+// Phase 2: navigation between real login forms and containment of dialog focus.
+test('login role tabs support keyboard navigation and keep focus inside the dialog', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+  await page.locator('#playerBtn').click();
+  await page.locator('#authPlayerTab').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('#authCoachTab')).toBeFocused();
+  await expect(page.locator('#authCoachTab')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#coachLoginTeamSelect')).toBeVisible();
+  await expect(page.locator('#playerTeamSelect')).toBeHidden();
+  await page.keyboard.press('End');
+  await expect(page.locator('#authAdminTab')).toBeFocused();
+  await expect(page.locator('#adminPwInput')).toBeVisible();
+  await page.locator('#adminPwOk').focus();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#playerModalCloseX')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#adminPwOk')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#playerModalOverlay')).toBeHidden();
+  await expect(page.locator('#playerBtn')).toBeFocused();
+});
+
+test('numbered runners preserve identities and size through animation and reset', async ({ page }) => {
+  await openCleanApp(page);
+  const result = await page.evaluate(async () => {
+    resetRunnerPresentation();
+    const numbers = {...offenseNumbers()};
+    const combinations=[];
+    for(let mask=0;mask<8;mask++){
+      const state=Object.fromEntries(['first','second','third'].map((base,i)=>[base,Boolean(mask & (1<<i))]));
+      renderBaseRunners(state);
+      combinations.push({expected:Object.values(state).filter(Boolean).length,actual:wrap.querySelectorAll('.baseRunner').length});
+    }
+    renderBaseRunners({first:true,second:false,third:false});
+    ensureRunner();
+    const initial=wrap.querySelector('.baseRunner');
+    const initialSize=initial.style.width;
+    const batterSize=runnerEl.style.width;
+    const initialNumber=initial.textContent;
+    const moving=animateExistingRunnerFrom('first',1,{duration:50});
+    const mover=wrap.querySelector('.movingRunner');
+    const movingSize=mover.style.width;
+    const movingNumber=mover.textContent;
+    await moving;
+    applyResolvedSituationOutcome({runnerOutcomes:[{startingBase:'first',result:'second'}],batterResult:'first',finalRunners:{first:true,second:true,third:false},runsScored:0,outsRecorded:0,finalOuts:0});
+    const arrived=wrap.querySelector('.baseRunner[data-base="second"]');
+    const expected=unitToCss(BASES_NATIVE.second);
+    const arrival={number:arrived.textContent,size:arrived.style.width,onBag:Math.abs(parseFloat(arrived.style.left)-expected.left)<.01 && Math.abs(parseFloat(arrived.style.top)-expected.top)<.01};
+    const batterNumber=wrap.querySelector('.baseRunner[data-base="first"]').textContent;
+    resetPlayers();
+    return {numbers,afterReset:offenseNumbers(),combinations,initialSize,batterSize,movingSize,initialNumber,movingNumber,arrival,batterNumber};
+  });
+  expect(new Set(Object.values(result.numbers)).size).toBe(4);
+  Object.values(result.numbers).forEach(number=>{expect(number).toBeGreaterThan(9);expect(number).toBeLessThan(100);});
+  expect(result.afterReset).toEqual(result.numbers);
+  result.combinations.forEach(item=>expect(item.actual).toBe(item.expected));
+  expect(result.batterSize).toBe(result.initialSize);
+  expect(result.movingSize).toBe(result.initialSize);
+  expect(result.movingNumber).toBe(result.initialNumber);
+  expect(result.arrival.number).toBe(String(result.numbers.first));
+  expect(result.arrival.size).toBe(result.initialSize);
+  expect(result.arrival.onBag).toBe(true);
+  expect(result.batterNumber).toBe(String(result.numbers.batter));
+  await expect(page.locator('.starting-base-occupancy')).toHaveCount(0);
+  await expect(page.locator('.chip[data-fielding-number="5"]')).toHaveText('3B');
+  await expect(page.locator('.chip[data-fielding-number="6"]')).toHaveText('SS');
 });

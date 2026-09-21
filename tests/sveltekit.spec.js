@@ -4,10 +4,10 @@ test.describe('SvelteKit application boundary', () => {
   test('serves the application metadata and compatibility runtime', async ({ page }) => {
     await page.goto('/');
 
-    await expect(page).toHaveTitle('Diamond Defense');
+    await expect(page).toHaveTitle('Diamond Defence');
     await expect(page.locator('meta[name="description"]').first()).toHaveAttribute(
       'content',
-      'Diamond Defense is a baseball situation simulator and interactive playbook trainer for players and coaches.',
+      'Diamond Defence is a baseball situation simulator and interactive playbook trainer for players and coaches.',
     );
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await expect(page.locator('script[data-diq-runtime="legacy-compatibility"]')).toHaveCount(3);

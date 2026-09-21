@@ -1,3 +1,4 @@
+import { openCoachReview } from '../review/coach-review.js';
 import playerCoachSource from '../../features/player-coach.js?raw';
 import gameEngineSource from '../../game/engine.js?raw';
 import adminSource from '../../admin/admin-tools.js?raw';
@@ -34,6 +35,7 @@ function loadClassicScript(source: string): Promise<void> {
 }
 
 export async function loadLegacyRuntime(): Promise<void> {
+  Object.assign(window, { _diqOpenCoachReview: openCoachReview });
   for (const source of runtimeSources) {
     await loadClassicScript(source);
   }

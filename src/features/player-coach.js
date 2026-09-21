@@ -52,8 +52,8 @@ function showDatabaseUnavailable(error){
     panel = document.createElement('section');
     panel.id = 'databaseUnavailable';
     panel.setAttribute('role', 'alert');
-    panel.style.cssText = 'position:fixed;inset:1rem;z-index:100000;display:grid;place-content:center;text-align:center;padding:2rem;border:1px solid #43e7f4;border-radius:18px;background:rgba(6,18,37,.97);color:#e1f9ff;box-shadow:0 0 40px rgba(67,231,244,.2)';
-    panel.innerHTML = '<div style="max-width:38rem"><h1 style="margin:0 0 .75rem;font-size:1.6rem">Database unavailable</h1><p style="margin:0 0 1rem;line-height:1.5">Diamond Defense needs its SQLite database to load situations, teams, users, and results.</p><p data-database-error style="margin:0 0 1.25rem;color:#a9c8dd"></p><button type="button" style="padding:.7rem 1.1rem;border:0;border-radius:10px;background:#43e7f4;color:#061225;font-weight:800;cursor:pointer">Try again</button></div>';
+    panel.className = 'database-unavailable';
+    panel.innerHTML = '<div><h1>Database unavailable</h1><p>Diamond Defence could not load its teams, accounts, situations and results.</p><p data-database-error></p><button class="btn btn-primary" type="button">Try again</button></div>';
     panel.querySelector('button').addEventListener('click', ()=>window.location.reload());
     document.body.appendChild(panel);
   }
@@ -997,11 +997,11 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
     if(playbook){
       playbook.disabled = Boolean(pending);
-      playbook.title = pending ? 'Complete all assigned practice before opening the Playbook.' : 'Browse the Playbook';
+      playbook.title = pending ? 'Complete all assigned practice before opening the Playbook.' : '';
     }
     if(random){
       random.disabled = !user || Boolean(pending);
-      random.title = pending ? 'Complete all assigned practice before choosing a random situation.' : 'Choose a random situation';
+      random.title = pending ? 'Complete all assigned practice before choosing a random situation.' : '';
     }
     window._diqApplyGameAccess?.();
   }
@@ -1011,6 +1011,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     window.__DIQ_PRACTICE_STATE__ = DIQ_PRACTICE_STATE;
     DIQ_ACTIVE_PRACTICE_ASSIGNMENT_ID = DIQ_PRACTICE_STATE.lockedAssignmentId || '';
     updatePracticeNavigation();
+    window._diqRefreshPlayerPresentation?.();
     if(options.notify && DIQ_PRACTICE_STATE.pendingCount > 0){
       const signature = `${DIQ_AUTH_USER?.id || ''}:${DIQ_PRACTICE_STATE.pendingCount}:${DIQ_PRACTICE_STATE.lockedAssignmentId || ''}`;
       if(signature !== DIQ_PRACTICE_NOTICE_SIGNATURE){
@@ -1045,18 +1046,18 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(state.lockedAssignmentId && state.nextSituation){
       title.textContent = options.interrupted ? 'Attempt ended' : 'Situation complete';
       message.textContent = `Next: ${practiceSituationLabel(state.nextSituation)}`;
-      button.textContent = 'Continue to next situation';
+      button.textContent = 'Next assigned situation';
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'continue', assignmentId:state.lockedAssignmentId };
     }else if(state.pendingCount > 0){
       title.textContent = 'Assignment complete';
       message.textContent = 'Choose your next pending practice assignment.';
-      button.textContent = 'View Your Practice';
+      button.textContent = 'Back to Your Practice';
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'practice-list' };
     }else{
-      title.textContent = 'All practice complete';
-      message.textContent = 'Free play, Playbook, and Random are now available.';
-      button.textContent = 'Continue to free play';
-      DIQ_PRACTICE_ADVANCE_ACTION = { type:'dismiss' };
+      title.textContent = 'Practice complete';
+      message.textContent = 'You have completed all assigned situations.';
+      button.textContent = 'Back to Your Practice';
+      DIQ_PRACTICE_ADVANCE_ACTION = { type:'practice-list' };
     }
     panel.classList.remove('hidden');
   }
@@ -1851,7 +1852,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(!attempts.length){
       coachResultsList.innerHTML = '<div class="coach-results-empty">No saved player results were found.</div>';
     }else{
-      const rows = attempts.map(attempt=>{
+      const rows = attempts.map((attempt, attemptIndex)=>{
         const values = coachReviewValues(attempt);
         const positionState = values.positionResult === 'PASS'
           ? 'success'
@@ -1863,8 +1864,8 @@ function computeRosterPlayerId(teamObj, playerObj){
             : '',
           attempt.primaryCategory || '',
         ].filter(Boolean).join(' · ');
-        return `<tr>
-          <td class="coach-review-datetime">${escapeHtml(values.dateTime)}</td>
+        return `<tr data-attempt-id="${escapeHtml(attempt.id || '')}">
+          <td class="coach-review-datetime">${escapeHtml(values.dateTime)}<button type="button" class="attempt-review-open" data-attempt-index="${attemptIndex}">Review attempt</button></td>
           ${selectedPlayer ? '' : `<td><span class="coach-review-primary">#${escapeHtml(attempt.playerNumber || '—')} ${escapeHtml(attempt.playerName || '')}</span></td>`}
           <td><span class="coach-review-primary">${escapeHtml(attempt.situationTitle || 'Situation')}</span>${situationMetadata ? `<small>${escapeHtml(situationMetadata)}</small>` : ''}</td>
           <td class="coach-review-context">${coachAttemptContext(attempt)}</td>
@@ -1889,6 +1890,12 @@ function computeRosterPlayerId(teamObj, playerObj){
         </table>
       </div>`;
     }
+    coachResultsList.querySelectorAll('[data-attempt-index]').forEach(button => {
+      button.addEventListener('click', () => {
+        const attempt = attempts[Number(button.dataset.attemptIndex)];
+        if (attempt) window._diqOpenCoachReview?.(attempt, document.getElementById('fieldImg').src, BASES_NATIVE);
+      });
+    });
     coachResultsPagination.innerHTML = `
       <button class="btn btn-ghost" type="button" data-page="previous" ${report.hasPrevious ? '' : 'disabled'}>← Previous</button>
       <span>Page ${report.page} of ${report.totalPages} · ${report.total} result${report.total === 1 ? '' : 's'}</span>
@@ -2479,7 +2486,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
   const accountSecurityStatus = document.getElementById('accountSecurityStatus');
   const accountLogoutAll = document.getElementById('accountLogoutAll');
 
-  function setAuthRole(role){
+  function setAuthRole(role, { focusForm = true } = {}){
     const safeRole = ['player','coach','admin'].includes(role) ? role : 'player';
     authRoleTabs.forEach(tab=>{
       const selected = tab.dataset.authRole === safeRole;
@@ -2502,7 +2509,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
         : safeRole === 'coach'
           ? document.getElementById('coachLoginTeamSelect')
           : adminPassword;
-      focusTarget?.focus?.();
+      if(focusForm) focusTarget?.focus?.();
     });
     if(safeRole !== 'player' && playerPassword) playerPassword.value = '';
     if(safeRole !== 'coach' && coachPassword) coachPassword.value = '';
@@ -2662,12 +2669,31 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       playerModalCloseX.addEventListener("click", closePlayerModal);
     }
     authRoleTabs.forEach(tab=>{
+      tab.setAttribute('aria-controls', authRoleViews.find(view=>view.dataset.authView === tab.dataset.authRole)?.id || '');
       tab.addEventListener('click', ()=>setAuthRole(tab.dataset.authRole || 'player'));
+      tab.addEventListener('keydown', event=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+        event.preventDefault();
+        const index = authRoleTabs.indexOf(tab);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? authRoleTabs.length - 1
+          : (index + (event.key === 'ArrowRight' ? 1 : -1) + authRoleTabs.length) % authRoleTabs.length;
+        setAuthRole(authRoleTabs[next].dataset.authRole, { focusForm:false });
+        authRoleTabs[next].focus();
+      });
     });
     playerModalOverlay.addEventListener("click", event=>{
       if(event.target === playerModalOverlay) closePlayerModal();
     });
     document.addEventListener("keydown", event=>{
+      if(event.key === 'Tab' && !playerModalOverlay.classList.contains('hidden')){
+        const controls = Array.from(playerModalOverlay.querySelectorAll('button, input, select, [tabindex]'))
+          .filter(el=>!el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+        const first = controls[0], last = controls[controls.length - 1];
+        if(first && (event.shiftKey ? document.activeElement === first : document.activeElement === last)){
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        }
+      }
       if(event.key === "Escape" && !playerModalOverlay.classList.contains("hidden")){
         closePlayerModal();
       }
@@ -2793,6 +2819,17 @@ function updatePlayerHeaderButton(){
       menu.classList.add('hidden');
       menu.setAttribute('aria-hidden', 'true');
     }
+    const avatar = document.getElementById('accountAvatar');
+    const roleLabel = document.getElementById('accountTriggerRole');
+    if(avatar){
+      avatar.classList.toggle('hidden', !user);
+      const name = String(user?.displayName || user?.role || '').trim();
+      avatar.textContent = name.split(/\s+/).filter(Boolean).slice(0, 2).map(part=>Array.from(part)[0]).join('').toUpperCase();
+    }
+    if(roleLabel){
+      roleLabel.classList.toggle('hidden', !user);
+      roleLabel.textContent = user ? (user.role === 'admin' ? 'Admin' : user.role === 'coach' ? 'Coach' : 'Player') : '';
+    }
     if(menuName) menuName.textContent = user?.displayName || '';
     if(menuMeta) menuMeta.textContent = authMenuMeta(user);
     if(!user) closeAccountMenu();
@@ -2809,7 +2846,7 @@ function updatePlayerHeaderButton(){
       const visible = Boolean(user?.role === 'player' && !user?.mustChangePassword);
       practice.classList.toggle('hidden', !visible);
       practice.setAttribute('aria-hidden', String(!visible));
-      practice.title = visible ? 'Open your assigned practice' : '';
+      practice.removeAttribute('title');
     }
     if(tools){
       tools.classList.toggle('hidden', !staff);
@@ -2824,6 +2861,7 @@ function updatePlayerHeaderButton(){
     }
     window._diqApplyGameAccess?.();
     updatePracticeNavigation();
+    window._diqRefreshPlayerPresentation?.();
   }
 
   function setAccountSecurityStatus(message='', state=''){
@@ -3240,6 +3278,9 @@ function beginPlayAttempt(situation){
       revision:Number.isInteger(Number(situation?.revision)) ? Number(situation.revision) : null,
       outs:situation?.outs ?? null,
       runnersOn:copyAttemptValue(situation?.runnersOn || null),
+      targets:copyAttemptValue(situation?.targets || {}),
+      hit:copyAttemptValue(situation?.hit || null),
+      hitType:situation?.hitType || null,
       playOutcome:copyAttemptValue(situation?.playOutcome || null),
       runnerOutcomes:copyAttemptValue(situation?.runnerOutcomes || []),
       playSeq:copyAttemptValue(situation?.playSeq || []),
@@ -3312,6 +3353,8 @@ function finalizePlayAttempt(outcome, reason='', options={}){
   if(!active || active.finalized) return Promise.resolve(null);
   active.finalized = true;
   _activePlayAttempt = null;
+  _completedFreePlay = outcome !== 'abandoned' && !active.assignmentId;
+  window._diqRefreshPlayerPresentation?.();
 
   const completedAt = new Date().toISOString();
   const stages = copyAttemptValue(active.sequenceStages || []);
@@ -3387,44 +3430,46 @@ function safeSetValue(el, val){ if (el) el.value = String(val ?? ''); }
 const lerp=(a,b,t)=>a+(b-a)*t;
 function quadBezier(p0,p1,p2,t){return {x:(1-t)*(1-t)*p0.x+2*(1-t)*t*p1.x+t*t*p2.x,y:(1-t)*(1-t)*p0.y+2*(1-t)*t*p1.y+t*t*p2.y};}
 
-// --- How To Play templates + renderer ---
-const HOWTO_PHASE1_HTML = `
-  <ol style="margin:6px 0 0 1.2em">
-    <li>Log in, then open <em>Playbook</em> to browse situations or use <em>Random</em> for a quick selection.</li>
-    <li>Confirm the selected situation’s S-number and title, then review Runners and Outs in the header.</li>
-    <li>Press <em>Start Situation</em> to begin.</li>
-    <li>Drag the 9 player chips into the correct defensive positions.</li>
-    <li>Press <em>Check Positions</em> to verify. You have 3 tries to get them correct.</li>
-    <li>Select <em>Watch Solution</em> to see every fielder move from the standard alignment to the correct position.</li>
-    <li>Faint tokens mark missed submitted positions. Select target rings for coaching notes, then continue when a throw sequence is included.</li>
-  </ol>
-  <div class="hint" style="margin-top:8px">
-    Correct chips display within a highlighted target ring.
-  </div>
-`;
-
-const HOWTO_PHASE2_HTML = `
-  <ol style="margin:6px 0 0 1.2em">
-    <li>Select <em>Continue</em> to begin the throw-sequence challenge.</li>
-    <li>Select the players (chips) in the correct throw order to execute the play.</li>
-    <li>Click chips to add them to your sequence; click again to unselect (unless a chip is already locked as correct).</li>
-    <li>Press <em>Verify Sequence</em> to check your picks. You have 3 tries.</li>
-  </ol>
-  <div class="hint" style="margin-top:8px">
-    Correct chips in the proper order lock and remain highlighted.
-  </div>
-`;
-
-// Cache refs once
+// Guide follows current screen and play state instead of retaining the previous phase.
 const howToDetails = document.getElementById('howToDetails');
-const howToBody    = document.querySelector('#howToCard .howto-body');
-
-function setHowToPhase(phase /* 'p1' | 'p2' */){
-  if (!howToBody) return;
-  // preserve open/closed state
-  const wasOpen = !!(howToDetails && howToDetails.open);
-  howToBody.innerHTML = (phase === 'p2') ? HOWTO_PHASE2_HTML : HOWTO_PHASE1_HTML;
-  if (howToDetails && wasOpen) howToDetails.open = true;
+const howToBody = document.querySelector('#howToCard .howto-body');
+function setHowToPhase(){ refreshGuideText(); }
+function refreshGuideText(){
+  if(!howToBody) return;
+  const practice = document.getElementById('practiceWorkspace');
+  const beforeStart = !gameActive && !phase2Active && !startBtn?.disabled;
+  const completed = !beforeStart && _phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary);
+  const solution = Boolean(_solutionReview?.watched);
+  const hasSequence = Boolean(currentSituation?.playSeq?.length);
+  let stage, steps;
+  if(practice && !practice.classList.contains('hidden')){
+    stage = 'Your Practice';
+    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Back to field to return to the situation. Playbook and Random are available when required practice is complete.'];
+  } else if(completed){
+    stage = 'Situation complete';
+    steps = ['Review the result and the expected throwing order in Play Review.', 'Use Reset to try this situation again, or choose another available situation.', 'For assigned practice, use the next-situation button when it appears.'];
+  } else if(phase2Active){
+    stage = 'Choose the throw sequence';
+    steps = ['Select the blue fielders in throwing order.', 'Select an unlocked chip again to remove it from your picks. Correct picks remain locked.', 'Select Verify Sequence to check your picks. Checks left and Time left show what remains.'];
+  } else if(wrap?.dataset.solutionState === 'animating'){
+    stage = 'Watching the solution';
+    steps = ['Close Guide to resume the solution animation.', 'When it finishes, select a target ring or its position label for coaching notes.'];
+  } else if(solution){
+    stage = hasSequence ? 'Review positions' : 'Positioning complete';
+    steps = ['Select a target ring or its position label to read coaching notes.', 'Dashed red ghosts mark incorrect submitted positions. Ivory rings show the solution.', hasSequence ? 'Select Continue to Throw Sequence when you are ready.' : 'This situation has no throw sequence. Use Reset to retry or choose another available situation.'];
+  } else if(!beforeStart && _phase1Summary){
+    stage = 'Review positions';
+    steps = ['Your positioning check is finished. The Result shows your recorded score.', 'Select Watch Solution to see the correct defensive positions.', 'Coaching notes become available after the solution finishes.'];
+  } else if(!beforeStart && gameActive){
+    stage = 'Position the defense';
+    steps = ['Drag the nine blue fielders into position. Gold runners are not draggable.', 'Select Check Positions to check your placement.', 'Use the remaining checks to adjust your fielders. The timer and animation pause while Guide is open.'];
+  } else {
+    stage = 'Getting started';
+    steps = ['Log in, then open Playbook to choose a situation, use Random, or open Your Practice for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
+  }
+  const html = `<p><strong>${stage}</strong></p><ol>${steps.map(text=>`<li>${text}</li>`).join('')}</ol>`;
+  if(howToBody.innerHTML !== html) howToBody.innerHTML = html;
+  document.body.classList.toggle('guide-play-paused', Boolean(_timerId || playFrames.size));
 }
 
 function getSituationByKey(key){ return (SITUATIONS || []).find(s => s.key === key) || null; }
@@ -3487,8 +3532,8 @@ function showSeqPanel(textHTML){
 
   // Build note (if any) from the current situation
   const note = (currentSituation && typeof currentSituation.seqNote === 'string' && currentSituation.seqNote.trim())
-    ? `<div style="margin-top:10px;padding:8px;border:1px dashed #cbd5e1;border-radius:8px;background:#f8fafc">
-         <div style="font-weight:800;color:#334155;margin-bottom:4px">Coach Note</div>
+    ? `<div class="sequence-coach-note">
+         <strong>Coach Note</strong>
          <div style="white-space:pre-wrap">${currentSituation.seqNote.trim().replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</div>
        </div>`
     : '';
@@ -3773,7 +3818,7 @@ function wireSeqBuilderOnce(){
 
 // Remove any in-progress Phase 2 sequence-throw visualization (ball + trail + RAF)
 function cleanupSeqThrowViz(){
-  try{ if (_seqAnimRaf){ cancelAnimationFrame(_seqAnimRaf); } }catch{}
+  try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
   _seqAnimRaf = null;
 
   if (_seqTrail && _seqTrail.parentNode) _seqTrail.remove();
@@ -3813,6 +3858,7 @@ function startTimer(seconds = TIMER_START_SECS){
   _timerSecs = Math.max(0, seconds|0);
   updateTimerHud();
   _timerId = setInterval(()=>{
+    if(guidePausedAt !== null) return;
     _timerSecs = Math.max(0, _timerSecs - 1);
     updateTimerHud();
     if (_timerSecs === 0){
@@ -3956,9 +4002,9 @@ function setChipPickIndex(el, n){
     fontSize: '11px',
     lineHeight: '16px',
     textAlign: 'center',
-    color: '#0b1321',
-    background: '#f1f5f9',
-    border: '1px solid rgba(0,0,0,.25)',
+    color: 'var(--text-on-accent)',
+    background: 'var(--accent-primary)',
+    border: '1px solid var(--runner-highlight)',
     boxShadow: '0 1px 2px rgba(0,0,0,.25)',
     pointerEvents: 'none',
     userSelect: 'none',
@@ -4109,7 +4155,7 @@ function endPhase2(success = true) {
 
   // === Teaching moment: animate the intended relay path ===
   if (Array.isArray(seqOrder) && seqOrder.length >= 2) {
-    setTimeout(() => {
+    playDelay(() => {
       try { animateSequenceThrows(seqOrder); } catch {}
     }, 350);
   }
@@ -4202,7 +4248,7 @@ function sizeOverlays(){
 
   // 5) Ball graphics: reset and rebuild SVG to match new viewBox
   const restoreContextHitPath = ballSvg?.classList.contains('is-context-hit-path');
-  if (animReq){ cancelAnimationFrame(animReq); animReq = null; }
+  if (animReq){ cancelPlayFrame(animReq); animReq = null; }
   buildBallGraphics(); // also calls syncBallToHit()
   if (restoreContextHitPath && currentSituation){
     animateHit(currentSituation.hitType, { duration:0, persistPath:true });
@@ -4262,9 +4308,8 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
     const svg   = trail.querySelector('svg');
     const svgNS = 'http://www.w3.org/2000/svg';
 
-    const ROUTE_COLOR = '#59e7ff';
-    const ROUTE_EDGE = '#061225';
-    const LINE_WIDTH = clamp(Math.round(Math.min(imgRect.width, imgRect.height) * 0.006), 4, 7);
+    const ROUTE_COLOR = 'var(--accent-primary)';
+    const LINE_WIDTH = clamp(Math.round(Math.min(imgRect.width, imgRect.height) * 0.0035), 2.5, 4);
 
     function getOrMakeMarker(){
       const id = 'diamondDefenseRouteArrow';
@@ -4280,17 +4325,17 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
       m = document.createElementNS(svgNS, 'marker');
       m.setAttribute('id', id);
       m.setAttribute('markerUnits', 'userSpaceOnUse');
-      m.setAttribute('markerWidth', '22');
-      m.setAttribute('markerHeight', '18');
-      m.setAttribute('refX', '20');
-      m.setAttribute('refY', '9');
+      m.setAttribute('markerWidth', '16');
+      m.setAttribute('markerHeight', '12');
+      m.setAttribute('refX', '15');
+      m.setAttribute('refY', '6');
       m.setAttribute('orient', 'auto');
 
       const tri = document.createElementNS(svgNS, 'path');
-      tri.setAttribute('d', 'M1,1 L21,9 L1,17 Z');
+      tri.setAttribute('d', 'M1,1 L15,6 L1,11 L4,6 Z');
       tri.style.fill = ROUTE_COLOR;
-      tri.style.stroke = ROUTE_EDGE;
-      tri.style.strokeWidth = '2';
+      tri.style.stroke = 'none';
+      tri.style.strokeWidth = '1';
       m.appendChild(tri);
       defs.appendChild(m);
       return m;
@@ -4323,7 +4368,7 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
     const underlay = document.createElementNS(svgNS, 'path');
     underlay.setAttribute('d', route);
     underlay.classList.add('seq-route-underlay');
-    underlay.style.strokeWidth = String(LINE_WIDTH + 5);
+    underlay.style.strokeWidth = String(LINE_WIDTH + 2);
     svg.appendChild(underlay);
 
     const path = document.createElementNS(svgNS, 'path');
@@ -4348,7 +4393,7 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
     const dist = Math.hypot(B.x - A.x, B.y - A.y);
     const duration = clamp(420 + dist * 0.45, 380, 1100);
 
-    const t0 = performance.now();
+    const t0 = playNow();
     function step(now){
       const t = clamp((now - t0) / duration, 0, 1);
       const e = 1 - Math.pow(1 - t, 3);
@@ -4358,7 +4403,7 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
           ballEl.style.left = (A.x + (B.x - A.x) * e) + 'px';
           ballEl.style.top  = (A.y + (B.y - A.y) * e) + 'px';
         }
-        _seqAnimRaf = requestAnimationFrame(step);
+        _seqAnimRaf = requestPlayFrame(step);
       } else {
         if (ballEl){
           ballEl.style.left = B.x + 'px';
@@ -4367,7 +4412,7 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
         resolve();
       }
     }
-    _seqAnimRaf = requestAnimationFrame(step);
+    _seqAnimRaf = requestPlayFrame(step);
   });
 }
 
@@ -4375,7 +4420,7 @@ function animateThrowLeg(fromPt, toPt, _color, visualOffset){
 /** Animate throws along the provided order of POS_IDS.
  *  Uses distinct colors and offsets duplicate legs to avoid stacking. */
 async function animateSequenceThrows(order){
-  try{ if (_seqAnimRaf){ cancelAnimationFrame(_seqAnimRaf); } }catch{}
+  try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
   _seqAnimRaf = null;
 
   var pts = (order || [])
@@ -4420,12 +4465,12 @@ async function animateSequenceThrows(order){
 
       chain = chain
         .then(function(){ pulseChip(a.id); return animateThrowLeg(a.pt, b.pt, null, vOff); })
-        .then(function(){ pulseChip(b.id); return new Promise(r => setTimeout(r, 120)); });
+        .then(function(){ pulseChip(b.id); return new Promise(r => playDelay(r, 120)); });
     })(i);
   }
 
   chain.finally(function(){
-    try{ if (_seqAnimRaf){ cancelAnimationFrame(_seqAnimRaf); } }catch{}
+    try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
     _seqAnimRaf = null;
   });
 }
@@ -4440,7 +4485,7 @@ function showSeqSuccessPanel(){
   const seqStr = seqArr.length ? seqArr.join(' \u2192 ') : '—';
 
   showSeqPanel(`
-    <div style="color:#16a34a;font-weight:700">✅ Correct sequence!</div>
+    <div class="training-feedback is-success">✅ Correct sequence!</div>
     <div class="hint" style="margin-top:6px">Expected: <b>${seqStr}</b></div>
   `);
 }
@@ -4450,7 +4495,7 @@ function showSeqSuccessPanel(){
 function showSeqFailPanel() {
   const seqStr = seqOrder.join(' → ') || '—';
   showSeqPanel(`
-    <div style="color:#dc2626;font-weight:700">❌ Incorrect sequence</div>
+    <div class="training-feedback is-error">❌ Incorrect sequence</div>
     <div class="hint" style="margin-top:6px">Expected: <b>${seqStr}</b></div>
   `);
 }

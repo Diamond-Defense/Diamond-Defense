@@ -44,6 +44,47 @@ let ballSvg=null, ballPath=null, ballEl=null, hitMarker=null;
 let animReq=null;
 
 let liveRunners = { first:false, second:false, third:false };
+const FIELDING_NUMBERS = {P:1,C:2,'1B':3,'2B':4,'3B':5,SS:6,LF:7,CF:8,RF:9};
+const offenseNumbersBySituation = new Map();
+let runnerIdentityAtBase = {first:'first',second:'second',third:'third'};
+let runnersAtDestination = new Set();
+function offenseNumbers(key=currentSituation?.key || 'default'){
+  if(!offenseNumbersBySituation.has(key)){
+    const pool = Array.from({length:90},(_,i)=>i+10);
+    const picked = [];
+    for(let i=0;i<4;i++) picked.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+    offenseNumbersBySituation.set(key,Object.fromEntries(['batter','first','second','third'].map((id,i)=>[id,picked[i]])));
+  }
+  return offenseNumbersBySituation.get(key);
+}
+window._diqOffenseNumbers = offenseNumbers;
+function labelOffensiveChip(element, identity){
+  element.dataset.runnerIdentity = identity;
+  element.setAttribute('aria-label', `Runner ${offenseNumbers()[identity]}`);
+  let label = element.querySelector('.rlabel');
+  if(!label){label=document.createElement('span');label.className='rlabel';element.appendChild(label);}
+  label.textContent=String(offenseNumbers()[identity]);
+}
+function resetRunnerPresentation(){
+  runnerIdentityAtBase={first:'first',second:'second',third:'third'};
+  runnersAtDestination=new Set();
+}
+function applyRunnerIdentities(resolution, includeBatter=false){
+  const mapping={};
+  const arrived=new Set();
+  for(const outcome of resolution?.runnerOutcomes || []){
+    const destination=outcome.result==='hold'?outcome.startingBase:outcome.result;
+    if(['first','second','third'].includes(destination)){
+      mapping[destination]=outcome.startingBase;
+      if(outcome.result!=='hold')arrived.add(destination);
+    }
+  }
+  if(includeBatter && ['first','second','third'].includes(resolution?.batterResult)){
+    mapping[resolution.batterResult]='batter';arrived.add(resolution.batterResult);
+  }
+  runnerIdentityAtBase=mapping;runnersAtDestination=arrived;
+}
+
 let _animSuppressedBases = new Set();
 
 let _wired = false;
@@ -53,6 +94,7 @@ let _roundHasStarted = false;
 let phase2Active = false;
 let seqOrder = [];     // array of POS_IDS e.g. ['LF','SS','2B','C']
 let seqIndex = 0;      // current expected index
+let _completedFreePlay = false;
 let _phase2Ended = false;   // prevents target panel from showing after Phase 2
 
 const PHASE2_MAX_TRIES = 3;
@@ -189,7 +231,61 @@ function applyGameAccess(){
 
 window._diqApplyGameAccess = applyGameAccess;
 
+// Game-only time excludes time spent reading Guide.
+let guidePausedAt = null, guidePausedTotal = 0, playFrameId = 0;
+const playFrames = new Map();
+const guideInertElements = new Map();
+function playNow(){ return (guidePausedAt ?? performance.now()) - guidePausedTotal; }
+function requestPlayFrame(callback){
+  const id = --playFrameId;
+  const tick = () => {
+    if(!playFrames.has(id)) return;
+    if(guidePausedAt !== null){ playFrames.set(id, requestAnimationFrame(tick)); return; }
+    playFrames.delete(id);
+    callback(playNow());
+  };
+  playFrames.set(id, requestAnimationFrame(tick));
+  return id;
+}
+function cancelPlayFrame(id){
+  if(playFrames.has(id)){ cancelAnimationFrame(playFrames.get(id)); playFrames.delete(id); }
+  else cancelAnimationFrame(id);
+}
+function playDelay(callback, milliseconds){
+  const start = playNow();
+  const tick = now => { if(now-start >= milliseconds) callback(); else requestPlayFrame(tick); };
+  return requestPlayFrame(tick);
+}
+function setGuidePaused(open){
+  if(open) refreshGuideText();
+  if(open && guidePausedAt === null){
+    guidePausedAt = performance.now();
+    document.body.classList.add('guide-open');
+    document.querySelectorAll('#appWorkspace > :not(#playbookRail), #appHeader button:not(#playbookToggle)').forEach(el=>{
+      guideInertElements.set(el, el.inert); el.inert = true;
+    });
+    document.getElementById('playbookClose')?.focus();
+  } else if(!open && guidePausedAt !== null){
+    guidePausedTotal += performance.now()-guidePausedAt;
+    guidePausedAt = null;
+    document.body.classList.remove('guide-open');
+    guideInertElements.forEach((value,el)=>{ el.inert=value; });
+    guideInertElements.clear();
+    document.getElementById('playbookToggle')?.focus();
+  }
+}
+document.addEventListener('keydown', event=>{
+  if(guidePausedAt === null) return;
+  if(event.key === 'Escape'){ event.preventDefault(); closeGuideRail(); }
+  if(event.key === 'Tab'){
+    const items = [...document.querySelectorAll('#playbookRail button, #playbookRail summary, #playbookRail a[href]')].filter(el=>el.getClientRects().length && !el.disabled);
+    const first=items[0], last=items.at(-1);
+    if(first && event.shiftKey && document.activeElement===first){event.preventDefault();last.focus();}
+    else if(last && !event.shiftKey && document.activeElement===last){event.preventDefault();first.focus();}
+  }
+});
 function closeGuideRail(){
+  setGuidePaused(false);
   playbookRail?.classList.remove('is-open');
   document.getElementById('playbookToggle')?.setAttribute('aria-expanded', 'false');
 }
@@ -207,7 +303,7 @@ const ensureHeaderGrouping = () => {
   }
 
   const ensureGroup = (className, parent) => {
-    let group = shell.querySelector(`.${className}`);
+    let group = document.querySelector(`.${className}`);
     if (!group) {
       group = document.createElement('div');
       group.className = className;
@@ -219,6 +315,8 @@ const ensureHeaderGrouping = () => {
   const primary = ensureGroup('header-primary', shell);
   const brand = ensureGroup('brand-area', primary);
   const utilityActions = ensureGroup('utility-actions', primary);
+  utilityActions.setAttribute('role', 'navigation');
+  utilityActions.setAttribute('aria-label', 'Application');
   const accountActions = ensureGroup('account-actions', primary);
   const toolbar = ensureGroup('game-toolbar', shell);
   const situationControls = ensureGroup('situation-controls', toolbar);
@@ -249,7 +347,7 @@ const ensureHeaderGrouping = () => {
     const icon = document.createElement('img');
     icon.alt = '';
     icon.decoding = 'async';
-    icon.src = document.querySelector('link[data-diamond-defense-icon]')?.href || './diamond-defense-app-icon.png';
+    icon.src = document.querySelector('link[data-diamond-defense-icon]')?.href || './src/lib/assets/diamond-defence-dd.svg';
     mark.appendChild(icon);
     brand.appendChild(mark);
   }
@@ -263,7 +361,7 @@ const ensureHeaderGrouping = () => {
 
   const h1 = header.querySelector('h1');
   if (h1) {
-    h1.textContent = 'Diamond Defense';
+    h1.innerHTML = '<span>Diamond</span> <span>Defence</span>';
     brandCopy.appendChild(h1);
   }
   if (!brandCopy.querySelector('.brand-tagline')) {
@@ -315,7 +413,17 @@ const ensureHeaderGrouping = () => {
       chevron.className = 'account-menu-chevron';
       chevron.setAttribute('aria-hidden', 'true');
       chevron.textContent = '⌄';
-      playerButton.replaceChildren(label, chevron);
+      const avatar = document.createElement('span');
+      avatar.id = 'accountAvatar';
+      avatar.className = 'account-avatar hidden';
+      avatar.setAttribute('aria-hidden', 'true');
+      const identity = document.createElement('span');
+      identity.className = 'account-trigger-identity';
+      const role = document.createElement('span');
+      role.id = 'accountTriggerRole';
+      role.className = 'account-trigger-role hidden';
+      identity.append(label, role);
+      playerButton.replaceChildren(avatar, identity, chevron);
     }
     accountActions.appendChild(playerButton);
   }
@@ -470,6 +578,7 @@ const ensureHeaderGrouping = () => {
       }
       playbookRail?.classList.toggle('is-open', open);
       playbookToggle.setAttribute('aria-expanded', String(open));
+      setGuidePaused(open);
     });
   }
   const playbookClose = document.getElementById('playbookClose');
@@ -487,6 +596,71 @@ const ensureHeaderGrouping = () => {
     });
   }
 
+  // Reparent the original controls, retaining IDs, listeners and state-owned visibility.
+  // These groups can already be outside the header when shell setup runs again.
+  const trainingHud = document.getElementById('trainingHud');
+  const trainingPanel = document.getElementById('trainingPanel');
+  const trainingSituation = document.getElementById('trainingSituation');
+  const trainingMetrics = document.getElementById('trainingMetrics');
+  const trainingActions = document.getElementById('trainingActions');
+  const trainingHelp = document.getElementById('trainingHelp');
+  if (trainingHud && trainingPanel && trainingSituation && trainingMetrics && trainingActions && trainingHelp) {
+    trainingHud.appendChild(statusStrip);
+    const description = document.getElementById('descHud');
+    if (description) trainingSituation.appendChild(description);
+    if (contextBar) trainingSituation.after(contextBar);
+    const metrics = document.getElementById('hud');
+    if (metrics) trainingMetrics.appendChild(metrics);
+    trainingActions.appendChild(gameControls);
+    const advance = document.getElementById('practiceAdvancePanel');
+    if (advance) trainingPanel.appendChild(advance);
+    const notice = document.getElementById('fieldNotice');
+    if (notice) trainingHelp.appendChild(notice);
+  }
+
+  // Keep the original navigation available when practice/review replaces the board.
+  let navigationRail = document.getElementById('trainingNavigation');
+  if (!navigationRail) {
+    navigationRail = document.createElement('div');
+    navigationRail.id = 'trainingNavigation';
+    navigationRail.className = 'training-navigation';
+    shell.prepend(navigationRail);
+    const caption = document.createElement('span');
+    caption.className = 'training-navigation-caption';
+    caption.textContent = 'Train smarter. Defend better.';
+    navigationRail.appendChild(caption);
+  }
+  navigationRail.prepend(brand);
+  brand.after(situationControls);
+  situationControls.after(utilityActions);
+  let workspaceHeading = document.getElementById('trainingWorkspaceHeading');
+  if (!workspaceHeading) {
+    workspaceHeading = document.createElement('div');
+    workspaceHeading.id = 'trainingWorkspaceHeading';
+    workspaceHeading.className = 'training-workspace-heading';
+    workspaceHeading.innerHTML = '<span class="eyebrow">Diamond Defence</span><strong>Training workspace</strong>';
+    shell.appendChild(workspaceHeading);
+  }
+  // Decorative HUD symbols mirror the existing text values for accessibility.
+  for (const [badgeId, className, labels] of [
+    ['runnersBadge', 'training-base-map', ['first', 'second', 'third']],
+    ['outsHud', 'training-out-map', ['1', '2']],
+  ]) {
+    const badge = document.getElementById(badgeId);
+    if (badge && !badge.querySelector(`.${className}`)) {
+      const map = document.createElement('span');
+      map.className = className;
+      map.setAttribute('aria-hidden', 'true');
+      labels.forEach(label => {
+        const marker = document.createElement('i');
+        marker.dataset.marker = label;
+        map.appendChild(marker);
+      });
+      badge.appendChild(map);
+    }
+  }
+
+  installPlayerPresentation();
   const legacyActions = header.querySelector(':scope > .header-actions');
   if (legacyActions && !legacyActions.children.length) legacyActions.remove();
 };
@@ -494,6 +668,7 @@ const ensureHeaderGrouping = () => {
 function openPlaybookRail(){
   playbookRail?.classList.add('is-open');
   document.getElementById('playbookToggle')?.setAttribute('aria-expanded', 'true');
+  setGuidePaused(true);
 }
 
 function updateShellMetrics(){
@@ -813,10 +988,10 @@ function nativeToCssPoint(pt){ const css=unitToCss(pt); return { x:css.left, y:c
 
 function updateChipScale(){
   const base = Math.min(imgRect.width, imgRect.height);
-  const size = clamp(Math.round(base * 0.045), 22, 38);
+  const size = clamp(Math.round(base * 0.052), 26, 44);
   CHIP_PX = size;
-  const fz = clamp(Math.round(size * 0.40), 10, 14);
-  wrap.style.setProperty('--chip-size', size + 'px');
+  const fz = clamp(Math.round(size * 0.40), 11, 16);
+  wrap.style.setProperty('--chip-size', Math.round(size * 0.9) + 'px');
   wrap.style.setProperty('--chip-font', fz + 'px');
 }
 
@@ -863,8 +1038,8 @@ window.addEventListener('orientationchange', updateDescriptionHudText);
 // Increased starting sizes; still scale down/up responsively
 const BASE_MARKER_SIZES = {
   ball:40,
-  runner:50,      // animated batter
-  baseRunner:50,  // static on-base runners
+  runner:64,      // animated batter
+  baseRunner:64,  // static and moving base runners
   hit:40
 };
 
@@ -881,7 +1056,7 @@ function scaleMarkers(){
   const s = uiScale();
   const sizePx = (base, min=8, max=28) => clamp(Math.round(base * s), min, max);
 
-  wrap.querySelectorAll('.runner .rlabel, .baseRunner .rlabel').forEach(el=>{
+  wrap.querySelectorAll('.runner .rlabel, .baseRunner .rlabel, .movingRunner .rlabel').forEach(el=>{
     const s = uiScale();
     el.style.fontSize = clamp(Math.round(13 * s * 1.05), 11, 18) + 'px';
   });
@@ -898,15 +1073,16 @@ function scaleMarkers(){
 
   // Animated batter
   if (runnerEl){
-    const d = sizePx(BASE_MARKER_SIZES.runner, 8, 24);
+    const d = sizePx(BASE_MARKER_SIZES.runner, 25, 62);
     runnerEl.style.width  = d + 'px';
     runnerEl.style.height = d + 'px';
   }
 
+
   // Static + moving base runners
   if (wrap){
     wrap.querySelectorAll('.baseRunner, .movingRunner').forEach(el=>{
-      const d = sizePx(BASE_MARKER_SIZES.baseRunner, 12, 48);
+      const d = sizePx(BASE_MARKER_SIZES.baseRunner, 25, 62);
       el.style.width  = d + 'px';
       el.style.height = d + 'px';
     });
@@ -945,6 +1121,8 @@ function buildTokens(){
 
     el.className = `chip ${group}`;
     el.textContent = id;
+    el.dataset.fieldingNumber = String(FIELDING_NUMBERS[id]);
+    el.setAttribute('aria-label', `${id}, fielding position ${FIELDING_NUMBERS[id]}`);
     wrap.appendChild(el);
 
     // pick a start from saved map (if any), else DEFAULT_STARTS
@@ -1160,6 +1338,7 @@ function showTargetInstruction(){
 function enableTargetSelection(){
   getAllRings().forEach(ring=>{
     ring.classList.add('selectable');           // visual affordance
+    ring.title = `Select ${ring.dataset.id} for coaching notes`;
     ring.addEventListener('click', onRingClick);
   });
 
@@ -1177,6 +1356,7 @@ function enableTargetSelection(){
 function disableTargetSelection(){
   getAllRings().forEach(ring=>{
     ring.classList.remove('selectable');
+    ring.removeAttribute('title');
     ring.removeEventListener('click', onRingClick);
   });
   _currentSelectedTargetId = null;
@@ -1208,13 +1388,20 @@ function updateRunnersHudFromLive(){
     ? normalizeRunnersOn(currentSituation.runnersOn)
     : normalizeRunnersOn(liveRunners);
   const arr = runnersStateToArray(baseSource);
-  runnersValHud.textContent = arr.length ? arr.join(',') : '—';
+  runnersValHud.textContent = arr.length ? arr.join(', ') : 'Bases empty';
+  const runnersBadge = document.getElementById('runnersBadge');
+  runnersBadge?.setAttribute('role', 'group');
+  const occupiedBases = ['first', 'second', 'third'].filter(base=>baseSource[base]);
+  runnersBadge?.setAttribute('aria-label', occupiedBases.length ? `Runners on ${occupiedBases.join(' and ')}` : 'Bases empty');
+  document.querySelectorAll('.training-base-map [data-marker]').forEach(marker => {
+    marker.classList.toggle('is-occupied', Boolean(baseSource[marker.dataset.marker]));
+  });
 }
 function setRunnersOn(next,{quiet=true}={}){
   if (!currentSituation) return;
   const newState = next ? normalizeRunnersOn(next) : normalizeRunnersOn(getRunnersFromCheckboxes());
   currentSituation.runnersOn = { ...newState };
-  if (!gameActive) liveRunners = { ...newState };
+  if (!gameActive) { resetRunnerPresentation(); liveRunners = { ...newState }; }
   if (run1B&&run2B&&run3B){ run1B.checked=!!newState.first; run2B.checked=!!newState.second; run3B.checked=!!newState.third; }
   updateRunnersHudFromLive();
   renderBaseRunners();
@@ -1229,6 +1416,12 @@ function setOuts(value,{quiet=true}={}){
   const v = clampInt(value,0,2);
   currentSituation.outs = v;
   if (outsValHud) outsValHud.textContent = String(v);
+  const outsBadge = document.getElementById('outsHud');
+  outsBadge?.setAttribute('role', 'group');
+  outsBadge?.setAttribute('aria-label', `${v} ${v === 1 ? 'out' : 'outs'}`);
+  document.querySelectorAll('.training-out-map [data-marker]').forEach(marker => {
+    marker.classList.toggle('is-recorded', Number(marker.dataset.marker) <= v);
+  });
   if (outsSelSituation && outsSelSituation.value !== String(v)) outsSelSituation.value = String(v);
   renderOutcomeReview();
   if (!quiet && situationMsg){ situationMsg.textContent='Outs updated'; setTimeout(()=>{situationMsg.textContent='';},900); }
@@ -1236,6 +1429,7 @@ function setOuts(value,{quiet=true}={}){
 }
 // Keep occupied-base markers visibly clear of the bag while still reading as a lead.
 const RUNNER_LEAD_FRACTION = 0.14;
+const RUNNER_DIRT_OFFSET = 0.06;
 const RUNNER_NEXT_BASE = { first:'second', second:'third', third:'home' };
 const PLAY_ANIMATION_DURATION_MS = 4000;
 function getPlayAnimationDuration(){
@@ -1248,8 +1442,9 @@ function runnerLeadPoint(baseName){
   const next = BASES_NATIVE[RUNNER_NEXT_BASE[baseName]];
   if (!base || !next) return base;
   return {
-    x:lerp(base.x,next.x,RUNNER_LEAD_FRACTION),
-    y:lerp(base.y,next.y,RUNNER_LEAD_FRACTION),
+    // Offset outward from the grass diamond into the base-path dirt.
+    x:lerp(base.x,next.x,RUNNER_LEAD_FRACTION) - (next.y-base.y)*RUNNER_DIRT_OFFSET,
+    y:lerp(base.y,next.y,RUNNER_LEAD_FRACTION) + (next.x-base.x)*RUNNER_DIRT_OFFSET,
   };
 }
 /* draw/remove base runners  */
@@ -1264,10 +1459,11 @@ function renderBaseRunners(state, exclude = new Set()){
 
   const add=(baseName)=>{
     if (blocked.has(baseName)) return; // skip bases we’re animating
-    const pos=runnerLeadPoint(baseName); if(!pos||!wrap) return;
+    const pos=runnersAtDestination.has(baseName)?BASES_NATIVE[baseName]:runnerLeadPoint(baseName); if(!pos||!wrap) return;
     const m=document.createElement('div');
     m.className='baseRunner';
     m.dataset.base = baseName;
+    labelOffensiveChip(m, runnerIdentityAtBase[baseName] || baseName);
     const css=unitToCss(pos);
     m.style.left=css.left+'px';
     m.style.top =css.top +'px';
@@ -1325,6 +1521,7 @@ window._diqResolveSituationOutcome=resolveSituationOutcome;
 
 function applyResolvedSituationOutcome(resolution){
   if(!resolution)return;
+  applyRunnerIdentities(resolution, true);
   liveRunners=normalizeRunnersOn(resolution.finalRunners);
   if(wrap){
     wrap.dataset.playRuns=String(resolution.runsScored);
@@ -1337,6 +1534,7 @@ function applyResolvedSituationOutcome(resolution){
 }
 
 function clearResolvedSituationOutcome(){
+  resetRunnerPresentation();
   _animSuppressedBases.clear();
   if(!wrap)return;
   delete wrap.dataset.playRuns;
@@ -1446,7 +1644,7 @@ function animateHit(style, options={}){
   if (style==='line' || style==='grounder'){
     ballPath=document.createElementNS(svgNS,'line');
     Object.entries({x1:startCss.x,y1:startCss.y,x2:endCss.x,y2:endCss.y}).forEach(([k,v])=>ballPath.setAttribute(k,v));
-    ballPath.setAttribute('stroke','#59e7ff');
+    ballPath.setAttribute('stroke','var(--accent-primary)');
     ballPath.setAttribute('stroke-width', String(getBallStrokeWidth()));
     if (style==='grounder') ballPath.setAttribute('stroke-dasharray','8 8');
     ballSvg.appendChild(ballPath);
@@ -1463,7 +1661,7 @@ function animateHit(style, options={}){
     const d=`M ${startCss.x},${startCss.y} C ${popupC1.x},${popupC1.y} ${popupC2.x},${popupC2.y} ${endCss.x},${endCss.y}`;
     ballPath=document.createElementNS(svgNS,'path');
     ballPath.setAttribute('d',d); ballPath.setAttribute('fill','none');
-    ballPath.setAttribute('stroke','#59e7ff');
+    ballPath.setAttribute('stroke','var(--accent-primary)');
     ballPath.setAttribute('stroke-width', String(getBallStrokeWidth()));
     ballSvg.appendChild(ballPath);
   }
@@ -1474,7 +1672,7 @@ function animateHit(style, options={}){
   const duration = Number.isFinite(requestedDuration)
     ? Math.max(0, requestedDuration)
     : clamp(1200 + dist * 0.90, 1500, 3200); // slower + smoother
-  let t0=performance.now(); if (animReq) cancelAnimationFrame(animReq);
+  let t0=playNow(); if (animReq) cancelPlayFrame(animReq);
   const p0={x:startCss.x,y:startCss.y}, p3={x:endCss.x,y:endCss.y};
 
   function cubicPoint(a,b,c,d,t){
@@ -1499,7 +1697,7 @@ function animateHit(style, options={}){
       : {x:lerp(p0.x,p3.x,t), y:lerp(p0.y,p3.y,t)};
 
     ballEl.style.left=`${pos.x}px`; ballEl.style.top=`${pos.y}px`;
-    if (t<1) animReq=requestAnimationFrame(step);
+    if (t<1) animReq=requestPlayFrame(step);
     else {
       if (ballSvg){
         if(options.persistPath) ballSvg.classList.add('is-context-hit-path');
@@ -1521,7 +1719,7 @@ function animateHit(style, options={}){
     options.onDone?.();
     return;
   }
-  animReq=requestAnimationFrame(step);
+  animReq=requestPlayFrame(step);
 }
 function ensureRunner(){
   if (!runnerEl){
@@ -1532,11 +1730,13 @@ function ensureRunner(){
     // Add label element inside (counter-rotated via CSS)
     const lab = document.createElement('span');
     lab.className = 'rlabel';
-    lab.textContent = 'B'; // Batter when moving
+    lab.textContent = String(offenseNumbers().batter);
     runnerEl.appendChild(lab);
 
     wrap.appendChild(runnerEl);
   }
+  labelOffensiveChip(runnerEl, 'batter');
+  scaleMarkers();
 }
 function placeRunnerAtBase(base){
   ensureRunner();
@@ -1549,19 +1749,12 @@ function placeRunnerAtBase(base){
   runnerEl.style.top  = css.top  + 'px';
   runnerEl.style.display = 'block';
 
-  // Label B1/B2/B3 on base; hide on home
-  const lab = runnerEl.querySelector('.rlabel');
-  if (lab){
-    lab.textContent =
-      base === 'first'  ? 'B1' :
-      base === 'second' ? 'B2' :
-      base === 'third'  ? 'B3' : 'B';
-  }
+  labelOffensiveChip(runnerEl, 'batter');
 }
 function hideRunner(){ if (runnerEl) runnerEl.style.display='none'; runnerLastBase='home'; }
 function animateBatterAdvance(basesAdvanced, onDone, options={}){
   ensureRunner();
-  if (runnerAnimId){ cancelAnimationFrame(runnerAnimId); runnerAnimId=null; }
+  if (runnerAnimId){ cancelPlayFrame(runnerAnimId); runnerAnimId=null; }
 
   // Normalize + clamp
   basesAdvanced = clampInt(basesAdvanced, 0, 4);
@@ -1597,7 +1790,7 @@ function animateBatterAdvance(basesAdvanced, onDone, options={}){
       return;
     }
 
-    let t0 = performance.now();
+    let t0 = playNow();
     const step = (now) => {
       if(options.isCancelled?.()){
         runnerAnimId=null;
@@ -1609,7 +1802,7 @@ function animateBatterAdvance(basesAdvanced, onDone, options={}){
       runnerEl.style.top  = lerp(fromCss.y, midY, e) + 'px';
       runnerEl.style.display = 'block';
       if (t < 1){
-        runnerAnimId = requestAnimationFrame(step);
+        runnerAnimId = requestPlayFrame(step);
       } else {
         // Stays visible short of 1B; not credited as reaching first
         runnerLastBase = 'home'; // keep model as not-on-base
@@ -1617,7 +1810,7 @@ function animateBatterAdvance(basesAdvanced, onDone, options={}){
         if (typeof onDone === 'function') onDone('home');
       }
     };
-    runnerAnimId = requestAnimationFrame(step);
+    runnerAnimId = requestPlayFrame(step);
     return;
   }
 
@@ -1658,7 +1851,7 @@ function animateBatterAdvance(basesAdvanced, onDone, options={}){
       return;
     }
 
-    let t0=performance.now();
+    let t0=playNow();
     const step=(now)=>{
       if(options.isCancelled?.()){
         runnerAnimId=null;
@@ -1669,10 +1862,10 @@ function animateBatterAdvance(basesAdvanced, onDone, options={}){
       runnerEl.style.left=lerp(fromCss.x,toCss.x,e)+'px';
       runnerEl.style.top =lerp(fromCss.y,toCss.y,e)+'px';
       runnerEl.style.display='block';
-      if (t<1) runnerAnimId=requestAnimationFrame(step);
+      if (t<1) runnerAnimId=requestPlayFrame(step);
       else { runnerLastBase=toName; legIdx++; runLeg(); }
     };
-    runnerAnimId=requestAnimationFrame(step);
+    runnerAnimId=requestPlayFrame(step);
   };
   runLeg();
 }
@@ -1696,6 +1889,7 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
     // Create a moving element (reuse .baseRunner styling)
     const mover = document.createElement('div');
     mover.className = 'movingRunner';
+    labelOffensiveChip(mover, runnerIdentityAtBase[baseName] || baseName);
     mover.style.position = 'absolute';
     mover.style.transform = 'translate(-50%,-50%)';
     wrap.appendChild(mover);
@@ -1744,7 +1938,7 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
         return;
       }
 
-      let t0 = performance.now();
+      let t0 = playNow();
       const step = (now)=>{
         if(options.isCancelled?.()){
           if (mover.parentNode) mover.remove();
@@ -1754,10 +1948,10 @@ function animateExistingRunnerFrom(baseName, advance, options={}){
         const e = 1 - Math.pow(1 - t, 3); // smooth ease-out
         mover.style.left = lerp(fromCss.x, toCss.x, e) + 'px';
         mover.style.top  = lerp(fromCss.y, toCss.y, e) + 'px';
-        if (t < 1) animId = requestAnimationFrame(step);
+        if (t < 1) animId = requestPlayFrame(step);
         else { leg++; runLeg(); }
       };
-      animId = requestAnimationFrame(step);
+      animId = requestPlayFrame(step);
     };
 
     runLeg();
@@ -1773,6 +1967,7 @@ function animateExistingRunnerOut(outcome, options={}){
     wrap?.querySelector(`.baseRunner[data-base="${baseName}"]`)?.remove();
     const mover=document.createElement('div');
     mover.className='movingRunner is-out';
+    labelOffensiveChip(mover, runnerIdentityAtBase[baseName] || baseName);
     mover.style.position='absolute';
     mover.style.transform='translate(-50%,-50%)';
     wrap.appendChild(mover);
@@ -1789,7 +1984,7 @@ function animateExistingRunnerOut(outcome, options={}){
       :clamp(700+Math.hypot(end.x-start.x,end.y-start.y)*0.55,800,1600);
     const finish=()=>{mover.remove();resolve();};
     if(duration===0){finish();return;}
-    let startedAt=performance.now();
+    let startedAt=playNow();
     const step=(now)=>{
       if(options.isCancelled?.()){finish();return;}
       const progress=clamp((now-startedAt)/duration,0,1);
@@ -1797,10 +1992,10 @@ function animateExistingRunnerOut(outcome, options={}){
       mover.style.left=`${lerp(start.x,end.x,eased)}px`;
       mover.style.top=`${lerp(start.y,end.y,eased)}px`;
       mover.style.opacity=String(progress<0.82?1:Math.max(0,1-((progress-0.82)/0.18)));
-      if(progress<1)requestAnimationFrame(step);
+      if(progress<1)requestPlayFrame(step);
       else finish();
     };
-    requestAnimationFrame(step);
+    requestPlayFrame(step);
   });
 }
 
@@ -1820,6 +2015,7 @@ function animateExistingRunnersByOutcome(resolution,onDone,options={}){
     return BASE_ORDER.indexOf(outcome.result)>BASE_ORDER.indexOf(outcome.startingBase);
   });
   if(!movers.length){
+    applyRunnerIdentities(resolution);
     renderBaseRunners(resolution?.existingFinalRunners);
     onDone?.(resolution?.existingFinalRunners||{first:false,second:false,third:false});
     return;
@@ -1829,6 +2025,7 @@ function animateExistingRunnersByOutcome(resolution,onDone,options={}){
   Promise.all(movers.map(outcome=>animateExistingRunnerOutcome(outcome,options))).then(()=>{
     if(options.isCancelled?.())return;
     movers.forEach(outcome=>_animSuppressedBases.delete(outcome.startingBase));
+    applyRunnerIdentities(resolution);
     renderBaseRunners(resolution.existingFinalRunners);
     onDone?.(resolution.existingFinalRunners);
   });
@@ -1844,6 +2041,7 @@ function animateBatterOutcome(batterResult,onDone,options={}){
  */
 function animateExistingRunnersAdvance(advance, onDone, options={}){
   const start = normalizeRunnersOn(liveRunners);
+  const initialIdentities = {...runnerIdentityAtBase};
 
   const movers = [];
   if (start.first)  movers.push('first');
@@ -1870,6 +2068,11 @@ function animateExistingRunnersAdvance(advance, onDone, options={}){
       const finalState = advanceRunnersState(start, advance);
       movers.forEach(b => _animSuppressedBases.delete(b));
 
+      runnerIdentityAtBase={};runnersAtDestination=new Set();
+      movers.forEach(base=>{
+        const destination=BASE_ORDER[Math.min(BASE_ORDER.indexOf(base)+advance,3)];
+        if(destination!=='home'){runnerIdentityAtBase[destination]=initialIdentities[base] || base;runnersAtDestination.add(destination);}
+      });
       // Repaint final positions (no ghosts)
       renderBaseRunners(finalState);
 
@@ -2595,11 +2798,24 @@ function renderPlaybookBrowser(){
     const heading = document.createElement('span');
     heading.className = 'playbook-card-heading';
     const title = document.createElement('strong');
-    title.textContent = displayLabel;
+    title.textContent = displayLabel.split(' · ').slice(1).join(' · ') || displayLabel;
     const difficulty = document.createElement('span');
     difficulty.className = `playbook-difficulty is-${situation.difficulty}`;
     difficulty.textContent = difficultyLabel(situation.difficulty);
-    heading.append(title, difficulty);
+    const reference = document.createElement('span');
+    reference.className = 'playbook-card-reference';
+    reference.textContent = ` · ${displayLabel.split(' · ')[0]}`;
+    title.appendChild(reference);
+    heading.appendChild(title);
+    const badges = document.createElement('span');
+    badges.className = 'playbook-card-badges';
+    badges.appendChild(difficulty);
+    if (situation.key === currentSituation?.key) {
+      const current = document.createElement('span');
+      current.className = 'playbook-card-current';
+      current.textContent = 'Current';
+      badges.appendChild(current);
+    }
 
     const description = document.createElement('span');
     description.className = 'playbook-card-description';
@@ -2607,10 +2823,14 @@ function renderPlaybookBrowser(){
     const metadata = document.createElement('span');
     metadata.className = 'playbook-card-metadata';
     metadata.textContent = teachingCategoryLabel(situation.primaryCategory);
-    button.append(heading, description, metadata);
+    button.append(heading, badges, description, metadata);
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
     playbookBrowserList.appendChild(button);
   });
+  const extraCount = [playbookHitOutcome, playbookRunners].filter(control=>control?.value).length;
+  const extraLabel = document.getElementById('playbookMoreFilterCount');
+  if(extraLabel) extraLabel.textContent = extraCount ? `· ${extraCount} active` : '';
+  if(playbookClearFilters) playbookClearFilters.disabled = ![playbookSearch, playbookCategory, playbookDifficulty, playbookHitOutcome, playbookRunners].some(control=>control?.value);
   if (playbookResultCount) playbookResultCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'situation' : 'situations'}`;
   playbookBrowserEmpty?.classList.toggle('hidden', filtered.length > 0);
   if (playbookRandomFiltered) playbookRandomFiltered.disabled = filtered.length === 0;
@@ -2672,6 +2892,8 @@ function setSituation(key, situationSnapshot=null){
     ? normalizeSituation(situationSnapshot, 0)
     : getSituationByKey(key) || SITUATIONS[0];
   if (!currentSituation) return;
+  resetRunnerPresentation();
+  offenseNumbers();
   startsMap[currentSituation.key] = Fcopy(currentSituation.starts || DEFAULT_STARTS);
 
   renderSeqBuilder();
@@ -2688,6 +2910,7 @@ function setSituation(key, situationSnapshot=null){
   _allTargetsCorrect = false;
   _roundHasStarted = false;
   _phase2Ended = false;
+  _completedFreePlay = false;
 
   if (!tokens || tokens.size===0) buildTokens();
   resetBallAndRunnerForSituation();
@@ -3283,15 +3506,15 @@ function renderSolutionGhosts(){
 function cancelSolutionAnimation(){
   _solutionAnimationRun += 1;
   if(_solutionAnimationFrame !== null){
-    cancelAnimationFrame(_solutionAnimationFrame);
+    cancelPlayFrame(_solutionAnimationFrame);
     _solutionAnimationFrame = null;
   }
   if(animReq){
-    cancelAnimationFrame(animReq);
+    cancelPlayFrame(animReq);
     animReq = null;
   }
   if(runnerAnimId){
-    cancelAnimationFrame(runnerAnimId);
+    cancelPlayFrame(runnerAnimId);
     runnerAnimId = null;
   }
   if(wrap) wrap.querySelectorAll('.movingRunner').forEach((runner)=>runner.remove());
@@ -3331,8 +3554,10 @@ function finishSolutionAnimation(run){
 
   getAllRings().forEach((ring)=>{
     ring.style.display = 'block';
-    ring.classList.remove('bad');
-    ring.classList.add('good', 'show-label');
+    const incorrect = _solutionReview?.incorrectIds.includes(ring.dataset.id);
+    ring.classList.toggle('bad', Boolean(incorrect));
+    ring.classList.toggle('good', !incorrect);
+    ring.classList.add('show-label');
   });
   renderSolutionGhosts();
   enableTargetSelection();
@@ -3373,6 +3598,7 @@ function watchSolution(){
   });
 
   const initialRunners = normalizeRunnersOn(currentSituation?.runnersOn);
+  resetRunnerPresentation();
   liveRunners = { ...initialRunners };
   _animSuppressedBases.clear();
   if(wrap) wrap.querySelectorAll('.movingRunner').forEach((runner)=>runner.remove());
@@ -3454,21 +3680,21 @@ function watchSolution(){
       };
       placeToken(id);
     });
-    if(progress < 1) _solutionAnimationFrame = requestAnimationFrame(step);
+    if(progress < 1) _solutionAnimationFrame = requestPlayFrame(step);
     else markComplete('fielders');
   };
-  _solutionAnimationFrame = requestAnimationFrame(step);
+  _solutionAnimationFrame = requestPlayFrame(step);
 }
 
 window._diqWatchSolution = watchSolution;
 window._diqClearSolutionReview = clearSolutionReview;
 
 function resetBallAndRunnerForSituation(){
-  if (animReq){ cancelAnimationFrame(animReq); animReq=null; }
+  if (animReq){ cancelPlayFrame(animReq); animReq=null; }
   clearResolvedSituationOutcome();
   clearBallHitPath();
   if (ballEl) syncBallToHit();
-  if (runnerAnimId){ cancelAnimationFrame(runnerAnimId); runnerAnimId=null; }
+  if (runnerAnimId){ cancelPlayFrame(runnerAnimId); runnerAnimId=null; }
   hideRunner();
 }
 
@@ -3481,6 +3707,7 @@ function resetPlayers(reason='reset'){
   void window._diqAbandonCurrentPlayAttempt?.(abandonReason);
   wipePhase2StateUI();
   _phase2Ended = false;
+  _completedFreePlay = false;
   stopTimer();
   _timerSecs = TIMER_START_SECS;
   updateTimerHud();
@@ -3722,3 +3949,98 @@ if (img && img.complete) init();
 else if (img){ img.addEventListener('load', init, { once:true }); window.addEventListener('load', ()=>{ if (!SITUATIONS.length) init(); }, { once:true }); }
 /// @diq:end [A12] Init & events
 else { window.addEventListener('load', init, { once:true }); }
+
+
+// Player presentation only: all actions continue to use the existing handlers and permissions.
+function refreshPlayerPresentation(){
+  refreshGuideText();
+  const user = window.__DIQ_AUTH_USER__;
+  const player = !user || user.role === 'player';
+  document.body.classList.toggle('player-experience', player);
+  const panel = document.getElementById('trainingPanel');
+  const guide = document.getElementById('playbookRail');
+  const actions = document.getElementById('trainingActions');
+  const workspace = document.getElementById('appWorkspace');
+  const board = document.querySelector('.training-board');
+  const situationHud = document.getElementById('trainingHud');
+  // Reuse the same indicators and restore the original location for staff views.
+  if(player && panel && situationHud && situationHud.parentElement !== panel) panel.prepend(situationHud);
+  else if(!player && board && situationHud && situationHud.parentElement !== board) board.prepend(situationHud);
+  document.body.classList.toggle('player-before-start', !gameActive && !phase2Active);
+  if(guide && workspace && guide.parentElement !== workspace) workspace.appendChild(guide);
+  const setText = (id, text) => {
+    const element = document.getElementById(id);
+    if(element && element.textContent !== text) element.textContent = text;
+  };
+  const display = currentSituation ? situationDisplayLabel(currentSituation) : 'Choose a situation';
+  const parts = display.split(' · ');
+  setText('playerSituationName', parts.length > 1 ? parts.slice(1).join(' · ') : display);
+  setText('playerSituationReference', parts.length > 1 ? parts[0] : '');
+  setText('playbookClose', '×');
+  const solution = Boolean(_solutionReview?.watched || wrap?.classList.contains('is-showing-solution'));
+  const unchecked = !phase2Active && !solution && (!startBtn?.disabled || (gameActive && remainingTries === MAX_TRIES));
+  document.body.classList.toggle('player-unchecked-state', unchecked);
+  document.body.classList.toggle('player-solution-state', solution);
+  const complete = _completedFreePlay || (_phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary));
+  const beforeStart = !gameActive && !phase2Active && !startBtn?.disabled;
+  const chooseNext = document.getElementById('chooseNextSituationBtn');
+  if(chooseNext) chooseNext.classList.toggle('hidden', !player || !_completedFreePlay || beforeStart);
+  setText('playerStepLabel', beforeStart ? 'Position the defense' : complete ? 'Situation complete'
+    : phase2Active ? 'Choose the throw sequence'
+    : solution || _phase1Summary ? 'Review positions' : 'Position the defense');
+  const result = `${_phase1Summary?.scoreCorrect ?? scoreVal?.textContent ?? 0} of ${POS_IDS.length} positions correct`;
+  const text = beforeStart || complete ? ''
+    : phase2Active ? 'Select defenders in throwing order, then verify your sequence.'
+    : solution ? ''
+    : !startBtn?.disabled ? ''
+    : _phase1Summary ? ''
+    : !unchecked ? `${result}. Adjust your defenders, then check again.`
+    : 'Drag each defender into position, then check your positions.';
+  const coachingAvailable = !beforeStart && !phase2Active && Boolean(wrap?.querySelector('.tgt.selectable'));
+  const coachingPrompt = document.getElementById('playerCoachingPrompt');
+  const notesOpen = Boolean(_currentSelectedTargetId && targetPanel && !targetPanel.classList.contains('hidden'));
+  if(coachingPrompt) coachingPrompt.hidden = !player || !coachingAvailable || notesOpen;
+  setText('playerStepMessage', text);
+  const scoreLabel = document.querySelector('#scoreBadge .status-label');
+  if(scoreLabel) scoreLabel.textContent = player ? 'Result' : 'Score';
+  const triesLabel = document.querySelector('#triesBadge .status-label');
+  if(triesLabel) triesLabel.textContent = player ? 'Checks left' : 'Tries';
+  const timeLabel = document.querySelector('#timerBadge .status-label');
+  if(timeLabel) timeLabel.textContent = player ? (gameActive || phase2Active ? 'Time left' : 'Time') : 'Time';
+  const runnersLabel = document.querySelector('#runnersBadge .status-label');
+  if(runnersLabel) runnersLabel.textContent = 'Runners';
+  if(continueBtn && continueBtn.textContent !== (player ? 'Continue to Throw Sequence' : 'Continue ▶')) continueBtn.textContent = player ? 'Continue to Throw Sequence' : 'Continue ▶';
+}
+function installPlayerPresentation(){
+  if(!document.getElementById('chooseNextSituationBtn')){
+    const button = document.createElement('button');
+    button.id = 'chooseNextSituationBtn';
+    button.type = 'button';
+    button.className = 'btn-green hidden';
+    button.textContent = 'Choose another situation';
+    button.addEventListener('click', openPlaybookBrowser);
+    document.getElementById('resetBtn')?.before(button);
+  }
+  if(!window._diqPlayerPresentationObserver){
+    let queued = false;
+    const observer = new MutationObserver(()=>{
+      if(queued) return;
+      queued = true;
+      requestAnimationFrame(()=>{queued = false;refreshPlayerPresentation();});
+    });
+    const actions = document.getElementById('trainingActions');
+    if(actions) observer.observe(actions,{subtree:true,attributes:true,attributeFilter:['disabled','class']});
+    if(wrap) observer.observe(wrap,{attributes:true,attributeFilter:['class','data-solution-state']});
+    const board = document.querySelector('.training-board');
+    if(board) observer.observe(board,{attributes:true,attributeFilter:['class']});
+    if(targetPanel) observer.observe(targetPanel,{attributes:true,attributeFilter:['class']});
+    if(targetPanelTitle) observer.observe(targetPanelTitle,{childList:true});
+    if(scoreVal) observer.observe(scoreVal,{childList:true});
+    if(triesVal) observer.observe(triesVal,{childList:true});
+    const description = document.getElementById('descHud');
+    if(description) observer.observe(description,{childList:true});
+    window._diqPlayerPresentationObserver = observer;
+    window._diqRefreshPlayerPresentation = refreshPlayerPresentation;
+  }
+  refreshPlayerPresentation();
+}

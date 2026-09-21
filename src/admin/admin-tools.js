@@ -98,6 +98,7 @@
   let creatingTeam = false;
   let lastAdvanceSourceTeamId = '';
   let confirmationResolver = null;
+  let confirmationTrigger = null;
 
   function setStatus(message = '', state = '') {
     if (!statusEl) return;
@@ -108,6 +109,10 @@
   function clearFieldError(input) {
     if (!input) return;
     input.removeAttribute('aria-invalid');
+    const errorId = `${input.id}-error`;
+    const descriptions = (input.getAttribute('aria-describedby') || '').split(/\s+/).filter(id=>id && id !== errorId);
+    if(descriptions.length) input.setAttribute('aria-describedby', descriptions.join(' '));
+    else input.removeAttribute('aria-describedby');
     input.closest('.field')?.querySelector('.field-error')?.remove();
   }
 
@@ -117,6 +122,8 @@
     input.setAttribute('aria-invalid', 'true');
     const error = document.createElement('span');
     error.className = 'field-error';
+    error.id = `${input.id}-error`;
+    input.setAttribute('aria-describedby', [input.getAttribute('aria-describedby'), error.id].filter(Boolean).join(' '));
     error.textContent = message;
     input.closest('.field')?.appendChild(error);
     return false;
@@ -177,12 +184,16 @@
     confirmationResolver = null;
     if (confirmTextInput) confirmTextInput.value = '';
     confirmTextField?.classList.add('hidden');
+    const trigger = confirmationTrigger;
+    confirmationTrigger = null;
+    if(trigger?.isConnected) trigger.focus();
     resolve?.(confirmed);
   }
 
   function requestConfirmation({ title, message, confirmLabel = 'Confirm', requiredText = '' }) {
     if (!confirmDialog) return Promise.resolve(window.confirm(message));
     if (confirmationResolver) closeConfirmation(false);
+    confirmationTrigger = document.activeElement;
     if (confirmTitle) confirmTitle.textContent = title;
     if (confirmMessage) confirmMessage.textContent = message;
     if (confirmAction) {
@@ -214,7 +225,20 @@
     () => closeConfirmation(false),
   );
   confirmDialog?.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeConfirmation(false);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      closeConfirmation(false);
+    }
+    if (event.key === 'Tab') {
+      const controls = Array.from(confirmPanel.querySelectorAll('button, input, [tabindex]'))
+        .filter(el=>!el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+      const first = controls[0], last = controls[controls.length - 1];
+      if(first && (document.activeElement === confirmPanel || (event.shiftKey ? document.activeElement === first : document.activeElement === last))){
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
   });
   window._diqConfirmAdminAction = requestConfirmation;
 
@@ -1094,7 +1118,7 @@
     document.querySelectorAll('[data-admin-team-tab]').forEach((button) => {
       const selected = button.dataset.adminTeamTab === viewName;
       button.classList.toggle('is-active', selected);
-      button.setAttribute('aria-selected', String(selected));
+      button.setAttribute('aria-pressed', String(selected));
     });
     document.querySelectorAll('[data-admin-team-view]').forEach((view) =>
       view.classList.toggle('hidden', view.dataset.adminTeamView !== viewName),
@@ -1103,9 +1127,11 @@
 
   function switchTab(tab) {
     activeTab = tab;
-    adminCard.querySelectorAll('[data-admin-tab]').forEach((button) =>
-      button.classList.toggle('is-active', button.dataset.adminTab === tab),
-    );
+    adminCard.querySelectorAll('[data-admin-tab]').forEach((button) => {
+      const selected = button.dataset.adminTab === tab;
+      button.classList.toggle('is-active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
     adminViews.forEach((view) =>
       view.classList.toggle('hidden', view.dataset.adminView !== tab),
     );
@@ -1759,7 +1785,7 @@
     if (csvOperations) {
       const operations = Array.isArray(preview.operations) ? preview.operations : [];
       csvOperations.innerHTML = operations.length
-        ? `<div class="admin-csv-table-wrap"><table class="admin-csv-table"><thead><tr><th>Row</th><th>Change</th><th>Record</th><th>Database ID</th></tr></thead><tbody>${operations.map((operation) =>
+        ? `<div class="admin-csv-table-wrap"><table class="admin-csv-table"><caption class="sr-only">Changes in the selected CSV import preview</caption><thead><tr><th scope="col">Row</th><th scope="col">Change</th><th scope="col">Record</th><th scope="col">Database ID</th></tr></thead><tbody>${operations.map((operation) =>
           `<tr><td>${operation.row}</td><td><span class="admin-csv-action is-${operation.action}">${operation.action}</span></td><td>${escapeHtml(operation.label)}</td><td><code>${escapeHtml(operation.userId || operation.teamId)}</code></td></tr>`).join('')}</tbody></table></div>`
         : '';
     }

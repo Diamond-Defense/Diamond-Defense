@@ -36,7 +36,7 @@ test.describe('release readiness', () => {
     const pageErrors = await openCleanApp(page);
     await expect(page.locator('#fieldImg')).toHaveAttribute(
       'alt',
-      'Diamond Defense baseball strategy field',
+      'Diamond Defence baseball strategy field',
     );
 
     const publicLayout = await page.evaluate(() => ({
@@ -131,7 +131,7 @@ test.describe('release readiness', () => {
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.locator('#screenSizeGate')).toBeVisible();
     await expect(page.locator('#screenSizeGateTitle')).toHaveText(
-      'Open Diamond Defense on a tablet or computer',
+      'Open Diamond Defence on a tablet or computer',
     );
     await expect(page.locator('#fieldImg')).toBeHidden();
   });
