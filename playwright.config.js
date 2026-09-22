@@ -28,6 +28,7 @@ export default defineConfig({
     command: `npm run test:server -- --port ${testPort}`,
     url: localBaseUrl,
     reuseExistingServer: false,
-    timeout: 30_000,
+    // Includes fresh D1 migrations, seeding, production build, and Worker startup.
+    timeout: 120_000,
   },
 });

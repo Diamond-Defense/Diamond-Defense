@@ -1596,7 +1596,14 @@ function makeBallDraggable(el){
     const pt=cssToUnit(left,top);
     if(currentSituation) currentSituation.hit={ x:Math.round(pt.x), y:Math.round(pt.y) };
   }
-  function onUp(){ window.removeEventListener('pointermove',onMove); drag=null; }
+  function onUp(){
+    window.removeEventListener('pointermove',onMove);
+    if(drag && currentSituation){
+      setHitSaved(currentSituation.key, currentSituation.hit);
+      queueCurrentSituationDatabaseSync();
+    }
+    drag=null;
+  }
 }
 function placeHitMarker(){
   if (hitMarker){ hitMarker.remove(); hitMarker=null; }
@@ -1624,7 +1631,14 @@ function makeHitMarkerDraggable(el){
     currentSituation.hit={ x:Math.round(pt.x), y:Math.round(pt.y) };
     syncBallToHit();
   }
-  function onUp(){ window.removeEventListener('pointermove',onMove); drag=null; }
+  function onUp(){
+    window.removeEventListener('pointermove',onMove);
+    if(drag && currentSituation){
+      setHitSaved(currentSituation.key, currentSituation.hit);
+      queueCurrentSituationDatabaseSync();
+    }
+    drag=null;
+  }
 }
 function mapHitTypeToAdvance(hitType){
   switch((hitType||'').toLowerCase()){
@@ -2335,7 +2349,8 @@ function databaseSituationSnapshot(situation){
   const snapshot = Fcopy(situation);
   snapshot.starts = Fcopy(startsMap[snapshot.key] || snapshot.starts || DEFAULT_STARTS);
   const savedHit = getHitSaved(snapshot.key);
-  if(savedHit) snapshot.hit = savedHit;
+  // The live draft is authoritative; a saved coordinate must not undo a drag.
+  if(!snapshot.hit && savedHit) snapshot.hit = savedHit;
   return snapshot;
 }
 
@@ -2382,7 +2397,7 @@ window._diqResetSelectedPosition = ()=>{
 };
 
 function setTargetFor(sKey,id,pt,tol=DEFAULT_TOL){
-  const s = SITUATIONS.find(x=>x.key===sKey); if(!s) return;
+  const s = currentSituation?.key === sKey ? currentSituation : SITUATIONS.find(x=>x.key===sKey); if(!s) return;
   if(!s.targets) s.targets={};
   const prev = s.targets[id] || {};
   const prevNotes = (typeof prev.notes === 'string') ? prev.notes : '';
@@ -2398,7 +2413,7 @@ function setTargetFor(sKey,id,pt,tol=DEFAULT_TOL){
   if(currentSituation && currentSituation.key === sKey) queueCurrentSituationDatabaseSync();
 }
 function getTargetFor(sKey,id){
-  const s = SITUATIONS.find(x=>x.key===sKey);
+  const s = currentSituation?.key === sKey ? currentSituation : SITUATIONS.find(x=>x.key===sKey);
   return (s && s.targets && s.targets[id]) ? s.targets[id] : null;
 }
 
@@ -2923,7 +2938,8 @@ function setSituation(key, situationSnapshot=null){
   // Title + Description UI
   updateDescriptionHudText();
 
-  const savedHit = getHitSaved(currentSituation.key); if (savedHit) currentSituation.hit = savedHit;
+  // Selecting a published record or preview must use its own ball position.
+  if(currentSituation.hit) setHitSaved(currentSituation.key, currentSituation.hit);
 
   // Tolerance dropdown
   tolTargetSel.innerHTML='';
@@ -3947,6 +3963,7 @@ function setTolLive(id,tol){
     if (coachUnlocked) { ring.style.display='block'; ring.classList.add('show-label'); }
   }
   tolNum.value = tolRange.value = String(tol);
+  queueCurrentSituationDatabaseSync();
 }
 
 /* Kickoff */

@@ -3650,7 +3650,7 @@ function refreshGuideText(){
 function getSituationByKey(key){ return (SITUATIONS || []).find(s => s.key === key) || null; }
 
 function setTargetNotes(sKey, id, text){
-  const s = SITUATIONS.find(x => x.key === sKey); if (!s) return;
+  const s = currentSituation?.key === sKey ? currentSituation : SITUATIONS.find(x => x.key === sKey); if (!s) return;
   if (!s.targets) s.targets = {};
   const prev = s.targets[id] || {};
   s.targets[id] = { ...prev, notes: String(text || '') };
@@ -3658,7 +3658,7 @@ function setTargetNotes(sKey, id, text){
 }
 
 function getTargetNotes(sKey, id){
-  const s = SITUATIONS.find(x => x.key === sKey);
+  const s = currentSituation?.key === sKey ? currentSituation : SITUATIONS.find(x => x.key === sKey);
   return s?.targets?.[id]?.notes || '';
 }
 

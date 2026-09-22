@@ -121,7 +121,11 @@ test.describe('release readiness', () => {
     await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('#coachDevelopmentInsights')).toBeVisible();
-    await expect(page.locator('#coachResultsPlayerSelect')).toBeVisible();
+    await expect(page.locator('#coachPlayerPicker')).toBeVisible();
+    await page.locator('#coachPlayerPicker > summary').click();
+    await expect(page.locator('#coachPlayerChoices')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#coachPlayerPicker')).not.toHaveAttribute('open', '');
   });
 
   test('unsupported screens receive a clear non-interactive boundary', async ({ page }) => {

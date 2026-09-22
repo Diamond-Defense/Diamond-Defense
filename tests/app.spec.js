@@ -12,6 +12,35 @@ async function semanticColor(page, token) {
   }, token);
 }
 
+// Publishing tests share the seeded database with gameplay tests. Restore edited
+// records in fixture teardown, including when a test assertion or timeout fails.
+const publishingTest = test.extend({
+  restorePublishedSituations: [async ({ page, baseURL }, use) => {
+    const originals = [];
+    await use(async (record) => {
+      const response = await page.request.get('/api/situations');
+      expect(response.ok()).toBeTruthy();
+      const published = (await response.json()).find(item => item.key === record.key);
+      expect(published).toBeTruthy();
+      originals.push(published);
+    });
+    for (const original of originals) {
+      const response = await page.request.get('/api/situations');
+      expect(response.ok()).toBeTruthy();
+      const current = (await response.json()).find(record => record.key === original.key);
+      expect(current).toBeTruthy();
+      if (current.revision === original.revision) continue;
+      const restored = await page.request.put(`/api/situations/${encodeURIComponent(original.key)}`, {
+        headers: { Origin: new URL(baseURL).origin, 'If-Match': String(current.revision) },
+        data: original,
+      });
+      expect(restored.ok(), `Restore published situation ${original.key}`).toBeTruthy();
+      const { revision, updatedAt, ...originalFields } = original;
+      expect((await restored.json()).record).toMatchObject(originalFields);
+    }
+  }, { timeout: 30_000 }],
+});
+
 async function openCleanApp(page) {
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(error.message));
@@ -1263,7 +1292,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminProposalPreviewBtn')).toBeEnabled();
     await page.locator('input[data-proposal-field="title"]').uncheck();
     const unsavedEditorTitle = 'Unsaved administrator draft preserved through preview';
-    await page.getByRole('button', { name:'Continue local draft', exact:true }).click();
+    await page.getByRole('button', { name:'Situation library', exact:true }).click();
+    await page.getByRole('button', { name:'Edit situation', exact:true }).first().click();
     await page.locator('#newTitleInput').fill(unsavedEditorTitle);
     await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
     await page.locator('#situationLibraryBack').click();
@@ -1329,7 +1359,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(compactDrawer.left).toBeGreaterThanOrEqual(9);
     expect(compactDrawer.right).toBeLessThanOrEqual(1015);
     expect(compactDrawer.bottom).toBeLessThanOrEqual(768);
-    expect(compactDrawer.width).toBeLessThanOrEqual(560);
+    expect(compactDrawer.width).toBeGreaterThan(900);
   });
 
   test('login service failures do not masquerade as a database outage', async ({ page }) => {
@@ -1358,6 +1388,134 @@ test.describe('Diamond Defence regression behavior', () => {
       'data-diq-database',
       'unavailable',
     );
+  });
+
+  publishingTest('ball-only edits publish the moved position and retain it on the field', async ({ page, restorePublishedSituations }) => {
+    await openCleanApp(page);
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
+    await page.locator('#adminPwInput').fill('password');
+    await page.locator('#adminPwOk').click();
+    await page.locator('#staffToolsBtn').click();
+    await page.getByRole('button', { name: 'Situations', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit situation', exact: true }).first().click();
+    const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    await restorePublishedSituations(original);
+    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
+    const ball = page.locator('#wrap .ball:visible');
+    await expect(ball).toHaveCount(1);
+    await ball.scrollIntoViewIfNeeded();
+    const box = await ball.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    expect(moved.hit).not.toEqual(original.hit);
+    await page.locator('[data-editor-step="situationReviewSection"]').click();
+    await expect(page.locator('#publishSituationBtn')).toBeEnabled();
+    const savedResponse = page.waitForResponse(response =>
+      response.url().endsWith(`/api/situations/${original.key}`) && response.request().method() === 'PUT');
+    await page.locator('#publishSituationBtn').click();
+    const saved = await (await savedResponse).json();
+    expect(saved.record.hit).toEqual(moved.hit);
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await page.locator('#adminCardCloseBtn').click();
+    await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot().hit)).toEqual(moved.hit);
+    await page.reload();
+    await page.evaluate(() => window.__DIQ_READY__);
+    expect(await page.evaluate(key => window._diqGetPublishedSituationSnapshot(key).hit, original.key)).toEqual(moved.hit);
+  });
+
+  publishingTest('admin publishes all situation fields and reloads them without losing draft edits', async ({ page, restorePublishedSituations }) => {
+    await openCleanApp(page);
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
+    await page.locator('#adminPwInput').fill('password');
+    await page.locator('#adminPwOk').click();
+    await page.locator('#staffToolsBtn').click();
+    await page.getByRole('button', { name: 'Situations', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit situation', exact: true }).first().click();
+    const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    await restorePublishedSituations(original);
+    await page.locator('#newTitleInput').fill('Published field coverage');
+    await page.locator('#newDescInput').fill('All editor changes persist');
+    await page.locator('#situationDifficultySelect').selectOption('advanced');
+    await page.locator('#situationCategoryInput').selectOption('Extra-base hits');
+    await page.locator('#situationPrimaryCategorySelect').selectOption({ index: 2 });
+    await page.locator('#situationRelatedCategories button').first().click();
+    await page.locator('[data-editor-step="sbRunnersSubsec"]').click();
+    await page.locator('#outsSelSituation').selectOption('1');
+    await page.locator('#run1B').check();
+    await page.locator('#run2B').uncheck();
+    await page.locator('#run3B').uncheck();
+    // Exercise the same pointer handlers as field dragging without overlapping
+    // markers intercepting a target's center.
+    const dragMarker = async (selector) => {
+      const marker = page.locator(selector);
+      await marker.dispatchEvent('pointerdown', { pointerId: 1, clientX: 100, clientY: 100 });
+      await page.evaluate(() => {
+        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 125, clientY: 115 }));
+        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: 125, clientY: 115 }));
+      });
+    };
+    // Native pointer capture needs an active pointer before dispatched movement.
+    await page.mouse.move(10, 10);
+    await page.mouse.down();
+    await dragMarker('#wrap .chip[data-fielding-number="1"]');
+    await page.mouse.up();
+    await page.locator('[data-editor-step="sbTargetsSubsec"]').click();
+    await page.mouse.down();
+    await dragMarker('#wrap .tgt[data-id="P"]');
+    await page.mouse.up();
+    await page.locator('#tolTargetSel').selectOption('P');
+    await page.locator('#tolNum').fill('125');
+    await page.locator('#tolNotes').fill('Published pitcher coaching note');
+    const sequenceSwitch = page.locator('#sequenceChallengeEnabled');
+    const sequenceSwitchLabel = page.locator('label.sequence-challenge-toggle');
+    if (await sequenceSwitch.isChecked()) await sequenceSwitchLabel.click();
+    await expect(sequenceSwitch).not.toBeChecked();
+    await sequenceSwitchLabel.click();
+    await expect(sequenceSwitch).toBeChecked();
+    await page.locator('#seqPosGrid button').filter({ hasText: /^CF$/ }).click();
+    await page.locator('#seqPosGrid button').filter({ hasText: /^SS$/ }).click();
+    await page.locator('#seqNoteInput').fill('Published throw sequence note');
+    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
+    await page.locator('#hitTypeSel').selectOption('grounder');
+    await page.locator('#playResultSel').selectOption('double');
+    await page.locator('.runner-outcome-card[data-starting-base="first"] select').first().selectOption('third');
+    const ball = page.locator('#wrap .ball:visible');
+    await expect(ball).toHaveCount(1);
+    await ball.scrollIntoViewIfNeeded();
+    const box = await ball.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
+    await page.mouse.up();
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    expect(moved.hit).not.toEqual(original.hit);
+    expect(moved.starts.P).not.toEqual(original.starts.P);
+    expect(moved.targets.P).toMatchObject({ tol: 125, notes: 'Published pitcher coaching note' });
+    expect(moved.playSeq).toEqual(['CF', 'SS']);
+    const fields = ['title','desc','category','difficulty','primaryCategory','relatedCategories',
+      'outs','runnersOn','starts','targets','hit','hitType','batterAdvance','playOutcome',
+      'runnerOutcomes','playSeq','seqNote'];
+    const expected = Object.fromEntries(fields.map(field => [field, moved[field]]));
+    await page.locator('[data-editor-step="situationReviewSection"]').click();
+    await expect(page.locator('#publishSituationBtn')).toBeEnabled();
+    const savedResponse = page.waitForResponse(response =>
+      response.url().endsWith(`/api/situations/${original.key}`) && response.request().method() === 'PUT');
+    await page.locator('#publishSituationBtn').click();
+    const saved = await (await savedResponse).json();
+    expect(saved.record).toMatchObject(expected);
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await page.locator('#adminCardCloseBtn').click();
+    await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot())).toMatchObject(expected);
+    await page.reload();
+    await page.evaluate(() => window.__DIQ_READY__);
+    expect(await page.evaluate(key => window._diqGetPublishedSituationSnapshot(key), original.key)).toMatchObject(expected);
   });
 
   test('admin team edits use record-level APIs and preserve stable IDs', async ({ page }) => {
