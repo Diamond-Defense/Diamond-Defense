@@ -1400,6 +1400,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminNewTeamBtn')).toBeVisible();
     await expect(page.locator('#adminTeamAddBtn')).toBeHidden();
 
+    await page.locator('#adminTeamSettings > summary').click();
     await page.locator('#adminTeamName').fill(`${teamName} Renamed`);
     const updateResponse = page.waitForResponse((response) =>
       response.url().endsWith(`/api/admin/teams/${teamId}`) && response.request().method() === 'PUT',
@@ -1412,6 +1413,7 @@ test.describe('Diamond Defence regression behavior', () => {
       revision: 2,
     }));
     await expect(page.locator('#adminOperationStatus')).toHaveText('Team saved.');
+    await page.locator('#adminTeamSettings > summary').click();
 
     await page.locator('#adminTeamRemoveBtn').click();
     await expect(page.locator('#adminConfirmDialog')).toBeVisible();
