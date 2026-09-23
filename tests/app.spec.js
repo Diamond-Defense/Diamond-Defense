@@ -133,8 +133,21 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#wrap .tgt')).toHaveCount(9);
     const appIcon = page.locator('.brand-mark img');
     await expect(appIcon).toBeVisible();
-    await expect(appIcon).toHaveJSProperty('naturalWidth', 64);
-    await expect(appIcon).toHaveJSProperty('naturalHeight', 64);
+    await expect.poll(() => appIcon.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
+    const logo = await appIcon.evaluate(image => ({
+      src: image.src,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+      width: image.getBoundingClientRect().width,
+      height: image.getBoundingClientRect().height,
+    }));
+    expect(logo.src).toContain('diamond-defence-logo');
+    expect(logo.naturalWidth).toBe(logo.naturalHeight);
+    expect(logo.width).toBeGreaterThanOrEqual(44);
+    expect(logo.width).toBeLessThanOrEqual(48);
+    expect(logo.height).toBe(logo.width);
+    await expect(page.locator('.auth-brand-mark img')).toHaveJSProperty('src', logo.src);
+    await expect(page.locator('.screen-size-gate-mark img')).toHaveJSProperty('src', logo.src);
     const groupColors = await page.evaluate(() => ({
       pitcher: getComputedStyle(tokens.get('P').el).backgroundColor,
       catcher: getComputedStyle(tokens.get('C').el).backgroundColor,

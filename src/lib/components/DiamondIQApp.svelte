@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import brandLogo from '$lib/assets/diamond-defence-logo.png';
   import appIcon from '$lib/assets/diamond-defence-dd.svg';
   import softFieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import legacyDocument from '../../../index.html?raw';
   import { loadLegacyRuntime } from '$lib/legacy/loadRuntime';
 
   const body = legacyDocument.match(/<body>([\s\S]*)<\/body>/i)?.[1] ?? '';
-  const markup = body.replace(
+  const markup = body.replaceAll('data-diamond-defense-logo', `data-diamond-defense-logo src="${brandLogo}"`).replace(
     'id="fieldImg"',
     `id="fieldImg" src="${softFieldImage}"`,
   );

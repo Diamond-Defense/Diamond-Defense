@@ -347,7 +347,9 @@ const ensureHeaderGrouping = () => {
     const icon = document.createElement('img');
     icon.alt = '';
     icon.decoding = 'async';
-    icon.src = document.querySelector('link[data-diamond-defense-icon]')?.href || './src/lib/assets/diamond-defence-dd.svg';
+    icon.src = document.querySelector('img[data-diamond-defense-logo]')?.src || '';
+    icon.width = 48;
+    icon.height = 48;
     mark.appendChild(icon);
     brand.appendChild(mark);
   }
