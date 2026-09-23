@@ -1095,7 +1095,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   function practiceSituationLabel(situation){
     const code = practiceSituationCode(situation?.key || situation?.situationKey, situation?.displayCode);
-    const title = String(situation?.desc || situation?.title || 'Situation').trim();
+    const title = String(situation?.title || situation?.desc || 'Situation').trim();
     return [code, title].filter(Boolean).join(' · ');
   }
 

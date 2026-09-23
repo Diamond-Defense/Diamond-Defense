@@ -76,7 +76,7 @@ function validateSubmissionSituation(input: Situation): Situation {
   }
   if (!title || title.length > 120) {
     throw new RecordValidationError(
-      'Situation title is required and must be 120 characters or fewer.',
+      'Situation name is required and must be 120 characters or fewer.',
     );
   }
   if (!category || category.length > 60) {

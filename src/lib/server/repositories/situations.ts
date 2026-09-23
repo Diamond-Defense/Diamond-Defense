@@ -73,7 +73,7 @@ function validateSituation(situation: Situation): Situation {
     throw new RecordValidationError('Situation key must use 2–80 letters, numbers, hyphens, or underscores.');
   }
   if (!title || title.length > 120) {
-    throw new RecordValidationError('Situation title is required and must be 120 characters or fewer.');
+    throw new RecordValidationError('Situation name is required and must be 120 characters or fewer.');
   }
   if (!category || category.length > 60) {
     throw new RecordValidationError('Situation category is required and must be 60 characters or fewer.');

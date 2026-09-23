@@ -36,6 +36,10 @@ export function displayCodeForSituationKey(key) {
 }
 
 export function normalizeSituationMetadata(situation) {
+  // Move legacy numbered labels to the descriptive name, preserving custom names.
+  if (/^Situation\s*#?\d[\d.-]*$/i.test(String(situation.title || '').trim()) && String(situation.desc || '').trim()) {
+    situation = { ...situation, title: situation.desc.trim(), desc: '' };
+  }
   const runnerCount = Object.values(situation?.runnersOn || {}).filter(Boolean).length;
   const advance = Number(situation?.batterAdvance || 0);
   const description = String(situation?.desc || situation?.title || '');

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildSituationSeedSql } from './lib/situation-seed.mjs';
+import { buildSituationSeedSql, normalizeSituationMetadata } from './lib/situation-seed.mjs';
 
 test('builds an idempotent situation-only seed', () => {
   const sql = buildSituationSeedSql(
@@ -65,4 +65,15 @@ test('rejects empty and duplicate situation collections', () => {
     () => buildSituationSeedSql([{ key: 'BD-01' }, { key: 'BD-01' }]),
     /duplicate situation key/i,
   );
+});
+
+
+test('situation names promote numbered labels and preserve custom coaching context', () => {
+  const legacy = normalizeSituationMetadata({key:'BD-02',title:'Situation #2',desc:'Single to CF'});
+  assert.equal(legacy.title, 'Single to CF');
+  assert.equal(legacy.desc, '');
+  const custom = normalizeSituationMetadata({key:'custom',title:'Relay practice',desc:'Watch the lead runner.'});
+  assert.equal(custom.title, 'Relay practice');
+  assert.equal(custom.desc, 'Watch the lead runner.');
+  assert.equal(normalizeSituationMetadata(legacy).title, legacy.title);
 });

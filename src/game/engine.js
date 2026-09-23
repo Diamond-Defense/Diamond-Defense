@@ -2499,7 +2499,7 @@ function situationDisplayCode(key, displayCode){
 function situationDisplayLabel(situation){
   if (!situation) return '';
   const code = situationDisplayCode(situation.key, situation.displayCode);
-  const description = String(situation.desc || situation.title || (code ? 'Situation' : 'New situation')).trim();
+  const description = String(situation.title || situation.desc || (code ? 'Situation' : 'New situation')).trim();
   return [code, description].filter(Boolean).join(' · ') || 'Situation';
 }
 window._diqSituationDisplayLabel = situationDisplayLabel;
@@ -4001,6 +4001,10 @@ function refreshPlayerPresentation(){
   const parts = display.split(' · ');
   setText('playerSituationName', parts.length > 1 ? parts.slice(1).join(' · ') : display);
   setText('playerSituationReference', parts.length > 1 ? parts[0] : '');
+  const context = String(currentSituation?.desc || '').trim();
+  setText('playerSituationContext', context);
+  const contextElement = document.getElementById('playerSituationContext');
+  if(contextElement) contextElement.hidden = !context;
   setText('playbookClose', '×');
   const solution = Boolean(_solutionReview?.watched || wrap?.classList.contains('is-showing-solution'));
   const unchecked = !phase2Active && !solution && (!startBtn?.disabled || (gameActive && remainingTries === MAX_TRIES));

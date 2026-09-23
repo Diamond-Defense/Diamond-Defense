@@ -1963,7 +1963,7 @@
   const FIELD_WIDTH = 3200;
   const FIELD_HEIGHT = 2133;
   const EDITABLE_FIELDS = [
-    ['title', 'Title'], ['desc', 'Description'], ['category', 'Hit outcome'],
+    ['title', 'Situation name'], ['desc', 'Coaching context'], ['category', 'Hit outcome'],
     ['difficulty', 'Difficulty'], ['primaryCategory', 'Primary teaching category'],
     ['relatedCategories', 'Related teaching categories'], ['outs', 'Outs'],
     ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
@@ -2230,8 +2230,7 @@
   function validateSituation(snapshot) {
     const issues = [];
     const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
-    if (!String(snapshot?.title || '').trim()) add('Add a situation title.', 'sbDetailsSection');
-    if (!String(snapshot?.desc || '').trim()) add('Add a player-facing description.', 'sbDetailsSection');
+    if (!String(snapshot?.title || '').trim()) add('Add a situation name.', 'sbDetailsSection');
     if (!String(snapshot?.category || '').trim()) add('Choose a hit outcome.', 'sbDetailsSection');
     const teachingCategoryIds = new Set((window.DIQ_TEACHING_CATEGORIES || []).map(category=>category.id));
     if (!teachingCategoryIds.has(String(snapshot?.primaryCategory || ''))) {
@@ -2345,7 +2344,7 @@
       list.replaceChildren();
       (Array.isArray(SITUATIONS)?SITUATIONS:[]).filter(item=>`${item.title} ${item.desc} ${item.displayCode||''}`.toLowerCase().includes(search.value.toLowerCase())).forEach(item=>{
         const row=document.createElement('div');row.className='situation-library-row';
-        const title=document.createElement('strong');title.textContent=`${item.displayCode||item.key} · ${item.desc||item.title}`;
+        const title=document.createElement('strong');title.textContent=`${item.displayCode||item.key} · ${item.title||item.desc}`;
         const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent=editorRole==='coach'?'Propose changes':'Edit situation';
         edit.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',actionLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();};
         row.append(title,edit);list.appendChild(row);

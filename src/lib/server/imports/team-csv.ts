@@ -87,8 +87,8 @@ export function teamCsvTemplate(): string {
   return [
     'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password',
     'team,upsert,13u-black,13U Black,Spring 2027,,,,,',
-    'member,upsert,13u-black,,,13u-black-jordan-12,player,Jordan Lee,12,Temp-4821',
-    'member,upsert,13u-black,,,13u-black-coach-rivera,coach,Coach Rivera,,change-me',
+    'member,upsert,13u-black,,,,player,Jordan Lee,12,Temp-4821',
+    'member,upsert,13u-black,,,,coach,Coach Rivera,,change-me',
   ].join('\r\n');
 }
 
@@ -274,7 +274,11 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     if (kind !== 'team' && kind !== 'member') { addIssue(issues, record.row, 'record_type must be team or member.'); continue; }
     if (!['upsert', 'archive'].includes(requestedAction)) { addIssue(issues, record.row, 'action must be upsert or archive.'); continue; }
     if (!ID_PATTERN.test(teamId)) { addIssue(issues, record.row, 'team_id must use 2–80 lowercase letters, numbers, or hyphens.'); continue; }
-    const duplicateKey = kind === 'team' ? `team:${teamId}` : `member:${values.user_id?.trim().toLowerCase()}`;
+    const suppliedUserId = values.user_id?.trim().toLowerCase() || '';
+    // Stable across preview and commit; never derive identifiers from passwords.
+    const newMemberIdentity = JSON.stringify([teamId, values.role?.trim().toLowerCase(), values.name?.trim().toLowerCase(), values.number?.trim() || '']);
+    const duplicateKey = kind === 'team' ? `team:${teamId}`
+      : suppliedUserId ? `member:${suppliedUserId}` : `new-member:${newMemberIdentity}`;
     if (seen.has(duplicateKey)) { addIssue(issues, record.row, 'This record appears more than once in the file.'); continue; }
     seen.add(duplicateKey);
 
@@ -312,7 +316,13 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
       continue;
     }
 
-    const userId = values.user_id?.trim().toLowerCase();
+    if (!suppliedUserId && requestedAction === 'archive') {
+      addIssue(issues, record.row, 'user_id is required to archive an existing account. Download the selected team to obtain its IDs.');
+      continue;
+    }
+    const generatedDigest = !suppliedUserId
+      ? await crypto.subtle.digest('SHA-256', new TextEncoder().encode(newMemberIdentity)) : null;
+    const userId = suppliedUserId || `member-${[...new Uint8Array(generatedDigest!)].map(byte => byte.toString(16).padStart(2, '0')).join('')}`;
     if (!ID_PATTERN.test(userId)) { addIssue(issues, record.row, 'user_id must use 2–80 lowercase letters, numbers, or hyphens.'); continue; }
     const team = teamsById.get(teamId);
     if (!team) { addIssue(issues, record.row, `Team ${teamId} is not in the database or this file.`); continue; }
@@ -325,6 +335,12 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     const existingMembership = memberships.get(`${teamId}\u0000${userId}`);
     const activeMembership = activeMemberships.get(userId);
     const before = existingMembership?.member;
+    if (!suppliedUserId && (existingUser || [...memberships.values()].some(entry =>
+      entry.team.id === teamId && entry.member.role === values.role?.trim().toLowerCase()
+      && entry.member.name.trim().toLowerCase() === values.name?.trim().toLowerCase()))) {
+      addIssue(issues, record.row, 'This account may already exist. Supply user_id from Download selected team to update or restore it. Blank IDs only create new accounts.');
+      continue;
+    }
     if (existingUser && !before) {
       addIssue(
         issues,

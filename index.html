@@ -267,7 +267,7 @@
   <section id="adminWorkspace" class="card admin-workspace hidden" aria-label="Administrator workspace"></section>
   <section class="card field-card training-board">
     <div id="trainingHud" class="training-hud" aria-label="Situation conditions">
-      <span class="training-board-label"><span class="eyebrow">Read the situation</span><strong>Make the play.</strong></span><div id="playerSituationHeading" class="player-situation-heading"><strong id="playerSituationName"></strong><span id="playerSituationReference"></span></div>
+      <span class="training-board-label"><span class="eyebrow">Read the situation</span><strong>Make the play.</strong></span><div id="playerSituationHeading" class="player-situation-heading"><strong id="playerSituationName"></strong><span id="playerSituationReference"></span><p id="playerSituationContext" class="player-situation-context" hidden></p></div>
     </div>
     <aside id="trainingPanel" class="training-panel" aria-label="Training situation and actions">
       <section id="trainingSituation" class="training-situation" aria-labelledby="trainingSituationTitle">
@@ -442,8 +442,8 @@
     <section id="sbDetailsSection" class="situation-editor-section" data-editor-section="details">
       <div class="sectionTitle">Situation details</div>
     <div class="situation-title-fields">
-      <label class="field"><span>Title</span><input id="newTitleInput" type="text"></label>
-      <label class="field"><span>Description</span><input id="newDescInput" type="text"></label>
+      <label class="field"><span>Situation name</span><input id="newTitleInput" type="text" maxlength="120" placeholder="e.g., Single to CF"></label>
+      <label class="field"><span>Description / coaching context (optional)</span><textarea id="newDescInput" rows="3" placeholder="Add context or explain what players should focus on."></textarea></label>
     </div><div class="row situation-metadata-row">
       <label class="field"><span>Hit outcome</span><select id="situationCategoryInput"><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base Hits</option><option value="General">General / Other</option></select></label>
       <label class="field"><span>Difficulty</span><select id="situationDifficultySelect"><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>

@@ -536,6 +536,54 @@ test.describe('record-level administration API', () => {
     })).ok()).toBeTruthy();
   });
 
+  test('CSV generates stable IDs only for new members with blank IDs', async ({ request, baseURL }) => {
+    const origin = new URL(baseURL).origin;
+    await loginAdmin(request, origin);
+    const teamId = `csv-auto-${Date.now()}`;
+    const header = 'record_type,action,team_id,team_name,season_name,user_id,role,name,number,password';
+    const csv = [header,
+      `team,upsert,${teamId},Generated IDs ${teamId},Spring 2027,,,,,`,
+      `member,upsert,${teamId},,,,player,New Player,31,Temp-7391`,
+      `member,upsert,${teamId},,,,coach,New Coach,,Temp-7391`,
+    ].join('\n');
+    const previewCsv = async (content) => {
+      const response = await request.post('/api/admin/team-import', {
+        headers: { Origin: origin }, data: { mode: 'preview', csv: content },
+      });
+      expect(response.ok()).toBeTruthy();
+      return response.json();
+    };
+    const preview = await previewCsv(csv);
+    expect(preview.valid).toBe(true);
+    const members = preview.operations.filter(row => row.kind === 'member');
+    expect(members).toHaveLength(2);
+    expect(new Set(members.map(row => row.userId)).size).toBe(2);
+    for (const member of members) expect(member.userId).toMatch(/^member-[a-f0-9]{64}$/);
+    expect((await previewCsv(csv)).fingerprint).toBe(preview.fingerprint);
+    const committed = await request.post('/api/admin/team-import', {
+      headers: { Origin: origin }, data: { mode: 'commit', csv, fingerprint: preview.fingerprint },
+    });
+    expect(committed.ok()).toBeTruthy();
+    const teams = await (await request.get('/api/admin/teams?includeArchived=true')).json();
+    expect(teams.teams.find(team => team.id === teamId).roster.map(member => member.playerId).sort())
+      .toEqual(members.map(member => member.userId).sort());
+    expect((await previewCsv(csv)).valid).toBe(false);
+    const archive = await previewCsv([header, `member,archive,${teamId},,,,coach,New Coach,,`].join('\n'));
+    expect(archive.valid).toBe(false);
+    expect(JSON.stringify(archive.issues)).toContain('user_id is required');
+    const updated = await previewCsv([header,
+      `member,upsert,${teamId},,,${members[0].userId},player,Updated Player,31,`,
+    ].join('\n'));
+    expect(updated.valid).toBe(true);
+    expect(updated.operations[0].action).toBe('update');
+    const duplicate = await previewCsv([header,
+      `member,upsert,${teamId},,,,coach,Another Coach,,Temp-7391`,
+      `member,upsert,${teamId},,,,coach,Another Coach,,Temp-7391`,
+    ].join('\n'));
+    expect(duplicate.valid).toBe(false);
+    expect(JSON.stringify(duplicate.issues)).toContain('more than once');
+  });
+
   test('previews and atomically imports modern team CSV records', async ({ request, baseURL }) => {
     const origin = new URL(baseURL).origin;
     const suffix = `${Date.now()}-${Math.floor(Math.random() * 10000)}`;

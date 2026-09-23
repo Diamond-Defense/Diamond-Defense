@@ -28,11 +28,23 @@ again.
 | `team_id` | Stable lowercase database ID |
 | `team_name` | Required for a team upsert |
 | `season_name` | Required when the team is new or does not have an active season |
-| `user_id` | Stable account ID for a member |
+| `user_id` | Leave blank for a new account; required to update, restore, or archive an existing account |
 | `role` | `player` or `coach` |
 | `name` | Player or coach display name |
 | `number` | Required for players; blank for coaches |
 | `password` | Temporary password of at least 8 characters; required for new accounts, blank preserves an existing password |
+
+For new players and coaches, leave `user_id` blank. Preview generates a stable
+account ID and shows it in the proposed changes; committing that preview uses
+the same ID. New accounts still require a temporary password.
+
+For existing accounts, use **Download selected team** and keep the exported
+`user_id` values unchanged. Blank IDs never update or restore an account by
+matching its name or jersey number. If an account with the same name and role
+already belongs to the team, the importer asks for its ID instead of creating
+a possible duplicate. Different people with the same name need explicit unique
+IDs. Reimporting a previously committed file with blank IDs requires adding the
+exported IDs first. Archive rows always require an ID.
 
 Team rows may appear before or after their member rows. New teams referenced in
 the same file are created before their accounts. A new team receives the active
