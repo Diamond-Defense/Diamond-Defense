@@ -697,3 +697,37 @@ test.describe('record-level administration API', () => {
     })).ok()).toBeTruthy();
   });
 });
+
+
+test('situation transfer exports published records and reviews imports without writing', async ({ request, baseURL }) => {
+  const origin = new URL(baseURL).origin;
+  expect((await request.get('/api/admin/situations/transfer')).status()).toBe(401);
+  await loginAdmin(request, origin);
+  const exported = await request.get('/api/admin/situations/transfer');
+  expect(exported.ok()).toBeTruthy();
+  const bundle = await exported.json();
+  expect(bundle.format).toBe('diamond-defence-situations');
+  expect(bundle.situations.length).toBeGreaterThan(0);
+  expect(bundle.situations[0]).not.toHaveProperty('revision');
+  const original = bundle.situations[0];
+  const review = async (situations) => {
+    const response = await request.post('/api/admin/situations/transfer', {
+      headers: { Origin: origin }, data: { ...bundle, situations },
+    });
+    expect(response.ok()).toBeTruthy();
+    return (await response.json()).rows;
+  };
+  expect((await review([original]))[0].status).toBe('unchanged');
+  const changed = { ...original, title: 'Transfer review only', hit: { ...original.hit, x: original.hit.x + 1 } };
+  const rows = await review([changed]);
+  expect(rows[0].status).toBe('changed');
+  expect(rows[0].changes.map(item => item.field)).toEqual(expect.arrayContaining(['title', 'hit']));
+  const fresh = await (await request.get('/api/admin/situations/transfer')).json();
+  expect(fresh.situations.find(item => item.key === original.key)).toEqual(original);
+  expect((await review([original, original])).every(item => item.status === 'conflict')).toBeTruthy();
+  expect((await review([{ ...original, key: `transfer-${Date.now()}`, displayCode: undefined }]))[0].status).toBe('new');
+  expect((await review([{ ...original, key: `transfer-${Date.now()}` }]))[0].status).toBe('conflict');
+  expect((await review([{ ...original, hit: null }]))[0].status).toBe('conflict');
+  const invalid = await request.post('/api/admin/situations/transfer', { headers: { Origin: origin }, data: { version: 99 } });
+  expect(invalid.status()).toBe(400);
+});

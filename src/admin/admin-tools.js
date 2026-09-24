@@ -2319,41 +2319,163 @@
     if(group==='situationReviewSection') renderEditorState(currentSnapshot(),true);
   }
 
+  function addSituationTransfer(library) {
+    const panel = document.createElement('section');
+    panel.className = 'situation-transfer';
+    panel.setAttribute('aria-label', 'Import situations');
+    const body = document.createElement('div'); body.className = 'situation-transfer-body'; panel.append(body); library.append(panel);
+    const note = document.createElement('p'); note.textContent = 'Move published situations between local, preview, and production.'; body.append(note);
+    const status = document.createElement('p'); status.setAttribute('role', 'status');
+    const output = document.createElement('div'); output.className = 'situation-transfer-rows';
+    function button(label, action) { const element = document.createElement('button'); element.type = 'button'; element.className = 'btn btn-ghost'; element.textContent = label; element.onclick = action; return element; }
+    const controls = document.createElement('div'); controls.className = 'situation-transfer-controls';
+    const upload = document.createElement('input'); upload.type = 'file'; upload.accept = '.json,application/json'; upload.setAttribute('aria-label', 'Situation export file');
+    let busy = false;
+    let refreshSelection = () => {};
+    const guidance = document.createElement('ol'); guidance.className = 'situation-import-steps';
+    function stage(number) { guidance.replaceChildren(); ['Choose file', 'Review changes', 'Publish selection'].forEach((label, index) => { const step = document.createElement('li'); step.textContent = label; if (index + 1 === number) step.setAttribute('aria-current', 'step'); guidance.append(step); }); }
+    stage(1);
+    function selectionActions(selections, action, label) {
+      const items = document.createElement('div'); items.className = 'situation-transfer-items'; items.append(...output.childNodes);
+      const toolbar = document.createElement('div'); toolbar.className = 'situation-transfer-controls';
+      const count = document.createElement('strong'); count.setAttribute('role', 'status');
+      refreshSelection = () => {
+        const selected = selections.filter(({check}) => check.checked && !check.disabled).length;
+        count.textContent = `${selected} of ${selections.filter(({check}) => !check.disabled).length} selected`;
+        action.disabled = busy || selected === 0; action.textContent = selected ? `${label} (${selected})` : label;
+        selections.forEach(({check}) => check.closest('.situation-transfer-choice').classList.toggle('is-selected', check.checked));
+      };
+      toolbar.append(button('Select all', () => { selections.forEach(({check}) => { if (!check.disabled) check.checked = true; }); refreshSelection(); }), button('Clear selection', () => { selections.forEach(({check}) => check.checked = false); refreshSelection(); }));
+      const footer = document.createElement('div'); footer.className = 'situation-transfer-footer'; action.className = 'btn btn-brand'; footer.append(count, action);
+      items.addEventListener('change', refreshSelection); output.append(toolbar, items, footer); refreshSelection();
+    }
+    function lock(value) { busy = value; controls.querySelectorAll('button,input').forEach(element => element.disabled = value); if (!value) reviewButton.disabled = !upload.files?.length; }
+    function selection(label, disabled = false) { const row = document.createElement('label'); row.className = 'situation-transfer-choice'; const check = document.createElement('input'); check.type = 'checkbox'; check.disabled = disabled; const text = document.createElement('span'); text.textContent = label; row.append(check, text); output.append(row); return check; }
+    const reviewButton = button('Review import', async () => {
+      if (busy) return;
+      const file = upload.files?.[0];
+      if (!file) { status.textContent = 'Choose a situation export file first.'; return; }
+      if (file.size > 5_000_000) { status.textContent = 'Choose a file smaller than 5 MB.'; return; }
+      if (editorDirty) { status.textContent = 'Publish or discard your local situation draft before importing.'; return; }
+      refreshSelection = () => {}; lock(true); output.replaceChildren(); status.textContent = 'Reviewing situations…';
+      try {
+        const review = await diqApiRequest('admin/situations/transfer', { method: 'POST', body: await file.text() });
+        status.textContent = `From ${review.source} → ${review.destination}. Choose new or changed situations to publish. Unchanged and conflicting situations cannot be selected.`;
+        stage(2);
+        const selections = review.rows.map(item => {
+          const check = selection(`${item.title} (${item.key}) — ${item.status}${item.error ? ': ' + item.error : ''}`, !['new', 'changed'].includes(item.status));
+          if (item.changes?.length) {
+            const detail = document.createElement('details'); const heading = document.createElement('summary'); heading.textContent = `Review ${item.changes.length} changed fields`; detail.append(heading);
+            for (const change of item.changes) { const text = document.createElement('pre'); text.textContent = `${change.field}\nCurrent: ${JSON.stringify(change.before, null, 2)}\nIncoming: ${JSON.stringify(change.after, null, 2)}`; detail.append(text); }
+            check.closest('label').after(detail);
+          }
+          return { item, check };
+        });
+        const publish = button('Publish selected situations', async () => {
+          if (busy) return;
+          const selected = selections.filter(({ check }) => check.checked && !check.disabled);
+          if (!selected.length) { status.textContent = 'Select new or changed situations to publish.'; return; }
+          lock(true); publish.disabled = true;
+          const confirmed = await requestConfirmation({ title: 'Publish imported situations?', message: `Publish ${selected.length} situations to ${review.destination}? Existing situations get new revisions; new situations receive local display codes. Each situation is published separately. If one fails, earlier successful changes remain published.`, confirmLabel: 'Publish situations' });
+          if (!confirmed) { lock(false); publish.disabled = false; return; }
+          stage(3);
+          let count = 0;
+          try {
+            for (const { item, check } of selected) {
+              await diqApiRequest(item.status === 'new' ? 'situations' : `situations/${encodeURIComponent(item.key)}`, { method: item.status === 'new' ? 'POST' : 'PUT', headers: item.revision ? { 'If-Match': String(item.revision) } : {}, body: JSON.stringify(item.situation) });
+              count++; check.checked = false; check.disabled = true; check.nextElementSibling.textContent += ' — Published';
+            }
+            status.textContent = `Published ${count} situations. Refreshing the playbook…`;
+            await reloadPublishedSituation(currentSituation?.key);
+            library.querySelector('input[type=search]')?.dispatchEvent(new Event('input'));
+            status.textContent = `Published ${count} situations to ${review.destination}.`;
+          } catch (error) { status.textContent = `${count} situations published before stopping: ${error.message} Review the file again to check the current state before retrying.`; }
+          finally { lock(false); refreshSelection(); publish.disabled = true; refreshSelection = () => {}; }
+        });
+        selectionActions(selections, publish, 'Publish selected');
+      } catch (error) { status.textContent = error.message; } finally { lock(false); refreshSelection(); }
+    });
+    upload.addEventListener('change', () => { output.replaceChildren(); status.textContent = 'File selected. Review it before publishing.'; });
+    const fileLabel = document.createElement('label'); fileLabel.className = 'situation-transfer-file'; fileLabel.append('Situation JSON file', upload);
+    upload.addEventListener('change', () => { reviewButton.disabled = !upload.files?.length; refreshSelection = () => {}; stage(1); });
+    controls.append(fileLabel, reviewButton); body.append(guidance, controls, status, output);
+    reviewButton.disabled = true;
+    return panel;
+  }
+
   function showSituationLibrary(){
     document.body.classList.add('situation-library-open');
     document.body.classList.remove('situation-editing-open');
-    let library=byId('situationLibrary');
-    if(!library){library=document.createElement('section');library.id='situationLibrary';situationEditor.parentElement.prepend(library);}
-    else situationEditor.parentElement.prepend(library);
-    library.replaceChildren();
-    const heading=document.createElement('h2');heading.textContent=editorRole==='coach'?'Situation proposals':'Situation library';library.appendChild(heading);
-    const explanation=document.createElement('p');explanation.textContent=editorRole==='coach'?'Choose a published situation to propose changes, or create a new situation. Draft changes remain local until submitted.':'Choose a situation to edit. Changes reach players only after publishing.';library.appendChild(explanation);
-    if(editorRole==='admin'){
-      const tabs=document.createElement('div');tabs.className='situation-library-tabs';
-      [['library','Situation library'],['proposals','Proposals to review']].forEach(([value,label])=>{
-        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;
-        button.onclick=()=>{document.body.dataset.situationLibraryTab=value;tabs.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));};
-        button.setAttribute('aria-pressed',String(value==='library'));tabs.appendChild(button);
-      });library.appendChild(tabs);document.body.dataset.situationLibraryTab='library';
+    if(editorRole==='admin') {
+      adminWorkspace.appendChild(adminEditorMount.closest('[data-admin-view]'));
+      adminWorkspace.classList.remove('hidden');
+      fieldCard?.classList.add('hidden');
     }
-    const create=document.createElement('button');create.type='button';create.className='btn btn-brand';create.textContent='New situation';create.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',actionLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();};create.classList.add('situation-library-create');library.appendChild(create);
-    if(editorDirty){const resume=document.createElement('button');resume.type='button';resume.className='btn btn-ghost';resume.textContent='Continue local draft';resume.onclick=openSituationEditorPane;library.appendChild(resume);}
-    const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.appendChild(search);
-    const list=document.createElement('div');list.className='situation-library-list';library.appendChild(list);
-    const draw=()=>{
+    let library=byId('situationLibrary');
+    if(!library){library=document.createElement('section');library.id='situationLibrary';}
+    situationEditor.parentElement.prepend(library); library.replaceChildren();
+    const isAdmin=editorRole==='admin';
+    if(!isAdmin){const heading=document.createElement('h2');heading.textContent='Situation proposals';library.append(heading);}
+    function button(label, action){const item=document.createElement('button');item.type='button';item.className='btn btn-ghost';item.textContent=label;item.onclick=action;return item;}
+    const toolbar=document.createElement('div');toolbar.className='situation-library-toolbar';library.append(toolbar);
+    const tabs=document.createElement('div');tabs.className='situation-library-tabs';toolbar.append(tabs);
+    let mode='library', bundle=null, loading=false;
+    const selected=new Set();
+    const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();});create.className='btn btn-brand situation-library-create';toolbar.append(create);
+    if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
+    const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
+    const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
+    const exportActions=document.createElement('div');exportActions.className='situation-transfer-controls';library.append(exportActions);
+    const list=document.createElement('div');list.className='situation-library-list';library.append(list);
+    const footer=document.createElement('div');footer.className='situation-transfer-footer';library.append(footer);
+    const count=document.createElement('strong');count.setAttribute('role','status');
+    const download=button('Download selected',()=>{
+      const situations=bundle.situations.filter(item=>selected.has(item.key));
+      if(!situations.length)return;
+      const url=URL.createObjectURL(new Blob([JSON.stringify({...bundle,situations},null,2)],{type:'application/json'}));
+      const link=document.createElement('a');link.href=url;link.download='diamond-defence-situations.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+      status.textContent=`Exported ${situations.length} situations from ${bundle.source}.`;
+    });download.className='btn btn-brand';footer.append(count,download);
+    const importHost=document.createElement('div');library.append(importHost);
+    if(isAdmin)addSituationTransfer(importHost);
+    const records=()=>mode==='export'?(bundle?.situations||[]):(Array.isArray(SITUATIONS)?SITUATIONS:[]);
+    const matches=()=>records().filter(item=>`${item.title} ${item.desc||''} ${item.displayCode||''}`.toLowerCase().includes(search.value.toLowerCase()));
+    const updateCount=()=>{count.textContent=`${selected.size} selected · ${matches().length} matching`;download.disabled=!selected.size;download.textContent=selected.size?`Download selected (${selected.size})`:'Download selected';};
+    function draw(){
       list.replaceChildren();
-      (Array.isArray(SITUATIONS)?SITUATIONS:[]).filter(item=>`${item.title} ${item.desc} ${item.displayCode||''}`.toLowerCase().includes(search.value.toLowerCase())).forEach(item=>{
-        const row=document.createElement('div');row.className='situation-library-row';
+      for(const item of matches()){
+        const row=document.createElement(mode==='export'?'label':'div');row.className='situation-library-row';
         const title=document.createElement('strong');title.textContent=`${item.displayCode||item.key} · ${item.title||item.desc}`;
-        const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent=editorRole==='coach'?'Propose changes':'Edit situation';
-        edit.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',actionLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();};
-        row.append(title,edit);list.appendChild(row);
-      });
-      if(!list.children.length) list.textContent='No situations match this search.';
-    };search.addEventListener('input',draw);draw();
-    if(editorRole==='coach' && coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
+        if(mode==='export'){
+          const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);row.classList.toggle('is-selected',check.checked);
+          check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);row.classList.toggle('is-selected',check.checked);updateCount();};row.append(check,title);
+        }else{
+          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});row.append(title,edit);
+        }list.append(row);
+      }
+      if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';
+      updateCount();
+    }
+    exportActions.append(button('Select matching situations',()=>{matches().forEach(item=>selected.add(item.key));draw();}),button('Select all situations',()=>{records().forEach(item=>selected.add(item.key));draw();}),button('Clear selection',()=>{selected.clear();draw();}));
+    async function switchMode(value){
+      mode=value;document.body.dataset.situationLibraryTab=value;
+      tabs.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.mode===value)));
+      search.hidden=list.hidden=!['library','export'].includes(value); exportActions.hidden=footer.hidden=value!=='export';importHost.hidden=value!=='import';status.textContent='';
+      if(value==='export'&&!bundle){
+        loading=true;draw();
+        try{bundle=await diqApiRequest('admin/situations/transfer',{cache:'no-store'});}
+        catch(error){if(mode==='export')status.textContent=error.message;}
+        finally{loading=false;}
+      }
+      if(mode==='export'&&bundle)status.textContent=`Select published situations to download. Source: ${bundle.source}`;
+      draw();
+    }
+    if(isAdmin)for(const [value,label] of [['library','Library'],['proposals','Proposals to review'],['export','Export'],['import','Import']]){const item=button(label,()=>switchMode(value));item.dataset.mode=value;tabs.append(item);}
+    search.addEventListener('input',draw);void switchMode('library');
+    if(!isAdmin&&coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
   }
   function openSituationEditorPane(){
+    if(editorRole==='admin'){adminCard.appendChild(adminEditorMount.closest('[data-admin-view]'));adminWorkspace.classList.add('hidden');fieldCard?.classList.remove('hidden');}
     document.body.classList.remove('situation-library-open');
     document.body.classList.add('situation-editing-open');
     focusEditorSection('sbDetailsSection');
@@ -2728,6 +2850,8 @@
     setSituation(snapshot.key, clone(snapshot));
     document.body.classList.remove('situation-library-open');
     document.body.classList.add('situation-player-preview', 'proposal-field-preview');
+    adminWorkspace?.classList.add('hidden');
+    fieldCard?.classList.remove('hidden');
     proposalPreviewBar();
   }
 

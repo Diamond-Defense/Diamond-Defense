@@ -57,7 +57,7 @@ export type SituationRecord = Situation & {
   archivedAt?: string | null;
 };
 
-function validateSituation(situation: Situation): Situation {
+export function validateSituation(situation: Situation): Situation {
   const key = String(situation?.key || '').trim();
   const title = String(situation?.title || '').trim();
   const category = String(situation?.category || '').trim();

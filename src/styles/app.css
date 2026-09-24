@@ -3450,7 +3450,7 @@ body.situation-editing-open[data-situation-edit-section="sbRunnersSubsec"] .fiel
 
 .situation-library-tabs{display:flex;gap:8px;margin-bottom:16px}
 .situation-library-tabs button[aria-pressed=true]{background:var(--accent-primary);color:var(--text-on-accent)}
-body.situation-library-open[data-situation-library-tab=library] #adminCard .proposal-review-card{display:none}
+body.situation-library-open:not([data-situation-library-tab=proposals]) .proposal-review-card{display:none}
 body.situation-library-open[data-situation-library-tab=proposals] #situationLibrary :is(.situation-library-list,.situation-library-create,input[type=search]){display:none}
 body.situation-library-open #coachCard>.coachGrid{max-width:none;width:100%}
 body.situation-editing-open .builder-field-help{display:none}
@@ -3504,8 +3504,8 @@ main#appWorkspace:has(#adminWorkspace:not(.hidden)) > .tools-drawer:has(#adminCa
 main#appWorkspace:has(#adminCard:not(.hidden)) > #adminWorkspace:not(.hidden){grid-column:1;grid-row:2;width:100%;min-width:0;box-sizing:border-box}
 main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard{padding:16px 20px;max-height:none;width:100%;box-sizing:border-box}
 main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .tools-panel-header{padding-bottom:12px;margin-bottom:12px}
-main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .admin-tabs{display:flex;gap:8px;justify-content:flex-start}
-main#appWorkspace:has(#adminWorkspace:not(.hidden)) #adminCard .admin-tabs button{flex:0 0 auto;min-height:40px;padding:8px 20px}
+#adminCard .admin-tabs{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-start}
+#adminCard .admin-tabs button{flex:0 0 auto;width:auto;min-height:40px;padding:8px 20px}
 #adminWorkspace :is(input:not([type=checkbox]),select){min-height:42px;padding:9px 12px;font:inherit;box-sizing:border-box}
 #adminWorkspace .admin-team-context{border-left:3px solid var(--accent-primary)}
 #adminWorkspace .admin-team-tabs{display:flex;gap:8px;justify-content:flex-start}
@@ -3592,3 +3592,45 @@ body.player-experience .training-navigation .brand-mark,
   white-space:pre-wrap;overflow-wrap:anywhere;
 }
 .player-situation-context[hidden]{display:none}
+
+/* Situation transfer is confined to the admin library. */
+.situation-transfer { border:1px solid var(--border, #334b61); border-radius:10px; padding:14px; margin:14px 0; }
+.situation-transfer summary { cursor:pointer; font-weight:700; }
+.situation-transfer-controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+.situation-transfer-rows { display:grid; gap:10px; }
+.situation-transfer-choice { display:flex !important; align-items:center; justify-content:flex-start !important; gap:12px; padding:10px; }
+.situation-transfer-choice input[type=checkbox] { width:20px !important; height:20px; flex:0 0 20px; }
+.situation-transfer pre { white-space:pre-wrap; overflow-wrap:anywhere; max-height:300px; overflow:auto; }
+body.situation-library-open[data-situation-library-tab=proposals] .situation-transfer { display:none; }
+
+/* Keep transfer actions compact despite the surrounding editor form layout. */
+#situationLibrary .situation-transfer-body { max-width:1100px; margin:16px auto 0; }
+#situationLibrary .situation-transfer-controls { display:flex; flex-direction:row; flex-wrap:wrap; gap:8px; align-items:center; }
+#situationLibrary .situation-transfer button { width:auto; flex:0 0 auto; justify-self:start; }
+#situationLibrary .situation-transfer [hidden] { display:none !important; }
+#situationLibrary .situation-transfer button[aria-pressed=true] { background:var(--gold, #c5a565); color:#091523; }
+#situationLibrary .situation-transfer-file { display:grid; gap:8px; flex:1 1 260px; max-width:640px; }
+#situationLibrary .situation-transfer-items { max-height:380px; overflow:auto; border:1px solid #334b61; border-radius:8px; padding:6px; }
+#situationLibrary .situation-transfer-choice { margin:0; min-height:44px; border-radius:6px; cursor:pointer; }
+#situationLibrary .situation-transfer-choice:hover { background:#172a3e; }
+#situationLibrary .situation-transfer-choice.is-selected { background:#293644; box-shadow:inset 3px 0 #c5a565; }
+#situationLibrary .situation-transfer-choice:has(input:disabled) { opacity:.65; cursor:default; }
+#situationLibrary .situation-transfer-items details { margin:0 10px 12px 42px; }
+#situationLibrary .situation-transfer-footer { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid #334b61; padding-top:12px; }
+
+/* All admin library pages share the header and a separate content card. */
+body.situation-library-open main#appWorkspace:has(#adminWorkspace:not(.hidden)):has(#adminCard:not(.hidden)){display:grid;grid-template-columns:minmax(0,1fr);gap:16px}
+#adminWorkspace #situationLibrary{padding:0}
+.situation-library-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.situation-library-toolbar .situation-library-tabs{margin:0;flex-wrap:wrap}
+#situationLibrary [hidden]{display:none!important}
+#situationLibrary .situation-library-row:has(input[type=checkbox]){justify-content:flex-start;cursor:pointer}
+#situationLibrary .situation-library-row input[type=checkbox]{width:20px;height:20px;flex:0 0 20px}
+#situationLibrary .situation-library-row.is-selected{background:var(--surface-raised);border-color:var(--accent-primary)}
+#situationLibrary .situation-transfer-controls{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+#situationLibrary .situation-transfer-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}
+#situationLibrary .situation-transfer{border:0;padding:0;margin:16px 0}
+#situationLibrary .situation-transfer-body{max-width:none;margin:0}
+.situation-import-steps{display:flex;flex-wrap:wrap;gap:32px;padding:16px 16px 16px 32px;border-bottom:1px solid var(--border)}
+.situation-import-steps li{padding:8px;color:var(--text-secondary)}
+.situation-import-steps [aria-current=step]{color:var(--accent-primary);font-weight:700}

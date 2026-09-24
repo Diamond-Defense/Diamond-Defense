@@ -1227,9 +1227,21 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminCsvPreview')).toBeHidden();
     await expect(page.getByRole('button', { name: /teams\.json|situations json|download all situations/i })).toHaveCount(0);
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
-    await expect(page.locator('#adminWorkspace')).toBeHidden();
+    await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     await expect(page.locator('#situationLibrary')).toBeVisible();
+    const situationLibrary = page.locator('#situationLibrary');
+    await situationLibrary.getByRole('button', { name: 'Export', exact: true }).click();
+    await expect(situationLibrary.locator('.situation-library-row input[type=checkbox]').first()).toBeVisible();
+    await situationLibrary.locator('.situation-library-row input[type=checkbox]').first().check();
+    await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('no-matching-situation');
+    await expect(situationLibrary.getByRole('button', { name: 'Download selected (1)', exact: true })).toBeEnabled();
+    await situationLibrary.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(situationLibrary.getByLabel('Situation export file')).toBeVisible();
+    await expect(situationLibrary.locator('.situation-library-list')).toBeHidden();
+    await situationLibrary.getByRole('button', { name: 'Library', exact: true }).click();
+    await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('');
+
     await page.locator('#situationLibrary').getByRole('button', { name:'Edit situation', exact:true }).first().click();
     await expect(page.locator('.field-card')).toBeVisible();
     const adminFieldLayout = await page.evaluate(() => {
@@ -1305,7 +1317,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminProposalPreviewBtn')).toBeEnabled();
     await page.locator('input[data-proposal-field="title"]').uncheck();
     const unsavedEditorTitle = 'Unsaved administrator draft preserved through preview';
-    await page.getByRole('button', { name:'Situation library', exact:true }).click();
+    await page.getByRole('button', { name:'Library', exact:true }).click();
     await page.getByRole('button', { name:'Edit situation', exact:true }).first().click();
     await page.locator('#newTitleInput').fill(unsavedEditorTitle);
     await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
@@ -1319,6 +1331,8 @@ test.describe('Diamond Defence regression behavior', () => {
     });
     await page.locator('#adminProposalPreviewBtn').click();
     await expect(page.locator('body')).toHaveClass(/proposal-field-preview/);
+    await expect(page.locator('.field-card')).toBeVisible();
+    await expect(page.locator('#adminWorkspace')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Selected changes', exact: true })).toHaveAttribute('aria-pressed', 'true');
     const selectedPreview = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
     expect(selectedPreview.title).toBe(fieldProposal.publishedTitle);
@@ -1645,7 +1659,7 @@ test.describe('Diamond Defence regression behavior', () => {
       clampedLow: 0,
       clampedHigh: 2,
       publishedSituationLabel: 'S02 · Single to CF',
-      generatedSituationLabel: 'S21 · Squeeze bunt',
+      generatedSituationLabel: 'S21 · New Situation',
       resolvedOutcome:{
         finalRunners:{first:true,second:false,third:true},
         runsScored:1,
