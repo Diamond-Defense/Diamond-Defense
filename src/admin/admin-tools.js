@@ -2462,7 +2462,7 @@
       if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Playbooks. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
       await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(preview.revision)},body:JSON.stringify({confirmation:preview.title})});
       await loadSituationsFromDatabase();
-      if(currentSituation?.key===key){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else currentSituation=null;}
+      if(currentSituation?.key===key){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else clearCurrentSituation();}
       if(document.body.classList.contains('situation-library-open'))showSituationLibrary();
       return true;
     }catch(error){setWorkflowStatus(error.message,'error');if(typeof toast==='function')toast(error.message);}

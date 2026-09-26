@@ -1236,7 +1236,7 @@ function getRingEl(id){ return wrap.querySelector(`.tgt[data-id="${id}"]`); }
 function getAllRings(){ return Array.from(wrap.querySelectorAll('.tgt')); }
 function buildTargets(){
   getAllRings().forEach(n=>n.remove());
-  const t=currentSituation.targets||{};
+  const t=currentSituation?.targets||{};
   Object.entries(t).forEach(([id,pt])=>{
     const ring=document.createElement('div');
     ring.className='tgt'; ring.dataset.id = id;
@@ -2114,7 +2114,7 @@ function applyCoachVisibility(){
 
   // Always show the white ball; draggable when coach is unlocked
   if (ballEl){
-    ballEl.style.display = (coachUnlocked || gameActive) ? 'block' : 'none';
+    ballEl.style.display = currentSituation && (coachUnlocked || gameActive) ? 'block' : 'none';
     ballEl.classList.toggle('locked', !coachUnlocked);  // unlocked in coach mode
     ballEl.style.zIndex = '10';                         // keep on top of runners/chips
   }
@@ -2466,10 +2466,36 @@ window._diqRefreshSituationAccess=async()=>{
  await loadSituationsFromDatabase();
  if(!SITUATIONS.some(item=>item.key===currentSituation?.key)){
    if(SITUATIONS.length)setSituation(SITUATIONS[0].key);
-   else {currentSituation=null;stopTimer();gameActive=false;_roundHasStarted=false;if(descHud)descHud.textContent='Your team Playbook is empty';if(startBtn)startBtn.disabled=true;if(checkBtn)checkBtn.disabled=true;if(resetBtn)resetBtn.disabled=true;}
+   else clearCurrentSituation();
  }
  renderPlaybookBrowser();applyGameAccess();
 };
+
+function clearCurrentSituation(){
+  currentSituation = null;
+  stopTimer();
+  gameActive = false;
+  _roundHasStarted = false;
+  _completedFreePlay = false;
+  remainingTries = 0;
+  wipePhase2StateUI();
+  clearSolutionReview();
+  clearResolvedSituationOutcome();
+  buildTargets();
+  hideTargetPanel();
+  clearBallHitPath();
+  hideRunner();
+  liveRunners = normalizeRunnersOn({});
+  renderBaseRunners();
+  updateRunnersHudFromLive();
+  if(ballEl) ballEl.style.display = 'none';
+  if(startBtn) startBtn.disabled = true;
+  if(checkBtn) checkBtn.disabled = true;
+  if(resetBtn) resetBtn.disabled = true;
+  updateDescriptionHudText();
+  updateHud(0);
+  applyGameAccess();
+}
 
 function snapshotSituationsOrig(){
   try{
@@ -2515,7 +2541,13 @@ window._diqSituationDisplayLabel = situationDisplayLabel;
 
 function updateDescriptionHudText(){
   const el = document.getElementById('descHud');
-  if (!el || !currentSituation) return;
+  if (!el) return;
+  if (!currentSituation){
+    el.textContent = window.__DIQ_AUTH_USER__?.role === 'player'
+      ? 'Your team Playbook is empty' : 'No published situations';
+    el.removeAttribute('title');
+    return;
+  }
   const txt = situationDisplayLabel(currentSituation);
   el.textContent = txt;
   el.title = txt;
@@ -2954,7 +2986,7 @@ function setSituation(key, situationSnapshot=null){
   currentSituation = situationSnapshot
     ? normalizeSituation(situationSnapshot, 0)
     : getSituationByKey(key) || SITUATIONS[0];
-  if (!currentSituation) return;
+  if (!currentSituation){ clearCurrentSituation(); return; }
   resetRunnerPresentation();
   offenseNumbers();
   startsMap[currentSituation.key] = Fcopy(currentSituation.starts || DEFAULT_STARTS);
@@ -3027,7 +3059,7 @@ function setSituation(key, situationSnapshot=null){
   if (hitMarker){ hitMarker.remove(); hitMarker = null; }
   syncBallToHit();
   if (ballEl){
-    ballEl.style.display = (coachUnlocked || gameActive) ? 'block' : 'none';
+    ballEl.style.display = currentSituation && (coachUnlocked || gameActive) ? 'block' : 'none';
     ballEl.classList.toggle('locked', !coachUnlocked);
     ballEl.style.zIndex = '10';
   }
@@ -3763,6 +3795,7 @@ function resetBallAndRunnerForSituation(){
 }
 
 function resetPlayers(reason='reset'){
+  if(!currentSituation){ clearCurrentSituation(); return; }
   const abandonReason = typeof reason === 'string' ? reason : 'reset';
   if(abandonReason === 'reset' && playerHasPendingPractice()){
     if(typeof toast === 'function') toast('Reset is unavailable during assigned practice. Complete this attempt to continue.');

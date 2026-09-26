@@ -71,6 +71,25 @@ async function logoutCurrentUser(page) {
 }
 
 test.describe('Diamond Defence regression behavior', () => {
+  test('an empty published library still allows admin sign-in and import', async ({ page }) => {
+    await page.route('**/api/situations', route => route.fulfill({ json: [] }));
+    const errors = await openCleanApp(page);
+    await expect(page.locator('#descHud')).toHaveText('No published situations');
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
+    await page.locator('#adminPwInput').fill('password');
+    await page.locator('#adminPwOk').click();
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
+    await expect(page.getByRole('button', { name: 'Start Situation', exact: true })).toBeDisabled();
+    await page.locator('#staffToolsBtn').click();
+    await page.getByRole('button', { name: 'Situations', exact: true }).click();
+    const library = page.locator('#situationLibrary');
+    await expect(library).toBeVisible();
+    await library.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(library.getByLabel('Situation export file')).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
   test('ignores legacy browser data and loads authoritative D1 records', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('diq_teams_v1', JSON.stringify({
