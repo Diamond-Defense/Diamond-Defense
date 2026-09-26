@@ -722,6 +722,14 @@ test('situation transfer exports published records and reviews imports without w
   const rows = await review([changed]);
   expect(rows[0].status).toBe('changed');
   expect(rows[0].changes.map(item => item.field)).toEqual(expect.arrayContaining(['title', 'hit']));
+  const duplicateA = { ...original, key: 'transfer-conflict-a', title: 'Import conflict fixture', audience: { staffVariant: 'Review variant' } };
+  const duplicateB = { ...duplicateA, key: 'transfer-conflict-b', outs: 2, runnersOn: { first: true, second: false, third: false } };
+  const duplicates = await review([duplicateA, duplicateB]);
+  expect(duplicates.every(row => row.status === 'conflict')).toBeTruthy();
+  expect(duplicates[0].incoming).toMatchObject({ key: duplicateA.key, staffLabel: 'Review variant', outs: original.outs });
+  expect(duplicates[0].conflicts).toEqual([expect.objectContaining({ key: duplicateB.key, source: 'Import file', runnersOn: duplicateB.runnersOn, outs: 2 })]);
+  const destinationConflict = (await review([{ ...original, key: 'transfer-destination-conflict' }]))[0];
+  expect(destinationConflict.conflicts).toEqual(expect.arrayContaining([expect.objectContaining({ key: original.key, source: 'Destination library', runnersOn: original.runnersOn, outs: original.outs })]));
   const fresh = await (await request.get('/api/admin/situations/transfer')).json();
   expect(fresh.situations.find(item => item.key === original.key)).toEqual(original);
   expect((await review([original, original])).every(item => item.status === 'conflict')).toBeTruthy();

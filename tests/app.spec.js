@@ -80,7 +80,9 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminPwInput').fill('password');
     await page.locator('#adminPwOk').click();
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
-    await expect(page.getByRole('button', { name: 'Start Situation', exact: true })).toBeDisabled();
+    // Empty-library presentation hides Start; still verify gameplay is disabled.
+    await expect(page.locator('#startBtn')).toBeDisabled();
+    await expect(page.getByRole('button', { name: /Random/ })).toBeDisabled();
     await page.locator('#staffToolsBtn').click();
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
     const library = page.locator('#situationLibrary');

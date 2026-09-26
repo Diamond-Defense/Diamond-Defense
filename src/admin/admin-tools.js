@@ -2370,6 +2370,22 @@
         stage(2);
         const selections = review.rows.map(item => {
           const check = selection(`${item.title} (${item.key}) — ${item.status}${item.error ? ': ' + item.error : ''}`, !['new', 'changed'].includes(item.status));
+          if (item.status === 'conflict') {
+            const detail = document.createElement('div');
+            detail.className = 'situation-transfer-conflict';
+            const describe = record => {
+              const bases = ['first', 'second', 'third'].filter(base => record.runnersOn?.[base]);
+              const runners = !record.runnersOn ? 'Runners unspecified' : bases.length ? `Runners: ${bases.join(', ')}` : 'Bases empty';
+              const outs = record.outs == null ? 'Outs unspecified' : `${record.outs} ${record.outs === 1 ? 'out' : 'outs'}`;
+              return `${record.source}: ${record.title} (${record.key}) · Staff label: ${record.staffLabel || 'None'} · ${runners} · ${outs}`;
+            };
+            for (const record of [item.incoming, ...(item.conflicts || [])].filter(Boolean)) {
+              const text = document.createElement('p'); text.textContent = describe(record); detail.append(text);
+            }
+            const help = document.createElement('p');
+            help.textContent = 'Resolve the conflict in the source library, then export and review the file again. Names and staff labels must be distinct; different starting runners or outs alone do not resolve a duplicate name.';
+            detail.append(help); check.closest('label').after(detail);
+          }
           if (item.changes?.length) {
             const detail = document.createElement('details'); const heading = document.createElement('summary'); heading.textContent = `Review ${item.changes.length} changed fields`; detail.append(heading);
             for (const change of item.changes) { const text = document.createElement('pre'); text.textContent = `${change.field}\nCurrent: ${JSON.stringify(change.before, null, 2)}\nIncoming: ${JSON.stringify(change.after, null, 2)}`; detail.append(text); }

@@ -38,20 +38,45 @@ export const POST: RequestHandler = async (event) => {
   const records = await new SqliteSituationRepository(databaseFor(event)).list(true);
   const rows = await Promise.all(bundle.situations.map(async (input: Situation) => {
     const key = String(input?.key ?? '');
+    const summary = (item: Situation, source: string) => ({
+      key: String(item?.key ?? ''), title: String(item?.title ?? ''), source,
+      staffLabel: String(item?.audience?.staffVariant ?? '').trim(),
+      runnersOn: item?.runnersOn ?? null, outs: item?.outs ?? null,
+    });
+    const conflicts: ReturnType<typeof summary>[] = [];
+    let incoming = summary(input, 'Import file');
     try {
+      for (const item of bundle.situations) {
+        if (item !== input && item?.key === key) conflicts.push(summary(item, 'Import file'));
+      }
       if (bundle.situations.filter((item: Situation) => item?.key === key).length !== 1) throw new Error('Duplicate situation key in file.');
 
       const existing = records.find(record => record.key === key);
       const situation = editable(validateSituation(editable({ ...input, suggestedDivisions: input.suggestedDivisions ?? existing?.suggestedDivisions, audience: input.audience ?? existing?.audience, ballLocation: input.ballLocation ?? existing?.ballLocation })));
 
+      incoming = summary(situation, 'Import file');
       validateGeometry(situation);
+      const identity = situationIdentity(situation);
+      for (const item of bundle.situations) {
+        if (item?.key === key) continue;
+        const destination = records.find(record => record.key === item?.key);
+        try {
+          if (situationIdentity({ ...item, audience: item.audience ?? destination?.audience }) === identity)
+            conflicts.push(summary({ ...item, audience: item.audience ?? destination?.audience }, 'Import file'));
+        } catch { /* Invalid records receive their own validation error. */ }
+      }
+      for (const record of records) {
+        if ((record.key === key && record.active === false) ||
+            (record.key !== key && record.active !== false && situationIdentity(record) === identity))
+          conflicts.push(summary(record, record.active === false ? 'Destination (archived)' : 'Destination library'));
+      }
       const current = records.find(record => record.key === key);
       if (current?.active === false) throw new Error('This key belongs to an archived situation. Resolve it before importing.');
       if (!current || situationIdentity(current) !== situationIdentity(situation)) await new SqliteSituationRepository(databaseFor(event)).assertUnique(situation);
-      if (bundle.situations.some((item: Situation) => { if (item?.key === key) return false; try { return situationIdentity(item) === situationIdentity(situation); } catch { return false; } })) throw new Error('Another situation in this file has the same name and variant.');
+      if (conflicts.some(item => item.source === 'Import file')) throw new Error('Another situation in this file has the same name and staff label.');
       const changes = fields.filter(field => field !== 'key' && stable(field === 'audience' ? current?.audience || {} : field === 'suggestedDivisions' ? current?.suggestedDivisions || [] : current?.[field]) !== stable(situation[field])).map(field => ({ field, before: current?.[field] ?? null, after: situation[field] ?? null }));
       return { key, title: situation.title, status: current ? (changes.length ? 'changed' : 'unchanged') : 'new', revision: current?.revision, situation, changes };
-    } catch (error) { return { key, title: String(input?.title ?? key), status: 'conflict', error: error instanceof Error ? error.message : 'Invalid situation.' }; }
+    } catch (error) { return { key, title: String(input?.title ?? key), status: 'conflict', incoming, conflicts, error: error instanceof Error ? error.message : 'Invalid situation.' }; }
   }));
   return json({ source: String(bundle.source ?? 'Unknown environment'), destination: event.url.origin, rows }, { headers: { 'Cache-Control': 'no-store' } });
 };
