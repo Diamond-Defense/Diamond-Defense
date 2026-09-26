@@ -1718,6 +1718,8 @@
     );
   });
 
+  byId('adminDeleteSituationBtn')?.addEventListener('click',()=>{const key=archivedSituationSelect?.value;if(key)void window._diqDeleteSituationPermanently?.(key).then(ok=>{if(ok)return loadAdminData();});else setStatus('Select an archived situation.','error');});
+
   byId('adminRestoreSituationBtn')?.addEventListener('click', () => {
     const key = archivedSituationSelect?.value;
     const situation = archivedSituations.find((item) => item.key === key);
@@ -2453,6 +2455,20 @@
     }catch(error){status.textContent=error.message;}
   }
 
+  async function permanentlyDeleteSituation(key){
+    try{
+      const preview=await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{cache:'no-store'});
+      if(preview.counts.assignments){await requestConfirmation({title:'Situation is used by assignments',message:`${preview.counts.assignments} assignments reference this situation. Remove those references or clear the affected practice data before permanent deletion. Archiving an assignment alone does not remove its references.`,confirmLabel:'OK'});return;}
+      if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Playbooks. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
+      await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(preview.revision)},body:JSON.stringify({confirmation:preview.title})});
+      await loadSituationsFromDatabase();
+      if(currentSituation?.key===key){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else currentSituation=null;}
+      if(document.body.classList.contains('situation-library-open'))showSituationLibrary();
+      return true;
+    }catch(error){setWorkflowStatus(error.message,'error');if(typeof toast==='function')toast(error.message);}
+  }
+  window._diqDeleteSituationPermanently=permanentlyDeleteSituation;
+
   window._diqOpenCoachTeamPlaybook=()=>openTeamPlaybook(byId('coachTeamPlaybook'));
 
   function showSituationLibrary(){
@@ -2511,7 +2527,7 @@
           row.ondragstart=event=>{draggedKey=item.key;event.dataTransfer.setData('text/plain',item.key);};row.ondragover=event=>event.preventDefault();
           row.ondrop=event=>{event.preventDefault();const from=order.situations.findIndex(record=>record.key===draggedKey);const to=order.situations.findIndex(record=>record.key===item.key);if(from<0||from===to)return;const [moved]=order.situations.splice(from,1);order.situations.splice(to,0,moved);draw();};
         }else{
-          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);
+          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
         }list.append(row);
       }
       if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';

@@ -37,3 +37,9 @@ Older files that omit audience or ball-location fields retain those fields on ex
 npm run check
 TEST_PORT=8778 npx playwright test tests/administration-api.spec.js -g "situation transfer"
 ```
+
+## Replacing an existing library
+
+Administrators can use **Delete permanently** on a library entry or an archived entry in **Recovery → Situations** before importing a replacement. Review the affected-record counts and type the full situation name to confirm. Deletion removes saved attempts, revisions, proposals, and team Playbook selections for that situation. Audit history remains. Export first if a content backup is needed.
+
+Assignment references block permanent deletion, including archived assignments. Remove those references or use the existing practice-data cleanup workflow first; deletion does not silently remove or alter assignments. Imported replacement situations are not automatically added to team Playbooks.
