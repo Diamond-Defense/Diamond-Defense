@@ -725,9 +725,40 @@ test('situation transfer exports published records and reviews imports without w
   const fresh = await (await request.get('/api/admin/situations/transfer')).json();
   expect(fresh.situations.find(item => item.key === original.key)).toEqual(original);
   expect((await review([original, original])).every(item => item.status === 'conflict')).toBeTruthy();
-  expect((await review([{ ...original, key: `transfer-${Date.now()}`, displayCode: undefined }]))[0].status).toBe('new');
+  expect((await review([{ ...original, key: `transfer-${Date.now()}`, title: `New transfer ${Date.now()}`, displayCode: undefined }]))[0].status).toBe('new');
   expect((await review([{ ...original, key: `transfer-${Date.now()}` }]))[0].status).toBe('conflict');
   expect((await review([{ ...original, hit: null }]))[0].status).toBe('conflict');
   const invalid = await request.post('/api/admin/situations/transfer', { headers: { Origin: origin }, data: { version: 99 } });
   expect(invalid.status()).toBe(400);
+});
+
+test('situation audience uniqueness and library order preserve record identities', async ({ request, baseURL }) => {
+  const origin = new URL(baseURL).origin;
+  await loginAdmin(request, origin);
+  const template = (await (await request.get('/api/situations')).json())[0];
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  const title = `Variant test ${suffix}`;
+  const keys = [];
+  let originalOrder;
+  try {
+    const create = async (key, audience, name = title) => request.post('/api/situations', {headers:{Origin:origin},data:{...template,key,title:name,audience}});
+    const first = await create(`variant-a-${suffix}`, {});
+    expect(first.status()).toBe(201); keys.push((await first.json()).record.key);
+    expect((await create(`variant-b-${suffix}`, {staffVariant:'Standard'}, `  ${title.toUpperCase()}  `)).status()).toBe(400);
+    const second = await create(`variant-c-${suffix}`, {staffVariant:'Alternate approach'});
+    expect(second.status()).toBe(201); keys.push((await second.json()).record.key);
+    const library = await (await request.get('/api/admin/situations/order')).json();
+    originalOrder = library.situations.map(item=>item.key);
+    const reversed = [...originalOrder].reverse();
+    const save = await request.put('/api/admin/situations/order',{headers:{Origin:origin},data:{keys:reversed,revision:library.revision}});
+    expect(save.ok()).toBeTruthy();
+    expect((await (await request.get('/api/admin/situations/order')).json()).situations.map(item=>item.key)).toEqual(reversed);
+    expect((await request.put('/api/admin/situations/order',{headers:{Origin:origin},data:{keys:originalOrder,revision:library.revision}})).status()).toBe(409);
+    const unchanged = (await (await request.get('/api/situations')).json()).find(item=>item.key===keys[0]);
+    expect(unchanged.revision).toBe(1);
+    expect(unchanged.audience).toEqual({});
+  } finally {
+    if(originalOrder){const state=await (await request.get('/api/admin/situations/order')).json();const response=await request.put('/api/admin/situations/order',{headers:{Origin:origin},data:{keys:originalOrder,revision:state.revision}});expect(response.ok()).toBeTruthy();}
+    for(const key of keys){const current=(await (await request.get('/api/situations')).json()).find(item=>item.key===key);if(current)expect((await request.delete(`/api/situations/${key}`,{headers:{Origin:origin,'If-Match':String(current.revision)}})).ok()).toBeTruthy();}
+  }
 });

@@ -3634,3 +3634,67 @@ body.situation-library-open main#appWorkspace:has(#adminWorkspace:not(.hidden)):
 .situation-import-steps{display:flex;flex-wrap:wrap;gap:32px;padding:16px 16px 16px 32px;border-bottom:1px solid var(--border)}
 .situation-import-steps li{padding:8px;color:var(--text-secondary)}
 .situation-import-steps [aria-current=step]{color:var(--accent-primary);font-weight:700}
+
+.situation-audience-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.situation-audience-fields>p{grid-column:1/-1}
+.situation-name-suggestion{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}
+.situation-staff-meta{display:block;font-weight:400;color:var(--text-secondary);margin-top:6px}
+#playerSituationReference{display:none}
+.situation-library-row[draggable=true]{cursor:grab}
+.situation-reorder-controls{display:flex;gap:8px}
+
+/* Shared situation editor: primary fields first, optional details on demand. */
+#situationBuilderSubsec > .title{display:none}
+#situationWorkflowBanner{background:none;border:0;border-radius:0;padding:0 0 12px;align-items:center;gap:12px;flex-direction:row;flex-wrap:wrap}
+#situationWorkflowBanner > div{flex:1;min-width:160px}
+#situationEditorName{color:var(--text-secondary);font-size:13px}
+.editor-publishing-help{position:relative}
+.editor-publishing-help summary{cursor:pointer;font-size:20px;list-style:none;padding:6px}
+.editor-publishing-help p{position:absolute;right:0;top:100%;width:min(280px,70vw);padding:12px!important;background:var(--app-background);border:1px solid var(--border);border-radius:8px;z-index:5}
+.editor-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+#situationMoreActions{margin-left:auto}
+#situationMoreActions summary{cursor:pointer;padding:10px;border:1px solid var(--border);border-radius:8px}
+#situationMoreActions .situation-editor-actions{padding-top:8px;display:flex;gap:8px}
+.editor-step-help{color:var(--text-secondary);font-size:13px;line-height:1.5;margin:0 0 12px}
+.editor-optional{margin:14px 0;border:1px solid var(--border);border-radius:8px;padding:12px}
+.editor-optional > summary{cursor:pointer;font-weight:700;font-size:13px}
+.editor-optional[open] > summary{margin-bottom:12px}
+#situationAudienceSummary{display:block;margin-top:6px;color:var(--text-secondary);font-size:12px;font-weight:400}
+.editor-category-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.editor-category-chips span{padding:4px 8px;border-radius:12px;background:rgba(197,164,100,.15);color:var(--text-secondary);font-size:12px;font-weight:400}
+.editor-player-context{display:grid;gap:6px;margin:16px 0}
+.editor-player-context textarea{width:100%;box-sizing:border-box;min-height:80px}
+.editor-player-context small{color:var(--text-secondary)}
+#sbDetailsSection .situation-metadata-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+.situation-audience-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+.situation-audience-fields .field{display:grid;gap:6px;min-width:0}
+.situation-audience-fields input,.situation-audience-fields select{width:100%;box-sizing:border-box}
+.situation-audience-fields > .field:first-child,.editor-age-range{grid-column:1/-1}
+.editor-age-range{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.editor-custom-distance[hidden],#situationWorkflowStatus[hidden]{display:none!important}
+@media(max-width:620px){#sbDetailsSection .situation-metadata-row,.situation-audience-fields{grid-template-columns:1fr}}
+
+.playbook-card-state{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:3px 0;padding:10px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}
+.playbook-state-group{display:grid;justify-items:center;align-content:start;gap:8px;min-width:0}
+.playbook-state-group + .playbook-state-group{border-left:1px solid var(--border)}
+.playbook-state-label{font-size:10px;letter-spacing:.12em;text-transform:uppercase;font-weight:800;color:var(--text-secondary)}
+.playbook-card-state .training-out-map{height:32px}
+.playbook-card-state .training-out-map i{width:12px;height:12px}
+
+.editor-live-preview{margin:16px 0}.editor-live-preview h4,#situationSimilarPanel h4{margin:0 0 10px}.editor-preview-card{display:grid;gap:10px;max-width:340px;padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}.editor-preview-card .playbook-difficulty{justify-self:start}.similar-situation-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--border)}.similar-situation-row>span{flex:1 1 240px}#situationSimilarPanel[hidden]{display:none}
+
+.team-playbook-filters{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:10px;margin:16px 0}.team-playbook-list{display:grid;gap:8px;margin-bottom:16px}.team-playbook-choice{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:8px;cursor:pointer}.team-playbook-choice input,.division-tags input{width:18px;height:18px;flex:none}.division-tags{display:flex;flex-wrap:wrap;gap:12px}.division-tags label{display:flex;align-items:center;gap:6px}@media(max-width:800px){.team-playbook-filters{grid-template-columns:1fr 1fr}}
+
+/* Team selection is a standalone coach workspace, with fixed-size checkboxes. */
+body.coach-team-playbook-open main#appWorkspace:has(#coachCard:not(.hidden)){grid-template-columns:minmax(0,1fr)}
+body.coach-team-playbook-open main#appWorkspace #coachCard{grid-column:1;grid-row:1;position:static;width:100%;max-width:100%;max-height:none;box-sizing:border-box}
+body.coach-team-playbook-open main#appWorkspace > .tools-drawer:has(#coachCard:not(.hidden)){grid-column:1/-1;width:100%;max-width:none;position:static}
+#coachTeamPlaybook{padding:16px 0;min-width:0}
+:is(#coachTeamPlaybook,#situationLibrary) .team-playbook-list{min-width:0;width:100%;box-sizing:border-box}
+:is(#coachTeamPlaybook,#situationLibrary) .team-playbook-choice{display:grid!important;grid-template-columns:20px minmax(0,1fr);gap:12px;width:100%;min-width:0;box-sizing:border-box;justify-content:start;text-align:left}
+:is(#coachTeamPlaybook,#situationLibrary) .team-playbook-choice input[type=checkbox]{width:20px!important;min-width:20px!important;max-width:20px;height:20px!important;min-height:20px!important;margin:0;justify-self:start}
+:is(#coachTeamPlaybook,#situationLibrary) .team-playbook-choice>span{min-width:0;width:auto;overflow-wrap:anywhere;white-space:normal}
+.team-playbook-filters>:is(input,select){width:100%;min-width:0;box-sizing:border-box;min-height:42px}
+@media(max-width:620px){.team-playbook-filters{grid-template-columns:1fr}}
+
+.team-playbook-list{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}.team-playbook-bulk{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}@media(max-width:760px){.team-playbook-list{grid-template-columns:minmax(0,1fr)}}

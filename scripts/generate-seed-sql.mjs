@@ -96,6 +96,8 @@ for (const rawSituation of situations) {
   });
 }
 
+statements.push(`INSERT OR IGNORE INTO team_playbook_situations(team_id,situation_key) SELECT teams.id,situations.key FROM teams CROSS JOIN situations WHERE situations.active=1;`);
+
 const output = resolve(root, 'database/seed.sql');
 await mkdir(dirname(output), { recursive: true });
 await writeFile(output, `${statements.join('\n')}\n`, 'utf8');

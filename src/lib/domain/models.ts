@@ -81,10 +81,22 @@ export interface SituationRunnerOutcome {
   taggedUp: boolean;
 }
 
+export interface SituationAudience {
+  baseDistance?: number;
+  pitchingDistance?: number;
+  ageMin?: number;
+  ageMax?: number;
+  teamId?: string;
+  staffVariant?: string;
+}
+
 export interface Situation {
   key: string;
   /** Stable public identifier such as S01 or S21. The key remains internal. */
   displayCode?: string;
+  ballLocation?: string;
+  suggestedDivisions?: number[];
+  audience?: SituationAudience;
   title: string;
   desc: string;
   /** Hit/play outcome such as Singles or Extra-base hits. */

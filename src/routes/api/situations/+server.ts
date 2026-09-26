@@ -1,3 +1,4 @@
+import { currentUser } from '$lib/server/security/sessions';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Situation } from '$lib/domain/models';
@@ -9,8 +10,14 @@ import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 export const prerender = false;
 
 export const GET: RequestHandler = async (event) => {
-  const situations = await new SqliteSituationRepository(databaseFor(event)).list();
-  return json(situations);
+  const db=databaseFor(event);
+  const user=await currentUser(db,event.cookies);
+  let situations = await new SqliteSituationRepository(db).list();
+  if(user?.role==='player'){
+    const selected=await db.all<{situation_key:string}>('SELECT situation_key FROM team_playbook_situations WHERE team_id=?1',[user.teamId]);
+    situations=situations.filter(item=>selected.some(row=>row.situation_key===item.key));
+  }
+  return json(situations,{headers:{'Cache-Control':'private, no-store'}});
 };
 
 export const POST: RequestHandler = async (event) => {

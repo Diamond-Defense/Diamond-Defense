@@ -1,3 +1,5 @@
+import { normalizeSuggestedDivisions } from '$lib/domain/situation-identity';
+import { normalizeAudience, situationIdentity, BALL_LOCATIONS } from '$lib/domain/situation-identity';
 import type { Situation } from '$lib/domain/models';
 import type { SituationPlayOutcome, SituationRunnerOutcome } from '$lib/domain/models';
 import {
@@ -58,6 +60,11 @@ export type SituationRecord = Situation & {
 };
 
 export function validateSituation(situation: Situation): Situation {
+  let suggestedDivisions;
+  try { suggestedDivisions=normalizeSuggestedDivisions(situation?.suggestedDivisions); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid divisions.'); }
+  let audience;
+  try { audience = normalizeAudience(situation?.audience); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid audience.'); }
+  if (situation.ballLocation && !(BALL_LOCATIONS as readonly string[]).includes(situation.ballLocation)) throw new RecordValidationError('Choose a valid ball location.');
   const key = String(situation?.key || '').trim();
   const title = String(situation?.title || '').trim();
   const category = String(situation?.category || '').trim();
@@ -90,7 +97,7 @@ export function validateSituation(situation: Situation): Situation {
     );
   }
   const { displayCode: _clientDisplayCode, ...editableSituation } = situation;
-  return { ...editableSituation, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
+  return { ...editableSituation, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }
 
 function mapRow(
@@ -260,7 +267,7 @@ export class SqliteSituationRepository {
     const rows = await this.database.all<SituationRow>(
       `SELECT key, display_code, category, difficulty, difficulty_level, payload_json, revision, active, archived_at
          FROM situations ${includeArchived ? '' : 'WHERE active = 1'}
-        ORDER BY CAST(substr(display_code, 2) AS INTEGER), display_code, key`,
+        ORDER BY library_order, CAST(substr(display_code, 2) AS INTEGER), display_code, key`,
     );
     const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
       this.categories(), this.playOutcomes(), this.runnerOutcomes(),
@@ -281,8 +288,15 @@ export class SqliteSituationRepository {
     return mapRow(row, categories, playOutcomes, runnerOutcomes);
   }
 
+  async assertUnique(situation: Situation): Promise<void> {
+    const identity = situationIdentity(situation);
+    const conflict = (await this.list()).find(item => item.key !== situation.key && situationIdentity(item) === identity);
+    if (conflict) throw new RecordValidationError(`An active situation already uses this name and variant: ${conflict.title}. Edit that situation or choose a different staff label.`);
+  }
+
   async create(situationInput: Situation, userId: string): Promise<SituationRecord> {
     const situation = validateSituation(situationInput);
+    await this.assertUnique(situation);
     if (await this.get(situation.key, true)) {
       throw new RecordValidationError('A situation with that key already exists.');
     }
@@ -292,9 +306,9 @@ export class SqliteSituationRepository {
     const [result] = await this.database.batch([
       {
         sql: `INSERT INTO situations
-          (key, title, description, category, difficulty, difficulty_level, payload_json, revision, active, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?9, ?9)`,
-        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, payload, userId, now],
+          (key, title, description, category, difficulty, difficulty_level, payload_json, revision, active, created_by, created_at, updated_at, identity_key)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?9, ?9, ?10)`,
+        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, payload, userId, now, situationIdentity(situation)],
       },
       {
         sql: `INSERT OR IGNORE INTO situation_versions
@@ -316,15 +330,18 @@ export class SqliteSituationRepository {
     const situation = validateSituation(situationInput);
     const before = await this.get(situation.key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
+    const stored = await this.database.one<{identity_key: string | null}>('SELECT identity_key FROM situations WHERE key = ?1', [situation.key]);
+    const unchangedLegacyIdentity = stored?.identity_key == null && situationIdentity(before) === situationIdentity(situation);
+    if (!unchangedLegacyIdentity) await this.assertUnique(situation);
     const now = new Date().toISOString();
     const legacyDifficulty = situation.difficulty === 'foundational' ? 'beginner' : situation.difficulty;
     const [result] = await this.database.batch([
       {
         sql: `UPDATE situations SET title = ?2, description = ?3, category = ?4, difficulty = ?5,
                                difficulty_level = ?6, payload_json = ?7, revision = revision + 1,
-                               active = 1, updated_at = ?8
+                               active = 1, updated_at = ?8, identity_key = ?10
           WHERE key = ?1 AND revision = ?9`,
-        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision],
+        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, unchangedLegacyIdentity ? null : situationIdentity(situation)],
       },
       {
         sql: `INSERT OR IGNORE INTO situation_versions
@@ -345,13 +362,14 @@ export class SqliteSituationRepository {
   async setActive(key: string, active: boolean, expectedRevision: number, userId: string): Promise<SituationRecord> {
     const before = await this.get(key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
+    if (active) await this.assertUnique(before);
     const now = new Date().toISOString();
     const [result] = await this.database.batch([
       {
         sql: `UPDATE situations SET active = ?2, revision = revision + 1, updated_at = ?3,
-                               archived_at = ?4, archived_by = ?5
+                               archived_at = ?4, archived_by = ?5, identity_key = ?7
           WHERE key = ?1 AND revision = ?6`,
-        params: [key, active ? 1 : 0, now, active ? null : now, active ? null : userId, expectedRevision],
+        params: [key, active ? 1 : 0, now, active ? null : now, active ? null : userId, expectedRevision, situationIdentity(before)],
       },
       {
         sql: `INSERT OR IGNORE INTO situation_versions

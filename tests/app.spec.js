@@ -12,31 +12,31 @@ async function semanticColor(page, token) {
   }, token);
 }
 
-// Publishing tests share the seeded database with gameplay tests. Restore edited
-// records in fixture teardown, including when a test assertion or timeout fails.
+// Publish isolated copies so uniqueness rules and failures cannot change the
+// shared gameplay fixtures used by the rest of the regression suite.
 const publishingTest = test.extend({
-  restorePublishedSituations: [async ({ page, baseURL }, use) => {
-    const originals = [];
+  isolatePublishedSituation: [async ({ page, baseURL }, use) => {
+    const keys = [];
     await use(async (record) => {
-      const response = await page.request.get('/api/situations');
-      expect(response.ok()).toBeTruthy();
-      const published = (await response.json()).find(item => item.key === record.key);
-      expect(published).toBeTruthy();
-      originals.push(published);
-    });
-    for (const original of originals) {
-      const response = await page.request.get('/api/situations');
-      expect(response.ok()).toBeTruthy();
-      const current = (await response.json()).find(record => record.key === original.key);
-      expect(current).toBeTruthy();
-      if (current.revision === original.revision) continue;
-      const restored = await page.request.put(`/api/situations/${encodeURIComponent(original.key)}`, {
-        headers: { Origin: new URL(baseURL).origin, 'If-Match': String(current.revision) },
-        data: original,
+      const key = `publishing-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+      const response = await page.request.post('/api/situations', {
+        headers: { Origin: new URL(baseURL).origin },
+        data: { ...record, key, title: `Publishing fixture ${key}` },
       });
-      expect(restored.ok(), `Restore published situation ${original.key}`).toBeTruthy();
-      const { revision, updatedAt, ...originalFields } = original;
-      expect((await restored.json()).record).toMatchObject(originalFields);
+      expect(response.ok()).toBeTruthy();
+      const created = (await response.json()).record;
+      keys.push(key);
+      Object.assign(record, created);
+      await page.evaluate(async (key) => { await loadSituationsFromDatabase(); setSituation(key); }, key);
+    });
+    for (const key of keys) {
+      const records = await (await page.request.get('/api/situations')).json();
+      const current = records.find(record => record.key === key);
+      if (!current) continue;
+      const archived = await page.request.delete(`/api/situations/${encodeURIComponent(key)}`, {
+        headers: { Origin: new URL(baseURL).origin, 'If-Match': String(current.revision) },
+      });
+      expect(archived.ok(), `Archive isolated situation ${key}`).toBeTruthy();
     }
   }, { timeout: 30_000 }],
 });
@@ -211,6 +211,17 @@ test.describe('Diamond Defence regression behavior', () => {
     const browser = page.getByRole('dialog', { name: 'Playbook' });
     await expect(browser).toBeVisible();
     await expect(page.locator('#playbookResultCount')).toHaveText('22 situations');
+    const emptyCard=page.locator('.playbook-situation-card[data-situation-key="BD-01"]');
+    await expect(emptyCard.locator('.training-base-map i')).toHaveCount(3);
+    await expect(emptyCard.locator('.training-base-map .is-occupied')).toHaveCount(0);
+    await expect(emptyCard.locator('.training-out-map i')).toHaveCount(2);
+    await expect(emptyCard).toHaveAttribute('aria-label', /Bases empty, 0 outs/);
+    expect(await page.evaluate(()=>{
+      const fixture={title:'Line Drive to LF — Runner on First',runnersOn:{first:true,second:false,third:false},outs:2};
+      const graphic=playbookStateGraphic(fixture);
+      return {short:playbookCardTitle(fixture),mismatch:playbookCardTitle({...fixture,runnersOn:{}}),custom:playbookCardTitle({...fixture,title:'Custom — Keep this wording'}),occupied:graphic.querySelectorAll('.is-occupied').length,outs:graphic.querySelectorAll('.is-recorded').length};
+    })).toEqual({short:'Line Drive to LF',mismatch:'Line Drive to LF — Runner on First',custom:'Custom — Keep this wording',occupied:1,outs:2});
+
     const layout = await page.locator('.playbook-browser-list').evaluate((list) => {
       const cards = [...list.querySelectorAll('.playbook-situation-card')].slice(0, 2);
       const [first, second] = cards.map((card) => card.getBoundingClientRect());
@@ -237,12 +248,15 @@ test.describe('Diamond Defence regression behavior', () => {
 
     await page.locator('#playbookSearch').fill('Left-Center');
     await expect(page.locator('.playbook-situation-card')).toHaveCount(2);
+    // Historical codes remain searchable even though player headings use names only.
+    await page.locator('#playbookSearch').fill('S14');
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(1);
     await page.locator('.playbook-situation-card[data-situation-key="BD-14"]').click();
     await expect(browser).toBeHidden();
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-14');
-    await expect(page.locator('#descHud')).toHaveText('S14 · Hit to Left-Center Field');
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('Hit to Left-Center Field · S14');
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-reference')).toContainText('S14');
+    await expect(page.locator('#descHud')).toHaveText('Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-reference')).toHaveCount(0);
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-metadata')).toHaveText('Cutoffs & Relays');
   });
 
@@ -372,7 +386,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#sitSelect')).toHaveCount(0);
     await expect(page.locator('#playbookBrowserToggle')).toBeVisible();
     await expect(page.locator('#randomSitBtn')).toBeVisible();
-    await expect(page.locator('#descHud')).toHaveText('S01 · Single to LF');
+    await expect(page.locator('#descHud')).toHaveText('Single to LF');
     const commandLayout = await page.evaluate(() => {
       const account = document.querySelector('.account-actions');
       const utility = document.querySelector('.utility-actions');
@@ -435,7 +449,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#staffToolsBtn')).toBeHidden();
     await expect(page.getByRole('button', { name: 'Coach Tools' })).toBeHidden();
     await expect(page.getByRole('button', { name: 'Admin', exact: true })).toBeHidden();
-    await expect(page.locator('#descHud')).toHaveText('S01 · Single to LF');
+    await expect(page.locator('#descHud')).toHaveText('Single to LF');
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024);
   });
 
@@ -1254,6 +1268,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(adminFieldLayout.fill).toBeGreaterThan(0.95);
     await expect(page.locator('[data-admin-view="situations"]')).toBeVisible();
     await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
+    await page.locator('#situationRelatedDetails summary').click();
     const categoryLabelLayout = await page.locator('#situationRelatedCategories button').evaluateAll((buttons) =>
       buttons.map((button) => {
         const style = getComputedStyle(button);
@@ -1319,8 +1334,9 @@ test.describe('Diamond Defence regression behavior', () => {
     const unsavedEditorTitle = 'Unsaved administrator draft preserved through preview';
     await page.getByRole('button', { name:'Library', exact:true }).click();
     await page.getByRole('button', { name:'Edit situation', exact:true }).first().click();
+    await page.locator('[data-editor-step="situationReviewSection"]').click();
     await page.locator('#newTitleInput').fill(unsavedEditorTitle);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     await page.locator('#situationLibraryBack').click();
     await page.getByRole('button', { name:'Proposals to review', exact:true }).click();
     let previewAttemptRequests = 0;
@@ -1369,7 +1385,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('body')).not.toHaveClass(/proposal-field-preview/);
     await expect(page.locator('#adminProposalSelect')).toHaveValue(fieldProposal.id);
     await expect(page.locator('#newTitleInput')).toHaveValue(unsavedEditorTitle);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     await page.getByRole('button', { name: 'Recovery', exact: true }).click();
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
@@ -1417,7 +1433,7 @@ test.describe('Diamond Defence regression behavior', () => {
     );
   });
 
-  publishingTest('ball-only edits publish the moved position and retain it on the field', async ({ page, restorePublishedSituations }) => {
+  publishingTest('ball-only edits publish the moved position and retain it on the field', async ({ page, isolatePublishedSituation }) => {
     await openCleanApp(page);
     await page.locator('#playerBtn').click();
     await page.locator('#authAdminTab').click();
@@ -1427,7 +1443,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
     await page.getByRole('button', { name: 'Edit situation', exact: true }).first().click();
     const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
-    await restorePublishedSituations(original);
+    await isolatePublishedSituation(original);
     await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
     const ball = page.locator('#wrap .ball:visible');
     await expect(ball).toHaveCount(1);
@@ -1437,7 +1453,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
     await page.mouse.up();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
     expect(moved.hit).not.toEqual(original.hit);
     await page.locator('[data-editor-step="situationReviewSection"]').click();
@@ -1447,7 +1463,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#publishSituationBtn').click();
     const saved = await (await savedResponse).json();
     expect(saved.record.hit).toEqual(moved.hit);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
     await page.locator('#adminCardCloseBtn').click();
     await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot().hit)).toEqual(moved.hit);
     await page.reload();
@@ -1455,7 +1471,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(await page.evaluate(key => window._diqGetPublishedSituationSnapshot(key).hit, original.key)).toEqual(moved.hit);
   });
 
-  publishingTest('admin publishes all situation fields and reloads them without losing draft edits', async ({ page, restorePublishedSituations }) => {
+  publishingTest('admin publishes all situation fields and reloads them without losing draft edits', async ({ page, isolatePublishedSituation }) => {
     await openCleanApp(page);
     await page.locator('#playerBtn').click();
     await page.locator('#authAdminTab').click();
@@ -1465,12 +1481,20 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
     await page.getByRole('button', { name: 'Edit situation', exact: true }).first().click();
     const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
-    await restorePublishedSituations(original);
+    await isolatePublishedSituation(original);
+    await page.locator('[data-editor-step="situationReviewSection"]').click();
     await page.locator('#newTitleInput').fill('Published field coverage');
+    await page.locator('[data-editor-step="sbDetailsSection"]').click();
     await page.locator('#newDescInput').fill('All editor changes persist');
+    await page.locator('#situationStaffVariant').fill('Staff-only fixture');
+    await page.locator('#situationStaffVariant').blur();
     await page.locator('#situationDifficultySelect').selectOption('advanced');
+    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
+    await page.locator('#situationClassificationDetails summary').click();
     await page.locator('#situationCategoryInput').selectOption('Extra-base hits');
+    await page.locator('[data-editor-step="sbDetailsSection"]').click();
     await page.locator('#situationPrimaryCategorySelect').selectOption({ index: 2 });
+    await page.locator('#situationRelatedDetails summary').click();
     await page.locator('#situationRelatedCategories button').first().click();
     await page.locator('[data-editor-step="sbRunnersSubsec"]').click();
     await page.locator('#outsSelSituation').selectOption('1');
@@ -1510,6 +1534,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#seqNoteInput').fill('Published throw sequence note');
     await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
     await page.locator('#hitTypeSel').selectOption('grounder');
+    await page.locator('#situationBallLocation').selectOption('LF');
     await page.locator('#playResultSel').selectOption('double');
     await page.locator('.runner-outcome-card[data-starting-base="first"] select').first().selectOption('third');
     const ball = page.locator('#wrap .ball:visible');
@@ -1520,13 +1545,13 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
     await page.mouse.up();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
     expect(moved.hit).not.toEqual(original.hit);
     expect(moved.starts.P).not.toEqual(original.starts.P);
     expect(moved.targets.P).toMatchObject({ tol: 125, notes: 'Published pitcher coaching note' });
     expect(moved.playSeq).toEqual(['CF', 'SS']);
-    const fields = ['title','desc','category','difficulty','primaryCategory','relatedCategories',
+    const fields = ['title','desc','audience','ballLocation','category','difficulty','primaryCategory','relatedCategories',
       'outs','runnersOn','starts','targets','hit','hitType','batterAdvance','playOutcome',
       'runnerOutcomes','playSeq','seqNote'];
     const expected = Object.fromEntries(fields.map(field => [field, moved[field]]));
@@ -1537,7 +1562,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#publishSituationBtn').click();
     const saved = await (await savedResponse).json();
     expect(saved.record).toMatchObject(expected);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
     await page.locator('#adminCardCloseBtn').click();
     await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot())).toMatchObject(expected);
     await page.reload();
@@ -1658,8 +1683,8 @@ test.describe('Diamond Defence regression behavior', () => {
       looseSlug: 'coachs-team',
       clampedLow: 0,
       clampedHigh: 2,
-      publishedSituationLabel: 'S02 · Single to CF',
-      generatedSituationLabel: 'S21 · New Situation',
+      publishedSituationLabel: 'Single to CF',
+      generatedSituationLabel: 'New Situation',
       resolvedOutcome:{
         finalRunners:{first:true,second:false,third:true},
         runsScored:1,
@@ -1959,16 +1984,17 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(proposalLibraryBounds.width).toBeGreaterThan(proposalLibraryBounds.viewport / 2);
     await page.locator('#situationLibrary').getByRole('button', { name:'Propose changes', exact:true }).first().click();
     await expect(page.locator('#situationWorkflowRole')).toHaveText('Coach draft');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
     await expect(page.locator('#situationCategoryInput')).not.toHaveValue('');
     await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(foundational|intermediate|advanced)$/);
     await expect(page.locator('#situationPrimaryCategorySelect')).not.toHaveValue('');
     await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
+    await page.locator('#situationRelatedDetails summary').click();
     const relatedCategory = page.locator('#situationRelatedCategories button').first();
     const wasSelected = await relatedCategory.getAttribute('aria-pressed');
     await relatedCategory.click();
     await expect(relatedCategory).toHaveAttribute('aria-pressed', wasSelected === 'true' ? 'false' : 'true');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     await expect(page.locator('[data-editor-step]')).toHaveCount(5);
     await expect(page.locator('[data-editor-step="sbBallHitSubsec"]')).toHaveText('3. The play');
     await expect(page.locator('[data-editor-step="sbRunnersSubsec"]')).toHaveText('2. Starting situation');
@@ -1992,8 +2018,9 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('.position-check', { hasText: /^RF/ }).click();
     await expect(page.locator('#tolTargetSel')).toHaveValue('RF');
     await page.locator('[data-editor-step="sbDetailsSection"]').click();
+    await page.locator('[data-editor-step="situationReviewSection"]').click();
     await page.locator('#newTitleInput').fill('Coach draft title');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unsaved changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     await expect(page.locator('#submitSituationBtn')).toBeDisabled();
     await page.locator('[data-editor-step="situationReviewSection"]').click();
     await page.locator('#coachProposalRationale').fill('Clarifies the player-facing coaching objective.');
@@ -2013,7 +2040,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#playbookBrowserToggle')).toBeVisible();
     await expect(page.locator('#randomSitBtn')).toBeVisible();
     await page.locator('#saveSituationBtn').click();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('No draft changes');
+    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
   });
 
   test('a correct phase-one placement proceeds through the phase-two sequence', async ({ page }) => {

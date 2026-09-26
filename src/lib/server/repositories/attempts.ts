@@ -1,3 +1,4 @@
+import type { SituationAudience } from '$lib/domain/models';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import {
   buildDevelopmentInsightsFromMetrics,
@@ -185,7 +186,7 @@ export interface AttemptReportOptions {
     status: string;
     seasonName: string;
   }>;
-  situations: Array<{ key: string; displayCode: string; title: string }>;
+  situations: Array<{ key: string; displayCode: string; title: string; audience?: SituationAudience }>;
   categories: Array<{ id: string; label: string }>;
 }
 
@@ -913,10 +914,10 @@ export class SqliteAttemptRepository {
           ORDER BY pa.created_at DESC, pa.id DESC`,
         [teamId],
       ),
-      this.database.all<{ key: string; display_code: string | null; title: string }>(
-        `SELECT key, display_code, title
+      this.database.all<{ key: string; display_code: string | null; title: string; payload_json: string }>(
+        `SELECT key, display_code, title, payload_json
            FROM situations
-          ORDER BY display_code, title, key`,
+          ORDER BY library_order, title, key`,
       ),
       this.database.all<{ id: string; label: string }>(
         `SELECT id, label FROM teaching_categories
@@ -937,6 +938,7 @@ export class SqliteAttemptRepository {
         key: situation.key,
         displayCode: situation.display_code || '',
         title: situation.title,
+        audience: JSON.parse(situation.payload_json).audience,
       })),
       categories,
     };

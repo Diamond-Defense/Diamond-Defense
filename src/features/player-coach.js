@@ -92,6 +92,7 @@ async function authenticateStaff(role, password){
     });
     DIQ_AUTH_USER = result && result.user ? result.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    await window._diqRefreshSituationAccess?.();
     DIQ_LAST_AUTH_ERROR = '';
     window._diqUpdateAuthNavigation?.();
     if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>window._diqOpenAccountSecurity?.({ required:true }));
@@ -149,6 +150,7 @@ async function authenticateCoach(teamId, coachId, password){
     });
     DIQ_AUTH_USER = result && result.user ? result.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    await window._diqRefreshSituationAccess?.();
     DIQ_LAST_AUTH_ERROR = '';
     updateCoachHeaderButton();
     if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>window._diqOpenAccountSecurity?.({ required:true }));
@@ -1096,7 +1098,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   function practiceSituationLabel(situation){
     const code = practiceSituationCode(situation?.key || situation?.situationKey, situation?.displayCode);
     const title = String(situation?.title || situation?.desc || 'Situation').trim();
-    return [code, title].filter(Boolean).join(' · ');
+    return title;
   }
 
   function practiceDueLabel(assignment){
@@ -1185,7 +1187,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
       <p>${Number(assignment.completedRecipientCount)} of ${Number(assignment.recipientCount)} players complete</p>
       <table class="practice-progress-table"><thead><tr><th>Player</th><th>Progress</th><th>Completed</th><th>Review</th></tr></thead><tbody>${(assignment.recipients||[]).map(recipient=>`<tr><td>${escapeHtml(recipient.playerNumber ? '#'+recipient.playerNumber+' ' : '')}${escapeHtml(recipient.playerName)}</td><td>${escapeHtml(recipient.status.replaceAll('_',' '))}</td><td>${recipient.completedAt ? escapeHtml(new Date(recipient.completedAt).toLocaleDateString()) : '—'}</td><td><button type="button" class="btn btn-ghost" data-assignment-review="${escapeHtml(assignment.id)}" data-review-player="${escapeHtml(recipient.playerId)}">Review attempts</button></td></tr>`).join('')}</tbody></table>
-      <h4>Practice order</h4><ol>${[...(assignment.situations||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(item=>`<li>${escapeHtml(item.displayCode || item.situationKey)} · ${escapeHtml(item.title)}</li>`).join('')}</ol>`;
+      <h4>Practice order</h4><ol>${[...(assignment.situations||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(item=>`<li>${escapeHtml(item.title)}</li>`).join('')}</ol>`;
     showPracticePane('progress');
   }
   function syncPracticeTabs(){
@@ -1297,9 +1299,9 @@ function computeRosterPlayerId(teamObj, playerObj){
         window.DIQ_TEACHING_CATEGORIES.forEach(category=>practiceSituationCategory.appendChild(new Option(category.label, category.id)));
       }
       practiceSituationChoices.innerHTML = (Array.isArray(SITUATIONS) ? SITUATIONS : []).map(situation=>`
-        <label class="practice-situation-choice" data-search="${escapeHtml(`${practiceSituationLabel(situation)} ${situation.desc || ''}`.toLowerCase())}" data-categories="${escapeHtml([situation.primaryCategory, ...(situation.relatedCategories || [])].join('|'))}" data-difficulty="${escapeHtml(situation.difficulty || 'intermediate')}">
+        <label class="practice-situation-choice" data-search="${escapeHtml(`${practiceSituationLabel(situation)} ${situation.displayCode || ''} ${situation.desc || ''} ${window._diqAudienceLabel?.(situation)||''}`.toLowerCase())}" data-categories="${escapeHtml([situation.primaryCategory, ...(situation.relatedCategories || [])].join('|'))}" data-difficulty="${escapeHtml(situation.difficulty || 'intermediate')}">
           <input type="checkbox" value="${escapeHtml(situation.key)}" ${assignedSituations.has(situation.key) ? 'checked' : ''} ${activeEdit ? 'disabled' : ''}>
-          <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(window._diqTeachingCategoryLabel?.(situation.primaryCategory) || 'Uncategorized')} · ${escapeHtml(window._diqDifficultyLabel?.(situation.difficulty) || situation.difficulty || 'Intermediate')} · ${escapeHtml(situation.category || 'General')}</small></span>
+          <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(window._diqAudienceLabel?.(situation)||'')}</small><small>${escapeHtml(window._diqTeachingCategoryLabel?.(situation.primaryCategory) || 'Uncategorized')} · ${escapeHtml(window._diqDifficultyLabel?.(situation.difficulty) || situation.difficulty || 'Intermediate')} · ${escapeHtml(situation.category || 'General')}</small></span>
         </label>`).join('');
       filterPracticeSituationChoices();
       updatePracticeSelection();
@@ -1746,7 +1748,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       'All situations',
       options.situations,
       situation=>situation.key,
-      situation=>[situation.displayCode, situation.title].filter(Boolean).join(' · '),
+      situation=>[situation.title, window._diqAudienceLabel?.(situation)].filter(Boolean).join(' · '),
     );
     replaceCoachResultsOptions(
       coachResultsCategorySelect,
@@ -2155,6 +2157,10 @@ function computeRosterPlayerId(teamObj, playerObj){
     const reviewsActive = mode === 'reviews';
     const assignmentsActive = mode === 'assignments';
     const proposalsActive = mode === 'proposals';
+    const playbookActive = mode === 'playbook';
+    document.body.classList.toggle('coach-team-playbook-open',playbookActive);
+    if(!proposalsActive)document.body.classList.remove('situation-library-open','situation-editing-open');
+    document.getElementById('coachTeamPlaybook')?.classList.toggle('hidden',!playbookActive);
     document.querySelectorAll('[data-coach-tab]').forEach(button=>{
       const active = button.getAttribute('data-coach-tab') === mode;
       button.classList.toggle('is-active', active);
@@ -2163,12 +2169,14 @@ function computeRosterPlayerId(teamObj, playerObj){
     document.querySelector('[data-coach-view="reviews"]')?.classList.toggle('hidden', !reviewsActive);
     document.querySelector('[data-coach-view="assignments"]')?.classList.toggle('hidden', !assignmentsActive);
     document.getElementById('coachSituationEditorMount')?.classList.toggle('hidden', !proposalsActive);
-    document.querySelector('.field-card')?.classList.toggle('hidden', reviewsActive || assignmentsActive);
+    document.querySelector('.field-card')?.classList.toggle('hidden', reviewsActive || assignmentsActive || playbookActive);
     coachResultsWorkspace?.classList.toggle('hidden', !reviewsActive);
     practiceWorkspace?.classList.toggle('hidden', !assignmentsActive);
     if(reviewsActive){
       coachResultsPage = 1;
       void loadCoachDatabaseReport();
+    }else if(playbookActive){
+      window._diqOpenCoachTeamPlaybook?.();
     }else if(assignmentsActive){
       openPracticeWorkspace('coach');
     }else{
@@ -3131,6 +3139,7 @@ function updatePlayerHeaderButton(){
       });
       DIQ_AUTH_USER = result?.user || DIQ_AUTH_USER;
       window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    await window._diqRefreshSituationAccess?.();
       temporaryPasswordNotice?.classList.add('hidden');
       document.body.classList.remove('account-security-required');
       clearAccountPasswordFields();
@@ -3226,6 +3235,7 @@ function updatePlayerHeaderButton(){
       });
       DIQ_AUTH_USER = result && result.user ? result.user : null;
       window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    await window._diqRefreshSituationAccess?.();
       DIQ_LAST_AUTH_ERROR = '';
     }catch(error){
       const message = rememberAuthenticationError('Player login failed', error);
@@ -3280,6 +3290,7 @@ function updatePlayerHeaderButton(){
     const session = await diqApiRequest('auth/session', { cache:'no-store' });
     DIQ_AUTH_USER = session && session.user ? session.user : null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
+    await window._diqRefreshSituationAccess?.();
     if(DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'player'){
       const team = findTeam(DIQ_AUTH_USER.teamId);
       const player = team && (team.roster || []).find(p=>p.playerId === DIQ_AUTH_USER.id);
@@ -5214,7 +5225,7 @@ wireSeqBuilderOnce();
   if (tolNum)        tolNum.addEventListener('input',   () => setTolLive(tolTargetSel.value, tolNum.value));
   if (tolRange)      tolRange.addEventListener('input', () => setTolLive(tolTargetSel.value, tolRange.value));
 
-  if (newSituationBtn)  newSituationBtn.addEventListener('click', addNewSituation);
+  if (newSituationBtn)  newSituationBtn.addEventListener('click', () => addNewSituation());
   if (saveSituationBtn) saveSituationBtn.addEventListener('click', ()=>{
     // Refresh = re-apply the currently selected situation to the field/UI (no saving).
     if (!currentSituation) return;

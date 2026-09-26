@@ -1,3 +1,4 @@
+import { situationIdentity } from '$lib/domain/situation-identity';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { POSITION_IDS, type Situation } from '$lib/domain/models';
@@ -5,7 +6,7 @@ import { databaseFor } from '$lib/server/database/context';
 import { SqliteSituationRepository, validateSituation } from '$lib/server/repositories/situations';
 import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
 
-const fields = ['key', 'title', 'desc', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit', 'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'playSeq2', 'seqNote'] as const;
+const fields = ['key', 'title', 'desc', 'audience', 'suggestedDivisions', 'ballLocation', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit', 'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'playSeq2', 'seqNote'] as const;
 function editable(value: Situation): Situation {
   return Object.fromEntries(fields.filter(key => value[key] !== undefined).map(key => [key, value[key]])) as unknown as Situation;
 }
@@ -35,19 +36,22 @@ export const POST: RequestHandler = async (event) => {
   try { bundle = JSON.parse(text); } catch { return json({ error: 'Choose a valid situation JSON file.' }, { status: 400 }); }
   if (bundle?.format !== 'diamond-defence-situations' || bundle.version !== 1 || !Array.isArray(bundle.situations) || !bundle.situations.length || bundle.situations.length > 1000) return json({ error: 'Unsupported or empty situation export (maximum 1,000 situations).' }, { status: 400 });
   const records = await new SqliteSituationRepository(databaseFor(event)).list(true);
-  const rows = bundle.situations.map((input: Situation) => {
+  const rows = await Promise.all(bundle.situations.map(async (input: Situation) => {
     const key = String(input?.key ?? '');
     try {
       if (bundle.situations.filter((item: Situation) => item?.key === key).length !== 1) throw new Error('Duplicate situation key in file.');
-      if (input.displayCode && bundle.situations.filter((item: Situation) => item?.displayCode === input.displayCode).length !== 1) throw new Error('Duplicate display code in file.');
-      const situation = editable(validateSituation(editable(input)));
+
+      const existing = records.find(record => record.key === key);
+      const situation = editable(validateSituation(editable({ ...input, suggestedDivisions: input.suggestedDivisions ?? existing?.suggestedDivisions, audience: input.audience ?? existing?.audience, ballLocation: input.ballLocation ?? existing?.ballLocation })));
+
       validateGeometry(situation);
       const current = records.find(record => record.key === key);
       if (current?.active === false) throw new Error('This key belongs to an archived situation. Resolve it before importing.');
-      if (input.displayCode && records.some(record => record.displayCode === input.displayCode && record.key !== key)) throw new Error('This display code belongs to a different situation in this environment.');
-      const changes = fields.filter(field => field !== 'key' && stable(current?.[field]) !== stable(situation[field])).map(field => ({ field, before: current?.[field] ?? null, after: situation[field] ?? null }));
+      if (!current || situationIdentity(current) !== situationIdentity(situation)) await new SqliteSituationRepository(databaseFor(event)).assertUnique(situation);
+      if (bundle.situations.some((item: Situation) => { if (item?.key === key) return false; try { return situationIdentity(item) === situationIdentity(situation); } catch { return false; } })) throw new Error('Another situation in this file has the same name and variant.');
+      const changes = fields.filter(field => field !== 'key' && stable(field === 'audience' ? current?.audience || {} : field === 'suggestedDivisions' ? current?.suggestedDivisions || [] : current?.[field]) !== stable(situation[field])).map(field => ({ field, before: current?.[field] ?? null, after: situation[field] ?? null }));
       return { key, title: situation.title, status: current ? (changes.length ? 'changed' : 'unchanged') : 'new', revision: current?.revision, situation, changes };
     } catch (error) { return { key, title: String(input?.title ?? key), status: 'conflict', error: error instanceof Error ? error.message : 'Invalid situation.' }; }
-  });
+  }));
   return json({ source: String(bundle.source ?? 'Unknown environment'), destination: event.url.origin, rows }, { headers: { 'Cache-Control': 'no-store' } });
 };

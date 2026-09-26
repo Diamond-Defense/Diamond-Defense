@@ -188,7 +188,8 @@ function playerHasPendingPractice(){
 
 function canPlayCurrentSituation(){
   if(!hasGameAccess()) return false;
-  if(!playerHasPendingPractice()) return true;
+  if(!currentSituation)return false;
+  if(!playerHasPendingPractice()) return window.__DIQ_AUTH_USER__?.role!=='player' || SITUATIONS.some(item=>item.key===currentSituation.key);
   const state = window.__DIQ_PRACTICE_STATE__;
   return Boolean(
     state?.lockedAssignmentId
@@ -210,7 +211,7 @@ function applyGameAccess(){
   fieldCard?.classList.toggle('is-login-required', !allowed);
   wrap?.setAttribute('aria-disabled', String(!allowed));
   gameLoginGate?.classList.toggle('hidden', allowed);
-  if(randomSitBtn) randomSitBtn.disabled = !allowed || playerHasPendingPractice();
+  if(randomSitBtn) randomSitBtn.disabled = !allowed || playerHasPendingPractice() || !SITUATIONS.length;
   if(playbookBrowserToggle) playbookBrowserToggle.disabled = !allowed || playerHasPendingPractice();
   if(!allowed){
     if(gameActive || _roundHasStarted) resetPlayers();
@@ -223,9 +224,10 @@ function applyGameAccess(){
     setChipsLocked(true);
   }else{
     if(startBtn && !gameActive && !_roundHasStarted) startBtn.disabled = !canPlayCurrentSituation();
-    if(watchSolutionBtn) watchSolutionBtn.disabled = false;
-    if(continueBtn) continueBtn.disabled = false;
-    if(verifySeqBtn) verifySeqBtn.disabled = false;
+    if(watchSolutionBtn) watchSolutionBtn.disabled = !currentSituation;
+    if(continueBtn) continueBtn.disabled = !currentSituation;
+    if(verifySeqBtn) verifySeqBtn.disabled = !currentSituation;
+    if(!currentSituation)setChipsLocked(true);
   }
 }
 
@@ -2453,12 +2455,21 @@ function mapHitType(v){ const t=String(v||'').toLowerCase(); return (t==='line'|
 async function loadSituationsFromDatabase(){
   const arr = await diqApiRequest('situations', { cache:'no-store' });
   if(!Array.isArray(arr)) throw new Error('Situation API did not return an array.');
-  if(arr.length === 0) throw new Error('The database contains no situations. Run the database seed command.');
+
   SITUATIONS = arr.map((raw,i)=> normalizeSituation(raw,i));
   console.info('[Database] Loaded', SITUATIONS.length, 'situations.');
   snapshotSituationsOrig();
 }
 
+
+window._diqRefreshSituationAccess=async()=>{
+ await loadSituationsFromDatabase();
+ if(!SITUATIONS.some(item=>item.key===currentSituation?.key)){
+   if(SITUATIONS.length)setSituation(SITUATIONS[0].key);
+   else {currentSituation=null;stopTimer();gameActive=false;_roundHasStarted=false;if(descHud)descHud.textContent='Your team Playbook is empty';if(startBtn)startBtn.disabled=true;if(checkBtn)checkBtn.disabled=true;if(resetBtn)resetBtn.disabled=true;}
+ }
+ renderPlaybookBrowser();applyGameAccess();
+};
 
 function snapshotSituationsOrig(){
   try{
@@ -2498,9 +2509,7 @@ function situationDisplayCode(key, displayCode){
 
 function situationDisplayLabel(situation){
   if (!situation) return '';
-  const code = situationDisplayCode(situation.key, situation.displayCode);
-  const description = String(situation.title || situation.desc || (code ? 'Situation' : 'New situation')).trim();
-  return [code, description].filter(Boolean).join(' · ') || 'Situation';
+  return String(situation.title || situation.desc || 'Unnamed situation').trim();
 }
 window._diqSituationDisplayLabel = situationDisplayLabel;
 
@@ -2613,8 +2622,12 @@ function makeBlankSituation(){
   };
 }
 
-function addNewSituation(){
-  const s = makeBlankSituation();
+function addNewSituation(source=null){
+  const s = source ? JSON.parse(JSON.stringify(source)) : makeBlankSituation();
+  if(source){
+    s.key=genUniqueKey(s.title);
+    for(const field of ['revision','displayCode','active','createdAt','updatedAt','createdBy','archivedAt','archivedBy'])delete s[field];
+  }
 
   // Add to model + persist default starts for this key
   SITUATIONS.push(s);
@@ -2635,7 +2648,7 @@ function addNewSituation(){
   });
 
   // Put caret in Title for convenience
-  setTimeout(() => { try { newTitleInput?.focus(); } catch{} }, 0);
+  setTimeout(() => { try { document.getElementById('situationDifficultySelect')?.focus(); } catch{} }, 0);
 
   if (typeof updateDescriptionHudText === 'function') updateDescriptionHudText();
 
@@ -2776,7 +2789,7 @@ function filteredPlaybookSituations(){
   return (SITUATIONS || []).filter((situation) => {
     const teachingCategories = [situation.primaryCategory, ...(situation.relatedCategories || [])];
     const categoryLabels = teachingCategories.map(teachingCategoryLabel).join(' ');
-    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key}`.toLowerCase();
+    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key} ${situation.displayCode||''}`.toLowerCase();
     const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
     return (!query || haystack.includes(query))
       && (!category || teachingCategories.includes(category))
@@ -2792,6 +2805,37 @@ function choosePlaybookSituation(key){
   window._diqClearActivePracticeAssignment?.();
   setSituation(key);
   closePlaybookBrowser();
+}
+
+// Shorten only the generated runner suffix when it agrees with the saved state.
+window._diqCreateSituationVariation = source => addNewSituation(source);
+
+function playbookCardTitle(situation){
+  const name = situationDisplayLabel(situation);
+  const bases = [['first','First'],['second','Second'],['third','Third']]
+    .filter(([key])=>situation.runnersOn?.[key]).map(([,label])=>label);
+  const runners = bases.length===3 ? 'Bases Loaded' : bases.length===0 ? 'Bases Empty'
+    : `${bases.length===1 ? 'Runner' : 'Runners'} on ${bases.join(' and ')}`;
+  const suffix = ` — ${runners}`;
+  return name.endsWith(suffix) && name.length>suffix.length ? name.slice(0,-suffix.length) : name;
+}
+
+function playbookStateGraphic(situation){
+  const state=document.createElement('span');state.className='playbook-card-state';
+  // The containing button announces the complete name, runners, and outs.
+  state.setAttribute('aria-hidden','true');
+  for(const kind of ['Runners','Outs']){
+    const group=document.createElement('span');group.className='playbook-state-group';
+    const label=document.createElement('span');label.className='playbook-state-label';label.textContent=kind;
+    const map=document.createElement('span');map.className=kind==='Runners'?'training-base-map':'training-out-map';
+    if(kind==='Runners'){
+      for(const base of ['first','second','third']){const marker=document.createElement('i');marker.dataset.marker=base;marker.classList.toggle('is-occupied',Boolean(situation.runnersOn?.[base]));map.append(marker);}
+    }else{
+      for(let index=0;index<2;index++){const marker=document.createElement('i');marker.classList.toggle('is-recorded',index<Number(situation.outs));map.append(marker);}
+    }
+    group.append(label,map);state.append(group);
+  }
+  return state;
 }
 
 function renderPlaybookBrowser(){
@@ -2819,14 +2863,10 @@ function renderPlaybookBrowser(){
     const heading = document.createElement('span');
     heading.className = 'playbook-card-heading';
     const title = document.createElement('strong');
-    title.textContent = displayLabel.split(' · ').slice(1).join(' · ') || displayLabel;
+    title.textContent = playbookCardTitle(situation);
     const difficulty = document.createElement('span');
     difficulty.className = `playbook-difficulty is-${situation.difficulty}`;
     difficulty.textContent = difficultyLabel(situation.difficulty);
-    const reference = document.createElement('span');
-    reference.className = 'playbook-card-reference';
-    reference.textContent = ` · ${displayLabel.split(' · ')[0]}`;
-    title.appendChild(reference);
     heading.appendChild(title);
     const badges = document.createElement('span');
     badges.className = 'playbook-card-badges';
@@ -2838,13 +2878,13 @@ function renderPlaybookBrowser(){
       badges.appendChild(current);
     }
 
-    const description = document.createElement('span');
-    description.className = 'playbook-card-description';
-    description.textContent = `${runnerLabel} · ${outLabel}`;
+    const description = playbookStateGraphic(situation);
     const metadata = document.createElement('span');
     metadata.className = 'playbook-card-metadata';
     metadata.textContent = teachingCategoryLabel(situation.primaryCategory);
-    button.append(heading, badges, description, metadata);
+    button.append(heading, badges);
+    if(situation.desc){const context=document.createElement('span');context.className='playbook-card-description';context.textContent=situation.desc;button.append(context);}
+    button.append(description, metadata);
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
     playbookBrowserList.appendChild(button);
   });
@@ -2853,6 +2893,7 @@ function renderPlaybookBrowser(){
   if(extraLabel) extraLabel.textContent = extraCount ? `· ${extraCount} active` : '';
   if(playbookClearFilters) playbookClearFilters.disabled = ![playbookSearch, playbookCategory, playbookDifficulty, playbookHitOutcome, playbookRunners].some(control=>control?.value);
   if (playbookResultCount) playbookResultCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'situation' : 'situations'}`;
+  if(playbookBrowserEmpty)playbookBrowserEmpty.textContent=!SITUATIONS.length?'Your team Playbook is empty. Ask your coach to select situations, or open your assigned practice.':'No situations match these filters.';
   playbookBrowserEmpty?.classList.toggle('hidden', filtered.length > 0);
   if (playbookRandomFiltered) playbookRandomFiltered.disabled = filtered.length === 0;
 }
@@ -3998,9 +4039,8 @@ function refreshPlayerPresentation(){
     if(element && element.textContent !== text) element.textContent = text;
   };
   const display = currentSituation ? situationDisplayLabel(currentSituation) : 'Choose a situation';
-  const parts = display.split(' · ');
-  setText('playerSituationName', parts.length > 1 ? parts.slice(1).join(' · ') : display);
-  setText('playerSituationReference', parts.length > 1 ? parts[0] : '');
+  setText('playerSituationName', display);
+  setText('playerSituationReference', '');
   const context = String(currentSituation?.desc || '').trim();
   setText('playerSituationContext', context);
   const contextElement = document.getElementById('playerSituationContext');

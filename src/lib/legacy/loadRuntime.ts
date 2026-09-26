@@ -1,3 +1,4 @@
+import { BALL_LOCATIONS, suggestSituationName, audienceLabel, normalizeAudience } from '../domain/situation-identity';
 import { openCoachReview } from '../review/coach-review.js';
 import playerCoachSource from '../../features/player-coach.js?raw';
 import gameEngineSource from '../../game/engine.js?raw';
@@ -35,7 +36,7 @@ function loadClassicScript(source: string): Promise<void> {
 }
 
 export async function loadLegacyRuntime(): Promise<void> {
-  Object.assign(window, { _diqOpenCoachReview: openCoachReview });
+  Object.assign(window, { _diqOpenCoachReview: openCoachReview, _diqBallLocations: BALL_LOCATIONS, _diqSuggestSituationName: suggestSituationName, _diqAudienceLabel: audienceLabel, _diqNormalizeAudience: normalizeAudience });
   for (const source of runtimeSources) {
     await loadClassicScript(source);
   }

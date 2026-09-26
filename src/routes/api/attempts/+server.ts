@@ -39,6 +39,8 @@ export const POST: RequestHandler = async (event) => {
         attempt.runId,
       );
     } else {
+      const selected=await database.one('SELECT 1 FROM team_playbook_situations p JOIN situations s ON s.key=p.situation_key AND s.active=1 WHERE p.team_id=?1 AND p.situation_key=?2',[user.teamId,attempt.situationKey]);
+      if(!selected)return json({error:'This situation is available only through an assigned practice.'},{status:403});
       await assignments.assertFreePlayAccess(user.id, attempt.runId);
     }
   } catch (error) {

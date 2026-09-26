@@ -1,3 +1,5 @@
+import { normalizeSuggestedDivisions } from '$lib/domain/situation-identity';
+import { normalizeAudience, BALL_LOCATIONS } from '$lib/domain/situation-identity';
 import type { Situation } from '$lib/domain/models';
 import {
   normalizeDifficulty,
@@ -58,6 +60,11 @@ export interface SituationSubmissionRecord {
 }
 
 function validateSubmissionSituation(input: Situation): Situation {
+  let suggestedDivisions;
+  try { suggestedDivisions=normalizeSuggestedDivisions(input?.suggestedDivisions); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid divisions.'); }
+  let audience;
+  try { audience = normalizeAudience(input?.audience); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid audience.'); }
+  if (input.ballLocation && !(BALL_LOCATIONS as readonly string[]).includes(input.ballLocation)) throw new RecordValidationError('Choose a valid ball location.');
   const key = String(input?.key || '').trim();
   const title = String(input?.title || '').trim();
   const category = String(input?.category || '').trim();
@@ -95,7 +102,7 @@ function validateSubmissionSituation(input: Situation): Situation {
       'Confirm the play and runner outcomes before submitting this situation.',
     );
   }
-  return { ...input, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
+  return { ...input, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }
 
 function mapRow(row: SubmissionRow): SituationSubmissionRecord {
@@ -307,7 +314,7 @@ export class SqliteSituationSubmissionRepository {
     }
 
     const selectableFields = [
-      'title', 'desc', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
+      'title', 'desc', 'audience', 'suggestedDivisions', 'ballLocation', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
       'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'seqNote',
     ];
     const acceptedFields = Array.from(new Set(acceptedFieldsInput))

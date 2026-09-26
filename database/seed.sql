@@ -235,3 +235,6 @@ DELETE FROM situation_teaching_categories WHERE situation_key = 'BD-20';
 INSERT INTO situation_teaching_categories (situation_key, category_id, is_primary, sort_order) VALUES ('BD-20', 'cutoffs-relays', 1, 0);
 INSERT INTO situation_teaching_categories (situation_key, category_id, is_primary, sort_order) VALUES ('BD-20', 'backups-rotations', 0, 1);
 INSERT INTO situation_teaching_categories (situation_key, category_id, is_primary, sort_order) VALUES ('BD-20', 'base-coverage', 0, 2);
+
+-- Explicit starter Playbooks for development/test seed data.
+INSERT OR IGNORE INTO team_playbook_situations(team_id,situation_key) SELECT teams.id,situations.key FROM teams CROSS JOIN situations WHERE situations.active=1;

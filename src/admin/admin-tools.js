@@ -1963,7 +1963,7 @@
   const FIELD_WIDTH = 3200;
   const FIELD_HEIGHT = 2133;
   const EDITABLE_FIELDS = [
-    ['title', 'Situation name'], ['desc', 'Coaching context'], ['category', 'Hit outcome'],
+    ['title', 'Situation name'], ['ballLocation', 'Ball location'], ['audience', 'Staff label'], ['suggestedDivisions', 'Suggested divisions'], ['desc', 'Coaching context'], ['category', 'Hit outcome'],
     ['difficulty', 'Difficulty'], ['primaryCategory', 'Primary teaching category'],
     ['relatedCategories', 'Related teaching categories'], ['outs', 'Outs'],
     ['runnersOn', 'Runners'], ['starts', 'Starting alignment'],
@@ -2230,7 +2230,11 @@
   function validateSituation(snapshot) {
     const issues = [];
     const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
-    if (!String(snapshot?.title || '').trim()) add('Add a situation name.', 'sbDetailsSection');
+    try { window._diqNormalizeAudience?.(snapshot?.audience); } catch(error) { add(error.message,'sbDetailsSection'); }
+    const normalize=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
+    const label=value=>normalize(value)==='standard'?'':normalize(value);
+    if((!snapshot?.revision || changedFields(snapshot).some(field=>['title','audience'].includes(field))) && (Array.isArray(SITUATIONS)?SITUATIONS:[]).some(item=>item.key!==snapshot?.key && item.active!==false && normalize(item.title)===normalize(snapshot?.title) && label(item.audience?.staffVariant)===label(snapshot?.audience?.staffVariant)))add('Another situation uses this name and staff label. Choose a distinct name or label.','situationReviewSection');
+    if (!String(snapshot?.title || '').trim()) add('Add a situation name.', 'situationReviewSection');
     if (!String(snapshot?.category || '').trim()) add('Choose a hit outcome.', 'sbDetailsSection');
     const teachingCategoryIds = new Set((window.DIQ_TEACHING_CATEGORIES || []).map(category=>category.id));
     if (!teachingCategoryIds.has(String(snapshot?.primaryCategory || ''))) {
@@ -2313,10 +2317,10 @@
       button.classList.toggle('is-current',button.dataset.editorStep===group);
       button.setAttribute('aria-current',button.dataset.editorStep===group ? 'step' : 'false');
     });
-    const labels={sbDetailsSection:'Situation details · Name the play and its teaching focus.',sbRunnersSubsec:'Starting positions · Set outs and runners, then drag the blue fielders to their starting positions.',sbBallHitSubsec:'Ball location · Drag the ball marker and choose where the batter and runners finish.',sbTargetsSubsec:'Defensive targets · Drag a target ring. Select a position to edit its allowed distance and coaching note.',situationReviewSection:'Review · Check changes and completeness before previewing or submitting.'};
-    byId('situationEditingMode').textContent=labels[group];
+    const labels={sbDetailsSection:'Situation details · Set the teaching focus and player context.',sbRunnersSubsec:'Starting positions · Set outs and runners, then drag the blue fielders to their starting positions.',sbBallHitSubsec:'Ball location · Drag the ball marker and choose where the batter and runners finish.',sbTargetsSubsec:'Defensive targets · Drag a target ring. Select a position to edit its allowed distance and coaching note.',situationReviewSection:'Review · Choose a name and check completeness before previewing or submitting.'};
+    const help=byId('situationEditingMode');help.textContent=labels[group];const section=byId(group);(section.querySelector(':scope > .diq-body')||section).prepend(help);
     document.body.dataset.situationEditSection=group;
-    if(group==='situationReviewSection') renderEditorState(currentSnapshot(),true);
+    if(group==='situationReviewSection'){if(/^New Situation(?: \d+)?$/i.test(currentSituation?.title||'')){byId('useSuggestedName')?.click();}renderEditorState(currentSnapshot(),true);}
   }
 
   function addSituationTransfer(library) {
@@ -2403,6 +2407,54 @@
     return panel;
   }
 
+  async function openTeamPlaybook(library){
+    library.replaceChildren();
+    const heading=document.createElement('h2');heading.textContent='Team Playbook';library.append(heading);
+    const intro=document.createElement('p');intro.textContent='Choose what players can browse and receive through Random. Assignments can include other published situations without adding them here.';library.append(intro);
+    const back=document.createElement('button');back.type='button';back.className='btn btn-ghost';back.textContent='Back to library';back.onclick=showSituationLibrary;if(library.id!=='coachTeamPlaybook')library.append(back);
+    const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
+    try{
+      const options=await diqApiRequest('teams/options',{cache:'no-store'});
+      const user=window.__DIQ_AUTH_USER__;
+      const available=(options.teams||[]).filter(team=>user.role==='admin'||team.id===user.teamId);
+      const teamSelect=document.createElement('select');teamSelect.setAttribute('aria-label','Team Playbook team');available.forEach(team=>teamSelect.append(new Option(team.name,team.id)));if(user.role==='admin')library.append(teamSelect);
+      const filters=document.createElement('div');filters.className='team-playbook-filters';
+      const search=document.createElement('input');search.type='search';search.placeholder='Search names, context, or staff labels';search.setAttribute('aria-label','Search team Playbook situations');
+      const division=document.createElement('select');division.setAttribute('aria-label','Suggested division');division.append(new Option('All divisions',''));for(let age=9;age<=18;age++)division.append(new Option(`${age}U`,String(age)));
+      const difficulty=document.createElement('select');difficulty.setAttribute('aria-label','Difficulty');difficulty.append(new Option('All difficulties',''));for(const value of ['foundational','intermediate','advanced'])difficulty.append(new Option(value,value));
+      const category=document.createElement('select');category.setAttribute('aria-label','Teaching category');category.append(new Option('All categories',''));[...new Set(SITUATIONS.map(item=>item.primaryCategory))].forEach(id=>category.append(new Option(teachingCategoryLabel(id),id)));
+      filters.append(search,division,difficulty,category);library.append(filters);
+      const bulk=document.createElement('div');bulk.className='team-playbook-bulk';library.append(bulk);
+      const selectMatching=document.createElement('button');selectMatching.type='button';selectMatching.className='btn btn-ghost';selectMatching.textContent='Select all matching';
+      const deselectMatching=document.createElement('button');deselectMatching.type='button';deselectMatching.className='btn btn-ghost';deselectMatching.textContent='Deselect matching';
+      bulk.append(selectMatching,deselectMatching);
+      const list=document.createElement('div');list.className='team-playbook-list';library.append(list);
+      const save=document.createElement('button');save.type='button';save.className='btn btn-brand';save.textContent='Save team Playbook';library.append(save);
+      let selected=new Set(),revision=0,generation=0,ready=false;
+      const matchingRecords=()=>SITUATIONS.filter(item=>Number(item.revision)>0 && (!division.value||(item.suggestedDivisions||[]).includes(Number(division.value)))&&(!difficulty.value||item.difficulty===difficulty.value)&&(!category.value||item.primaryCategory===category.value)&&`${item.title} ${item.desc||''} ${window._diqAudienceLabel?.(item)||''}`.toLowerCase().includes(search.value.toLowerCase()));
+      selectMatching.onclick=()=>{matchingRecords().forEach(item=>selected.add(item.key));draw();};
+      deselectMatching.onclick=()=>{matchingRecords().forEach(item=>selected.delete(item.key));draw();};
+      function draw(){
+        list.replaceChildren();
+        const records=ready?matchingRecords():[];
+        selectMatching.disabled=!ready||!records.some(item=>!selected.has(item.key));
+        deselectMatching.disabled=!ready||!records.some(item=>selected.has(item.key));
+        records.forEach(item=>{
+          const row=document.createElement('label');row.className='team-playbook-choice';const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);draw();};
+          const text=document.createElement('span');text.textContent=[item.title,window._diqAudienceLabel?.(item),...(item.suggestedDivisions||[]).map(age=>`${age}U`)].filter(Boolean).join(' · ');row.append(check,text);list.append(row);
+        });
+        const visible=new Map();let identical=false;SITUATIONS.filter(item=>selected.has(item.key)).forEach(item=>{const signature=JSON.stringify([playbookCardTitle(item),item.runnersOn,item.outs,item.difficulty,item.primaryCategory,item.desc||'']);if(visible.has(signature))identical=true;visible.set(signature,true);});
+        status.textContent=`${selected.size} selected · ${records.length} matching.${identical?' Some selected cards look identical to players. Add a spoiler-free name or Player context to distinguish them.':''}`;
+      }
+      async function load(){const request=++generation;ready=false;save.disabled=true;selectMatching.disabled=true;deselectMatching.disabled=true;list.replaceChildren();try{const result=await diqApiRequest(`teams/${encodeURIComponent(teamSelect.value)}/playbook`,{cache:'no-store'});if(request!==generation)return;selected=new Set(result.keys.filter(key=>SITUATIONS.some(item=>item.key===key)));revision=result.revision;ready=true;draw();save.disabled=false;}catch(error){status.textContent=error.message;}}
+      teamSelect.onchange=load;for(const filter of [search,division,difficulty,category])filter.oninput=draw;
+      save.onclick=async()=>{save.disabled=true;teamSelect.disabled=true;try{const result=await diqApiRequest(`teams/${encodeURIComponent(teamSelect.value)}/playbook`,{method:'PUT',body:JSON.stringify({keys:[...selected],revision})});revision=result.revision;status.textContent='Team Playbook saved. Players receive this selection when they next load their Playbook. Assignments are unchanged.';}catch(error){status.textContent=error.message;}finally{save.disabled=false;teamSelect.disabled=false;}};
+      if(available.length)await load();else{save.disabled=true;selectMatching.disabled=true;deselectMatching.disabled=true;status.textContent='No team is available to manage.';}
+    }catch(error){status.textContent=error.message;}
+  }
+
+  window._diqOpenCoachTeamPlaybook=()=>openTeamPlaybook(byId('coachTeamPlaybook'));
+
   function showSituationLibrary(){
     document.body.classList.add('situation-library-open');
     document.body.classList.remove('situation-editing-open');
@@ -2419,9 +2471,10 @@
     function button(label, action){const item=document.createElement('button');item.type='button';item.className='btn btn-ghost';item.textContent=label;item.onclick=action;return item;}
     const toolbar=document.createElement('div');toolbar.className='situation-library-toolbar';library.append(toolbar);
     const tabs=document.createElement('div');tabs.className='situation-library-tabs';toolbar.append(tabs);
-    let mode='library', bundle=null, loading=false;
+    let mode='library', bundle=null, loading=false, order=null, draggedKey=null;
     const selected=new Set();
     const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();});create.className='btn btn-brand situation-library-create';toolbar.append(create);
+    if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
     const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
@@ -2438,29 +2491,48 @@
     });download.className='btn btn-brand';footer.append(count,download);
     const importHost=document.createElement('div');library.append(importHost);
     if(isAdmin)addSituationTransfer(importHost);
-    const records=()=>mode==='export'?(bundle?.situations||[]):(Array.isArray(SITUATIONS)?SITUATIONS:[]);
-    const matches=()=>records().filter(item=>`${item.title} ${item.desc||''} ${item.displayCode||''}`.toLowerCase().includes(search.value.toLowerCase()));
+    const records=()=>mode==='reorder'?(order?.situations||[]):mode==='export'?(bundle?.situations||[]):(Array.isArray(SITUATIONS)?SITUATIONS:[]);
+    const matches=()=>records().filter(item=>`${item.title} ${item.desc||''} ${item.displayCode||''} ${window._diqAudienceLabel?.(item)||''}`.toLowerCase().includes(search.value.toLowerCase()));
     const updateCount=()=>{count.textContent=`${selected.size} selected · ${matches().length} matching`;download.disabled=!selected.size;download.textContent=selected.size?`Download selected (${selected.size})`:'Download selected';};
     function draw(){
       list.replaceChildren();
       for(const item of matches()){
         const row=document.createElement(mode==='export'?'label':'div');row.className='situation-library-row';
-        const title=document.createElement('strong');title.textContent=`${item.displayCode||item.key} · ${item.title||item.desc}`;
+        const title=document.createElement('strong');title.textContent=`${item.title||item.desc}`;
+        const staff=document.createElement('small');staff.className='situation-staff-meta';staff.textContent=[window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');title.append(staff);
         if(mode==='export'){
           const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);row.classList.toggle('is-selected',check.checked);
           check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);row.classList.toggle('is-selected',check.checked);updateCount();};row.append(check,title);
+        }else if(mode==='reorder'){
+          row.draggable=true;row.append(title);
+          const controls=document.createElement('div');controls.className='situation-reorder-controls';
+          const index=order.situations.findIndex(record=>record.key===item.key);
+          for(const [delta,label] of [[-1,'Move up'],[1,'Move down']]){const move=button(label,()=>{const target=index+delta;[order.situations[index],order.situations[target]]=[order.situations[target],order.situations[index]];draw();const movedRow=list.children[target];const sameDirection=movedRow?.querySelectorAll('button')[delta===-1?0:1];(sameDirection?.disabled?movedRow?.querySelector('button:not(:disabled)'):sameDirection)?.focus();status.textContent=`${item.title} moved to position ${target+1} of ${order.situations.length}. Save order to apply.`;});move.disabled=index+delta<0||index+delta>=order.situations.length;move.setAttribute('aria-label',`${label}: ${item.title}`);controls.append(move);}row.append(controls);
+          row.ondragstart=event=>{draggedKey=item.key;event.dataTransfer.setData('text/plain',item.key);};row.ondragover=event=>event.preventDefault();
+          row.ondrop=event=>{event.preventDefault();const from=order.situations.findIndex(record=>record.key===draggedKey);const to=order.situations.findIndex(record=>record.key===item.key);if(from<0||from===to)return;const [moved]=order.situations.splice(from,1);order.situations.splice(to,0,moved);draw();};
         }else{
-          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});row.append(title,edit);
+          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);
         }list.append(row);
       }
       if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';
       updateCount();
     }
     exportActions.append(button('Select matching situations',()=>{matches().forEach(item=>selected.add(item.key));draw();}),button('Select all situations',()=>{records().forEach(item=>selected.add(item.key));draw();}),button('Clear selection',()=>{selected.clear();draw();}));
+    const orderActions=document.createElement('div');orderActions.className='situation-transfer-controls';library.insertBefore(orderActions,search);
+    const saveOrder=button('Save order',async()=>{
+      if(!order)return;saveOrder.disabled=true;
+      try{await diqApiRequest('admin/situations/order',{method:'PUT',body:JSON.stringify({keys:order.situations.map(item=>item.key),revision:order.revision})});await loadSituationsFromDatabase();await switchMode('library');status.textContent='Library order saved. Existing practice sequences are unchanged.';}
+      catch(error){status.textContent=error.message;}finally{saveOrder.disabled=false;}
+    });saveOrder.className='btn btn-brand';orderActions.append(saveOrder,button('Cancel',()=>switchMode('library')));
     async function switchMode(value){
       mode=value;document.body.dataset.situationLibraryTab=value;
       tabs.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.mode===value)));
-      search.hidden=list.hidden=!['library','export'].includes(value); exportActions.hidden=footer.hidden=value!=='export';importHost.hidden=value!=='import';status.textContent='';
+      search.hidden=!['library','export'].includes(value);list.hidden=!['library','export','reorder'].includes(value);orderActions.hidden=value!=='reorder'; exportActions.hidden=footer.hidden=value!=='export';importHost.hidden=value!=='import';status.textContent='';
+      if(value==='reorder'){
+        search.value='';order=null;loading=true;saveOrder.disabled=true;draw();
+        try{order=await diqApiRequest('admin/situations/order',{cache:'no-store'});if(mode==='reorder')status.textContent='Drag situations or use Move up / Move down, then save the shared library order.';}
+        catch(error){status.textContent=error.message;}finally{loading=false;saveOrder.disabled=!order;}
+      }
       if(value==='export'&&!bundle){
         loading=true;draw();
         try{bundle=await diqApiRequest('admin/situations/transfer',{cache:'no-store'});}
@@ -2470,7 +2542,7 @@
       if(mode==='export'&&bundle)status.textContent=`Select published situations to download. Source: ${bundle.source}`;
       draw();
     }
-    if(isAdmin)for(const [value,label] of [['library','Library'],['proposals','Proposals to review'],['export','Export'],['import','Import']]){const item=button(label,()=>switchMode(value));item.dataset.mode=value;tabs.append(item);}
+    if(isAdmin)for(const [value,label] of [['library','Library'],['proposals','Proposals to review'],['export','Export'],['import','Import'],['reorder','Reorder']]){const item=button(label,()=>switchMode(value));item.dataset.mode=value;tabs.append(item);}
     search.addEventListener('input',draw);void switchMode('library');
     if(!isAdmin&&coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
   }
@@ -2539,15 +2611,82 @@
     });
   }
 
+  const divisionTags=byId('situationDivisionTags');
+  for(let age=9;age<=18;age++){
+    const label=document.createElement('label');const check=document.createElement('input');check.type='checkbox';check.value=String(age);
+    check.onchange=()=>{if(!currentSituation)return;currentSituation.suggestedDivisions=Array.from(divisionTags.querySelectorAll('input:checked')).map(input=>Number(input.value));queueCurrentSituationDatabaseSync();};label.append(check,`${age}U`);divisionTags.append(label);
+  }
+  const audienceInputs = {staffVariant:'situationStaffVariant'};
+  const locationSelect = byId('situationBallLocation');
+  for (const location of window._diqBallLocations || []) locationSelect?.append(new Option(location, location));
+  async function createSituationVariation(source){
+    if(editorDirty && !await requestConfirmation({title:'Replace local changes?',message:'Creating a variation replaces your unsubmitted draft.',confirmLabel:'Create variation'}))return;
+    window._diqCreateSituationVariation(clone(source));
+    openSituationEditorPane();
+    focusEditorSection('situationReviewSection');
+    setWorkflowStatus('Variation created as a new draft. Choose a distinct name or staff label before publishing.');
+  }
+  function similarSituations(snapshot){
+    return (Array.isArray(SITUATIONS)?SITUATIONS:[]).filter(item=>item.key!==snapshot.key && item.active!==false && Number(item.revision)>0 &&
+      item.hitType===snapshot.hitType && Number(item.outs)===Number(snapshot.outs) &&
+      ['first','second','third'].every(base=>Boolean(item.runnersOn?.[base])===Boolean(snapshot.runnersOn?.[base])) &&
+      (item.ballLocation && snapshot.ballLocation ? item.ballLocation===snapshot.ballLocation :
+        Number.isFinite(item.hit?.x) && item.hit.x===snapshot.hit?.x && item.hit.y===snapshot.hit?.y));
+  }
+  function renderCreationReview(snapshot){
+    const preview=byId('situationCardPreview');preview.replaceChildren();
+    const card=document.createElement('div');card.className='editor-preview-card';
+    card.setAttribute('aria-label',`${snapshot.title}. ${playbookRunnerLabel(snapshot)}, ${snapshot.outs} outs`);
+    const title=document.createElement('strong');title.textContent=playbookCardTitle(snapshot);
+    const difficulty=document.createElement('span');difficulty.className=`playbook-difficulty is-${snapshot.difficulty}`;difficulty.textContent=difficultyLabel(snapshot.difficulty);
+    const category=document.createElement('span');category.className='playbook-card-metadata';category.textContent=teachingCategoryLabel(snapshot.primaryCategory);
+    card.append(title,difficulty);if(snapshot.desc){const context=document.createElement('span');context.textContent=snapshot.desc;card.append(context);}card.append(playbookStateGraphic(snapshot),category);preview.append(card);
+    const list=byId('situationSimilarList');list.replaceChildren();
+    const matches=similarSituations(snapshot);byId('situationSimilarPanel').hidden=!matches.length;
+    matches.forEach(item=>{
+      const row=document.createElement('div');row.className='similar-situation-row';
+      const name=document.createElement('span');name.textContent=[item.title,window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');
+      const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent=editorRole==='coach'?'Propose changes':'Edit existing';
+      edit.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Replace local changes?',message:'Opening this situation replaces your unsubmitted draft.',confirmLabel:'Open existing'}))return;setSituation(item.key,clone(item));openSituationEditorPane();};
+      const variation=document.createElement('button');variation.type='button';variation.className='btn btn-ghost';variation.textContent='Create variation';variation.onclick=()=>createSituationVariation(item);
+      row.append(name,edit,variation);list.append(row);
+    });
+  }
+  function renderSituationIdentity(snapshot) {
+    if (!snapshot) return;
+    divisionTags.querySelectorAll('input').forEach(input=>input.checked=(snapshot.suggestedDivisions||[]).includes(Number(input.value)));
+    const audience = snapshot.audience || {};
+    for(const [field,id] of Object.entries(audienceInputs)){const input=byId(id);if(input && document.activeElement!==input)input.value=audience[field]??'';}
+    if(document.activeElement!==locationSelect)locationSelect.value=snapshot.ballLocation||'';
+    const categorySummary=byId('situationRelatedSummary');categorySummary.replaceChildren();
+    document.querySelectorAll('#situationRelatedCategories button[aria-pressed="true"]').forEach(button=>{const chip=document.createElement('span');chip.textContent=button.textContent;categorySummary.append(chip);});
+    byId('suggestedSituationName').textContent=`Suggested: ${window._diqSuggestSituationName?.(snapshot)||''}`;
+    byId('situationAudiencePreview').textContent=`Player name: ${snapshot.title || 'Not named'} | Staff label: ${window._diqAudienceLabel?.(snapshot)||'Standard'}`;
+  }
+  for(const [field,id] of Object.entries(audienceInputs)) byId(id)?.addEventListener('change',()=>{
+    if(!currentSituation)return;
+    currentSituation.audience={...(currentSituation.audience||{})};
+    const value=byId(id).value;
+    if(value==='')delete currentSituation.audience[field];
+    else currentSituation.audience[field]=value;
+    queueCurrentSituationDatabaseSync();
+  });
+  locationSelect?.addEventListener('change',()=>{if(currentSituation){currentSituation.ballLocation=locationSelect.value;queueCurrentSituationDatabaseSync();}});
+  byId('useSuggestedName')?.addEventListener('click',()=>{if(currentSituation){byId('newTitleInput').value=window._diqSuggestSituationName(currentSituation);byId('newTitleInput').dispatchEvent(new Event('input',{bubbles:true}));}});
+
   function renderEditorState(snapshot = currentSnapshot(), showValidation = false) {
+    renderSituationIdentity(snapshot);
+    if(snapshot)renderCreationReview(snapshot);
     const issues = validateSituation(snapshot);
     const errors = issues.filter((issue) => issue.severity === 'error');
     renderPositionCompleteness(snapshot);
     renderChangeSummary(snapshot);
     if (dirtyBadge) {
-      dirtyBadge.textContent = editorDirty ? 'Unsaved changes' : 'No draft changes';
+      dirtyBadge.textContent = editorDirty ? 'Unpublished changes' : 'Saved';
       dirtyBadge.className = `dirty-state-badge ${editorDirty ? 'is-dirty' : 'is-clean'}`;
     }
+    byId('saveSituationBtn')?.classList.toggle('hidden', !editorDirty);
+    byId('situationEditorName').textContent=snapshot?.title||'New situation';
     const rationaleReady = editorRole !== 'coach' || Boolean(String(coachRationale?.value || '').trim());
     if (submitSituation) submitSituation.disabled = !editorDirty || errors.length > 0 || !rationaleReady;
     if (publishSituation) publishSituation.disabled = !editorDirty || errors.length > 0;
@@ -2581,6 +2720,7 @@
   function setWorkflowStatus(message = '', state = '') {
     if (!workflowStatus) return;
     workflowStatus.textContent = message;
+    workflowStatus.hidden = !message;
     workflowStatus.className = `operation-status${state ? ` is-${state}` : ''}`;
   }
 
@@ -2913,10 +3053,7 @@
   window._diqMarkSituationDirty = (snapshot, role) => {
     if (!editorRole || role !== editorRole) return;
     editorDirty = true;
-    setWorkflowStatus(
-      role === 'coach' ? 'Draft changes are local until you submit them for review.' : 'Changes are local until you publish them.',
-      'pending',
-    );
+    setWorkflowStatus();
     renderEditorState(snapshot);
   };
 
@@ -2935,9 +3072,9 @@
     situationEditor.querySelector(':scope > .diq-body')?.removeAttribute('hidden');
     const mount = role === 'admin' ? adminEditorMount : coachEditorMount;
     if (mount && situationEditor.parentElement !== mount) mount.appendChild(situationEditor);
-    editorTitle.textContent = role === 'coach' ? 'Situation proposal' : 'Published situation editor';
+    editorTitle.textContent = 'Edit situation';
     if (workflowRole) workflowRole.textContent = role === 'coach' ? 'Coach draft' : 'Administrator';
-    if (workflowHeading) workflowHeading.textContent = role === 'coach' ? 'Draft proposal' : 'Published playbook editor';
+    if (workflowHeading) workflowHeading.textContent = role === 'coach' ? 'Propose changes' : 'Edit situation';
     if (workflowCopy) workflowCopy.textContent = role === 'coach'
       ? 'Players continue using the published version until an administrator approves this proposal.'
       : 'Changes become available to players only after you publish them.';
@@ -2948,9 +3085,7 @@
     coachSummary?.classList.toggle('hidden', role !== 'coach');
     editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(currentSnapshot()?.key) || currentSnapshot());
     editorDirty = false;
-    setWorkflowStatus(role === 'coach'
-      ? 'Build a draft, review it, and submit it for administrator approval.'
-      : 'Edit the published playbook, validate it, and publish when ready.');
+    setWorkflowStatus();
     window._diqSetEditorMode?.(role);
     renderEditorState(currentSnapshot());
     showSituationLibrary();

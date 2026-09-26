@@ -389,6 +389,7 @@
   <nav class="coach-tabs" aria-label="Coach tool sections">
     <button class="coach-tab is-active" type="button" data-coach-tab="reviews">Reviews</button>
     <button class="coach-tab" type="button" data-coach-tab="assignments">Assignments</button>
+    <button class="coach-tab" type="button" data-coach-tab="playbook">Team Playbook</button>
     <button class="coach-tab" type="button" data-coach-tab="proposals">Situation Proposals</button>
   </nav>
   <section class="coach-view" data-coach-view="reviews">
@@ -400,6 +401,7 @@
     <p>Create team or individual practice queues and monitor completion in the main workspace.</p>
   </section>
 
+<section id="coachTeamPlaybook" class="coach-view hidden" data-coach-view="playbook"></section>
 <div id="coachSituationEditorMount" class="hidden" data-coach-view="proposals"><div class="subsec diq-collapsible" id="situationBuilderSubsec" data-diq-collapsible="1" data-shared-situation-editor="1">
     <div class="title"><span id="situationBuilderTitle">Situation Proposal</span><span class="diq-chevron">▾</span></div>
     <p class="builder-field-help">Build on the same field your players use. Choose a section below to edit game state, defensive targets, hit information, or the play sequence.</p>
@@ -415,15 +417,20 @@
 
 
   <div class="diq-body">
-    <section id="situationWorkflowBanner" class="situation-workflow-banner" aria-live="polite">
-      <div>
-        <span id="situationWorkflowRole" class="workflow-role-badge">Coach draft</span>
-        <strong id="situationWorkflowHeading">Draft proposal</strong>
-        <p id="situationWorkflowCopy">Players continue using the published version until an administrator approves this proposal.</p>
-      </div>
+    <header id="situationWorkflowBanner" class="situation-workflow-banner">
+      <div><strong id="situationWorkflowHeading">Edit situation</strong><span id="situationEditorName"></span></div>
+      <span id="situationWorkflowRole" hidden>Coach draft</span>
       <span id="situationDirtyBadge" class="dirty-state-badge is-clean">Saved</span>
-    </section>
-    <button id="situationLibraryBack" class="btn btn-ghost" type="button">Back to situations</button>
+      <details class="editor-publishing-help"><summary aria-label="About publishing">ⓘ</summary><p id="situationWorkflowCopy">Changes become available after publishing.</p></details>
+    </header>
+    <div class="editor-toolbar">
+      <button id="situationLibraryBack" class="btn btn-ghost" type="button">Back to situations</button>
+      <button id="saveSituationBtn" class="btn-slate hidden">Discard changes</button>
+      <details id="situationMoreActions"><summary>More actions</summary><div class="situation-editor-actions">
+        <button id="newSituationBtn" class="btn-slate">New situation</button>
+        <button id="deleteSituationBtn" class="btn btn-danger hidden" title="Archive the published situation">Archive situation</button>
+      </div></details>
+    </div>
     <nav id="situationEditorSteps" class="situation-editor-steps" aria-label="Situation editor sections">
       <button type="button" data-editor-step="sbDetailsSection">1. Details</button>
       <button type="button" data-editor-step="sbRunnersSubsec">2. Starting situation</button>
@@ -431,37 +438,32 @@
       <button type="button" data-editor-step="sbTargetsSubsec">4. Defense &amp; throws</button>
       <button type="button" data-editor-step="situationReviewSection">5. Review</button>
     </nav>
-    <div id="situationEditingMode" class="outcome-context-summary" role="status"></div>
-    <div class="situation-editor-actions">
-      <button id="newSituationBtn" class="btn-slate">New situation</button>
-      <button id="deleteSituationBtn" class="btn btn-danger hidden" title="Archive the published situation">Archive situation</button>
-      <button id="saveSituationBtn" class="btn-slate">Discard changes</button>
-    </div>
-    <div id="situationWorkflowStatus" class="operation-status" role="status" aria-live="polite"></div>
+    <p id="situationEditingMode" class="editor-step-help"></p>
+    <div id="situationWorkflowStatus" hidden class="operation-status" role="status" aria-live="polite"></div>
     <div id="coachProposalHistory" class="proposal-history"></div>
     <section id="sbDetailsSection" class="situation-editor-section" data-editor-section="details">
       <div class="sectionTitle">Situation details</div>
-    <div class="situation-title-fields">
-      <label class="field"><span>Situation name</span><input id="newTitleInput" type="text" maxlength="120" placeholder="e.g., Single to CF"></label>
-      <label class="field"><span>Description / coaching context (optional)</span><textarea id="newDescInput" rows="3" placeholder="Add context or explain what players should focus on."></textarea></label>
-    </div><div class="row situation-metadata-row">
-      <label class="field"><span>Hit outcome</span><select id="situationCategoryInput"><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base Hits</option><option value="General">General / Other</option></select></label>
+      <div class="situation-metadata-row">
+<label class="field"><span>Primary teaching category</span><select id="situationPrimaryCategorySelect"></select></label>
       <label class="field"><span>Difficulty</span><select id="situationDifficultySelect"><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
-      <label class="field"><span>Primary teaching category</span><select id="situationPrimaryCategorySelect"></select></label>
-      <fieldset class="situation-related-categories"><legend>Related teaching categories (optional)</legend><div id="situationRelatedCategories" class="situation-category-checklist"></div></fieldset>
-    </div><div class="row">
-      <label class="hint">Outs:</label>
+</div>
+      <details id="situationRelatedDetails" class="editor-optional"><summary>Edit related categories <span id="situationRelatedSummary" class="editor-category-chips"></span></summary><div id="situationRelatedCategories" class="situation-category-checklist"></div></details>
+      <label class="field editor-player-context"><span>Player context (optional)</span><textarea id="newDescInput" rows="3" placeholder="What should players know before the play?"></textarea><small>Shown to players before the play.</small></label>
+      <details class="editor-optional"><summary>Suggested divisions (optional)</summary><p>Help coaches find this situation. These tags do not restrict player access.</p><div id="situationDivisionTags" class="division-tags"></div></details>
+      <label class="field editor-player-context"><span>Staff label (optional)</span><input id="situationStaffVariant" maxlength="80" placeholder="Standard"><small>Distinguishes versions with the same name. Hidden from players.</small></label>
+    </section>
+    <div class="subsec diq-collapsible diq-collapsed" id="sbRunnersSubsec" data-diq-collapsible="1">
+          <div class="title">Runners on Base<span class="diq-chevron">▾</span></div>
+
+        <div class="diq-body"><div class="row">
+      <label class="hint" for="outsSelSituation">Starting outs</label>
       <select id="outsSelSituation">
         <option value="0">0 outs</option>
         <option value="1">1 out</option>
         <option value="2">2 outs</option>
       </select>
     </div>
-    </section>
-    <div class="subsec diq-collapsible diq-collapsed" id="sbRunnersSubsec" data-diq-collapsible="1">
-          <div class="title">Runners on Base<span class="diq-chevron">▾</span></div>
-
-        <div class="diq-body"><span class="hint" style="margin-left:auto">Updates HUD instantly</span><div class="row" id="runnersRow">
+<div class="row" id="runnersRow">
             <label class="hint">Select base runners:</label>
             <label><input id="run1B" type="checkbox"> 1B</label>
             <label><input id="run2B" type="checkbox"> 2B</label>
@@ -497,7 +499,8 @@
           <div class="title">Play Outcome<span class="diq-chevron">▾</span></div>
 
           
-        <div class="diq-body"><div class="hint">Describe what happens on the play. Drag the marker on the field to set the ball’s landing spot.</div><button id="testHitBtn" class="btn-green" style="margin-left:auto;padding:4px 8px;font-size:12px;line-height:1.2">▶ Test ball path</button><div class="situation-outcome-grid">
+        <div class="diq-body"><label class="field"><span>Ball location for suggested name</span><select id="situationBallLocation"><option value="">Choose location</option></select></label><details id="situationClassificationDetails" class="editor-optional"><summary>Playbook classification</summary>      <label class="field"><span>Hit outcome</span><select id="situationCategoryInput"><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base Hits</option><option value="General">General / Other</option></select></label>
+</details><p class="muted">Describe where the ball goes, not the correct defensive response.</p><div class="hint">Describe what happens on the play. Drag the marker on the field to set the ball’s landing spot.</div><button id="testHitBtn" class="btn-green" style="margin-left:auto;padding:4px 8px;font-size:12px;line-height:1.2">▶ Test ball path</button><div class="situation-outcome-grid">
             <label class="field"><span>Ball type</span><select id="hitTypeSel">
               <option value="line">Line drive</option>
               <option value="popup">Fly ball / pop up</option>
@@ -546,7 +549,12 @@
             <textarea id="seqNoteInput" rows="3" placeholder="Optional coach note shown to players on the Play Sequence card…" class="mono" style="width:100%"></textarea>
           </div></div></div>
           <section id="situationReviewSection" class="situation-editor-section situation-review-section">
-            <div class="sectionTitle">Review</div>
+            <div class="sectionTitle">Review and name</div>
+            <label class="field"><span>Situation name</span><input id="newTitleInput" type="text" maxlength="120" placeholder="Name the ball and starting situation"></label>
+            <div class="situation-name-suggestion"><span id="suggestedSituationName"></span><button id="useSuggestedName" type="button" class="btn btn-ghost">Use suggested name</button></div>
+            <p id="situationAudiencePreview" class="muted"></p>
+            <section class="editor-live-preview" aria-label="Playbook card preview"><h4>Player card preview</h4><div id="situationCardPreview"></div></section>
+            <section id="situationSimilarPanel" class="editor-optional" hidden><h4>Similar situations</h4><p>These plays share the same ball type, location, runners, and outs. Review them before creating another version.</p><div id="situationSimilarList"></div></section>
             <div id="situationOutcomeReview" class="situation-outcome-review"></div>
             <div id="situationReviewSummary" class="proposal-change-summary"></div>
             <section id="situationValidationPanel" class="situation-validation-panel hidden" aria-labelledby="situationValidationTitle">

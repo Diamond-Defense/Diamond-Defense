@@ -1018,6 +1018,18 @@ test.describe('portable SQLite API', () => {
       });
       expect(teamResponse.status()).toBe(201);
 
+      // New teams start empty; enable the free-play situations used in both seasons.
+      const playbookResponse = await admin.get(`/api/teams/${teamId}/playbook`);
+      expect(playbookResponse.ok()).toBeTruthy();
+      const playbook = await playbookResponse.json();
+      expect(playbook.keys).toEqual([]);
+      const savedPlaybook = await admin.put(`/api/teams/${teamId}/playbook`, {
+        headers: { Origin: origin },
+        data: { keys: ['BD-01', 'BD-02'], revision: playbook.revision },
+      });
+      expect(savedPlaybook.ok()).toBeTruthy();
+
+
       const initialSeasonsResponse = await admin.get(`/api/admin/teams/${teamId}/seasons`);
       const initialSeasonData = await initialSeasonsResponse.json();
       expect(initialSeasonData.seasons).toHaveLength(1);
