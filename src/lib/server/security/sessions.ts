@@ -15,6 +15,8 @@ export interface AuthenticatedUser {
   teamName: string | null;
   jerseyNumber: string | null;
   mustChangePassword: boolean;
+  managedTeamIds?: string[];
+  canPublishSituations?: boolean;
 }
 
 interface SessionRow {
@@ -132,7 +134,11 @@ export async function currentUser(
       now.toISOString(),
     ]);
   }
+  const access = row.role === 'coach' ? await database.all<{team_id:string}>('SELECT a.team_id FROM coach_team_access a JOIN teams t ON t.id=a.team_id AND t.active=1 WHERE a.user_id=?1',[row.id]) : [];
+  const publishing = row.role === 'coach' ? await database.one<{publish_situations:number}>('SELECT publish_situations FROM coach_permissions WHERE user_id=?1',[row.id]) : null;
   return {
+    managedTeamIds: [...new Set([row.team_id, ...access.map(item=>item.team_id)].filter((id): id is string=>Boolean(id)))],
+    canPublishSituations: row.role === 'admin' || Boolean(publishing?.publish_situations),
     id: row.id,
     username: row.username,
     displayName: row.display_name,

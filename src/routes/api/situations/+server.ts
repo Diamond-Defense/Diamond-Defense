@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 import type { Situation } from '$lib/domain/models';
 import { databaseFor } from '$lib/server/database/context';
 import { SqliteSituationRepository } from '$lib/server/repositories/situations';
-import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireUser, requireSituationPublisher } from '$lib/server/security/authorization';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 
 export const prerender = false;
@@ -22,7 +22,7 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['admin']);
+  const user = await requireSituationPublisher(event);
   const situation = (await event.request.json()) as Situation;
   if (!situation?.key || !situation?.title) {
     return json({ error: 'Situation key and title are required.' }, { status: 400 });

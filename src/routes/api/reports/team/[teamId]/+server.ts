@@ -3,16 +3,13 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import { SqliteAttemptRepository } from '$lib/server/repositories/attempts';
 import { parseAttemptReportFilters } from '$lib/server/results/reporting';
-import { requireUser } from '$lib/server/security/authorization';
+import { requireTrainingManager } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
 export const GET: RequestHandler = async (event) => {
-  const user = await requireUser(event, ['coach', 'admin']);
   const teamId = event.params.teamId;
-  if (user.role === 'coach' && user.teamId !== teamId) {
-    return json({ error: 'Coaches may only view their own team.' }, { status: 403 });
-  }
+  await requireTrainingManager(event, teamId);
   const requestedPage = Number(event.url.searchParams.get('page') || 1);
   const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
   const filters = parseAttemptReportFilters(event.url.searchParams);

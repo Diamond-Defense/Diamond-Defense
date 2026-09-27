@@ -85,6 +85,8 @@
   }
 
   let teams = [];
+  const trainingButton=document.createElement('button');trainingButton.type='button';trainingButton.className='btn btn-ghost';trainingButton.textContent='Team training';trainingButton.onclick=()=>window._diqOpenTrainingWorkspace?.();byId('adminCard')?.querySelector('.admin-tabs')?.append(trainingButton);
+
   let archivedSituations = [];
   let publishedSituations = [];
   let proposals = [];
@@ -507,6 +509,21 @@
     byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':'Create account';
     (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
   }
+  async function editCoachPermissions(member){
+    const panel=document.createElement('section');panel.className='card';panel.setAttribute('aria-label','Coach permissions');
+    const heading=document.createElement('h3');heading.textContent=`Permissions for ${member.name}`;panel.append(heading);
+    const message=document.createElement('p');message.textContent='Choose additional teams for assignments, reviews, and team Playbooks. Account administration remains restricted. Publishing permission applies to the shared situation library across all teams.';panel.append(message);
+    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);byId('adminRosterBrowser').after(panel);
+    try{
+      const state=await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`);
+      const boxes=[];for(const team of teams.filter(team=>team.active!==false)){
+        const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const input=document.createElement('input');input.type='checkbox';input.style.width='20px';input.value=team.id;input.checked=state.teamIds.includes(team.id);label.append(input,team.name);panel.append(label);boxes.push(input);
+      }
+      const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const publish=document.createElement('input');publish.type='checkbox';publish.style.width='20px';publish.checked=state.canPublishSituations;label.append(publish,'Publish situations and approve proposals (shared library)');panel.append(label);
+      const save=document.createElement('button');save.type='button';save.className='btn btn-brand';save.textContent='Save permissions';save.onclick=async()=>{save.disabled=true;try{await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`,{method:'PUT',body:JSON.stringify({teamIds:boxes.filter(input=>input.checked).map(input=>input.value),canPublishSituations:publish.checked})});status.textContent='Permissions saved. The coach should reload to refresh their workspace.';}catch(error){status.textContent=error.message;}finally{save.disabled=false;}};panel.append(save);
+    }catch(error){status.textContent=error.message;}
+    const close=document.createElement('button');close.type='button';close.className='btn btn-ghost';close.textContent='Close permissions';close.onclick=()=>panel.remove();panel.append(close);
+  }
   function renderRosterBrowser(){
     const team=selectedTeam();
     const root=byId('adminRosterBrowser');if(!root)return;
@@ -519,6 +536,9 @@
       const row=document.createElement('tr');row.dataset.memberId=member.playerId;row.dataset.memberRole=member.role;
       [member.name,member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
       const actions=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Edit';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
+      if(member.role==='coach'){
+        const permissions=document.createElement('button');permissions.type='button';permissions.className='btn btn-ghost';permissions.textContent='Team access & publishing';permissions.onclick=()=>void editCoachPermissions(member);actions.append(permissions);
+      }
       const more=document.createElement('details');const summary=document.createElement('summary');summary.textContent='More actions';more.appendChild(summary);
       [['Reset password','Set a temporary password. The member must change it at their next login.',()=>openMemberEditor(member.role,member.playerId,true)],['Remove from team','Remove membership and sign out active sessions. The account and historical results are kept.',()=>{openMemberEditor(member.role,member.playerId);byId(member.role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn').click();}]].forEach(([label,help,action])=>{
         const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;button.onclick=action;
@@ -2434,8 +2454,8 @@
     try{
       const options=await diqApiRequest('teams/options',{cache:'no-store'});
       const user=window.__DIQ_AUTH_USER__;
-      const available=(options.teams||[]).filter(team=>user.role==='admin'||team.id===user.teamId);
-      const teamSelect=document.createElement('select');teamSelect.setAttribute('aria-label','Team Playbook team');available.forEach(team=>teamSelect.append(new Option(team.name,team.id)));if(user.role==='admin')library.append(teamSelect);
+      const available=(options.teams||[]).filter(team=>user.role==='admin'||(user.managedTeamIds||[user.teamId]).includes(team.id));
+      const teamSelect=document.createElement('select');teamSelect.setAttribute('aria-label','Team Playbook team');available.forEach(team=>teamSelect.append(new Option(team.name,team.id)));if(available.length>1)library.append(teamSelect);if(available.some(team=>team.id===window._diqStaffTeamId?.()))teamSelect.value=window._diqStaffTeamId();
       const filters=document.createElement('div');filters.className='team-playbook-filters';
       const search=document.createElement('input');search.type='search';search.placeholder='Search names, context, or staff labels';search.setAttribute('aria-label','Search team Playbook situations');
       const division=document.createElement('select');division.setAttribute('aria-label','Suggested division');division.append(new Option('All divisions',''));for(let age=9;age<=18;age++)division.append(new Option(`${age}U`,String(age)));
@@ -2502,7 +2522,7 @@
     if(!library){library=document.createElement('section');library.id='situationLibrary';}
     situationEditor.parentElement.prepend(library); library.replaceChildren();
     const isAdmin=editorRole==='admin';
-    if(!isAdmin){const heading=document.createElement('h2');heading.textContent='Situation proposals';library.append(heading);}
+    if(!isAdmin){const heading=document.createElement('h2');heading.textContent=window.__DIQ_AUTH_USER__?.canPublishSituations?'Situations':'Situation proposals';library.append(heading);}
     function button(label, action){const item=document.createElement('button');item.type='button';item.className='btn btn-ghost';item.textContent=label;item.onclick=action;return item;}
     const toolbar=document.createElement('div');toolbar.className='situation-library-toolbar';library.append(toolbar);
     const tabs=document.createElement('div');tabs.className='situation-library-tabs';toolbar.append(tabs);
@@ -2511,6 +2531,7 @@
     const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();});create.className='btn btn-brand situation-library-create';toolbar.append(create);
     if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
+    if(!isAdmin && window.__DIQ_AUTH_USER__?.canPublishSituations)toolbar.append(button('Review pending proposals',()=>void showPublisherProposals(library)));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
     const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
     const exportActions=document.createElement('div');exportActions.className='situation-transfer-controls';library.append(exportActions);
@@ -2592,7 +2613,7 @@
           row.ondragstart=event=>{draggedKey=item.key;event.dataTransfer.setData('text/plain',item.key);};row.ondragover=event=>event.preventDefault();
           row.ondrop=event=>{event.preventDefault();const from=order.situations.findIndex(record=>record.key===draggedKey);const to=order.situations.findIndex(record=>record.key===item.key);if(from<0||from===to)return;const [moved]=order.situations.splice(from,1);order.situations.splice(to,0,moved);draw();};
         }else{
-          const edit=button(isAdmin?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
+          const edit=button(isAdmin||window.__DIQ_AUTH_USER__?.canPublishSituations?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
         }list.append(row);
       }
       if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';
@@ -2631,7 +2652,15 @@
     search.addEventListener('input',draw);void switchMode('library');
     if(!isAdmin&&coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
   }
+  function refreshPublicationUsage(){
+    if(window.__DIQ_AUTH_USER__?.canPublishSituations || editorRole==='admin'){
+      let usage=byId('situationPublicationUsage');if(!usage){usage=document.createElement('p');usage.id='situationPublicationUsage';publishSituation?.before(usage);}
+      const key=currentSnapshot()?.key;usage.textContent='Publishing changes the shared library. Use Create variation for a team-specific approach.';
+      if(key)diqApiRequest(`situations/${encodeURIComponent(key)}/usage`,{cache:'no-store'}).then(result=>{if(currentSnapshot()?.key===key)usage.textContent=`Team Playbooks using this situation: ${(result.teams||[]).map(team=>team.name).join(', ')||'None'}. Use Create variation for a team-specific approach.`;}).catch(error=>{usage.textContent=`Could not load affected teams: ${error.message}`;});
+    }else byId('situationPublicationUsage')?.remove();
+  }
   function openSituationEditorPane(){
+    refreshPublicationUsage();
     if(editorRole==='admin'){adminCard.appendChild(adminEditorMount.closest('[data-admin-view]'));adminWorkspace.classList.add('hidden');fieldCard?.classList.remove('hidden');}
     document.body.classList.remove('situation-library-open');
     document.body.classList.add('situation-editing-open');
@@ -2833,7 +2862,7 @@
     if (!coachHistory || editorRole !== 'coach') return;
     try {
       const result = await diqApiRequest('situation-submissions', { cache: 'no-store' });
-      const records = Array.isArray(result?.submissions) ? result.submissions : [];
+      const records = Array.isArray(result?.submissions) ? result.submissions.filter(item=>item.submittedBy===window.__DIQ_AUTH_USER__?.id) : [];
       coachHistory.replaceChildren();
       if (!records.length) {
         const empty = document.createElement('div');
@@ -2925,12 +2954,45 @@
     }
   }
 
+  async function confirmSharedPublication(snapshot){
+    const usage=await diqApiRequest(`situations/${encodeURIComponent(snapshot.key)}/usage`,{cache:'no-store'});
+    return requestConfirmation({title:'Publish to the shared library?',message:`${snapshot.title}. Team Playbooks using this situation: ${(usage.teams||[]).map(team=>team.name).join(', ') || 'None'}. Changes affect the shared published situation. For a team-specific approach, cancel and choose Create variation in the library.`,confirmLabel:'Publish situation'});
+  }
+  async function showPublisherProposals(host){
+    host.replaceChildren();
+    const back=document.createElement('button');back.type='button';back.className='btn btn-ghost';back.textContent='Back to library';back.onclick=showSituationLibrary;host.append(back);
+    const heading=document.createElement('h3');heading.textContent='Pending proposals';host.append(heading);
+    const status=document.createElement('p');status.setAttribute('role','status');host.append(status);
+    try{
+      const result=await diqApiRequest('situation-submissions?status=pending',{cache:'no-store'});
+      for(const proposal of result.submissions||[]){
+        const card=document.createElement('section');card.className='card';host.append(card);
+        const title=document.createElement('h4');title.textContent=`${proposal.situation.title} — ${proposal.submitterName}`;card.append(title);
+        const rationale=document.createElement('p');rationale.textContent=proposal.rationale;card.append(rationale);
+        const published=SITUATIONS.find(item=>item.key===proposal.situationKey);
+        const fields=['title','desc','audience','suggestedDivisions','ballLocation','category','difficulty','primaryCategory','relatedCategories','outs','runnersOn','starts','targets','hit','hitType','batterAdvance','playOutcome','runnerOutcomes','playSeq','seqNote'].filter(field=>JSON.stringify(published?.[field])!==JSON.stringify(proposal.situation[field]));
+        const choices=[];
+        for(const field of fields){const detail=document.createElement('details');const summary=document.createElement('summary');const check=document.createElement('input');check.type='checkbox';check.checked=true;check.disabled=proposal.submissionType==='create';check.value=field;check.setAttribute('aria-label',`Accept ${field}`);summary.append(check,` ${field}`);const content=document.createElement('pre');content.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';content.textContent=`Published: ${JSON.stringify(published?.[field]??null,null,2)}\nProposed: ${JSON.stringify(proposal.situation[field]??null,null,2)}`;detail.append(summary,content);card.append(detail);choices.push(check);}
+        const notes=document.createElement('textarea');notes.setAttribute('aria-label','Proposal review note');notes.placeholder='Review note (required for rejection)';card.append(notes);
+        for(const decision of ['approve','reject']){const action=document.createElement('button');action.type='button';action.className='btn btn-ghost';action.textContent=decision==='approve'?'Approve and publish':'Reject proposal';action.onclick=async()=>{
+          action.disabled=true;
+          try{
+            if(decision==='approve'&&!await confirmSharedPublication(proposal.situation))return;
+            await diqApiRequest(`admin/situation-submissions/${encodeURIComponent(proposal.id)}`,{method:'PUT',body:JSON.stringify({decision,notes:notes.value,acceptedFields:choices.filter(input=>input.checked).map(input=>input.value)})});
+            await loadSituationsFromDatabase();await showPublisherProposals(host);
+          }catch(error){status.textContent=error.message;}finally{action.disabled=false;}
+        };card.append(action);}
+      }
+      if(!result.submissions?.length)status.textContent='No pending proposals.';
+    }catch(error){status.textContent=error.message;}
+  }
   async function publishCurrentSituation() {
     const snapshot = ensureReadyToSave();
     if (!snapshot) return;
     const revision = Number(snapshot.revision);
     const creating = !Number.isInteger(revision) || revision < 1;
     try {
+      if(window.__DIQ_AUTH_USER__?.role==='coach'&&!await confirmSharedPublication(snapshot))return;
       setWorkflowStatus(creating ? 'Publishing new situation…' : 'Publishing situation changes…', 'pending');
       const result = await diqApiRequest(
         creating ? 'situations' : `situations/${encodeURIComponent(snapshot.key)}`,
@@ -2943,7 +3005,7 @@
       markEditorClean(snapshot);
       setWorkflowStatus('Situation published.', 'success');
       await reloadPublishedSituation(result?.record?.key || snapshot.key);
-      await loadAdminData(teamSelect?.value || '');
+      if(window.__DIQ_AUTH_USER__?.role==='admin')await loadAdminData(teamSelect?.value || '');
     } catch (error) {
       setWorkflowStatus(error?.message || 'Unable to publish the situation.', 'error');
     }
@@ -3158,16 +3220,17 @@
     const mount = role === 'admin' ? adminEditorMount : coachEditorMount;
     if (mount && situationEditor.parentElement !== mount) mount.appendChild(situationEditor);
     editorTitle.textContent = 'Edit situation';
-    if (workflowRole) workflowRole.textContent = role === 'coach' ? 'Coach draft' : 'Administrator';
-    if (workflowHeading) workflowHeading.textContent = role === 'coach' ? 'Propose changes' : 'Edit situation';
-    if (workflowCopy) workflowCopy.textContent = role === 'coach'
+    if (workflowRole) workflowRole.textContent = role === 'coach' ? (window.__DIQ_AUTH_USER__?.canPublishSituations?'Situation publisher':'Coach draft') : 'Administrator';
+    if (workflowHeading) workflowHeading.textContent = role === 'coach' && !window.__DIQ_AUTH_USER__?.canPublishSituations ? 'Propose changes' : 'Edit situation';
+    if (workflowCopy) workflowCopy.textContent = role === 'coach' && !window.__DIQ_AUTH_USER__?.canPublishSituations
       ? 'Players continue using the published version until an administrator approves this proposal.'
       : 'Changes become available to players only after you publish them.';
     submitSituation?.classList.toggle('hidden', role !== 'coach');
-    publishSituation?.classList.toggle('hidden', role !== 'admin');
+    publishSituation?.classList.toggle('hidden', role !== 'admin' && !window.__DIQ_AUTH_USER__?.canPublishSituations);
     archiveSituation?.classList.toggle('hidden', role !== 'admin');
     coachHistory?.classList.toggle('hidden', role !== 'coach');
     coachSummary?.classList.toggle('hidden', role !== 'coach');
+    refreshPublicationUsage();
     editorBaseline = clone(window._diqGetPublishedSituationSnapshot?.(currentSnapshot()?.key) || currentSnapshot());
     editorDirty = false;
     setWorkflowStatus();

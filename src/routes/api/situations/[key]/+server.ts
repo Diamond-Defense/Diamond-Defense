@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import type { Situation } from '$lib/domain/models';
 import { databaseFor } from '$lib/server/database/context';
 import { SqliteSituationRepository } from '$lib/server/repositories/situations';
-import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireUser, requireSituationPublisher } from '$lib/server/security/authorization';
 import { expectedRevision } from '$lib/server/http/revisions';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 
@@ -11,7 +11,7 @@ export const prerender = false;
 
 export const PUT: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['admin']);
+  const user = await requireSituationPublisher(event);
   const situation = (await event.request.json()) as Situation;
   situation.key = event.params.key;
   try {

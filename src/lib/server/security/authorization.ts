@@ -37,3 +37,16 @@ export async function requireTeamManager(
   }
   return user;
 }
+
+// Training access does not grant account, roster, or team administration.
+export async function requireTrainingManager(event: RequestEvent, teamId: string): Promise<AuthenticatedUser> {
+ const user = await requireUser(event, ['coach','admin']);
+ if (!teamId || (user.role !== 'admin' && !(user.managedTeamIds || [user.teamId]).includes(teamId)))
+   throw error(403, 'You do not have training access to this team.');
+ return user;
+}
+export async function requireSituationPublisher(event: RequestEvent): Promise<AuthenticatedUser> {
+ const user = await requireUser(event, ['coach','admin']);
+ if (!user.canPublishSituations && user.role !== 'admin') throw error(403, 'Situation publishing permission is required.');
+ return user;
+}

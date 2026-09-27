@@ -1,10 +1,10 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
-import { assertSameOrigin, requireTeamManager } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireTrainingManager } from '$lib/server/security/authorization';
 import { writeAudit } from '$lib/server/repositories/audit';
 export const GET: RequestHandler = async event => {
- await requireTeamManager(event,event.params.teamId);
+ await requireTrainingManager(event,event.params.teamId);
  const db=databaseFor(event);
  const state=await db.one<{revision:number}>('SELECT revision FROM team_playbook_state WHERE team_id=?1',[event.params.teamId]);
  if(!state)return json({error:'Team not found.'},{status:404});
@@ -13,7 +13,7 @@ export const GET: RequestHandler = async event => {
 };
 export const PUT: RequestHandler = async event => {
  assertSameOrigin(event);
- const user=await requireTeamManager(event,event.params.teamId);
+ const user=await requireTrainingManager(event,event.params.teamId);
  const {keys,revision}=await event.request.json();
  if(!Array.isArray(keys)||keys.length>1000||keys.some(key=>typeof key!=='string')||new Set(keys).size!==keys.length||!Number.isInteger(revision))return json({error:'Provide selected situations and the current revision.'},{status:400});
  const db=databaseFor(event);

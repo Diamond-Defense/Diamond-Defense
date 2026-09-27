@@ -8,7 +8,7 @@ import {
   type PracticeAssignmentInput,
 } from '$lib/server/repositories/practice-assignments';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
-import { assertSameOrigin, requireTeamManager, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireTrainingManager, requireUser } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -31,10 +31,12 @@ export const GET: RequestHandler = async (event) => {
   const requestedSort = event.url.searchParams.get('sort');
   const views: AssignmentView[] = ['active', 'draft', 'completed', 'closed', 'archived'];
   const sorts: AssignmentSort[] = ['newest', 'oldest', 'due', 'title'];
+  const teamId = event.url.searchParams.get('teamId') || user.teamId || '';
+  if(user.role !== 'player') await requireTrainingManager(event, teamId);
   const result = user.role === 'player'
     ? await repository.listForPlayer(user.id, page, pageSize)
     : await repository.listForTeam(
-      user.role === 'coach' ? String(user.teamId || '') : String(event.url.searchParams.get('teamId') || ''),
+      teamId,
       page,
       pageSize,
       {
@@ -58,9 +60,9 @@ export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const user = await requireUser(event, ['coach', 'admin']);
   const body = (await event.request.json()) as PracticeAssignmentInput & { teamId?: string };
-  const teamId = user.role === 'coach' ? String(user.teamId || '') : String(body.teamId || '');
+  const teamId = String(body.teamId || user.teamId || '');
   if (!teamId) return json({ error: 'A team is required.' }, { status: 400 });
-  await requireTeamManager(event, teamId);
+  await requireTrainingManager(event, teamId);
   try {
     const assignment = await new SqlitePracticeAssignmentRepository(databaseFor(event))
       .create(teamId, user.id, body);

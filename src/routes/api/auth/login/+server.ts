@@ -1,3 +1,4 @@
+import { currentUser } from '$lib/server/security/sessions';
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
@@ -56,8 +57,11 @@ export const POST: RequestHandler = async (event) => {
     }
     const user = authentication.user;
     await createSession(database, event.cookies, user.id, event.url.protocol === 'https:');
+    const permissions = await currentUser(database, event.cookies);
     return json({
       user: {
+        managedTeamIds: permissions?.managedTeamIds,
+        canPublishSituations: permissions?.canPublishSituations,
         id: user.id,
         displayName: user.displayName,
         role: user.role,

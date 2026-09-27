@@ -1223,6 +1223,7 @@ function computeRosterPlayerId(teamObj, playerObj){
         return `<article class="practice-assignment-card compact${assignment.overdue ? ' is-overdue' : ''}">
           ${canDeleteAssignments && (assignment.status === 'archived' || assignment.cancelledAt) ? `<label style="display:flex;align-items:center;gap:10px"><input style="width:20px;flex:0 0 20px" type="checkbox" data-practice-bulk-id="${escapeHtml(assignment.id)}">Select ${escapeHtml(assignment.title)}</label>` : ''}
           <div class="practice-card-heading"><div><span class="practice-status is-${escapeHtml(displayStatus)}">${escapeHtml(displayStatus)}</span><h3>${escapeHtml(assignment.title)}</h3></div><span class="practice-due">${escapeHtml(practiceDueLabel(assignment))}</span></div>
+          <p class="muted">${escapeHtml(findTeam(assignment.teamId)?.name || assignment.teamId || '')} · Created by ${escapeHtml(assignment.coachName || 'Staff')}</p>
           ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
           <div class="practice-card-metrics"><span><strong>${Number(assignment.situationCount || 0)}</strong> situations</span><span><strong>${Number(assignment.completedRecipientCount || 0)} of ${Number(assignment.recipientCount || 0)}</strong> players complete</span></div>
           <div class="practice-card-metrics">${Number(assignment.cycleNumber) > 1 ? `<span>Retake ${Number(assignment.cycleNumber) - 1}</span>` : ''}${lateCompletions ? `<span>${lateCompletions} late completion${lateCompletions === 1 ? '' : 's'}</span>` : ''}</div>
@@ -1258,6 +1259,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       const page = player ? playerPracticePage : coachPracticePage;
       const params = new URLSearchParams({ page:String(page), pageSize:'6' });
       if(!player){
+        params.set('teamId',staffTeamId());
         params.set('view', coachPracticeViewFilter);
         params.set('sort', practiceSort?.value || 'newest');
         if(practiceSearch?.value.trim()) params.set('search', practiceSearch.value.trim());
@@ -1288,7 +1290,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   function renderPracticeFormChoices(assignment=practiceEditingAssignment){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    const team = findTeam(user?.teamId);
+    const team = findTeam(staffTeamId());
     const assignedPlayers = new Set((assignment?.recipients || []).map(recipient=>recipient.playerId));
     practiceQueue = [...(assignment?.situations || [])].sort((a,b)=>a.sortOrder-b.sortOrder).map(situation=>situation.situationKey);
     const assignedSituations = new Set(practiceQueue);
@@ -1388,6 +1390,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const playerIds = [...(practicePlayerChoices?.querySelectorAll('input[type="checkbox"]:checked') || [])].map(input=>input.value);
     const situations = practiceQueue.map(situationKey=>({ situationKey }));
     const input = {
+      teamId:staffTeamId(),
       title:practiceTitle?.value || '',
       instructions:practiceInstructions?.value || '',
       dueAt:practiceDueAt?.value || null,
@@ -2001,27 +2004,27 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   async function loadCoachDatabaseReport({ refreshAggregates=true }={}){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(!user || !user.teamId || !coachResultsList) return;
-    if(coachResultsOptionsTeamId !== user.teamId){
+    if(!user || !staffTeamId() || !coachResultsList) return;
+    if(coachResultsOptionsTeamId !== staffTeamId()){
       coachResultsOptionsTeamId = '';
       coachResultsAggregateCache = { key:'', summary:null, insights:null };
-      populateCoachResultsPlayers(user.teamId);
+      populateCoachResultsPlayers(staffTeamId());
       populateCoachResultsSituations();
     }
     setCoachResultsStatus('Loading saved team results…', 'pending');
     try{
       const query = coachResultsQuery();
-      if(coachResultsOptionsTeamId !== user.teamId) query.set('includeOptions', '1');
+      if(coachResultsOptionsTeamId !== staffTeamId()) query.set('includeOptions', '1');
       const aggregateKey = JSON.stringify(coachResultsAppliedFilters);
       const canReuseAggregates = !refreshAggregates
         && coachResultsAggregateCache.key === aggregateKey
         && coachResultsAggregateCache.summary
         && coachResultsAggregateCache.insights;
       if(canReuseAggregates) query.set('includeAggregates', '0');
-      const report = await diqApiRequest(`reports/team/${encodeURIComponent(user.teamId)}?${query}`, { cache:'no-store' });
+      const report = await diqApiRequest(`reports/team/${encodeURIComponent(staffTeamId())}?${query}`, { cache:'no-store' });
       if(report.options){
         applyCoachResultsOptions(report.options);
-        coachResultsOptionsTeamId = user.teamId;
+        coachResultsOptionsTeamId = staffTeamId();
       }
       if(report.summary && report.insights){
         coachResultsAggregateCache = {
@@ -2044,12 +2047,12 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   async function exportCoachDatabaseReport(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(!user?.teamId) return;
+    if(!staffTeamId()) return;
     setCoachResultsStatus('Preparing CSV export…', 'pending');
     try{
       const query = coachResultsQuery(1);
       query.delete('page');
-      const response = await fetch(diqApiUrl(`reports/team/${encodeURIComponent(user.teamId)}/export?${query}`), {
+      const response = await fetch(diqApiUrl(`reports/team/${encodeURIComponent(staffTeamId())}/export?${query}`), {
         credentials:'same-origin',
         headers:{ Accept:'text/csv' },
       });
@@ -2175,7 +2178,32 @@ function computeRosterPlayerId(teamObj, playerObj){
     void loadCoachDatabaseReport();
   }
 
+  let trainingTeamId = '';
+  let trainingUserId = '';
+  function staffTeamId(){
+    const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
+    if(trainingUserId!==user?.id){trainingUserId=user?.id;trainingTeamId='';}
+    return trainingTeamId || user?.teamId || (TEAMS.teams||[])[0]?.id || '';
+  }
+  window._diqStaffTeamId=staffTeamId;
+  function refreshTrainingTeamSelector(){
+    const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
+    let label=document.getElementById('trainingTeamField');
+    if(!label){label=document.createElement('label');label.id='trainingTeamField';label.className='field';label.append('Managing team');const select=document.createElement('select');select.id='trainingTeamSelect';select.setAttribute('aria-label','Managing team');label.append(select);document.querySelector('#coachCard .coach-tabs')?.before(label);
+      select.onchange=()=>{if(!window.confirm('Switch teams? Any unsaved assignment form will be cleared.')){select.value=staffTeamId();return;}trainingTeamId=select.value;resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';setCoachWorkspaceMode('reviews');};
+    }
+    const select=label.querySelector('select');const available=(TEAMS.teams||[]).filter(team=>user?.role==='admin'||(user?.managedTeamIds||[user?.teamId]).includes(team.id));
+    const previous=staffTeamId();select.replaceChildren(...available.map(team=>new Option(team.name,team.id)));trainingTeamId=available.some(team=>team.id===previous)?previous:available[0]?.id||'';select.value=trainingTeamId;
+    label.hidden=available.length<=1;
+    const identity=document.getElementById('coachIdentity');if(identity && available.length>1)identity.textContent=available.find(team=>team.id===trainingTeamId)?.name||'';
+  }
+  window._diqOpenTrainingWorkspace=()=>{
+    window._diqSetAdminMode?.(false);
+    document.getElementById('adminCard')?.classList.add('hidden');document.getElementById('adminWorkspace')?.classList.add('hidden');
+    setCoachMode(true,{role:'coach'});setCoachWorkspaceMode('reviews');
+  };
   function setCoachWorkspaceMode(mode){
+    refreshTrainingTeamSelector();
     const reviewsActive = mode === 'reviews';
     const assignmentsActive = mode === 'assignments';
     const proposalsActive = mode === 'proposals';
