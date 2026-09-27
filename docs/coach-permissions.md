@@ -10,9 +10,9 @@ Additional-team access permits assignments, reviews/report exports, and adding/r
 
 ## Publishing is separate
 
-The optional **Publish situations and approve proposals** permission applies to the shared library, not only selected teams. Leave it off for directors who should continue submitting proposals for approval.
+The optional **Edit and publish situations without approval** permission applies to the shared library, not only selected teams. Leave it off for directors who should continue submitting proposals for approval.
 
-With publishing enabled, a coach can explicitly publish an edited/new situation and open **Review pending proposals** to inspect field changes, choose accepted fields, approve, or reject with a review note. Approval publishes to the shared library. The publish confirmation identifies team Playbooks that use the situation. Use **Create variation** when changes are intended for a particular team; publishing a variation does not automatically add it to any team's Playbook.
+With publishing enabled, a coach can edit and publish existing situations or create and publish new situations without approval. Only administrators can approve or reject coach proposals. Coaches, including directors with publishing permission, can see only their own proposal history. Administrators can grant or revoke direct publishing independently of team access. The publish confirmation identifies team Playbooks that use the situation. Use **Create variation** when changes are intended for a particular team; publishing a variation does not automatically add it to any team's Playbook.
 
 Without publishing permission, the usual proposal workflow remains. Admin-only operations such as permanent deletion, permissions, account management, import, and recovery stay restricted.
 

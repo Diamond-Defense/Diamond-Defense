@@ -36,7 +36,10 @@ test('director access is team-scoped and publishing is independently revocable',
   expect(submission.status()).toBe(201);const proposal=(await submission.json()).record;
   expect((await coach.put(`/api/admin/situation-submissions/${proposal.id}`,{headers,data:{decision:'approve'}})).status()).toBe(403);
   expect((await grant({teamIds:[teams[1].id],canPublishSituations:true})).ok()).toBeTruthy();
-  const approved=await coach.put(`/api/admin/situation-submissions/${proposal.id}`,{headers,data:{decision:'approve',notes:'Reviewed permission fixture'}});
+  for(const decision of ['approve','reject']){
+   expect((await coach.put(`/api/admin/situation-submissions/${proposal.id}`,{headers,data:{decision,notes:'Not authorized'}})).status()).toBe(403);
+  }
+  const approved=await request.put(`/api/admin/situation-submissions/${proposal.id}`,{headers,data:{decision:'approve',notes:'Reviewed permission fixture'}});
   expect(approved.ok()).toBeTruthy();approvedKey=proposal.situationKey;
   const publication=await coach.post('/api/situations',{headers,data:situation});expect(publication.status()).toBe(201);publishedKey=situation.key;
   expect((await coach.get(`/api/admin/situations/${publishedKey}/permanent`)).status()).toBe(403);

@@ -519,7 +519,7 @@
       const boxes=[];for(const team of teams.filter(team=>team.active!==false)){
         const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const input=document.createElement('input');input.type='checkbox';input.style.width='20px';input.value=team.id;input.checked=state.teamIds.includes(team.id);label.append(input,team.name);panel.append(label);boxes.push(input);
       }
-      const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const publish=document.createElement('input');publish.type='checkbox';publish.style.width='20px';publish.checked=state.canPublishSituations;label.append(publish,'Publish situations and approve proposals (shared library)');panel.append(label);
+      const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const publish=document.createElement('input');publish.type='checkbox';publish.style.width='20px';publish.checked=state.canPublishSituations;label.append(publish,'Edit and publish situations without approval (shared library)');panel.append(label);
       const save=document.createElement('button');save.type='button';save.className='btn btn-brand';save.textContent='Save permissions';save.onclick=async()=>{save.disabled=true;try{await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`,{method:'PUT',body:JSON.stringify({teamIds:boxes.filter(input=>input.checked).map(input=>input.value),canPublishSituations:publish.checked})});status.textContent='Permissions saved. The coach should reload to refresh their workspace.';}catch(error){status.textContent=error.message;}finally{save.disabled=false;}};panel.append(save);
     }catch(error){status.textContent=error.message;}
     const close=document.createElement('button');close.type='button';close.className='btn btn-ghost';close.textContent='Close permissions';close.onclick=()=>panel.remove();panel.append(close);
@@ -2531,7 +2531,6 @@
     const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();});create.className='btn btn-brand situation-library-create';toolbar.append(create);
     if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
-    if(!isAdmin && window.__DIQ_AUTH_USER__?.canPublishSituations)toolbar.append(button('Review pending proposals',()=>void showPublisherProposals(library)));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
     const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
     const exportActions=document.createElement('div');exportActions.className='situation-transfer-controls';library.append(exportActions);
@@ -2957,34 +2956,6 @@
   async function confirmSharedPublication(snapshot){
     const usage=await diqApiRequest(`situations/${encodeURIComponent(snapshot.key)}/usage`,{cache:'no-store'});
     return requestConfirmation({title:'Publish to the shared library?',message:`${snapshot.title}. Team Playbooks using this situation: ${(usage.teams||[]).map(team=>team.name).join(', ') || 'None'}. Changes affect the shared published situation. For a team-specific approach, cancel and choose Create variation in the library.`,confirmLabel:'Publish situation'});
-  }
-  async function showPublisherProposals(host){
-    host.replaceChildren();
-    const back=document.createElement('button');back.type='button';back.className='btn btn-ghost';back.textContent='Back to library';back.onclick=showSituationLibrary;host.append(back);
-    const heading=document.createElement('h3');heading.textContent='Pending proposals';host.append(heading);
-    const status=document.createElement('p');status.setAttribute('role','status');host.append(status);
-    try{
-      const result=await diqApiRequest('situation-submissions?status=pending',{cache:'no-store'});
-      for(const proposal of result.submissions||[]){
-        const card=document.createElement('section');card.className='card';host.append(card);
-        const title=document.createElement('h4');title.textContent=`${proposal.situation.title} — ${proposal.submitterName}`;card.append(title);
-        const rationale=document.createElement('p');rationale.textContent=proposal.rationale;card.append(rationale);
-        const published=SITUATIONS.find(item=>item.key===proposal.situationKey);
-        const fields=['title','desc','audience','suggestedDivisions','ballLocation','category','difficulty','primaryCategory','relatedCategories','outs','runnersOn','starts','targets','hit','hitType','batterAdvance','playOutcome','runnerOutcomes','playSeq','seqNote'].filter(field=>JSON.stringify(published?.[field])!==JSON.stringify(proposal.situation[field]));
-        const choices=[];
-        for(const field of fields){const detail=document.createElement('details');const summary=document.createElement('summary');const check=document.createElement('input');check.type='checkbox';check.checked=true;check.disabled=proposal.submissionType==='create';check.value=field;check.setAttribute('aria-label',`Accept ${field}`);summary.append(check,` ${field}`);const content=document.createElement('pre');content.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere';content.textContent=`Published: ${JSON.stringify(published?.[field]??null,null,2)}\nProposed: ${JSON.stringify(proposal.situation[field]??null,null,2)}`;detail.append(summary,content);card.append(detail);choices.push(check);}
-        const notes=document.createElement('textarea');notes.setAttribute('aria-label','Proposal review note');notes.placeholder='Review note (required for rejection)';card.append(notes);
-        for(const decision of ['approve','reject']){const action=document.createElement('button');action.type='button';action.className='btn btn-ghost';action.textContent=decision==='approve'?'Approve and publish':'Reject proposal';action.onclick=async()=>{
-          action.disabled=true;
-          try{
-            if(decision==='approve'&&!await confirmSharedPublication(proposal.situation))return;
-            await diqApiRequest(`admin/situation-submissions/${encodeURIComponent(proposal.id)}`,{method:'PUT',body:JSON.stringify({decision,notes:notes.value,acceptedFields:choices.filter(input=>input.checked).map(input=>input.value)})});
-            await loadSituationsFromDatabase();await showPublisherProposals(host);
-          }catch(error){status.textContent=error.message;}finally{action.disabled=false;}
-        };card.append(action);}
-      }
-      if(!result.submissions?.length)status.textContent='No pending proposals.';
-    }catch(error){status.textContent=error.message;}
   }
   async function publishCurrentSituation() {
     const snapshot = ensureReadyToSave();

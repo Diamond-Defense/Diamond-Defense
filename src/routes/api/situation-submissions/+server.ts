@@ -21,7 +21,7 @@ export const GET: RequestHandler = async (event) => {
       : undefined;
   return json({
     submissions: await repository.list({
-      submittedBy: user.role === 'coach' && !user.canPublishSituations ? user.id : undefined,
+      submittedBy: user.role === 'coach' ? user.id : undefined,
       status: safeStatus,
     }),
   });
