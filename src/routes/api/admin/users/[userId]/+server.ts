@@ -19,6 +19,17 @@ export const DELETE: RequestHandler = async (event) => {
       .deletePlayerPermanently(event.params.userId, user.id);
     return json({ ok: true, removed });
   } catch (error) {
-    return repositoryErrorResponse(error);
+    const response = repositoryErrorResponse(error);
+    if (response.status !== 500) return response;
+    // This endpoint is admin-only. Surface the database cause so a failed
+    // deletion can be diagnosed without implying that any account was removed.
+    const messages: string[] = [];
+    let cause: unknown = error;
+    for (let depth = 0; cause instanceof Error && depth < 4; depth++) {
+      if (!messages.includes(cause.message)) messages.push(cause.message);
+      cause = (cause as Error & { cause?: unknown }).cause;
+    }
+    const detail = messages.join(' — ').slice(0, 1500);
+    return json({ error: `Player deletion failed: ${detail || 'Unknown database error.'}` }, { status: 500 });
   }
 };

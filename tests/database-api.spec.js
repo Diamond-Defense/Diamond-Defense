@@ -1003,7 +1003,8 @@ test.describe('portable SQLite API', () => {
     const player = await requestFactory.newContext({ baseURL });
     const suffix = String(Date.now());
     const teamId = `season-test-${suffix}`;
-    const playerId = `season-player-${suffix}`;
+    // Match long CSV-generated account IDs that exceeded D1 LIKE pattern limits.
+    const playerId = `member-${'a'.repeat(64)}-${suffix}`;
     const temporaryPassword = 'Temporary-Season-4821';
     const permanentPassword = 'Permanent-Season-5932';
     try {

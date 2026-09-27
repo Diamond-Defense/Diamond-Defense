@@ -539,14 +539,13 @@ export class SqliteSeasonRepository {
       ))?.total || 0),
     };
     const now = new Date().toISOString();
-    const auditPattern = `%${playerId}%`;
     await this.database.batch([
       { sql: 'DELETE FROM sessions WHERE user_id = ?1', params: [playerId] },
       {
         sql: `DELETE FROM audit_log
-               WHERE actor_user_id = ?1 OR entity_id = ?1 OR entity_id LIKE ?2
-                  OR before_json LIKE ?3 OR after_json LIKE ?3`,
-        params: [playerId, `%:${playerId}`, auditPattern],
+               WHERE actor_user_id = ?1 OR entity_id = ?1 OR substr(entity_id, -length(?2)) = ?2
+                  OR instr(before_json, ?1) > 0 OR instr(after_json, ?1) > 0`,
+        params: [playerId, `:${playerId}`],
       },
       { sql: 'DELETE FROM users WHERE id = ?1 AND role = \'player\'', params: [playerId] },
       {
