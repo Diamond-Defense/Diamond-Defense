@@ -2530,7 +2530,7 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 
 /* Phase 2: account and navigation presentation. */
 .dd-monogram{display:grid;place-items:center;color:var(--accent-primary);background:var(--surface);border:1px solid var(--accent-primary);border-radius:var(--radius-panel);font-weight:900;letter-spacing:-.08em;line-height:1}
-.auth-modal-panel{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(0,1.15fr);width:min(880px,calc(100vw - 48px));max-height:calc(100dvh - 48px);padding:0;overflow:auto;background:var(--surface);border:1px solid var(--border-emphasis)}
+#playerModalOverlay .auth-modal-panel{display:grid;grid-template-columns:minmax(240px,.85fr) minmax(0,1.15fr);width:min(880px,calc(100vw - 48px));max-height:calc(100dvh - 48px);padding:0;overflow:auto;background:var(--surface);border:1px solid var(--border-emphasis)}
 .auth-brand-panel{display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:16px;padding:36px;border-right:1px solid var(--border);background:var(--app-background)}
 .auth-brand-mark{width:72px;height:72px;font-size:32px;box-shadow:var(--glow-brass)}
 .auth-wordmark{font-size:24px;font-weight:var(--weight-heading);color:var(--text-primary);line-height:var(--line-heading)}
@@ -2538,6 +2538,9 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .auth-brand-heading{margin:16px 0 0;font-size:28px;font-weight:var(--weight-heading);line-height:1.25;color:var(--text-primary)}
 .auth-brand-description{margin:0;color:var(--text-secondary);line-height:1.6}
 .auth-form-panel{min-width:0;padding:16px}
+/* Let the whole login dialog scroll instead of clipping its form in Safari. */
+#playerModalOverlay .auth-modal-panel{grid-auto-rows:max-content;overscroll-behavior:contain}
+#playerModalOverlay .auth-modal-panel .modalBody{overflow:visible}
 .auth-form-panel .modalHeader{padding:16px;border:0;background:transparent;gap:16px}
 .auth-form-panel .modal-title{margin:6px 0;font-size:var(--type-page)}
 .auth-form-panel .auth-role-tabs{gap:6px}
@@ -2569,7 +2572,7 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
   .account-avatar{flex-basis:24px;width:24px;height:24px}
 }
 @media(max-height:700px),(max-width:760px){
-  .auth-modal-panel{grid-template-columns:minmax(0,1fr);width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 32px)}
+  #playerModalOverlay .auth-modal-panel{grid-template-columns:minmax(0,1fr);width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 32px)}
   .auth-brand-panel{flex-direction:row;align-items:center;justify-content:flex-start;gap:14px;padding:18px 24px;border-right:0;border-bottom:1px solid var(--border)}
   .auth-brand-mark{width:40px;height:40px;flex-shrink:0;font-size:20px}
   .auth-wordmark{font-size:20px}

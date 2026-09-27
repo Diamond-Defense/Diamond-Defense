@@ -1207,6 +1207,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(!coachPracticeList) return;
     const assignments = Array.isArray(report?.assignments) ? report.assignments : [];
     coachPracticeAssignments = assignments;
+    const canDeleteAssignments = (DIQ_AUTH_USER || window.__DIQ_AUTH_USER__)?.role === 'admin';
     if(!assignments.length){
       const label = coachPracticeViewFilter === 'draft' ? 'drafts' : `${coachPracticeViewFilter} assignments`;
       coachPracticeList.innerHTML = `<div class="practice-empty"><strong>No ${escapeHtml(label)}</strong><span>Change the status tab or search, or create a new practice queue.</span></div>`;
@@ -1220,6 +1221,7 @@ function computeRosterPlayerId(teamObj, playerObj){
           assignment.dueAt && recipient.completedAt && new Date(recipient.completedAt) > new Date(assignment.dueAt)).length;
 
         return `<article class="practice-assignment-card compact${assignment.overdue ? ' is-overdue' : ''}">
+          ${canDeleteAssignments && (assignment.status === 'archived' || assignment.cancelledAt) ? `<label style="display:flex;align-items:center;gap:10px"><input style="width:20px;flex:0 0 20px" type="checkbox" data-practice-bulk-id="${escapeHtml(assignment.id)}">Select ${escapeHtml(assignment.title)}</label>` : ''}
           <div class="practice-card-heading"><div><span class="practice-status is-${escapeHtml(displayStatus)}">${escapeHtml(displayStatus)}</span><h3>${escapeHtml(assignment.title)}</h3></div><span class="practice-due">${escapeHtml(practiceDueLabel(assignment))}</span></div>
           ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
           <div class="practice-card-metrics"><span><strong>${Number(assignment.situationCount || 0)}</strong> situations</span><span><strong>${Number(assignment.completedRecipientCount || 0)} of ${Number(assignment.recipientCount || 0)}</strong> players complete</span></div>
@@ -1239,6 +1241,9 @@ function computeRosterPlayerId(teamObj, playerObj){
           </div>
         </article>`;
       }).join('');
+    }
+    if(canDeleteAssignments && assignments.some(item => item.status === 'archived' || item.cancelledAt)) {
+      coachPracticeList.insertAdjacentHTML('afterbegin', '<div class="practice-card-actions"><button type="button" class="btn btn-ghost" data-practice-select-page>Select all on this page</button><button type="button" class="btn btn-ghost" data-practice-clear-selection>Clear selection</button><button type="button" class="btn btn-danger" data-practice-delete-selected>Delete selected assignments</button></div>');
     }
     if(coachPracticePagination) coachPracticePagination.innerHTML = paginationHtml(report, 'coach');
   }
@@ -1576,6 +1581,23 @@ function computeRosterPlayerId(teamObj, playerObj){
     const edit = event.target.closest('[data-practice-edit]');
     if(edit){
       editPracticeAssignment(coachPracticeAssignments.find(assignment=>assignment.id === edit.dataset.practiceEdit));
+      return;
+    }
+    if(event.target.closest('[data-practice-select-page],[data-practice-clear-selection]')) {
+      const select = Boolean(event.target.closest('[data-practice-select-page]'));
+      coachPracticeList.querySelectorAll('[data-practice-bulk-id]').forEach(input => input.checked = select);
+      return;
+    }
+    const bulkDelete = event.target.closest('[data-practice-delete-selected]');
+    if(bulkDelete) {
+      const ids = [...coachPracticeList.querySelectorAll('[data-practice-bulk-id]:checked')].map(input => input.dataset.practiceBulkId);
+      if(!ids.length) { setPracticeStatus(coachPracticeStatus, 'Select assignments to delete.', 'error'); return; }
+      const titles = coachPracticeAssignments.filter(item => ids.includes(item.id)).map(item => item.title).join('\n');
+      if(!window.confirm(`Permanently delete ${ids.length} assignments?\n${titles}\n\nTheir recipients, situation references, and assignment progress will be removed. Saved attempts remain as results without an assignment link. This cannot be undone.`)) return;
+      bulkDelete.disabled = true;
+      void diqApiRequest('admin/assignments/delete', {method:'POST',body:JSON.stringify({ids,confirmation:'DELETE'})})
+        .then(()=>loadPracticeAssignments('coach'))
+        .catch(error=>{bulkDelete.disabled=false;setPracticeStatus(coachPracticeStatus,error.message,'error');});
       return;
     }
     const remove = event.target.closest('[data-practice-delete]');

@@ -42,4 +42,20 @@ TEST_PORT=8778 npx playwright test tests/administration-api.spec.js -g "situatio
 
 Administrators can use **Delete permanently** on a library entry or an archived entry in **Recovery → Situations** before importing a replacement. Review the affected-record counts and type the full situation name to confirm. Deletion removes saved attempts, revisions, proposals, and team Playbook selections for that situation. Audit history remains. Export first if a content backup is needed.
 
-Assignment references block permanent deletion, including archived assignments. Remove those references or use the existing practice-data cleanup workflow first; deletion does not silently remove or alter assignments. Imported replacement situations are not automatically added to team Playbooks.
+Assignments that are not canceled or archived block permanent deletion. After confirmation, references and situation progress in canceled or archived assignments are removed along with the situation. Restoring those assignments will not restore the deleted situation. Imported replacement situations are not automatically added to team Playbooks.
+
+
+### Delete multiple assignments
+
+Admins can select canceled or archived assignments in assignment history and choose **Delete selected assignments**. **Select all on this page** selects eligible assignments on the current filtered page only. Selection resets when the page or filters change. Review the listed titles before confirming.
+
+Deletion permanently removes those assignments, recipient links, situation references, and assignment progress. Saved attempts remain as results without an assignment link. Other assignments cannot be deleted through this action; cancel or archive them first. No database migration is required.
+
+
+### Delete multiple situations
+
+In the admin situation library, choose **Delete situations**. Select individual rows, **Select matching situations** for the current search, or **Select all situations** for the entire library. Selections persist across searches; **Clear selection** removes them all. Switching library modes clears selection.
+
+Choose **Delete selected** to review names and affected-record counts, then type **DELETE** to confirm. Any reference from an assignment that is not canceled or archived blocks the entire selection before deletion starts. Canceled and archived assignment references and associated progress are removed as described above. Each situation is deleted separately; if a later deletion fails, the successful deletions remain and the remaining selection can be reviewed and retried. No database migration is required.
+
+When bulk deletion is blocked, the review lists each blocking assignment's name, team, status, and ID. Closed, completed, and draft assignments still retain references. Use **Archive blocking assignments** to confirm moving those assignments out of player queues while preserving their results. This action does not delete situations; choose **Delete selected** again for a fresh review and a separate permanent-deletion confirmation.

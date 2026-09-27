@@ -92,6 +92,31 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(errors).toEqual([]);
   });
 
+  test('admin bulk situation deletion selects search results without deleting on selection', async ({ page }) => {
+    await openCleanApp(page);
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
+    await page.locator('#adminPwInput').fill('password');
+    await page.locator('#adminPwOk').click();
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
+    await page.locator('#staffToolsBtn').click();
+    await page.getByRole('button', { name: 'Situations', exact: true }).click();
+    const library = page.locator('#situationLibrary');
+    await library.getByRole('button', { name: 'Delete situations', exact: true }).click();
+    const search = library.getByRole('searchbox', { name: 'Search situations' });
+    await search.fill('LF');
+    const matches = await library.locator('.situation-library-row input').count();
+    expect(matches).toBeGreaterThan(0);
+    await library.getByRole('button', { name: 'Select matching situations', exact: true }).click();
+    await expect(library.locator('.situation-library-row input:checked')).toHaveCount(matches);
+    await search.fill('no-situation-matches-this');
+    await expect(library.getByRole('button', { name: `Delete selected (${matches})`, exact: true })).toBeEnabled();
+    await library.getByRole('button', { name: 'Clear selection', exact: true }).click();
+    await expect(library.getByRole('button', { name: 'Delete selected', exact: true })).toBeDisabled();
+    await search.fill('');
+    await expect(library.locator('.situation-library-row input:checked')).toHaveCount(0);
+  });
+
   test('ignores legacy browser data and loads authoritative D1 records', async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('diq_teams_v1', JSON.stringify({

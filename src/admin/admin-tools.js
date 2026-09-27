@@ -2471,11 +2471,14 @@
     }catch(error){status.textContent=error.message;}
   }
 
+  function assignmentBlockerLabel(item){
+    return `${item.title} — ${item.teamName || 'Unknown team'} — ${item.closedAt ? 'closed' : item.status} (${item.id})`;
+  }
   async function permanentlyDeleteSituation(key){
     try{
       const preview=await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{cache:'no-store'});
-      if(preview.counts.assignments){await requestConfirmation({title:'Situation is used by assignments',message:`${preview.counts.assignments} assignments reference this situation. Remove those references or clear the affected practice data before permanent deletion. Archiving an assignment alone does not remove its references.`,confirmLabel:'OK'});return;}
-      if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Playbooks. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
+      if(preview.counts.blockingAssignments){await requestConfirmation({title:'Situation is used by assignments',message:`${preview.counts.blockingAssignments} assignments still reference this situation: ${(preview.blockingAssignments || []).map(assignmentBlockerLabel).join("; ")}. Closed, completed, and draft assignments must also be archived before deleting their situations.`,confirmLabel:'OK'});return;}
+      if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Playbooks. It also removes this situation and its progress from ${preview.counts.inactiveAssignments || 0} canceled or archived assignments, which will no longer include it if restored. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
       await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(preview.revision)},body:JSON.stringify({confirmation:preview.title})});
       await loadSituationsFromDatabase();
       if(currentSituation?.key===key){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else clearCurrentSituation();}
@@ -2521,18 +2524,64 @@
       const link=document.createElement('a');link.href=url;link.download='diamond-defence-situations.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
       status.textContent=`Exported ${situations.length} situations from ${bundle.source}.`;
     });download.className='btn btn-brand';footer.append(count,download);
+    const deleteSelected=button('Delete selected',async()=>{
+      if(!selected.size || loading)return;
+      if(editorDirty){status.textContent='Publish or discard your local draft before deleting situations.';return;}
+      library.querySelector('[data-resolve-deletion]')?.remove();
+      const keys=[...selected];
+      loading=true;updateCount();
+      let deleted=0;
+      try{
+        const previews=[];
+        for(const key of keys)previews.push(await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{cache:'no-store'}));
+        const blocked=previews.filter(item=>item.counts.blockingAssignments);
+        if(blocked.length){
+          const assignments=[...new Map(blocked.flatMap(item=>item.blockingAssignments||[]).map(item=>[item.id,item])).values()];
+          status.textContent=`Nothing deleted. Blocking assignments: ${assignments.map(assignmentBlockerLabel).join('; ') || blocked.map(item=>item.title).join('; ')}. Closed, completed, and draft assignments also need to be archived.`;
+          if(assignments.length){
+            const archive=button('Archive blocking assignments',async()=>{
+              if(!await requestConfirmation({title:'Archive blocking assignments?',message:`Archive these ${assignments.length} assignments: ${assignments.map(assignmentBlockerLabel).join('; ')}. They will be removed from player queues; existing results remain. No situations are deleted by this action. You must review and confirm situation deletion again afterward.`,confirmLabel:'Archive assignments'}))return;
+              archive.disabled=true;loading=true;updateCount();let archived=0;
+              try{
+                for(const assignment of assignments){await diqApiRequest(`practice/assignments/${encodeURIComponent(assignment.id)}`,{method:'PATCH',body:JSON.stringify({action:'archive'})});archived++;}
+                status.textContent=`Archived ${archived} assignments. Choose Delete selected again to review and confirm situation deletion.`;archive.remove();
+              }catch(error){status.textContent=`Archived ${archived} assignments. ${error.message} Review deletion again for current blockers.`;archive.remove();}
+              finally{loading=false;updateCount();}
+            });archive.dataset.resolveDeletion='true';status.after(archive);
+          }
+          return;
+        }
+        const total=field=>previews.reduce((sum,item)=>sum+Number(item.counts[field]||0),0);
+        const confirmed=await requestConfirmation({title:`Delete ${previews.length} situations permanently?`,message:`${previews.map(item=>`${item.title} (${item.key})`).join('; ')}. This removes ${total('attempts')} saved attempts, ${total('revisions')} revisions, ${total('proposals')} proposals, ${total('teamPlaybooks')} team Playbook selections, and ${total('inactiveAssignments')} references and associated progress in canceled or archived assignments. Restoring assignments will not restore these situations. Deletions happen one at a time; if one fails, earlier deletions remain. This cannot be undone. Export a copy first if needed. Type DELETE to confirm.`,confirmLabel:'Delete permanently',requiredText:'DELETE'});
+        if(!confirmed)return;
+        for(const item of previews){
+          await diqApiRequest(`admin/situations/${encodeURIComponent(item.key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(item.revision)},body:JSON.stringify({confirmation:item.title})});
+          deleted++;selected.delete(item.key);
+        }
+        status.textContent=`Permanently deleted ${deleted} situations.`;
+      }catch(error){status.textContent=`${deleted} situations deleted. ${error.message} Review the remaining selection before retrying.`;}
+      finally{
+        if(deleted){
+          try{
+            await loadSituationsFromDatabase();bundle=null;
+            if(!SITUATIONS.some(item=>item.key===currentSituation?.key)){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else clearCurrentSituation();}
+          }catch(error){status.textContent+=` Could not refresh the library: ${error.message}. Reload before continuing.`;}
+        }
+        loading=false;draw();
+      }
+    });deleteSelected.className='btn btn-danger';footer.append(deleteSelected);
     const importHost=document.createElement('div');library.append(importHost);
     if(isAdmin)addSituationTransfer(importHost);
     const records=()=>mode==='reorder'?(order?.situations||[]):mode==='export'?(bundle?.situations||[]):(Array.isArray(SITUATIONS)?SITUATIONS:[]);
     const matches=()=>records().filter(item=>`${item.title} ${item.desc||''} ${item.displayCode||''} ${window._diqAudienceLabel?.(item)||''}`.toLowerCase().includes(search.value.toLowerCase()));
-    const updateCount=()=>{count.textContent=`${selected.size} selected · ${matches().length} matching`;download.disabled=!selected.size;download.textContent=selected.size?`Download selected (${selected.size})`:'Download selected';};
+    const updateCount=()=>{count.textContent=`${selected.size} selected · ${matches().length} matching`;download.disabled=loading||!selected.size;deleteSelected.disabled=loading||!selected.size;deleteSelected.textContent=selected.size?`Delete selected (${selected.size})`:'Delete selected';library.querySelectorAll('button,input').forEach(control=>{if(control!==download&&control!==deleteSelected)control.disabled=loading;});download.textContent=selected.size?`Download selected (${selected.size})`:'Download selected';};
     function draw(){
       list.replaceChildren();
       for(const item of matches()){
-        const row=document.createElement(mode==='export'?'label':'div');row.className='situation-library-row';
+        const row=document.createElement(['export','delete'].includes(mode)?'label':'div');row.className='situation-library-row';
         const title=document.createElement('strong');title.textContent=`${item.title||item.desc}`;
         const staff=document.createElement('small');staff.className='situation-staff-meta';staff.textContent=[window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');title.append(staff);
-        if(mode==='export'){
+        if(['export','delete'].includes(mode)){
           const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);row.classList.toggle('is-selected',check.checked);
           check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);row.classList.toggle('is-selected',check.checked);updateCount();};row.append(check,title);
         }else if(mode==='reorder'){
@@ -2557,9 +2606,13 @@
       catch(error){status.textContent=error.message;}finally{saveOrder.disabled=false;}
     });saveOrder.className='btn btn-brand';orderActions.append(saveOrder,button('Cancel',()=>switchMode('library')));
     async function switchMode(value){
+      if(loading)return;
+      library.querySelector('[data-resolve-deletion]')?.remove();
+      if(mode!==value)selected.clear();
       mode=value;document.body.dataset.situationLibraryTab=value;
       tabs.querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.dataset.mode===value)));
-      search.hidden=!['library','export'].includes(value);list.hidden=!['library','export','reorder'].includes(value);orderActions.hidden=value!=='reorder'; exportActions.hidden=footer.hidden=value!=='export';importHost.hidden=value!=='import';status.textContent='';
+      search.hidden=!['library','export','delete'].includes(value);list.hidden=!['library','export','delete','reorder'].includes(value);orderActions.hidden=value!=='reorder'; exportActions.hidden=footer.hidden=!['export','delete'].includes(value);download.hidden=value!=='export';deleteSelected.hidden=value!=='delete';importHost.hidden=value!=='import';status.textContent='';
+      if(value==='delete')status.textContent='Select situations to delete permanently. Selections remain selected when you change the search; Clear selection removes all selections.';
       if(value==='reorder'){
         search.value='';order=null;loading=true;saveOrder.disabled=true;draw();
         try{order=await diqApiRequest('admin/situations/order',{cache:'no-store'});if(mode==='reorder')status.textContent='Drag situations or use Move up / Move down, then save the shared library order.';}
@@ -2574,7 +2627,7 @@
       if(mode==='export'&&bundle)status.textContent=`Select published situations to download. Source: ${bundle.source}`;
       draw();
     }
-    if(isAdmin)for(const [value,label] of [['library','Library'],['proposals','Proposals to review'],['export','Export'],['import','Import'],['reorder','Reorder']]){const item=button(label,()=>switchMode(value));item.dataset.mode=value;tabs.append(item);}
+    if(isAdmin)for(const [value,label] of [['library','Library'],['proposals','Proposals to review'],['export','Export'],['import','Import'],['reorder','Reorder'],['delete','Delete situations']]){const item=button(label,()=>switchMode(value));item.dataset.mode=value;tabs.append(item);}
     search.addEventListener('input',draw);void switchMode('library');
     if(!isAdmin&&coachHistory){const title=document.createElement('h3');title.textContent='Submitted proposals';library.append(title,coachHistory);coachHistory.classList.remove('hidden');}
   }
