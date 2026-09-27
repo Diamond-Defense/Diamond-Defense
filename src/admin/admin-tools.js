@@ -573,34 +573,57 @@
     if(!panel){panel=document.createElement('section');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="teams"]').append(panel);}
     panel.replaceChildren();
     const title=document.createElement('h3');title.textContent='Unassigned players';panel.append(title);
-    const help=document.createElement('p');help.textContent='These accounts have no team. Add them to an active team using their existing account, or permanently delete them.';panel.append(help);
-    if(!unassignedPlayers.length){const empty=document.createElement('p');empty.textContent='No unassigned players.';panel.append(empty);return;}
+    const help=document.createElement('p');help.textContent='Select accounts to add to one team or permanently delete. Enter a player number for each account being assigned.';panel.append(help);
+    if(!unassignedPlayers.length){panel.append('No unassigned players.');return;}
+    const selected=new Set(), numbers=new Map();let busy=false;
     const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned players';search.setAttribute('aria-label','Search unassigned players');panel.append(search);
+    const controls=document.createElement('div');controls.className='admin-actions';panel.append(controls);
+    const button=(label,action)=>{const el=document.createElement('button');el.type='button';el.className='btn btn-ghost';el.textContent=label;el.onclick=action;controls.append(el);return el;};
+    const matching=()=>unassignedPlayers.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()));
+    button('Select matching',()=>{matching().forEach(item=>selected.add(item.userId));draw();});
+    button('Clear selection',()=>{selected.clear();draw();});
+    const destination=document.createElement('select');destination.className='select';destination.setAttribute('aria-label','Destination team for selected players');destination.append(option('','Select destination team'));
+    teams.filter(team=>team.active!==false).forEach(team=>destination.append(option(team.id,teamLabel(team))));panel.append(destination);
+    const count=document.createElement('p');panel.append(count);
+    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);
     const list=document.createElement('div');panel.append(list);
-    const draw=()=>{
+    const add=button('Add selected to team',()=>run(false));add.className='btn btn-brand';
+    const remove=button('Delete selected permanently',()=>run(true));remove.className='btn btn-danger';
+    function update(){count.textContent=`${selected.size} selected · ${matching().length} matching`;add.disabled=busy||!destination.value||!selected.size||[...selected].some(id=>!numbers.get(id)?.trim());remove.disabled=busy||!selected.size;}
+    async function run(deleting){
+      if(busy)return;
+      const chosen=unassignedPlayers.filter(item=>selected.has(item.userId));const team=teams.find(item=>item.id===destination.value);
+      if(!chosen.length||(!deleting&&(!team||chosen.some(item=>!numbers.get(item.userId)?.trim()))))return;
+      busy=true;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);
+      const summary=chosen.map(item=>`${item.name} (${item.userId})${deleting?'':` #${numbers.get(item.userId).trim()}`}`).join('; ');
+      let completed=0;
+      try{
+        const confirmed=await requestConfirmation({title:deleting?'Delete selected players permanently':'Add selected players',message:deleting?`Delete ${chosen.length} accounts and all their historical results and practice records across teams? ${summary}. This cannot be undone.`:`Add ${chosen.length} players to ${teamLabel(team)}? ${summary}. Existing passwords and history are preserved.`,confirmLabel:deleting?'Delete players':'Add players',...(deleting?{requiredText:'DELETE'}:{})});
+        if(!confirmed)return;
+        for(const player of chosen){
+          if(deleting)await diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE PLAYER PERMANENTLY'})});
+          else await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:numbers.get(player.userId).trim()})});
+          completed++;selected.delete(player.userId);unassignedPlayers=unassignedPlayers.filter(item=>item.userId!==player.userId);
+        }
+        await loadAdminData(selectedTeam()?.id||'');
+        const output=byId('adminUnassignedAccounts')?.querySelector('[role="status"]');
+        if(output)output.textContent=`${completed} players ${deleting?'deleted':'added to '+team.name}.`;
+      }catch(error){status.textContent=`${completed} of ${chosen.length} completed. Stopped: ${error.message}. Remaining players are still selected.`;draw();}
+      finally{busy=false;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=false);update();}
+    }
+    function draw(){
       list.replaceChildren();
-      for(const player of unassignedPlayers.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()))){
+      for(const player of matching()){
         const row=document.createElement('section');row.className='card';
-        const name=document.createElement('strong');name.textContent=player.name;row.append(name);
-        const destination=document.createElement('select');destination.className='select';destination.setAttribute('aria-label',`Destination team for ${player.name}`);destination.append(option('','Select destination team'));
-        teams.filter(team=>team.active!==false).forEach(team=>destination.append(option(team.id,teamLabel(team))));
-        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.setAttribute('aria-label',`Player number for ${player.name}`);
-        const actions=document.createElement('div');actions.className='admin-actions';
-        const add=document.createElement('button');add.type='button';add.className='btn btn-brand';add.textContent='Add to team';add.disabled=true;
-        const update=()=>{add.disabled=!destination.value||!number.value.trim();};destination.onchange=update;number.oninput=update;
-        add.onclick=async()=>{
-          const team=teams.find(item=>item.id===destination.value);if(!team)return;
-          if(!await requestConfirmation({title:'Add existing player',message:`Add ${player.name} to ${teamLabel(team)} as #${number.value.trim()}? Their password and historical results will be preserved.`,confirmLabel:'Add player'}))return;
-          await perform('Adding existing player…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:number.value.trim()})}),'Player added to team.',team.id);
-        };
-        const remove=document.createElement('button');remove.type='button';remove.className='btn btn-danger';remove.textContent='Delete permanently';remove.onclick=async()=>{
-          if(!await requestConfirmation({title:'Delete player permanently',message:`Delete ${player.name}, their account, and all historical results and practice records across teams? This cannot be undone.`,confirmLabel:'Delete player',requiredText:player.name}))return;
-          await perform('Deleting player…',()=>diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE PLAYER PERMANENTLY'})}),'Player permanently deleted.',selectedTeam()?.id||'');
-        };
-        actions.append(add,remove);row.append(destination,number,actions);list.append(row);
+        const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px';
+        const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
+        const name=document.createElement('span');name.textContent=`${player.name} · ${player.userId}`;label.append(check,name);
+        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label,number);list.append(row);
       }
       if(!list.children.length)list.textContent='No matching unassigned players.';
-    };search.oninput=draw;draw();
+      update();
+    }
+    search.oninput=draw;destination.onchange=update;draw();
   }
   function renderRosterBrowser(){
     const team=selectedTeam();
