@@ -3190,6 +3190,7 @@ function updatePlayerHeaderButton(){
     if(newPassword.length < 8) return setAccountSecurityStatus('The new password must contain at least 8 characters.', 'error');
     if(newPassword !== confirmation) return setAccountSecurityStatus('The new passwords do not match.', 'error');
     if(accountChangePassword) accountChangePassword.disabled = true;
+    const completingRequiredReset=Boolean((DIQ_AUTH_USER || window.__DIQ_AUTH_USER__)?.mustChangePassword);
     setAccountSecurityStatus('Changing password…', 'pending');
     try{
       const result = await diqApiRequest('auth/password', {
@@ -3204,6 +3205,7 @@ function updatePlayerHeaderButton(){
       clearAccountPasswordFields();
       updateAuthNavigation();
       setAccountSecurityStatus(result?.message || 'Password changed. Other signed-in devices were logged out.', 'success');
+      if(completingRequiredReset)closeAccountSecurity();
     }catch(error){
       const message = error?.status === 401
         ? 'The current password is incorrect.'

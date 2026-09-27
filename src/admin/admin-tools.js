@@ -542,6 +542,7 @@
     (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
   }
   async function editCoachPermissions(member){
+    const currentTeam=selectedTeam();
     const existing=byId('adminCoachPermissions');
     if(existing?.dataset.memberId===member.playerId){existing.scrollIntoView({block:'nearest'});return;}
     existing?.remove();
@@ -552,7 +553,14 @@
     try{
       const state=await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`);
       if(!panel.isConnected)return;
-      const boxes=[];for(const team of teams.filter(team=>team.active!==false)){
+      const included=document.createElement('p');
+      included.textContent=`Current team: ${currentTeam?.name || 'Unassigned'} — access included`;
+      panel.append(included);
+      const additionalTeams=teams.filter(team=>team.active!==false && team.id!==currentTeam?.id);
+      if(!additionalTeams.length){
+        const empty=document.createElement('p');empty.className='muted';empty.textContent='No additional teams available.';panel.append(empty);
+      }
+      const boxes=[];for(const team of additionalTeams){
         const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const input=document.createElement('input');input.type='checkbox';input.style.width='20px';input.value=team.id;input.checked=state.teamIds.includes(team.id);label.append(input,team.name);panel.append(label);boxes.push(input);
       }
       const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const publish=document.createElement('input');publish.type='checkbox';publish.style.width='20px';publish.checked=state.canPublishSituations;label.append(publish,'Edit and publish situations without approval (shared library)');panel.append(label);
