@@ -60,4 +60,6 @@ Choose **Delete selected** to review names and affected-record counts, then type
 
 When bulk deletion is blocked, the review lists each blocking assignment's name, team, status, and ID. Closed, completed, and draft assignments still retain references. Use **Archive blocking assignments** to confirm moving those assignments out of player queues while preserving their results. This action does not delete situations; choose **Delete selected** again for a fresh review and a separate permanent-deletion confirmation.
 
-Variation numbers and source relationships are included in exports. Apply migration 0027 in both environments before deploying this feature. Existing destination records keep their tags; new imports retain their exported letter when available, or receive the next free letter if that letter is already reserved. Older exports without tags receive them automatically.
+Variation numbers and source relationships are included in exports. Apply migrations through 0028 in both environments before deploying this feature. Existing destination records keep their tags; new imports retain their exported letter when available, or receive the next free letter if that letter is already reserved. Older exports without tags receive them automatically.
+
+Exports made before the starting-state correction lack variationTagVersion 2. Their old title-only letters are ignored; destination tags are allocated within the corrected starting-state group. Source relationships and situation content are preserved.

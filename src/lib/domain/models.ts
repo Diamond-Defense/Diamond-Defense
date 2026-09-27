@@ -92,6 +92,7 @@ export interface SituationAudience {
 
 export interface Situation {
   variationNumber?: number;
+  variationTagVersion?: number;
   variationSourceKey?: string;
   variationTagged?: boolean;
   key: string;

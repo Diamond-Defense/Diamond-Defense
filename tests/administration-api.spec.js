@@ -791,10 +791,12 @@ test('variation reservations survive deletion and resolve simultaneous imported 
     })).ok()).toBeTruthy();
     keys.delete(key);
   };
-  const create = async id => {
+  const create = async (id, overrides = {}) => {
     const key = `reservation-${suffix}-${id}`;
     const response = await request.post('/api/situations', { headers,
-      data: { ...template, key, title, audience: {}, variationNumber: 1, variationTagged: false, variationSourceKey: undefined },
+      data: { ...template, key, title, audience: {}, variationNumber: 1, variationTagVersion: 2, variationTagged: false, variationSourceKey: undefined,
+        outs: 0, runnersOn: { first: false, second: false, third: false }, hitType: 'line', ballLocation: 'LF',
+        batterAdvance: 1, playOutcome: { result: 'single', batterResult: 'first', outsRecorded: 0, reviewStatus: 'ready' }, runnerOutcomes: [], ...overrides },
     });
     expect(response.status()).toBe(201);
     keys.add(key);
@@ -803,6 +805,7 @@ test('variation reservations survive deletion and resolve simultaneous imported 
   try {
     const original = await create('a');
     expect(original.variationNumber).toBe(1);
+    expect(original.variationTagged).toBe(false);
     const simultaneous = await Promise.all([create('b'), create('c')]);
     expect(simultaneous.map(item => item.variationNumber).sort()).toEqual([2,3]);
     await remove(original.key);
@@ -811,6 +814,20 @@ test('variation reservations survive deletion and resolve simultaneous imported 
     const published = (await (await request.get('/api/situations')).json()).filter(item => keys.has(item.key));
     expect(published.every(item => item.variationTagged)).toBeTruthy();
     expect(published.map(item => item.variationNumber).sort()).toEqual([2,3,4]);
+    for (const [id, conditions] of [
+      ['outs', { outs: 1 }],
+      ['runners', { runnersOn: { first: true, second: false, third: false }, runnerOutcomes: [{ startingBase: 'first', result: 'second', taggedUp: false }] }],
+      ['type', { hitType: 'grounder' }],
+      ['location', { ballLocation: 'CF' }],
+      ['old-export', { outs: 2, variationNumber: 7, variationTagVersion: undefined, variationTagged: true }],
+    ]) {
+      const separate = await create(id, conditions);
+      expect(separate.variationNumber).toBe(1);
+      expect(separate.variationTagged).toBe(false);
+    }
+    const alternate = await create('alternate', { desc: 'Spoiler-free context', audience: { staffVariant: 'Staff only' } });
+    expect(alternate.variationNumber).toBe(5);
+    expect(alternate.variationTagged).toBe(true);
   } finally {
     for (const key of keys) await remove(key);
   }

@@ -36,5 +36,8 @@ export function variationGroup(situation: Situation): string {
   const suffix = ` — ${runners}`;
   const title = situation.title.endsWith(suffix) ? situation.title.slice(0,-suffix.length) : situation.title;
   // Match SQLite lower(trim(...)): only ASCII case and surrounding spaces.
-  return title.replace(/^ +| +$/g, '').replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const name = title.replace(/^ +| +$/g, '').replace(/[A-Z]/g, letter => letter.toLowerCase());
+  const basesMask = (situation.runnersOn?.first ? 1 : 0) + (situation.runnersOn?.second ? 2 : 0) + (situation.runnersOn?.third ? 4 : 0);
+  const location = situation.ballLocation || `point:${Math.round(Number(situation.hit?.x || 0) * 1000)},${Math.round(Number(situation.hit?.y || 0) * 1000)}`;
+  return JSON.stringify(['starting-state-v2', name, basesMask, Number(situation.outs || 0), situation.hitType || '', location]);
 }

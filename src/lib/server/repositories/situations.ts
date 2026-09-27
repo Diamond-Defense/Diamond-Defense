@@ -292,7 +292,7 @@ export class SqliteSituationRepository {
 
   private async reserveTag(situation: Situation): Promise<void> {
     const group = variationGroup(situation);
-    const preferred = situation.variationNumber;
+    const preferred = situation.variationTagVersion === 2 ? situation.variationNumber : undefined;
     // Import preferences never displace another record's reserved tag.
     if (preferred) await this.database.execute(
       'INSERT OR IGNORE INTO situation_variation_tags(name_group,situation_key,ordinal) VALUES(?1,?2,?3)',
@@ -306,6 +306,7 @@ export class SqliteSituationRepository {
       'SELECT ordinal FROM situation_variation_tags WHERE name_group=?1 AND situation_key=?2', [group, situation.key]);
     if (!tag) throw new RecordValidationError('Unable to reserve a variation tag. Try publishing again.');
     situation.variationNumber = tag.ordinal;
+    situation.variationTagVersion = 2;
   }
 
   async withTags<T extends Situation>(records: T[]): Promise<T[]> {
@@ -319,7 +320,7 @@ export class SqliteSituationRepository {
     return records.map(record => {
       const group = groups.get(variationGroup(record));
       const ordinal = group?.get(record.key);
-      return { ...record, variationNumber: ordinal, variationTagged: record.variationTagged === true || (group?.size || 0) > 1 || (ordinal || 0) > 1 };
+      return { ...record, variationNumber: ordinal, variationTagVersion: 2, variationTagged: (group?.size || 0) > 1 || (ordinal || 0) > 1 };
     });
   }
 
@@ -360,7 +361,13 @@ export class SqliteSituationRepository {
     const before = await this.get(situation.key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
     if(before.revision !== expectedRevision)throw new RevisionConflictError();
-    if(variationGroup(before)===variationGroup(situation))situation.variationNumber=before.variationNumber;
+    if (variationGroup(before) === variationGroup(situation)) {
+      situation.variationNumber = before.variationNumber;
+      situation.variationTagVersion = 2;
+    } else {
+      // Changing the starting conditions begins a different group, not a continuation of its letters.
+      delete situation.variationNumber;
+    }
     await this.reserveTag(situation);
     const now = new Date().toISOString();
     const legacyDifficulty = situation.difficulty === 'foundational' ? 'beginner' : situation.difficulty;

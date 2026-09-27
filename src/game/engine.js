@@ -2864,14 +2864,20 @@ function playbookBaseTitle(situation){
 }
 
 function situationVariationGroup(situation){
-  return playbookBaseTitle(situation).replace(/^ +| +$/g,'').replace(/[A-Z]/g,letter=>letter.toLowerCase());
+  const name=playbookBaseTitle(situation).replace(/^ +| +$/g,'').replace(/[A-Z]/g,letter=>letter.toLowerCase());
+  const bases=(situation.runnersOn?.first?1:0)+(situation.runnersOn?.second?2:0)+(situation.runnersOn?.third?4:0);
+  const location=situation.ballLocation || `point:${Math.round(Number(situation.hit?.x || 0)*1000)},${Math.round(Number(situation.hit?.y || 0)*1000)}`;
+  return JSON.stringify(['starting-state-v2',name,bases,Number(situation.outs || 0),situation.hitType || '',location]);
 }
 function situationVariationLabel(situation){
   if(!situation)return '';
   const peers=SITUATIONS.filter(item=>item.key!==situation.key && situationVariationGroup(item)===situationVariationGroup(situation));
-  if(!situation.variationTagged && !situation.variationSourceKey)return '';
+  const published=SITUATIONS_ORIG_BY_KEY[situation.key];
+  const changedGroup=published && situationVariationGroup(published)!==situationVariationGroup(situation);
+  const draft=!situation.revision || changedGroup;
+  if(draft ? !peers.length : !situation.variationTagged)return '';
   // A draft preview is provisional; publishing reserves the authoritative letter.
-  let number=situation.variationNumber;
+  let number=changedGroup ? undefined : situation.variationNumber;
   if(!Number.isSafeInteger(number) || number<1)number=Math.max(0,...peers.map(item=>Number(item.variationNumber)||1))+1;
   let letters='';
   while(number>0){number--;letters=String.fromCharCode(65+number%26)+letters;number=Math.floor(number/26);}

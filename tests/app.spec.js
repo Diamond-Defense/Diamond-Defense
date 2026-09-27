@@ -2420,5 +2420,16 @@ test('creating a variation shows an automatic tag and collapsed related situatio
   await expect(related).not.toHaveAttribute('open', '');
   await expect(related.getByRole('button', { name: 'Create variation', exact: true })).toHaveCount(0);
   await expect(page.locator('#situationCardPreview')).toContainText(/Variation [A-Z]+/);
+  const groups = await page.evaluate(() => {
+    const draft=window._diqGetCurrentSituationSnapshot();
+    const source=SITUATIONS.find(item=>item.key===draft.variationSourceKey);
+    return {
+      matches: situationVariationGroup(draft)===situationVariationGroup(source),
+      differentOuts: situationVariationGroup({...draft,outs:(draft.outs+1)%3})!==situationVariationGroup(source),
+      differentRunners: situationVariationGroup({...draft,runnersOn:{...draft.runnersOn,first:!draft.runnersOn.first}})!==situationVariationGroup(source),
+      differentLocation: situationVariationGroup({...draft,ballLocation:draft.ballLocation==='LF'?'CF':'LF'})!==situationVariationGroup(source),
+    };
+  });
+  expect(groups).toEqual({matches:true,differentOuts:true,differentRunners:true,differentLocation:true});
   await expect(page.locator('#situationReviewSection')).not.toContainText('Choose a distinct name or label');
 });
