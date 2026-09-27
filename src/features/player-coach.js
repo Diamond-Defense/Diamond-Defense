@@ -1024,7 +1024,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   async function refreshPlayerPracticeState(options={}){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(user?.role !== 'player') return applyPracticeState(null);
+    if(user?.role !== 'player' || user.mustChangePassword) return applyPracticeState(null);
     const state = await diqApiRequest('practice/status', { cache:'no-store' });
     return applyPracticeState(state, options);
   }
@@ -3206,6 +3206,12 @@ function updatePlayerHeaderButton(){
       updateAuthNavigation();
       setAccountSecurityStatus(result?.message || 'Password changed. Other signed-in devices were logged out.', 'success');
       if(completingRequiredReset)closeAccountSecurity();
+      if(DIQ_AUTH_USER?.role === 'player'){
+        try{
+          await loadCurrentPlayerResults();
+          await refreshPlayerPracticeState({ notify:true });
+        }catch(error){reportDatabaseWriteError('Password changed, but player data could not be loaded. Reload to try again.',error);}
+      }
     }catch(error){
       const message = error?.status === 401
         ? 'The current password is incorrect.'
@@ -3307,8 +3313,12 @@ function updatePlayerHeaderButton(){
     // Keep a UI projection of the authenticated database user for this page.
     PLAYER_META = { team: t.name, name: p.name, number: p.number };
     PLAYER_BASE_ID = p.playerId;
-    await loadCurrentPlayerResults();
-    await refreshPlayerPracticeState({ notify:true });
+    try{
+      await loadCurrentPlayerResults();
+      await refreshPlayerPracticeState({ notify:true });
+    }catch(error){
+      reportDatabaseWriteError('Signed in, but player data could not be loaded. Reload to try again.',error);
+    }
 
     refreshPlayerLoginUI();
     updatePlayerHeaderButton();
@@ -3335,7 +3345,7 @@ function updatePlayerHeaderButton(){
   }
 
   async function loadCurrentPlayerResults(){
-    if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player'){
+    if(!DIQ_AUTH_USER || DIQ_AUTH_USER.role !== 'player' || DIQ_AUTH_USER.mustChangePassword){
       RESULTS = emptyResults();
       return;
     }
