@@ -568,6 +568,40 @@
     }catch(error){status.textContent=error.message;}
     const close=document.createElement('button');close.type='button';close.className='btn btn-ghost';close.textContent='Close permissions';close.onclick=()=>panel.remove();panel.append(close);
   }
+  function renderUnassignedAccounts(){
+    let panel=byId('adminUnassignedAccounts');
+    if(!panel){panel=document.createElement('section');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="teams"]').append(panel);}
+    panel.replaceChildren();
+    const title=document.createElement('h3');title.textContent='Unassigned players';panel.append(title);
+    const help=document.createElement('p');help.textContent='These accounts have no team. Add them to an active team using their existing account, or permanently delete them.';panel.append(help);
+    if(!unassignedPlayers.length){const empty=document.createElement('p');empty.textContent='No unassigned players.';panel.append(empty);return;}
+    const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned players';search.setAttribute('aria-label','Search unassigned players');panel.append(search);
+    const list=document.createElement('div');panel.append(list);
+    const draw=()=>{
+      list.replaceChildren();
+      for(const player of unassignedPlayers.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()))){
+        const row=document.createElement('section');row.className='card';
+        const name=document.createElement('strong');name.textContent=player.name;row.append(name);
+        const destination=document.createElement('select');destination.className='select';destination.setAttribute('aria-label',`Destination team for ${player.name}`);destination.append(option('','Select destination team'));
+        teams.filter(team=>team.active!==false).forEach(team=>destination.append(option(team.id,teamLabel(team))));
+        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.setAttribute('aria-label',`Player number for ${player.name}`);
+        const actions=document.createElement('div');actions.className='admin-actions';
+        const add=document.createElement('button');add.type='button';add.className='btn btn-brand';add.textContent='Add to team';add.disabled=true;
+        const update=()=>{add.disabled=!destination.value||!number.value.trim();};destination.onchange=update;number.oninput=update;
+        add.onclick=async()=>{
+          const team=teams.find(item=>item.id===destination.value);if(!team)return;
+          if(!await requestConfirmation({title:'Add existing player',message:`Add ${player.name} to ${teamLabel(team)} as #${number.value.trim()}? Their password and historical results will be preserved.`,confirmLabel:'Add player'}))return;
+          await perform('Adding existing player…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:number.value.trim()})}),'Player added to team.',team.id);
+        };
+        const remove=document.createElement('button');remove.type='button';remove.className='btn btn-danger';remove.textContent='Delete permanently';remove.onclick=async()=>{
+          if(!await requestConfirmation({title:'Delete player permanently',message:`Delete ${player.name}, their account, and all historical results and practice records across teams? This cannot be undone.`,confirmLabel:'Delete player',requiredText:player.name}))return;
+          await perform('Deleting player…',()=>diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE PLAYER PERMANENTLY'})}),'Player permanently deleted.',selectedTeam()?.id||'');
+        };
+        actions.append(add,remove);row.append(destination,number,actions);list.append(row);
+      }
+      if(!list.children.length)list.textContent='No matching unassigned players.';
+    };search.oninput=draw;draw();
+  }
   function renderRosterBrowser(){
     const team=selectedTeam();
     const permissions=byId('adminCoachPermissions');
@@ -1111,6 +1145,7 @@
     renderSelectedTeam();
     await loadSeasonData(selectedTeam()?.id || '');
     populateRecovery();
+    renderUnassignedAccounts();
     renderProposals();
     renderOutcomeReviewQueue();
     setStatus('Up to date', 'idle');
