@@ -3997,6 +3997,12 @@ async function init(){
       refreshTeamsUIAll();
       // The player controls are mounted into their popup by player-coach.js.
     setHowToPhase('p1');
+    const entryUrl=new URL(window.location.href);
+    if(entryUrl.searchParams.get('login')==='1'){
+      entryUrl.searchParams.delete('login');
+      history.replaceState(null,'',entryUrl.toString());
+      if(!window.__DIQ_AUTH_USER__)window._diqOpenAuthModal?.('player');
+    }
 
   } catch (err){
     console.error('[Init] fatal error:', err && (err.stack||err.message||err));

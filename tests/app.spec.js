@@ -64,10 +64,18 @@ async function loginAsSeedPlayer(page) {
 }
 
 async function logoutCurrentUser(page) {
+  await page.evaluate(() => { window.__logoutWorkspaceMarker = true; });
   await page.locator('#playerBtn').click();
   await expect(page.locator('#accountMenu')).toBeVisible();
-  await page.locator('#accountLogoutBtn').click();
+  await Promise.all([page.waitForEvent('load'), page.locator('#accountLogoutBtn').click()]);
+  await page.evaluate(() => window.__DIQ_READY__);
+  await expect(page.locator('#playerModalOverlay')).toBeVisible();
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
+  // Most callers explicitly open their next login; close this verified landing dialog.
+  await expect.poll(() => page.evaluate(() => window.__logoutWorkspaceMarker)).toBeUndefined();
+  await expect.poll(() => page.evaluate(() => window.__DIQ_AUTH_USER__)).toBeNull();
+  await expect(page.locator('#staffToolsBtn')).toBeHidden();
+  await page.locator('#playerModalCloseX').click();
 }
 
 test.describe('Diamond Defence regression behavior', () => {

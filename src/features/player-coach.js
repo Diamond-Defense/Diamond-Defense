@@ -179,13 +179,7 @@ function updateCoachHeaderButton(){
 }
 
 async function logoutCoach(){
-  try{ await diqApiRequest('auth/logout', { method:'POST' }); }
-  catch(error){ reportDatabaseWriteError('Logout failed', error); return false; }
-  DIQ_AUTH_USER = null;
-  window.__DIQ_AUTH_USER__ = null;
-  updateCoachHeaderButton();
-  window._diqUpdateAuthNavigation?.();
-  return true;
+  return window._diqLogoutCurrentAccount?.();
 }
 
 document.getElementById('coachLoginTeamSelect')?.addEventListener('change', renderCoachLoginNames);
@@ -3162,13 +3156,21 @@ function updatePlayerHeaderButton(){
     updateAuthNavigation();
   }
 
+  function returnToLogin(){
+    // A new document discards role-specific DOM, drafts, and pending callbacks.
+    const url=new URL(window.location.href);
+    url.searchParams.set('login','1');url.hash='';
+    window.location.replace(url.toString());
+  }
+
   async function logoutCurrentAccount(){
     if((DIQ_AUTH_USER || window.__DIQ_AUTH_USER__)?.role === 'player'){
       await abandonCurrentPlayAttempt('logout');
     }
     try{ await diqApiRequest('auth/logout', { method:'POST' }); }
     catch(error){ reportDatabaseWriteError('Logout failed', error); return false; }
-    await clearAuthenticatedClientState();
+    try{ await clearAuthenticatedClientState(); }
+    finally{ returnToLogin(); }
     return true;
   }
 
@@ -3210,7 +3212,8 @@ function updatePlayerHeaderButton(){
     setAccountSecurityStatus('Signing out all sessions…', 'pending');
     try{
       await diqApiRequest('auth/logout-all', { method:'POST' });
-      await clearAuthenticatedClientState();
+      try{ await clearAuthenticatedClientState(); }
+      finally{ returnToLogin(); }
     }catch(error){
       setAccountSecurityStatus(error?.message || 'Sessions could not be signed out.', 'error');
       if(accountLogoutAll) accountLogoutAll.disabled = false;
