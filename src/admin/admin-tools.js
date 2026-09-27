@@ -495,7 +495,11 @@
   }
   function openMemberEditor(role, id='', resetPassword=false){
     const view=document.querySelector('[data-admin-team-view="roster"]');
+    byId('adminCoachPermissions')?.remove();
     view.dataset.memberEditor=role;
+    view.dataset.memberSection=resetPassword?'password':'details';
+    byId('adminMemberSections')?.remove();
+    byId(role==='coach'?'adminCoachUpdateBtn':role==='existing'?'adminAddExistingPlayerBtn':'adminPlayerUpdateBtn')?.after(byId('adminMemberCancel'));
     byId('adminMemberType').value=role;
     byId('adminMemberType').closest('label').hidden=Boolean(id);
     byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':role==='existing'?'Add existing player':'Create account';
@@ -507,15 +511,47 @@
     password.value='';
     password.closest('label').classList.toggle('member-password-hidden',Boolean(id)&&!resetPassword);
     byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':'Create account';
+    const card=select.closest('.admin-record-card');
+    card.querySelector('.sectionTitle').textContent=id?selectedMember(role)?.name||'Member':role==='coach'?'New coach':'New player';
+    const save=byId(role==='coach'?'adminCoachUpdateBtn':'adminPlayerUpdateBtn');
+    save.textContent=resetPassword?'Reset password':`Save ${role}`;
+    if(id){
+      const nav=document.createElement('div');nav.id='adminMemberSections';nav.className='admin-actions';
+      const member=selectedMember(role);
+      for(const [key,label] of [['details','Details'],['password','Password'],['membership','Team membership'],...(role==='coach'?[['permissions','Coach permissions']]:[])]){
+        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;
+        button.setAttribute('aria-pressed',String(view.dataset.memberSection===key));
+        button.onclick=()=>{
+          openMemberEditor(role,id,key==='password');
+          view.dataset.memberSection=key;
+          if(key==='membership'||key==='permissions')byId('adminMemberEditorHeader').append(byId('adminMemberCancel'));
+          byId('adminMemberSections').querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.textContent===label)));
+          if(key==='permissions')void editCoachPermissions(member);
+        };nav.append(button);
+      }
+      byId('adminMemberEditorHeader').append(nav);
+      if(!card.querySelector('[data-member-membership]')){
+        const membership=document.createElement('section');membership.dataset.memberMembership='';
+        const copy=document.createElement('p');copy.textContent=role==='coach'?'Remove this coach from the current team. Additional team access is managed under Coach permissions.':'Transfer this player to another team, or remove their current membership. Historical results are preserved.';
+        membership.append(copy);
+        if(role==='player')membership.append(transferPlayerWorkflow);
+        membership.append(byId(role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn'));
+        card.append(membership);
+      }
+    }
     (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
   }
   async function editCoachPermissions(member){
-    const panel=document.createElement('section');panel.className='card';panel.setAttribute('aria-label','Coach permissions');
+    const existing=byId('adminCoachPermissions');
+    if(existing?.dataset.memberId===member.playerId){existing.scrollIntoView({block:'nearest'});return;}
+    existing?.remove();
+    const panel=document.createElement('section');panel.id='adminCoachPermissions';panel.dataset.memberId=member.playerId;panel.className='card';panel.setAttribute('aria-label','Coach permissions');
     const heading=document.createElement('h3');heading.textContent=`Permissions for ${member.name}`;panel.append(heading);
     const message=document.createElement('p');message.textContent='Choose additional teams for assignments, reviews, and team Playbooks. Account administration remains restricted. Publishing permission applies to the shared situation library across all teams.';panel.append(message);
-    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);byId('adminRosterBrowser').after(panel);
+    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);coachSelect.closest('.admin-record-card').append(panel);
     try{
       const state=await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`);
+      if(!panel.isConnected)return;
       const boxes=[];for(const team of teams.filter(team=>team.active!==false)){
         const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const input=document.createElement('input');input.type='checkbox';input.style.width='20px';input.value=team.id;input.checked=state.teamIds.includes(team.id);label.append(input,team.name);panel.append(label);boxes.push(input);
       }
@@ -526,6 +562,8 @@
   }
   function renderRosterBrowser(){
     const team=selectedTeam();
+    const permissions=byId('adminCoachPermissions');
+    if(permissions && !(team?.roster||[]).some(member=>member.playerId===permissions.dataset.memberId))permissions.remove();
     const root=byId('adminRosterBrowser');if(!root)return;
     document.querySelector('[data-admin-view="teams"]')?.classList.toggle('no-team-selected',!team);
     const members=(team?.roster||[]).filter(member=>member.active!==false);
@@ -535,15 +573,8 @@
     members.filter(member=>(!role||member.role===role)&&String(member.name).toLowerCase().includes(query)).forEach(member=>{
       const row=document.createElement('tr');row.dataset.memberId=member.playerId;row.dataset.memberRole=member.role;
       [member.name,member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
-      const actions=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Edit';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
-      if(member.role==='coach'){
-        const permissions=document.createElement('button');permissions.type='button';permissions.className='btn btn-ghost';permissions.textContent='Team access & publishing';permissions.onclick=()=>void editCoachPermissions(member);actions.append(permissions);
-      }
-      const more=document.createElement('details');const summary=document.createElement('summary');summary.textContent='More actions';more.appendChild(summary);
-      [['Reset password','Set a temporary password. The member must change it at their next login.',()=>openMemberEditor(member.role,member.playerId,true)],['Remove from team','Remove membership and sign out active sessions. The account and historical results are kept.',()=>{openMemberEditor(member.role,member.playerId);byId(member.role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn').click();}]].forEach(([label,help,action])=>{
-        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;button.onclick=action;
-        const info=document.createElement('details');const icon=document.createElement('summary');icon.textContent='ⓘ';icon.setAttribute('aria-label',`About ${label}`);const text=document.createElement('p');text.textContent=help;info.append(icon,text);more.append(button,info);
-      });actions.appendChild(more);row.appendChild(actions);body.appendChild(row);
+      const actions=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Manage member';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
+      row.appendChild(actions);body.appendChild(row);
     });
     if(!body.children.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=4;cell.textContent=members.length?'No members match these filters.':'No members yet. Select Add member to build the roster.';row.appendChild(cell);body.appendChild(row);}
   }
@@ -1230,6 +1261,8 @@
     if (tab === 'teams') switchTeamView(activeTeamView);
     if (tab === 'situations') window._diqSituationEditorOpened?.('admin');
     else window._diqSituationEditorClosed?.('admin');
+    // Closing the editor restores the field; the destination tab owns final visibility.
+    if(usesMainWorkspace)fieldCard?.classList.add('hidden');
   }
 
   adminCard.querySelectorAll('[data-admin-tab]').forEach((button) =>

@@ -3703,3 +3703,12 @@ body.coach-team-playbook-open main#appWorkspace > .tools-drawer:has(#coachCard:n
 @media(max-width:620px){.team-playbook-filters{grid-template-columns:1fr}}
 
 .team-playbook-list{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch}.team-playbook-bulk{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px}@media(max-width:760px){.team-playbook-list{grid-template-columns:minmax(0,1fr)}}
+
+/* Member management keeps each account operation in its own section. */
+#adminMemberSections{flex-basis:100%;display:flex;gap:8px;flex-wrap:wrap}
+[data-member-section] [data-member-membership]{display:none}
+[data-member-section="membership"] [data-member-membership]{display:block}
+[data-member-section]:not([data-member-section="details"]):not([data-member-section="password"]) .admin-record-card> :is(label,.admin-actions){display:none!important}
+[data-member-section="password"] .admin-record-card>label:has(:is(#adminPlayerName,#adminPlayerNumber,#adminCoachName)){display:none!important}
+[data-member-section="membership"] :is(#adminPlayerRemoveBtn,#adminCoachRemoveBtn){display:inline-flex!important;margin-top:12px}
+[data-member-section]:not([data-member-section="permissions"]) #adminCoachPermissions{display:none}

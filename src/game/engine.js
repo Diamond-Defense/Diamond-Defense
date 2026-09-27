@@ -2206,6 +2206,11 @@ function setBadgeState(el, state /* 'green'|'yellow'|'red' */, base){
 
 function setCoachMode(enabled, options={}){
   coachUnlocked = !!enabled;
+  if(!coachUnlocked){
+    for(const id of ['coachResultsWorkspace','practiceWorkspace','coachTeamPlaybook','coachSituationEditorMount'])document.getElementById(id)?.classList.add('hidden');
+    document.body.classList.remove('coach-team-playbook-open');
+    document.querySelector('.field-card')?.classList.remove('hidden');
+  }
   situationEditorRole = coachUnlocked ? (options.role || 'coach') : null;
   if (coachUnlocked) {
     closeGuideRail();

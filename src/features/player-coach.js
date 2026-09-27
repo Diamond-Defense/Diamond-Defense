@@ -2198,6 +2198,13 @@ function computeRosterPlayerId(teamObj, playerObj){
   };
   function setCoachWorkspaceMode(mode){
     refreshTrainingTeamSelector();
+    const adminTraining=window.__DIQ_AUTH_USER__?.role==='admin';
+    const heading=document.querySelector('#coachCard .tools-panel-header strong');
+    if(heading)heading.textContent=adminTraining?'Team training':'Coach workspace';
+    const back=document.getElementById('coachCardCloseBtn');
+    if(back)back.textContent=adminTraining?'Back to admin workspace':'Field';
+    document.querySelector('[data-coach-tab="proposals"]')?.classList.toggle('hidden',adminTraining);
+    if(adminTraining && mode==='proposals')mode='reviews';
     const reviewsActive = mode === 'reviews';
     const assignmentsActive = mode === 'assignments';
     const proposalsActive = mode === 'proposals';
@@ -5104,6 +5111,7 @@ wireSeqBuilderOnce();
   // Close button on Coach Tools card (does not reset situation)
   const coachCardCloseBtn = document.getElementById('coachCardCloseBtn');
   if (coachCardCloseBtn) coachCardCloseBtn.addEventListener('click', ()=>{
+    const returnToAdmin=window.__DIQ_AUTH_USER__?.role==='admin';
     if (coachUnlocked){
       window._diqSituationEditorClosed?.('coach');
       document.querySelector('.field-card')?.classList.remove('hidden');
@@ -5117,6 +5125,7 @@ wireSeqBuilderOnce();
     } else {
       if (coachCard) coachCard.classList.add('hidden');
     }
+    if(returnToAdmin)window._diqSetAdminMode?.(true);
   });
 
   const coachLogoutBtn = document.getElementById('coachLogoutBtn');

@@ -79,6 +79,36 @@ async function logoutCurrentUser(page) {
 }
 
 test.describe('Diamond Defence regression behavior', () => {
+  test('admin team training closes completely when returning to admin tools or field', async ({ page }) => {
+    const errors = await openCleanApp(page);
+    await page.locator('#playerBtn').click();
+    await page.locator('#authAdminTab').click();
+    await page.locator('#adminPwInput').fill('password');
+    await page.locator('#adminPwOk').click();
+    await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
+    await page.locator('#staffToolsBtn').click();
+    for (const exit of ['local', 'header']) {
+      await page.locator('#adminCard').getByRole('button', { name: 'Team training', exact: true }).click();
+      await expect(page.locator('#coachCard .tools-panel-header strong')).toHaveText('Team training');
+      await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
+      await expect(page.locator('[data-coach-tab="proposals"]')).toBeHidden();
+      await page.locator(exit === 'local' ? '#coachCardCloseBtn' : '#staffToolsBtn').click();
+      for (const section of ['Teams & accounts', 'Situations', 'Recovery']) {
+        await page.locator('#adminCard').getByRole('button', { name: section, exact: true }).click();
+        await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
+        await expect(page.locator('#practiceWorkspace')).toBeHidden();
+        await expect(page.locator('#coachCard')).toBeHidden();
+        await expect(page.locator('.field-card')).toBeHidden();
+        if(section==='Recovery')await expect(page.locator('[data-admin-view="recovery"]')).toBeVisible();
+      }
+      await page.locator('#adminCardCloseBtn').click();
+      await expect(page.locator('.field-card')).toBeVisible();
+      await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
+      await page.locator('#staffToolsBtn').click();
+    }
+    expect(errors).toEqual([]);
+  });
+
   test('an empty published library still allows admin sign-in and import', async ({ page }) => {
     await page.route('**/api/situations', route => route.fulfill({ json: [] }));
     const errors = await openCleanApp(page);
@@ -1219,23 +1249,27 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminUnassignedPlayerSelect')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
     const playerRow = page.locator('#adminRosterRows tr[data-member-role="player"]').first();
-    await playerRow.getByRole('button', { name: 'Edit', exact: true }).click();
+    await playerRow.getByRole('button', { name: 'Manage member', exact: true }).click();
     await expect(page.locator('#adminPlayerPass')).toBeHidden();
+    await expect(page.locator('#adminTransferPlayerWorkflow')).toBeHidden();
+    await page.locator('#adminMemberSections').getByRole('button', { name: 'Team membership', exact: true }).click();
     await expect(page.locator('#adminTransferPlayerWorkflow')).toBeVisible();
     await expect(page.locator('#adminTransferPlayerSummary')).toContainText('Transfer #');
     await page.locator('#adminTransferPlayerSummary').click();
     await expect(page.locator('#adminTransferTeamSelect')).toBeVisible();
     await expect(page.locator('#adminPlayerAddBtn')).toBeHidden();
     await page.locator('#adminMemberCancel').click();
-    await playerRow.getByText('More actions', { exact: true }).click();
-    await playerRow.getByRole('button', { name: 'Reset password', exact: true }).click();
+    await playerRow.getByRole('button', { name: 'Manage member', exact: true }).click();
+    await page.locator('#adminMemberSections').getByRole('button', { name: 'Password', exact: true }).click();
+    await expect(page.locator('#adminTransferPlayerWorkflow')).toBeHidden();
+    await expect(page.locator('#adminPlayerName')).toBeHidden();
     await expect(page.locator('#adminPlayerPass')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
     await page.locator('#adminAddMember').click();
     await expect(page.locator('#adminPlayerAddBtn')).toBeVisible();
     await expect(page.locator('#adminPlayerPass')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
-    await page.locator('#adminRosterRows tr[data-member-role="coach"]').first().getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.locator('#adminRosterRows tr[data-member-role="coach"]').first().getByRole('button', { name: 'Manage member', exact: true }).click();
     await expect(page.locator('#adminCoachAddBtn')).toBeHidden();
     await expect(page.locator('#adminCoachPass')).toBeHidden();
     await page.locator('#adminMemberCancel').click();
