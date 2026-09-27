@@ -1536,8 +1536,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#situationStaffVariant').blur();
     await page.locator('#situationDifficultySelect').selectOption('advanced');
     await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
-    await page.locator('#situationClassificationDetails summary').click();
-    await page.locator('#situationCategoryInput').selectOption('Extra-base hits');
+    await expect(page.locator('#situationCategoryInput')).toBeHidden();
+    await expect(page.locator('#situationEditorSteps')).toHaveCSS('position', 'static');
     await page.locator('[data-editor-step="sbDetailsSection"]').click();
     await page.locator('#situationPrimaryCategorySelect').selectOption({ index: 2 });
     await page.locator('#situationRelatedDetails summary').click();
@@ -1582,6 +1582,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#hitTypeSel').selectOption('grounder');
     await page.locator('#situationBallLocation').selectOption('LF');
     await page.locator('#playResultSel').selectOption('double');
+    await expect(page.locator('#situationCategoryInput')).toHaveValue('Extra-base hits');
     await page.locator('.runner-outcome-card[data-starting-base="first"] select').first().selectOption('third');
     const ball = page.locator('#wrap .ball:visible');
     await expect(ball).toHaveCount(1);

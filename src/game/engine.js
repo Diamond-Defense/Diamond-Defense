@@ -935,6 +935,9 @@ function applyRecommendedSituationOutcomes(){
   if(!currentSituation)return;
   const result=playResultSel?.value||currentSituation.playOutcome?.result||inferClientPlayResult(currentSituation);
   Object.assign(currentSituation,recommendedSituationOutcomes(currentSituation,result));
+  currentSituation.category = result === 'single' ? 'Singles'
+    : ['double','triple','home_run','ground_rule_double'].includes(result) ? 'Extra-base hits' : 'General';
+  if(situationCategoryInput) situationCategoryInput.value = currentSituation.category;
   syncSituationOutcomeEditor();queueCurrentSituationDatabaseSync();
 }
 async function confirmConvertedSituationOutcomes(){

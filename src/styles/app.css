@@ -3419,7 +3419,9 @@ body.situation-editing-open #coachCard{max-height:calc(100dvh - 100px);overflow:
 #situationBuilderSubsec .editor-section-hidden{display:none!important}
 #situationBuilderSubsec .builder-field-help,#situationBuilderSubsec>.title .diq-chevron,#situationBuilderSubsec .subsec>.title .diq-chevron,#coachProposalChangeSummary{display:none!important}
 #situationBuilderSubsec .subsec>.title{pointer-events:none}
-#situationBuilderSubsec #situationEditorSteps{display:flex;flex-wrap:wrap;position:sticky;top:0;background:var(--surface);z-index:3;padding:10px 0}
+#situationBuilderSubsec #situationEditorSteps{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:static;background:var(--surface);padding:10px 0}
+#coachCard #situationEditorSteps button:last-child{grid-column:auto}
+#situationBuilderSubsec #situationEditorSteps button{min-width:0;overflow-wrap:break-word;transform:none}
 #situationBuilderSubsec #situationEditorSteps button{flex:1 1 100px;text-align:center}
 #situationBuilderSubsec :is(input:not([type=checkbox]):not([type=range]),select,textarea){min-height:40px;font:inherit;box-sizing:border-box}
 #situationBuilderSubsec .position-completeness{grid-template-columns:repeat(3,minmax(0,1fr))}
