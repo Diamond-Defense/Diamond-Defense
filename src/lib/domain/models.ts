@@ -91,6 +91,9 @@ export interface SituationAudience {
 }
 
 export interface Situation {
+  variationNumber?: number;
+  variationSourceKey?: string;
+  variationTagged?: boolean;
   key: string;
   /** Stable public identifier such as S01 or S21. The key remains internal. */
   displayCode?: string;

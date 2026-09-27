@@ -16,9 +16,15 @@ The required name is at most 120 characters. It appears in the playbook, field h
 
 Teaching category and difficulty are the main filters. The optional **Staff label** distinguishes versions with the same player-facing name and is hidden from players. Blank and “Standard” mean the same thing.
 
-Age divisions, field dimensions, and team associations are retired. Old payloads can still contain them for compatibility, but they are ignored by labels, uniqueness checks, and new publications. Active uniqueness uses normalized name plus staff label; capitalization and repeated whitespace do not distinguish records. Archived names can be reused, but restoring an active duplicate is blocked.
+Situations may share a name and staff label. Their permanent keys identify them; staff labels are optional and never become player labels automatically.
 
-Migration `0024_situation_staff_labels.sql` updates stored identities. Existing collisions are retained as legacy records rather than automatically renamed or deleted. Staff must choose distinct names or labels when changing their identity. Permanent IDs and existing assignment sequences are unchanged.
+## Automatic variation tags
+
+Migration `0027_situation_variation_tags.sql` assigns stable letters within each shortened player-card title (ignoring ASCII capitalization and surrounding spaces). For example, matching **Line Drive to LF** cards show **Variation A**, **Variation B**, and so on. Starting runners remain visible separately. Tags appear in the card title and field heading.
+
+Existing records receive letters in library order when migrating. New publications reserve the next available letter. Reordering, archiving, or deleting records does not renumber the survivors or reuse a deleted letter. Renaming into another title group obtains a tag in that group; returning to an old group restores that record's reserved tag. Tags identify alternatives, not chronological revisions or difficulty levels.
+
+Draft tags are previews; the server assigns the final tag on publication, including when two coaches draft at once. Player context remains optional and should explain any relevant, spoiler-free condition. A letter distinguishes cards but cannot explain why one defensive response is appropriate.
 
 ## Ordering
 
@@ -54,4 +60,4 @@ The editor shows primary category, difficulty, player context, and an optional S
 
 Review includes a live player-card preview using the current draft. The suggested name remains opt-in for existing/custom names. Similar situations are published entries with matching ball type, starting runners, outs, and location label (or exact ball coordinates when a label is unavailable). This is a warning, not proof of identical defensive solutions. Staff can edit an existing entry, create a variation, or continue their current draft.
 
-**Create variation** in the library or similar-situations list copies the setup into an unpublished draft with a new permanent key. It does not alter the original. Choose a distinct name or Staff label before publishing or submitting. Existing unsaved work requires confirmation before replacement.
+**Create variation** in the library or similar-situations list copies the setup into an unpublished draft with a new permanent key. It preserves the source content and records the source relationship. The review step shows collapsed **Related variations** without another Create variation button. A public tag is automatic; no distinct staff label is required. The original card also shows its reserved tag once another matching title is published. Existing unsaved work requires confirmation before replacement.

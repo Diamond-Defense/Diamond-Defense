@@ -21,7 +21,7 @@ The file contains published situation content, including ball placement, defensi
 
 Reviewing a file does not write anything. Publishing uses the existing admin publishing API: updates create new destination revisions and preserve previous revisions; new situations receive destination display codes. Unselected situations are untouched.
 
-Situations are matched by their stable key, not by their name. Duplicate keys or active name/staff-label combinations, archived key collisions, and invalid content are blocked. Historical display codes do not determine identity. Resolve conflicts in the source/destination library before exporting again; the importer does not guess which situation to overwrite.
+Situations are matched by their stable key, not by their name. Duplicate keys, archived key collisions, and invalid content are blocked. Matching names and staff labels are allowed; automatic variation tags distinguish the cards. Historical display codes do not determine identity. Resolve conflicts in the source/destination library before exporting again; the importer does not guess which situation to overwrite.
 
 Imports publish one situation at a time. If a request fails, earlier successful publications remain published. Review the file again before retrying; unchanged situations will no longer be selectable. Revision checks reject edits made after the review. If a response is lost, reviewing again determines whether the write succeeded.
 
@@ -59,3 +59,5 @@ In the admin situation library, choose **Delete situations**. Select individual 
 Choose **Delete selected** to review names and affected-record counts, then type **DELETE** to confirm. Any reference from an assignment that is not canceled or archived blocks the entire selection before deletion starts. Canceled and archived assignment references and associated progress are removed as described above. Each situation is deleted separately; if a later deletion fails, the successful deletions remain and the remaining selection can be reviewed and retried. No database migration is required.
 
 When bulk deletion is blocked, the review lists each blocking assignment's name, team, status, and ID. Closed, completed, and draft assignments still retain references. Use **Archive blocking assignments** to confirm moving those assignments out of player queues while preserving their results. This action does not delete situations; choose **Delete selected** again for a fresh review and a separate permanent-deletion confirmation.
+
+Variation numbers and source relationships are included in exports. Apply migration 0027 in both environments before deploying this feature. Existing destination records keep their tags; new imports retain their exported letter when available, or receive the next free letter if that letter is already reserved. Older exports without tags receive them automatically.

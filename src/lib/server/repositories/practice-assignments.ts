@@ -1,5 +1,6 @@
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import type { Situation } from '$lib/domain/models';
+import { SqliteSituationRepository } from './situations';
 import { writeAudit } from './audit';
 import { RecordNotFoundError, RecordValidationError } from './errors';
 
@@ -339,7 +340,12 @@ export class SqlitePracticeAssignmentRepository {
         ORDER BY ast.assignment_id, ast.sort_order, ast.situation_key`,
       situationParams,
     );
-    return rows.map((row) => mapAssignment(row, recipients, situations));
+    const assignments = rows.map((row) => mapAssignment(row, recipients, situations));
+    const items = assignments.flatMap(assignment => assignment.situations);
+    // Decorate historical content with its reserved public tag without changing the snapshot.
+    const tagged = await new SqliteSituationRepository(this.database).withTags(items.map(item => item.situation));
+    items.forEach((item, index) => { item.situation = tagged[index]; });
+    return assignments;
   }
 
   private baseSelect(): string {

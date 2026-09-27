@@ -2543,7 +2543,7 @@ function situationDisplayCode(key, displayCode){
 
 function situationDisplayLabel(situation){
   if (!situation) return '';
-  return String(situation.title || situation.desc || 'Unnamed situation').trim();
+  return [String(situation.title || situation.desc || 'Unnamed situation').trim(), situationVariationLabel(situation)].filter(Boolean).join(' · ');
 }
 window._diqSituationDisplayLabel = situationDisplayLabel;
 
@@ -2666,6 +2666,9 @@ function addNewSituation(source=null){
   const s = source ? JSON.parse(JSON.stringify(source)) : makeBlankSituation();
   if(source){
     s.key=genUniqueKey(s.title);
+    s.variationSourceKey=source.variationSourceKey || source.key;
+    delete s.variationNumber;
+    s.variationTagged=true;
     for(const field of ['revision','displayCode','active','createdAt','updatedAt','createdBy','archivedAt','archivedBy'])delete s[field];
   }
 
@@ -2850,14 +2853,32 @@ function choosePlaybookSituation(key){
 // Shorten only the generated runner suffix when it agrees with the saved state.
 window._diqCreateSituationVariation = source => addNewSituation(source);
 
-function playbookCardTitle(situation){
-  const name = situationDisplayLabel(situation);
+function playbookBaseTitle(situation){
+  const name = String(situation.title || situation.desc || 'Unnamed situation').trim();
   const bases = [['first','First'],['second','Second'],['third','Third']]
     .filter(([key])=>situation.runnersOn?.[key]).map(([,label])=>label);
   const runners = bases.length===3 ? 'Bases Loaded' : bases.length===0 ? 'Bases Empty'
     : `${bases.length===1 ? 'Runner' : 'Runners'} on ${bases.join(' and ')}`;
   const suffix = ` — ${runners}`;
   return name.endsWith(suffix) && name.length>suffix.length ? name.slice(0,-suffix.length) : name;
+}
+
+function situationVariationGroup(situation){
+  return playbookBaseTitle(situation).replace(/^ +| +$/g,'').replace(/[A-Z]/g,letter=>letter.toLowerCase());
+}
+function situationVariationLabel(situation){
+  if(!situation)return '';
+  const peers=SITUATIONS.filter(item=>item.key!==situation.key && situationVariationGroup(item)===situationVariationGroup(situation));
+  if(!situation.variationTagged && !situation.variationSourceKey)return '';
+  // A draft preview is provisional; publishing reserves the authoritative letter.
+  let number=situation.variationNumber;
+  if(!Number.isSafeInteger(number) || number<1)number=Math.max(0,...peers.map(item=>Number(item.variationNumber)||1))+1;
+  let letters='';
+  while(number>0){number--;letters=String.fromCharCode(65+number%26)+letters;number=Math.floor(number/26);}
+  return `Variation ${letters}`;
+}
+function playbookCardTitle(situation){
+  return [playbookBaseTitle(situation),situationVariationLabel(situation)].filter(Boolean).join(' · ');
 }
 
 function playbookStateGraphic(situation){

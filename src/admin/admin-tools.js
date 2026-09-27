@@ -2366,9 +2366,6 @@
     const issues = [];
     const add = (message, section, severity = 'error') => issues.push({ message, section, severity });
     try { window._diqNormalizeAudience?.(snapshot?.audience); } catch(error) { add(error.message,'sbDetailsSection'); }
-    const normalize=value=>String(value||'').normalize('NFKC').trim().replace(/\s+/g,' ').toLowerCase();
-    const label=value=>normalize(value)==='standard'?'':normalize(value);
-    if((!snapshot?.revision || changedFields(snapshot).some(field=>['title','audience'].includes(field))) && (Array.isArray(SITUATIONS)?SITUATIONS:[]).some(item=>item.key!==snapshot?.key && item.active!==false && normalize(item.title)===normalize(snapshot?.title) && label(item.audience?.staffVariant)===label(snapshot?.audience?.staffVariant)))add('Another situation uses this name and staff label. Choose a distinct name or label.','situationReviewSection');
     if (!String(snapshot?.title || '').trim()) add('Add a situation name.', 'situationReviewSection');
     if (!String(snapshot?.category || '').trim()) add('Choose a hit outcome.', 'sbDetailsSection');
     const teachingCategoryIds = new Set((window.DIQ_TEACHING_CATEGORIES || []).map(category=>category.id));
@@ -2592,7 +2589,7 @@
         deselectMatching.disabled=!ready||!records.some(item=>selected.has(item.key));
         records.forEach(item=>{
           const row=document.createElement('label');row.className='team-playbook-choice';const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);draw();};
-          const text=document.createElement('span');text.textContent=[item.title,window._diqAudienceLabel?.(item),...(item.suggestedDivisions||[]).map(age=>`${age}U`)].filter(Boolean).join(' · ');row.append(check,text);list.append(row);
+          const text=document.createElement('span');text.textContent=[situationDisplayLabel(item),window._diqAudienceLabel?.(item),...(item.suggestedDivisions||[]).map(age=>`${age}U`)].filter(Boolean).join(' · ');row.append(check,text);list.append(row);
         });
         const visible=new Map();let identical=false;SITUATIONS.filter(item=>selected.has(item.key)).forEach(item=>{const signature=JSON.stringify([playbookCardTitle(item),item.runnersOn,item.outs,item.difficulty,item.primaryCategory,item.desc||'']);if(visible.has(signature))identical=true;visible.set(signature,true);});
         status.textContent=`${selected.size} selected · ${records.length} matching.${identical?' Some selected cards look identical to players. Add a spoiler-free name or Player context to distinguish them.':''}`;
@@ -2712,7 +2709,7 @@
       list.replaceChildren();
       for(const item of matches()){
         const row=document.createElement(['export','delete'].includes(mode)?'label':'div');row.className='situation-library-row';
-        const title=document.createElement('strong');title.textContent=`${item.title||item.desc}`;
+        const title=document.createElement('strong');title.textContent=situationDisplayLabel(item);
         const staff=document.createElement('small');staff.className='situation-staff-meta';staff.textContent=[window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');title.append(staff);
         if(['export','delete'].includes(mode)){
           const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);row.classList.toggle('is-selected',check.checked);
@@ -2850,7 +2847,7 @@
     window._diqCreateSituationVariation(clone(source));
     openSituationEditorPane();
     focusEditorSection('situationReviewSection');
-    setWorkflowStatus('Variation created as a new draft. Choose a distinct name or staff label before publishing.');
+    setWorkflowStatus('Variation created as a new draft. Its public tag is assigned automatically when published. Player context is optional; keep it spoiler-free.');
   }
   function similarSituations(snapshot){
     return (Array.isArray(SITUATIONS)?SITUATIONS:[]).filter(item=>item.key!==snapshot.key && item.active!==false && Number(item.revision)>0 &&
@@ -2868,14 +2865,19 @@
     const category=document.createElement('span');category.className='playbook-card-metadata';category.textContent=teachingCategoryLabel(snapshot.primaryCategory);
     card.append(title,difficulty);if(snapshot.desc){const context=document.createElement('span');context.textContent=snapshot.desc;card.append(context);}card.append(playbookStateGraphic(snapshot),category);preview.append(card);
     const list=byId('situationSimilarList');list.replaceChildren();
-    const matches=similarSituations(snapshot);byId('situationSimilarPanel').hidden=!matches.length;
+    const intentional=Boolean(snapshot.variationSourceKey);
+    const matches=intentional ? SITUATIONS.filter(item=>item.key!==snapshot.key && Number(item.revision)>0 && (item.key===snapshot.variationSourceKey || item.variationSourceKey===snapshot.variationSourceKey)) : similarSituations(snapshot);
+    const panel=byId('situationSimilarPanel');panel.hidden=!matches.length;
+    if(panel.dataset.situationKey!==snapshot.key){panel.open=!intentional;panel.dataset.situationKey=snapshot.key;}
+    panel.querySelector('summary').textContent=intentional?'Related variations':'Similar situations';
+    panel.querySelector('p').textContent=intentional?'This draft is already linked to its source. A public variation tag is assigned when published.':'These plays share the same ball type, location, runners, and outs. Review them before creating another situation.';
     matches.forEach(item=>{
       const row=document.createElement('div');row.className='similar-situation-row';
-      const name=document.createElement('span');name.textContent=[item.title,window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');
+      const name=document.createElement('span');name.textContent=[situationDisplayLabel(item),window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');
       const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent=editorRole==='coach'?'Propose changes':'Edit existing';
       edit.onclick=async()=>{if(editorDirty && !await requestConfirmation({title:'Replace local changes?',message:'Opening this situation replaces your unsubmitted draft.',confirmLabel:'Open existing'}))return;setSituation(item.key,clone(item));openSituationEditorPane();};
       const variation=document.createElement('button');variation.type='button';variation.className='btn btn-ghost';variation.textContent='Create variation';variation.onclick=()=>createSituationVariation(item);
-      row.append(name,edit,variation);list.append(row);
+      row.append(name,edit);if(!intentional)row.append(variation);list.append(row);
     });
   }
   function renderSituationIdentity(snapshot) {
@@ -2887,7 +2889,7 @@
     const categorySummary=byId('situationRelatedSummary');categorySummary.replaceChildren();
     document.querySelectorAll('#situationRelatedCategories button[aria-pressed="true"]').forEach(button=>{const chip=document.createElement('span');chip.textContent=button.textContent;categorySummary.append(chip);});
     byId('suggestedSituationName').textContent=`Suggested: ${window._diqSuggestSituationName?.(snapshot)||''}`;
-    byId('situationAudiencePreview').textContent=`Player name: ${snapshot.title || 'Not named'} | Staff label: ${window._diqAudienceLabel?.(snapshot)||'Standard'}`;
+    byId('situationAudiencePreview').textContent=`Player name: ${playbookCardTitle(snapshot)} | Staff label: ${window._diqAudienceLabel?.(snapshot)||'Standard'}`;
   }
   for(const [field,id] of Object.entries(audienceInputs)) byId(id)?.addEventListener('change',()=>{
     if(!currentSituation)return;

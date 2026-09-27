@@ -1,5 +1,5 @@
 import { normalizeSuggestedDivisions } from '$lib/domain/situation-identity';
-import { normalizeAudience, situationIdentity, BALL_LOCATIONS } from '$lib/domain/situation-identity';
+import { normalizeAudience, situationIdentity, variationGroup, BALL_LOCATIONS } from '$lib/domain/situation-identity';
 import type { Situation } from '$lib/domain/models';
 import type { SituationPlayOutcome, SituationRunnerOutcome } from '$lib/domain/models';
 import {
@@ -96,8 +96,10 @@ export function validateSituation(situation: Situation): Situation {
       'Confirm the play and runner outcomes before publishing this situation.',
     );
   }
+  if (situation.variationNumber !== undefined && (!Number.isSafeInteger(situation.variationNumber) || situation.variationNumber < 1 || situation.variationNumber > 1000000)) throw new RecordValidationError('Invalid variation number.');
+  if (situation.variationSourceKey !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(situation.variationSourceKey)) throw new RecordValidationError('Invalid variation source.');
   const { displayCode: _clientDisplayCode, ...editableSituation } = situation;
-  return { ...editableSituation, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
+  return { ...editableSituation, variationTagged: situation.variationTagged === true, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }
 
 function mapRow(
@@ -272,7 +274,7 @@ export class SqliteSituationRepository {
     const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
       this.categories(), this.playOutcomes(), this.runnerOutcomes(),
     ]);
-    return rows.map((row) => mapRow(row, categories, playOutcomes, runnerOutcomes));
+    return this.withTags(rows.map((row) => mapRow(row, categories, playOutcomes, runnerOutcomes)));
   }
 
   async get(key: string, includeArchived = false): Promise<SituationRecord | null> {
@@ -285,21 +287,48 @@ export class SqliteSituationRepository {
     const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
       this.categories(), this.playOutcomes(), this.runnerOutcomes(),
     ]);
-    return mapRow(row, categories, playOutcomes, runnerOutcomes);
+    return (await this.withTags([mapRow(row, categories, playOutcomes, runnerOutcomes)]))[0];
   }
 
-  async assertUnique(situation: Situation): Promise<void> {
-    const identity = situationIdentity(situation);
-    const conflict = (await this.list()).find(item => item.key !== situation.key && situationIdentity(item) === identity);
-    if (conflict) throw new RecordValidationError(`An active situation already uses this name and variant: ${conflict.title}. Edit that situation or choose a different staff label.`);
+  private async reserveTag(situation: Situation): Promise<void> {
+    const group = variationGroup(situation);
+    const preferred = situation.variationNumber;
+    // Import preferences never displace another record's reserved tag.
+    if (preferred) await this.database.execute(
+      'INSERT OR IGNORE INTO situation_variation_tags(name_group,situation_key,ordinal) VALUES(?1,?2,?3)',
+      [group, situation.key, preferred],
+    );
+    // Allocation is one SQLite statement, so concurrent publications cannot share a tag.
+    await this.database.execute(`INSERT OR IGNORE INTO situation_variation_tags(name_group,situation_key,ordinal)
+      SELECT ?1,?2,COALESCE(MAX(ordinal),0)+1 FROM situation_variation_tags WHERE name_group=?1`,
+      [group, situation.key]);
+    const tag = await this.database.one<{ordinal: number}>(
+      'SELECT ordinal FROM situation_variation_tags WHERE name_group=?1 AND situation_key=?2', [group, situation.key]);
+    if (!tag) throw new RecordValidationError('Unable to reserve a variation tag. Try publishing again.');
+    situation.variationNumber = tag.ordinal;
+  }
+
+  async withTags<T extends Situation>(records: T[]): Promise<T[]> {
+    const tags = await this.database.all<{name_group: string; situation_key: string; ordinal: number}>(
+      'SELECT name_group,situation_key,ordinal FROM situation_variation_tags');
+    const groups = new Map<string, Map<string, number>>();
+    for (const tag of tags) {
+      if (!groups.has(tag.name_group)) groups.set(tag.name_group, new Map());
+      groups.get(tag.name_group)!.set(tag.situation_key, tag.ordinal);
+    }
+    return records.map(record => {
+      const group = groups.get(variationGroup(record));
+      const ordinal = group?.get(record.key);
+      return { ...record, variationNumber: ordinal, variationTagged: record.variationTagged === true || (group?.size || 0) > 1 || (ordinal || 0) > 1 };
+    });
   }
 
   async create(situationInput: Situation, userId: string): Promise<SituationRecord> {
     const situation = validateSituation(situationInput);
-    await this.assertUnique(situation);
     if (await this.get(situation.key, true)) {
       throw new RecordValidationError('A situation with that key already exists.');
     }
+    await this.reserveTag(situation);
     const now = new Date().toISOString();
     const payload = JSON.stringify(situation);
     const legacyDifficulty = situation.difficulty === 'foundational' ? 'beginner' : situation.difficulty;
@@ -330,9 +359,9 @@ export class SqliteSituationRepository {
     const situation = validateSituation(situationInput);
     const before = await this.get(situation.key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
-    const stored = await this.database.one<{identity_key: string | null}>('SELECT identity_key FROM situations WHERE key = ?1', [situation.key]);
-    const unchangedLegacyIdentity = stored?.identity_key == null && situationIdentity(before) === situationIdentity(situation);
-    if (!unchangedLegacyIdentity) await this.assertUnique(situation);
+    if(before.revision !== expectedRevision)throw new RevisionConflictError();
+    if(variationGroup(before)===variationGroup(situation))situation.variationNumber=before.variationNumber;
+    await this.reserveTag(situation);
     const now = new Date().toISOString();
     const legacyDifficulty = situation.difficulty === 'foundational' ? 'beginner' : situation.difficulty;
     const [result] = await this.database.batch([
@@ -341,7 +370,7 @@ export class SqliteSituationRepository {
                                difficulty_level = ?6, payload_json = ?7, revision = revision + 1,
                                active = 1, updated_at = ?8, identity_key = ?10
           WHERE key = ?1 AND revision = ?9`,
-        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, unchangedLegacyIdentity ? null : situationIdentity(situation)],
+        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, situationIdentity(situation)],
       },
       {
         sql: `INSERT OR IGNORE INTO situation_versions
@@ -362,7 +391,6 @@ export class SqliteSituationRepository {
   async setActive(key: string, active: boolean, expectedRevision: number, userId: string): Promise<SituationRecord> {
     const before = await this.get(key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
-    if (active) await this.assertUnique(before);
     const now = new Date().toISOString();
     const [result] = await this.database.batch([
       {

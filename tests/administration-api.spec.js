@@ -725,22 +725,19 @@ test('situation transfer exports published records and reviews imports without w
   const duplicateA = { ...original, key: 'transfer-conflict-a', title: 'Import conflict fixture', audience: { staffVariant: 'Review variant' } };
   const duplicateB = { ...duplicateA, key: 'transfer-conflict-b', outs: 2, runnersOn: { first: true, second: false, third: false } };
   const duplicates = await review([duplicateA, duplicateB]);
-  expect(duplicates.every(row => row.status === 'conflict')).toBeTruthy();
-  expect(duplicates[0].incoming).toMatchObject({ key: duplicateA.key, staffLabel: 'Review variant', outs: original.outs });
-  expect(duplicates[0].conflicts).toEqual([expect.objectContaining({ key: duplicateB.key, source: 'Import file', runnersOn: duplicateB.runnersOn, outs: 2 })]);
-  const destinationConflict = (await review([{ ...original, key: 'transfer-destination-conflict' }]))[0];
-  expect(destinationConflict.conflicts).toEqual(expect.arrayContaining([expect.objectContaining({ key: original.key, source: 'Destination library', runnersOn: original.runnersOn, outs: original.outs })]));
+  expect(duplicates.every(row => row.status === 'new')).toBeTruthy();
+  expect((await review([{ ...original, key: 'transfer-destination-conflict' }]))[0].status).toBe('new');
   const fresh = await (await request.get('/api/admin/situations/transfer')).json();
   expect(fresh.situations.find(item => item.key === original.key)).toEqual(original);
   expect((await review([original, original])).every(item => item.status === 'conflict')).toBeTruthy();
   expect((await review([{ ...original, key: `transfer-${Date.now()}`, title: `New transfer ${Date.now()}`, displayCode: undefined }]))[0].status).toBe('new');
-  expect((await review([{ ...original, key: `transfer-${Date.now()}` }]))[0].status).toBe('conflict');
+  expect((await review([{ ...original, key: `transfer-${Date.now()}` }]))[0].status).toBe('new');
   expect((await review([{ ...original, hit: null }]))[0].status).toBe('conflict');
   const invalid = await request.post('/api/admin/situations/transfer', { headers: { Origin: origin }, data: { version: 99 } });
   expect(invalid.status()).toBe(400);
 });
 
-test('situation audience uniqueness and library order preserve record identities', async ({ request, baseURL }) => {
+test('automatic variation tags and library order preserve record identities', async ({ request, baseURL }) => {
   const origin = new URL(baseURL).origin;
   await loginAdmin(request, origin);
   const template = (await (await request.get('/api/situations')).json())[0];
@@ -749,10 +746,13 @@ test('situation audience uniqueness and library order preserve record identities
   const keys = [];
   let originalOrder;
   try {
-    const create = async (key, audience, name = title) => request.post('/api/situations', {headers:{Origin:origin},data:{...template,key,title:name,audience}});
+    const create = async (key, audience, name = title) => request.post('/api/situations', {headers:{Origin:origin},data:{...template,key,title:name,audience,variationNumber:undefined,variationTagged:false}});
     const first = await create(`variant-a-${suffix}`, {});
     expect(first.status()).toBe(201); keys.push((await first.json()).record.key);
-    expect((await create(`variant-b-${suffix}`, {staffVariant:'Standard'}, `  ${title.toUpperCase()}  `)).status()).toBe(400);
+    const sameName = await create(`variant-b-${suffix}`, {staffVariant:'Standard'}, `  ${title.toUpperCase()}  `);
+    expect(sameName.status()).toBe(201);
+    const sameRecord=(await sameName.json()).record; keys.push(sameRecord.key);
+    expect(sameRecord.variationNumber).toBe(2);
     const second = await create(`variant-c-${suffix}`, {staffVariant:'Alternate approach'});
     expect(second.status()).toBe(201); keys.push((await second.json()).record.key);
     const library = await (await request.get('/api/admin/situations/order')).json();
@@ -763,10 +763,55 @@ test('situation audience uniqueness and library order preserve record identities
     expect((await (await request.get('/api/admin/situations/order')).json()).situations.map(item=>item.key)).toEqual(reversed);
     expect((await request.put('/api/admin/situations/order',{headers:{Origin:origin},data:{keys:originalOrder,revision:library.revision}})).status()).toBe(409);
     const unchanged = (await (await request.get('/api/situations')).json()).find(item=>item.key===keys[0]);
+    expect(unchanged.variationNumber).toBe(1);
+    expect(unchanged.variationTagged).toBe(true);
     expect(unchanged.revision).toBe(1);
     expect(unchanged.audience).toEqual({});
   } finally {
     if(originalOrder){const state=await (await request.get('/api/admin/situations/order')).json();const response=await request.put('/api/admin/situations/order',{headers:{Origin:origin},data:{keys:originalOrder,revision:state.revision}});expect(response.ok()).toBeTruthy();}
     for(const key of keys){const current=(await (await request.get('/api/situations')).json()).find(item=>item.key===key);if(current)expect((await request.delete(`/api/situations/${key}`,{headers:{Origin:origin,'If-Match':String(current.revision)}})).ok()).toBeTruthy();}
+  }
+});
+
+
+test('variation reservations survive deletion and resolve simultaneous imported tags', async ({ request, baseURL }) => {
+  const origin = new URL(baseURL).origin;
+  const headers = { Origin: origin };
+  await loginAdmin(request, origin);
+  const template = (await (await request.get('/api/situations')).json())[0];
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+  const title = `Reservation fixture ${suffix}`;
+  const keys = new Set();
+  const remove = async key => {
+    const response = await request.get(`/api/admin/situations/${key}/permanent`);
+    const preview = await response.json();
+    expect(response.ok()).toBeTruthy();
+    expect((await request.delete(`/api/admin/situations/${key}/permanent`, {
+      headers: { ...headers, 'If-Match': String(preview.revision) }, data: { confirmation: preview.title },
+    })).ok()).toBeTruthy();
+    keys.delete(key);
+  };
+  const create = async id => {
+    const key = `reservation-${suffix}-${id}`;
+    const response = await request.post('/api/situations', { headers,
+      data: { ...template, key, title, audience: {}, variationNumber: 1, variationTagged: false, variationSourceKey: undefined },
+    });
+    expect(response.status()).toBe(201);
+    keys.add(key);
+    return (await response.json()).record;
+  };
+  try {
+    const original = await create('a');
+    expect(original.variationNumber).toBe(1);
+    const simultaneous = await Promise.all([create('b'), create('c')]);
+    expect(simultaneous.map(item => item.variationNumber).sort()).toEqual([2,3]);
+    await remove(original.key);
+    const replacement = await create('d');
+    expect(replacement.variationNumber).toBe(4);
+    const published = (await (await request.get('/api/situations')).json()).filter(item => keys.has(item.key));
+    expect(published.every(item => item.variationTagged)).toBeTruthy();
+    expect(published.map(item => item.variationNumber).sort()).toEqual([2,3,4]);
+  } finally {
+    for (const key of keys) await remove(key);
   }
 });

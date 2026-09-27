@@ -2403,3 +2403,22 @@ test('numbered runners preserve identities and size through animation and reset'
   await expect(page.locator('.chip[data-fielding-number="5"]')).toHaveText('3B');
   await expect(page.locator('.chip[data-fielding-number="6"]')).toHaveText('SS');
 });
+
+
+test('creating a variation shows an automatic tag and collapsed related situations', async ({ page }) => {
+  await openCleanApp(page);
+  await page.locator('#playerBtn').click();
+  await page.locator('#authAdminTab').click();
+  await page.locator('#adminPwInput').fill('password');
+  await page.locator('#adminPwOk').click();
+  await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
+  await page.locator('#staffToolsBtn').click();
+  await page.getByRole('button', { name: 'Situations', exact: true }).click();
+  await page.locator('#situationLibrary').getByRole('button', { name: 'Create variation', exact: true }).first().click();
+  const related = page.locator('#situationSimilarPanel');
+  await expect(related.locator('summary')).toHaveText('Related variations');
+  await expect(related).not.toHaveAttribute('open', '');
+  await expect(related.getByRole('button', { name: 'Create variation', exact: true })).toHaveCount(0);
+  await expect(page.locator('#situationCardPreview')).toContainText(/Variation [A-Z]+/);
+  await expect(page.locator('#situationReviewSection')).not.toContainText('Choose a distinct name or label');
+});
