@@ -601,24 +601,38 @@
         const confirmed=await requestConfirmation({title:deleting?'Delete selected players permanently':'Add selected players',message:deleting?`Delete ${chosen.length} accounts and all their historical results and practice records across teams? ${summary}. This cannot be undone.`:`Add ${chosen.length} players to ${teamLabel(team)}? ${summary}. Existing passwords and history are preserved.`,confirmLabel:deleting?'Delete players':'Add players',...(deleting?{requiredText:'DELETE'}:{})});
         if(!confirmed)return;
         for(const player of chosen){
+          status.textContent=`${deleting?'Deleting':'Adding'} ${player.name} (${completed+1} of ${chosen.length})…`;
           if(deleting)await diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE PLAYER PERMANENTLY'})});
           else await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:numbers.get(player.userId).trim()})});
           completed++;selected.delete(player.userId);unassignedPlayers=unassignedPlayers.filter(item=>item.userId!==player.userId);
+          draw();
         }
-        await loadAdminData(selectedTeam()?.id||'');
-        const output=byId('adminUnassignedAccounts')?.querySelector('[role="status"]');
-        if(output)output.textContent=`${completed} players ${deleting?'deleted':'added to '+team.name}.`;
+        const refreshed=await diqApiRequest('admin/players/unassigned',{cache:'no-store'});
+        unassignedPlayers=Array.isArray(refreshed?.players)?refreshed.players:[];
+        const remaining=chosen.filter(player=>unassignedPlayers.some(item=>item.userId===player.userId));
+        remaining.forEach(player=>selected.add(player.userId));
+        draw();
+        status.textContent=remaining.length
+          ? `${remaining.length} selected accounts are still unassigned after the requests. They remain selected; refresh and try again.`
+          : `${completed} players ${deleting?'deleted':'added to '+team.name}.`;
+        if(!deleting){
+          // Refresh roster data separately without replacing this operation's status.
+          const result=await diqApiRequest('admin/teams?includeArchived=true',{cache:'no-store'});
+          teams=Array.isArray(result?.teams)?result.teams:teams;
+          renderSelectedTeam();
+        }
       }catch(error){status.textContent=`${completed} of ${chosen.length} completed. Stopped: ${error.message}. Remaining players are still selected.`;draw();}
       finally{busy=false;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=false);update();}
+
     }
     function draw(){
       list.replaceChildren();
       for(const player of matching()){
         const row=document.createElement('section');row.className='card';
         const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px';
-        const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
+        const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.disabled=busy;check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
         const name=document.createElement('span');name.textContent=`${player.name} · ${player.userId}`;label.append(check,name);
-        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label,number);list.append(row);
+        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.disabled=busy;number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label,number);list.append(row);
       }
       if(!list.children.length)list.textContent='No matching unassigned players.';
       update();
