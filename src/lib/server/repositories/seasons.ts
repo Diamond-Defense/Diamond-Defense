@@ -512,14 +512,18 @@ export class SqliteSeasonRepository {
     return preview;
   }
 
-  async deletePlayerPermanently(playerId: string, actorUserId: string): Promise<Record<string, number>> {
+  async deletePlayerPermanently(playerId: string, actorUserId: string, allowCoach = false): Promise<Record<string, number>> {
     const player = await this.database.one<{ id: string; role: string }>(
       'SELECT id, role FROM users WHERE id = ?1',
       [playerId],
     );
     if (!player) throw new RecordNotFoundError('Player account not found.');
-    if (player.role !== 'player') {
+    if (player.role !== 'player' && !(allowCoach && player.role === 'coach')) {
       throw new RecordValidationError('Only player accounts can be permanently deleted here.');
+    }
+    if(player.role === 'coach'){
+      const assignments=await this.database.one<{total:number}>('SELECT COUNT(*) AS total FROM practice_assignments WHERE coach_id = ?1',[playerId]);
+      if(Number(assignments?.total))throw new RecordValidationError('This coach still owns practice assignments. Reassign or delete those assignments before deleting the account.');
     }
     const counts = {
       memberships: Number((await this.database.one<{ total: number }>(
@@ -547,12 +551,12 @@ export class SqliteSeasonRepository {
                   OR instr(before_json, ?1) > 0 OR instr(after_json, ?1) > 0`,
         params: [playerId, `:${playerId}`],
       },
-      { sql: 'DELETE FROM users WHERE id = ?1 AND role = \'player\'', params: [playerId] },
+      { sql: 'DELETE FROM users WHERE id = ?1 AND role = ?2', params: [playerId, player.role] },
       {
         sql: `INSERT INTO deletion_audit
           (id, action, actor_role, affected_counts_json, created_at)
-         VALUES (?1, 'permanent_player_deletion', 'admin', ?2, ?3)`,
-        params: [crypto.randomUUID(), JSON.stringify(counts), now],
+         VALUES (?1, ?4, 'admin', ?2, ?3)`,
+        params: [crypto.randomUUID(), JSON.stringify(counts), now, player.role === 'coach' ? 'permanent_coach_deletion' : 'permanent_player_deletion'],
       },
     ]);
     return counts;

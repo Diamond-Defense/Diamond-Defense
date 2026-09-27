@@ -71,6 +71,7 @@ export interface MemberInput {
 }
 
 export interface UnassignedPlayerRecord {
+  role: string;
   userId: string;
   name: string;
   userRevision: number;
@@ -483,30 +484,32 @@ export class SqliteTeamRepository {
     return member!;
   }
 
-  async listUnassignedPlayers(): Promise<UnassignedPlayerRecord[]> {
+  async listUnassignedPlayers(includeCoaches = false): Promise<UnassignedPlayerRecord[]> {
     const rows = await this.database.all<{
       id: string;
+      role: string;
       display_name: string;
       revision: number;
       previous_teams: string | null;
     }>(
-      `SELECT u.id, u.display_name, u.revision,
+      `SELECT u.id, u.role, u.display_name, u.revision,
               GROUP_CONCAT(DISTINCT t.name) AS previous_teams
          FROM users u
          LEFT JOIN team_memberships history ON history.user_id = u.id
          LEFT JOIN teams t ON t.id = history.team_id
-        WHERE u.role = 'player'
+        WHERE (u.role = 'player' OR (?1 = 1 AND u.role = 'coach'))
           AND NOT EXISTS (
             SELECT 1 FROM team_memberships active_membership
              WHERE active_membership.user_id = u.id
-               AND active_membership.team_role = 'player'
                AND active_membership.active = 1
           )
         GROUP BY u.id, u.display_name, u.revision
         ORDER BY u.display_name, u.id`,
+      [Number(includeCoaches)],
     );
     return rows.map((row) => ({
       userId: row.id,
+      role: row.role,
       name: row.display_name,
       userRevision: Number(row.revision),
       previousTeams: String(row.previous_teams || '').split(',').filter(Boolean),
@@ -538,44 +541,44 @@ export class SqliteTeamRepository {
     actorUserId: string,
   ): Promise<TeamMemberRecord> {
     const userId = validateId(input.userId, 'Player ID');
-    const number = validateNumber(input.number);
     const { season } = await this.activeSeasonFor(teamId);
     const player = await this.database.one<{ id: string; display_name: string; role: string }>(
       'SELECT id, display_name, role FROM users WHERE id = ?1', [userId],
     );
-    if (!player || player.role !== 'player') throw new RecordNotFoundError('Player account not found.');
+    if (!player || !['player','coach'].includes(player.role)) throw new RecordNotFoundError('Player account not found.');
+    const number = player.role === 'player' ? validateNumber(input.number) : '';
     const activeMembership = await this.database.one<{ team_id: string }>(
       `SELECT team_id FROM team_memberships
-        WHERE user_id = ?1 AND team_role = 'player' AND active = 1`, [userId],
+        WHERE user_id = ?1 AND active = 1`, [userId],
     );
     if (activeMembership) {
-      throw new RecordValidationError('This player already belongs to an active team. Use Transfer player instead.');
+      throw new RecordValidationError('This account already belongs to an active team. Manage its current membership instead.');
     }
-    await this.ensureNumberAvailable(teamId, number, userId);
+    if(player.role === 'player')await this.ensureNumberAvailable(teamId, number, userId);
     const now = new Date().toISOString();
     await this.database.batch([
       {
         sql: `INSERT INTO team_memberships
           (team_id, user_id, team_role, jersey_number, revision, active, created_at,
            updated_at, archived_at, archived_by, season_id)
-         VALUES (?1, ?2, 'player', ?3, 1, 1, ?4, ?4, NULL, NULL, ?5)
+         VALUES (?1, ?2, ?6, ?3, 1, 1, ?4, ?4, NULL, NULL, ?5)
          ON CONFLICT(team_id, user_id) DO UPDATE SET
-           team_role = 'player', jersey_number = excluded.jersey_number,
+           team_role = excluded.team_role, jersey_number = excluded.jersey_number,
            revision = team_memberships.revision + 1, active = 1,
            updated_at = excluded.updated_at, archived_at = NULL, archived_by = NULL,
            season_id = excluded.season_id`,
-        params: [teamId, userId, number, now, season.id],
+        params: [teamId, userId, number, now, season.id, player.role],
       },
       {
         sql: `INSERT INTO season_memberships
           (season_id, team_id, user_id, team_role, display_name_snapshot,
            jersey_number_snapshot, status, joined_at, removed_at, removed_by)
-         VALUES (?1, ?2, ?3, 'player', ?4, ?5, 'active', ?6, NULL, NULL)
+         VALUES (?1, ?2, ?3, ?7, ?4, ?5, 'active', ?6, NULL, NULL)
          ON CONFLICT(season_id, user_id) DO UPDATE SET
            status = 'active', removed_at = NULL, removed_by = NULL,
            display_name_snapshot = excluded.display_name_snapshot,
            jersey_number_snapshot = excluded.jersey_number_snapshot`,
-        params: [season.id, teamId, userId, player.display_name, number, now],
+        params: [season.id, teamId, userId, player.display_name, number, now, player.role],
       },
       {
         sql: `UPDATE users SET active = 1, archived_at = NULL, archived_by = NULL,

@@ -572,11 +572,11 @@
     let panel=byId('adminUnassignedAccounts');
     if(!panel){panel=document.createElement('section');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="teams"]').append(panel);}
     panel.replaceChildren();
-    const title=document.createElement('h3');title.textContent='Unassigned players';panel.append(title);
-    const help=document.createElement('p');help.textContent='Select accounts to add to one team or permanently delete. Enter a player number for each account being assigned.';panel.append(help);
-    if(!unassignedPlayers.length){panel.append('No unassigned players.');return;}
+    const title=document.createElement('h3');title.textContent='Unassigned accounts';panel.append(title);
+    const help=document.createElement('p');help.textContent='Select player or coach accounts to reassign or delete. Only accounts need a number. Deleting a coach removes their proposals and permissions; coaches who own assignments must resolve those first.';panel.append(help);
+    if(!unassignedPlayers.length){panel.append('No unassigned accounts.');return;}
     const selected=new Set(), numbers=new Map();let busy=false;
-    const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned players';search.setAttribute('aria-label','Search unassigned players');panel.append(search);
+    const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned accounts';search.setAttribute('aria-label','Search unassigned accounts');panel.append(search);
     const controls=document.createElement('div');controls.className='admin-actions';panel.append(controls);
     const button=(label,action)=>{const el=document.createElement('button');el.type='button';el.className='btn btn-ghost';el.textContent=label;el.onclick=action;controls.append(el);return el;};
     const matching=()=>unassignedPlayers.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()));
@@ -589,39 +589,39 @@
     const list=document.createElement('div');panel.append(list);
     const add=button('Add selected to team',()=>run(false));add.className='btn btn-brand';
     const remove=button('Delete selected permanently',()=>run(true));remove.className='btn btn-danger';
-    function update(){count.textContent=`${selected.size} selected · ${matching().length} matching`;add.disabled=busy||!destination.value||!selected.size||[...selected].some(id=>!numbers.get(id)?.trim());remove.disabled=busy||!selected.size;}
+    function update(){count.textContent=`${selected.size} selected · ${matching().length} matching`;add.disabled=busy||!destination.value||!selected.size||unassignedPlayers.some(item=>selected.has(item.userId)&&item.role!=='coach'&&!numbers.get(item.userId)?.trim());remove.disabled=busy||!selected.size;}
     async function run(deleting){
       if(busy)return;
       const chosen=unassignedPlayers.filter(item=>selected.has(item.userId));const team=teams.find(item=>item.id===destination.value);
-      if(!chosen.length||(!deleting&&(!team||chosen.some(item=>!numbers.get(item.userId)?.trim()))))return;
+      if(!chosen.length||(!deleting&&(!team||chosen.some(item=>item.role!=='coach'&&!numbers.get(item.userId)?.trim()))))return;
       busy=true;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);
-      const summary=chosen.map(item=>`${item.name} (${item.userId})${deleting?'':` #${numbers.get(item.userId).trim()}`}`).join('; ');
+      const summary=chosen.map(item=>`${item.name} (${item.userId})${deleting?'':` #${numbers.get(item.userId)?.trim()||'Coach'}`}`).join('; ');
       let completed=0;
       try{
-        const confirmed=await requestConfirmation({title:deleting?'Delete selected players permanently':'Add selected players',message:deleting?`Delete ${chosen.length} accounts and all their historical results and practice records across teams? ${summary}. This cannot be undone.`:`Add ${chosen.length} players to ${teamLabel(team)}? ${summary}. Existing passwords and history are preserved.`,confirmLabel:deleting?'Delete players':'Add players',...(deleting?{requiredText:'DELETE'}:{})});
+        const confirmed=await requestConfirmation({title:deleting?'Delete selected accounts permanently':'Add selected accounts',message:deleting?`Delete ${chosen.length} accounts and all their historical results and practice records across teams? ${summary}. This cannot be undone.`:`Add ${chosen.length} accounts to ${teamLabel(team)}? ${summary}. Existing passwords and history are preserved.`,confirmLabel:deleting?'Delete accounts':'Add players',...(deleting?{requiredText:'DELETE'}:{})});
         if(!confirmed)return;
         for(const player of chosen){
           status.textContent=`${deleting?'Deleting':'Adding'} ${player.name} (${completed+1} of ${chosen.length})…`;
-          if(deleting)await diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE PLAYER PERMANENTLY'})});
-          else await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:numbers.get(player.userId).trim()})});
+          if(deleting)await diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE ACCOUNT PERMANENTLY'})});
+          else await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:numbers.get(player.userId)?.trim()||''})});
           completed++;selected.delete(player.userId);unassignedPlayers=unassignedPlayers.filter(item=>item.userId!==player.userId);
           draw();
         }
-        const refreshed=await diqApiRequest('admin/players/unassigned',{cache:'no-store'});
+        const refreshed=await diqApiRequest('admin/players/unassigned?includeCoaches=true',{cache:'no-store'});
         unassignedPlayers=Array.isArray(refreshed?.players)?refreshed.players:[];
         const remaining=chosen.filter(player=>unassignedPlayers.some(item=>item.userId===player.userId));
         remaining.forEach(player=>selected.add(player.userId));
         draw();
         status.textContent=remaining.length
           ? `${remaining.length} selected accounts are still unassigned after the requests. They remain selected; refresh and try again.`
-          : `${completed} players ${deleting?'deleted':'added to '+team.name}.`;
+          : `${completed} accounts ${deleting?'deleted':'added to '+team.name}.`;
         if(!deleting){
           // Refresh roster data separately without replacing this operation's status.
           const result=await diqApiRequest('admin/teams?includeArchived=true',{cache:'no-store'});
           teams=Array.isArray(result?.teams)?result.teams:teams;
           renderSelectedTeam();
         }
-      }catch(error){status.textContent=`${completed} of ${chosen.length} completed. Stopped: ${error.message}. Remaining players are still selected.`;draw();}
+      }catch(error){status.textContent=`${completed} of ${chosen.length} completed. Stopped: ${error.message}. Remaining accounts are still selected.`;draw();}
       finally{busy=false;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=false);update();}
 
     }
@@ -631,10 +631,10 @@
         const row=document.createElement('section');row.className='card';
         const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px';
         const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.disabled=busy;check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
-        const name=document.createElement('span');name.textContent=`${player.name} · ${player.userId}`;label.append(check,name);
-        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.disabled=busy;number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label,number);list.append(row);
+        const name=document.createElement('span');name.textContent=`${player.name} · ${player.role==='coach'?'Coach':'Player'} · ${player.userId}`;label.append(check,name);
+        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.disabled=busy;number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label);if(player.role!=='coach')row.append(number);list.append(row);
       }
-      if(!list.children.length)list.textContent='No matching unassigned players.';
+      if(!list.children.length)list.textContent='No matching unassigned accounts.';
       update();
     }
     search.oninput=draw;destination.onchange=update;draw();
@@ -782,7 +782,7 @@
     unassignedPlayerSelect?.replaceChildren(option('', unassignedPlayers.length
       ? '— Select unassigned player —'
       : '— No unassigned players —'));
-    unassignedPlayers.forEach((player) => {
+    unassignedPlayers.filter(player=>player.role!=='coach').forEach((player) => {
       const history = player.previousTeams?.length
         ? ` · formerly ${player.previousTeams.join(', ')}`
         : '';
@@ -1160,7 +1160,7 @@
       diqApiRequest('situation-submissions?status=pending', {
         cache: 'no-store',
       }),
-      diqApiRequest('admin/players/unassigned', { cache: 'no-store' }),
+      diqApiRequest('admin/players/unassigned?includeCoaches=true', { cache: 'no-store' }),
     ]);
     teams = Array.isArray(teamResult?.teams) ? teamResult.teams : [];
     publishedSituations = (situationResult?.situations || []).filter(

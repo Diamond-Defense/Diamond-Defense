@@ -11,12 +11,12 @@ export const DELETE: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const user = await requireUser(event, ['admin']);
   const body = await event.request.json() as { confirmation?: string };
-  if (body.confirmation !== 'DELETE PLAYER PERMANENTLY') {
+  if (!['DELETE PLAYER PERMANENTLY','DELETE ACCOUNT PERMANENTLY'].includes(body.confirmation || '')) {
     return json({ error: 'Permanent deletion confirmation is required.' }, { status: 400 });
   }
   try {
     const removed = await new SqliteSeasonRepository(databaseFor(event))
-      .deletePlayerPermanently(event.params.userId, user.id);
+      .deletePlayerPermanently(event.params.userId, user.id, body.confirmation === 'DELETE ACCOUNT PERMANENTLY');
     return json({ ok: true, removed });
   } catch (error) {
     const response = repositoryErrorResponse(error);

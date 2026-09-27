@@ -9,7 +9,7 @@ export const prerender = false;
 export const GET: RequestHandler = async (event) => {
   await requireUser(event, ['admin']);
   return json(
-    { players: await new SqliteTeamRepository(databaseFor(event)).listUnassignedPlayers() },
+    { players: await new SqliteTeamRepository(databaseFor(event)).listUnassignedPlayers(event.url.searchParams.get('includeCoaches') === 'true') },
     { headers: { 'Cache-Control': 'private, no-store' } },
   );
 };
