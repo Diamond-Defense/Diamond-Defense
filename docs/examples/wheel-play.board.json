@@ -1,0 +1,402 @@
+{
+  "format": "diamond-defence-coach-board",
+  "version": 1,
+  "board": {
+    "version": 2,
+    "title": "Wheel Play — Dodgers NLDS Game 2",
+    "outs": 0,
+    "offenseNumbers": {
+      "batter": 5,
+      "first": 7,
+      "second": 8,
+      "third": 9
+    },
+    "defenders": {
+      "P": {
+        "x": 1570,
+        "y": 1240
+      },
+      "C": {
+        "x": 1578,
+        "y": 1833
+      },
+      "1B": {
+        "x": 2081,
+        "y": 1172
+      },
+      "2B": {
+        "x": 1934,
+        "y": 941
+      },
+      "SS": {
+        "x": 1202,
+        "y": 935
+      },
+      "3B": {
+        "x": 1047,
+        "y": 1170
+      },
+      "LF": {
+        "x": 750,
+        "y": 679
+      },
+      "CF": {
+        "x": 1570,
+        "y": 476
+      },
+      "RF": {
+        "x": 2385,
+        "y": 683
+      }
+    },
+    "runners": {
+      "batter": {
+        "x": 1577,
+        "y": 1734
+      },
+      "second": {
+        "x": 1572,
+        "y": 854
+      }
+    },
+    "running": {
+      "result": "single",
+      "destinations": {
+        "batter": "first",
+        "second": "out"
+      }
+    },
+    "movements": {
+      "SS": [
+        {
+          "path": [
+            {
+              "x": 1202,
+              "y": 935
+            },
+            {
+              "x": 1430,
+              "y": 930
+            }
+          ],
+          "start": {
+            "event": "pre_pitch"
+          },
+          "durationMs": 500
+        },
+        {
+          "path": [
+            {
+              "x": 1430,
+              "y": 930
+            },
+            {
+              "x": 1230,
+              "y": 1050
+            },
+            {
+              "x": 962,
+              "y": 1305
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 850
+        }
+      ],
+      "second": [
+        {
+          "path": [
+            {
+              "x": 1572,
+              "y": 854
+            },
+            {
+              "x": 1460,
+              "y": 940
+            }
+          ],
+          "start": {
+            "event": "pre_pitch"
+          },
+          "durationMs": 500
+        },
+        {
+          "path": [
+            {
+              "x": 1460,
+              "y": 940
+            },
+            {
+              "x": 1310,
+              "y": 1050
+            },
+            {
+              "x": 1140,
+              "y": 1160
+            },
+            {
+              "x": 1045,
+              "y": 1245
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 2250
+        }
+      ],
+      "3B": [
+        {
+          "path": [
+            {
+              "x": 1047,
+              "y": 1170
+            },
+            {
+              "x": 1100,
+              "y": 1300
+            },
+            {
+              "x": 1200,
+              "y": 1470
+            }
+          ],
+          "start": {
+            "event": "pitch_started"
+          },
+          "durationMs": 650
+        }
+      ],
+      "2B": [
+        {
+          "path": [
+            {
+              "x": 1934,
+              "y": 941
+            },
+            {
+              "x": 2110,
+              "y": 1090
+            },
+            {
+              "x": 2170,
+              "y": 1304
+            }
+          ],
+          "start": {
+            "event": "pitch_started"
+          },
+          "durationMs": 1100
+        }
+      ],
+      "1B": [
+        {
+          "path": [
+            {
+              "x": 2081,
+              "y": 1172
+            },
+            {
+              "x": 1990,
+              "y": 1290
+            },
+            {
+              "x": 1920,
+              "y": 1440
+            }
+          ],
+          "start": {
+            "event": "pitch_started"
+          },
+          "durationMs": 650
+        },
+        {
+          "path": [
+            {
+              "x": 1920,
+              "y": 1440
+            },
+            {
+              "x": 1910,
+              "y": 1220
+            },
+            {
+              "x": 1770,
+              "y": 1000
+            },
+            {
+              "x": 1572,
+              "y": 854
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1500
+        }
+      ],
+      "P": [
+        {
+          "path": [
+            {
+              "x": 1570,
+              "y": 1240
+            },
+            {
+              "x": 1520,
+              "y": 1400
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 550
+        },
+        {
+          "path": [
+            {
+              "x": 1520,
+              "y": 1400
+            },
+            {
+              "x": 1280,
+              "y": 1430
+            },
+            {
+              "x": 860,
+              "y": 1460
+            }
+          ],
+          "start": {
+            "event": "ball_fielded"
+          },
+          "durationMs": 1200
+        }
+      ],
+      "C": [
+        {
+          "path": [
+            {
+              "x": 1578,
+              "y": 1833
+            },
+            {
+              "x": 1510,
+              "y": 1650
+            },
+            {
+              "x": 1400,
+              "y": 1580
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 700
+        }
+      ],
+      "LF": [
+        {
+          "path": [
+            {
+              "x": 750,
+              "y": 679
+            },
+            {
+              "x": 690,
+              "y": 1060
+            },
+            {
+              "x": 780,
+              "y": 1420
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1700
+        }
+      ],
+      "CF": [
+        {
+          "path": [
+            {
+              "x": 1570,
+              "y": 476
+            },
+            {
+              "x": 1570,
+              "y": 750
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 800
+        }
+      ],
+      "RF": [
+        {
+          "path": [
+            {
+              "x": 2385,
+              "y": 683
+            },
+            {
+              "x": 2460,
+              "y": 1070
+            },
+            {
+              "x": 2360,
+              "y": 1420
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1600
+        }
+      ]
+    },
+    "battedBall": {
+      "type": "ground_ball",
+      "start": {
+        "x": 1577,
+        "y": 1734
+      },
+      "destination": {
+        "x": 1200,
+        "y": 1470
+      }
+    },
+    "playSeq": [
+      "3B",
+      "SS"
+    ],
+    "playSeq2": [],
+    "animation": {
+      "version": 2
+    },
+    "situationMetadata": {
+      "playOutcome": {
+        "result": "fielders_choice",
+        "batterResult": "first",
+        "outsRecorded": 1,
+        "reviewStatus": "needs_review"
+      },
+      "runnerOutcomes": [
+        {
+          "startingBase": "second",
+          "result": "out",
+          "outType": "tag",
+          "outOrder": 1,
+          "taggedUp": false
+        }
+      ],
+      "batterAdvance": 1
+    },
+    "sourceSituation": null
+  }
+}

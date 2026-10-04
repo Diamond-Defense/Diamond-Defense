@@ -1,3 +1,5 @@
+import {BASES_NATIVE} from './field.js';
+import {RUNNERS,hasCustomRunning,runningDestination,automaticRoute,movementPhase} from './running.js';
 import { throwRoute } from './throws.js';
 import { clone, upgradeBoard, validateBoard } from './board.js';
 import { startCondition, throwLegs } from './segments.js';
@@ -7,6 +9,8 @@ export function measurePath(path) {
   return {path,lengths,total:lengths.reduce((a,b)=>a+b,0)};
 }
 export function pointOnPath(path,progress,geometry=measurePath(path)) {
+  if(progress>=1)return {...path.at(-1)};
+  if(progress<=0)return {...path[0]};
   let remaining=Math.max(0,Math.min(1,progress))*geometry.total;
   if(!geometry.total)return {...path.at(-1)};
   for(let i=0;i<geometry.lengths.length;i++) {
@@ -30,19 +34,23 @@ export function traveledPath(track,time){
   return path;
 }
 const eventKey=start=>start.throwIndex?`${start.event}:${start.throwIndex}`:start.event;
-export function compilePlay(input) {
+export function compilePlay(input, options={}) {
   const board=upgradeBoard(input),issues=validateBoard(board);
   if(issues.length)throw new Error(issues.join('\n'));
+  if(options.coachBoard)board.runners.batter ||= clone(BASES_NATIVE.home);
   const ballDuration={ground_ball:1400,line_drive:900,fly_ball:2300,pop_fly:3000}[board.battedBall?.type]||0;
   const nodes=new Map(),tracks=[],legs=throwLegs(board);
-  nodes.set('contact',{duration:0,deps:[]});
+  const coachBoard=!!options.coachBoard;
+  const early=coachBoard?Object.entries(board.movements).flatMap(([id,segments])=>segments.flatMap((segment,i)=>movementPhase(segments,i)==='pre_pitch'?[`movement:${id}:${i}`]:[])):[];
+  if(coachBoard){nodes.set('pre_pitch',{duration:0,deps:[]});nodes.set('pitch_started',{duration:0,deps:early});}
+  nodes.set('contact',{duration:coachBoard&&board.battedBall?700:0,deps:coachBoard?['pitch_started']:[]});
   nodes.set('ball_fielded',{duration:ballDuration,deps:['contact']});
   for(const [id,segments] of Object.entries(board.movements)) for(let i=0;i<segments.length;i++) {
     const segment=segments[i],start=startCondition(segment,i),key=`movement:${id}:${i}`;
     const previous=i?`movement:${id}:${i-1}`:null;
-    const deps=[...(previous?[previous]:[]),...(start.event==='previous_movement'?[]:[eventKey(start)])];
+    const deps=[...(previous?[previous]:[]),...(start.event==='previous_movement'?[]:[!coachBoard&&['pre_pitch','pitch_started'].includes(start.event)?'contact':eventKey(start)])];
     const geometry=measurePath(segment.path);
-    const duration=segment.path.every(p=>p.x===segment.path[0].x&&p.y===segment.path[0].y)?0:Math.max(500,Math.min(2400,geometry.total*1.5));
+    const duration=coachBoard&&segment.durationMs!==undefined?segment.durationMs:segment.path.every(p=>p.x===segment.path[0].x&&p.y===segment.path[0].y)?0:Math.max(500,Math.min(2400,geometry.total*1.5));
     nodes.set(key,{duration,deps});tracks.push({key,id,index:i,path:segment.path,geometry,duration,condition:start});
   }
   // A throw waits for its participants' movements triggered by earlier events,
@@ -75,6 +83,23 @@ export function compilePlay(input) {
     for(const track of tracks)if(time>=track.start)positions[track.id]=pointOnPath(track.path,track.duration?(time-track.start)/track.duration:1,track.geometry);
     return positions;
   };
+  // Resolve early movement first, then transition automatic runners at contact.
+  // Generated routes are playback-only; never overwrite the coach's authored data.
+  if(coachBoard&&board.battedBall){
+    const contact=ends.get('contact'),atContact=positionsAt(contact);
+    for(const id of RUNNERS.filter(id=>board.runners[id]&&!hasCustomRunning(board,id))){
+      for(const track of tracks.filter(track=>track.id===id&&track.start+track.duration>contact)){
+        track.path=track.start>=contact?[clone(atContact[id]),clone(atContact[id])]:traveledPath(track,contact);track.geometry=measurePath(track.path);
+        if(track.start>=contact)track.start=contact;
+        track.duration=Math.max(0,contact-track.start);ends.set(track.key,contact);
+      }
+      const path=automaticRoute(id,atContact[id],runningDestination(board,id));
+      if(path.length<2)continue;
+      const geometry=measurePath(path),duration=Math.max(500,geometry.total*1.5),key=`automatic:${id}`;
+      tracks.push({key,id,index:(board.movements[id]||[]).length,path,geometry,duration,start:contact,condition:{event:'contact'},automatic:true});
+      ends.set(key,contact+duration);
+    }
+  }
   const routeCounts=new Map();
   const throws=legs.map(leg=>{
     const start=ends.get(`throw_started:${leg.index}`),end=ends.get(`throw_received:${leg.index}`);
@@ -89,15 +114,19 @@ export function compilePlay(input) {
   const rank={contact:0,ball_fielded:1,movement_complete:2,throw_received:3,throw_started:4,play_complete:5};
   const events=[{id:'initial',type:'initial',time:0},...Array.from(nodes.keys()).filter(key=>!key.startsWith('movement:')).map(key=>({id:key,type:key.split(':')[0],throwIndex:Number(key.split(':')[1])||undefined,time:ends.get(key)})),...tracks.map(track=>({id:`${track.key}:complete`,type:'movement_complete',actor:track.id,segmentIndex:track.index,time:track.start+track.duration})),{id:'play_complete',type:'play_complete',time:duration}];
   events.sort((a,b)=>a.time-b.time||(rank[a.type]??-1)-(rank[b.type]??-1));
-  return {version:2,board,tracks,throws,ballDuration,duration,events,steps:[...new Set(events.map(event=>event.time))]};
+  const contactTime=ends.get('contact'),pitchStart=coachBoard?ends.get('pitch_started'):0;
+  const pitchFrom=coachBoard?positionsAt(pitchStart).P:null;
+  return {version:2,board,tracks,throws,ballDuration,contactTime,pitchStart,pitchFrom,coachBoard,duration,events,steps:[...new Set(events.map(event=>event.time))]};
 }
 export function frameAt(play,time) {
   time=Math.max(0,Math.min(play.duration,time));
   const positions={...clone(play.board.defenders),...clone(play.board.runners)};
   for(const track of play.tracks)if(time>=track.start)positions[track.id]=pointOnPath(track.path,track.duration?(time-track.start)/track.duration:1,track.geometry);
   const hit=play.board.battedBall;
-  let ball=hit?pointOnPath([hit.start,hit.destination],play.ballDuration?time/play.ballDuration:1):null;
-  const progress=Math.min(1,time/(play.ballDuration||1));
+  const hitTime=Math.max(0,time-(play.contactTime||0));
+  let ball=hit?pointOnPath([hit.start,hit.destination],play.ballDuration?hitTime/play.ballDuration:1):null;
+  if(play.coachBoard&&hit&&time<play.contactTime){ball=time<play.pitchStart?null:pointOnPath([play.pitchFrom,hit.start],(time-play.pitchStart)/(play.contactTime-play.pitchStart));}
+  const progress=Math.min(1,hitTime/(play.ballDuration||1));
   const lift={ground_ball:0.03,line_drive:0.06,fly_ball:0.25,pop_fly:0.4}[hit?.type]||0;
   const arrows=[];
   for(const leg of play.throws)if(time>leg.start) {

@@ -21,7 +21,7 @@ export const POST: RequestHandler = async event => {
   if (input?.id && (typeof input.id !== 'string' || !Number.isSafeInteger(input.revision) || input.revision < 1)) return json({error:'A valid Board ID and revision are required.'},{status:400});
   const issues=validateBoard(input?.board);
   if(issues.length) return json({error:issues.join('\n')},{status:400});
-  try { compilePlay(input.board); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid animation events.'},{status:400}); }
+  try { compilePlay(input.board,{coachBoard:true}); } catch(error) { return json({error:error instanceof Error ? error.message : 'Invalid animation events.'},{status:400}); }
   const db=databaseFor(event);
   const id=input.id || crypto.randomUUID();
   // Keep the uniqueness check in the write statement so concurrent saves cannot

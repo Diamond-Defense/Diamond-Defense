@@ -5,7 +5,7 @@ export const POSITIONS = Object.keys(DEFAULT_STARTS);
 export const BALL_TYPES = ['ground_ball', 'line_drive', 'fly_ball', 'pop_fly'];
 export const clone = value => JSON.parse(JSON.stringify(value));
 export function newBoard() {
-  return { version: 2, offenseNumbers: createOffenseNumbers(), title: 'Untitled Board', outs: 0, defenders: clone(DEFAULT_STARTS), runners: {}, movements: {}, battedBall: null, playSeq: [], playSeq2: [], animation: { version: 2 }, sourceSituation: null };
+  return { version: 2, offenseNumbers: createOffenseNumbers(), title: 'Untitled Board', outs: 0, defenders: clone(DEFAULT_STARTS), runners: {batter:clone(BASES_NATIVE.home)}, running:{result:'single',destinations:{}}, movements: {}, battedBall: null, playSeq: [], playSeq2: [], animation: { version: 2 }, sourceSituation: null };
 }
 export function upgradeBoard(value) {
   if(!value || ![1,2].includes(value.version))throw new Error('Unsupported Board version.');
@@ -28,14 +28,22 @@ export function validateBoard(board) {
   if (![0, 1, 2].includes(board.outs)) issues.push('Choose 0, 1, or 2 outs.');
   if (!POSITIONS.every(id => point(board.defenders?.[id]))) issues.push('Set valid starting positions for all nine defenders.');
   if (!record(board.runners) || Object.entries(board.runners).some(([id, p]) => !['batter', 'first', 'second', 'third'].includes(id) || !point(p))) issues.push('Invalid runner starting positions.');
+  if(board.running){
+    if(!['single','double','triple','home_run','out'].includes(board.running.result)||!record(board.running.destinations))issues.push('Choose valid automatic running settings.');
+    else for(const [id,destination] of Object.entries(board.running.destinations)){
+      const allowed={batter:['first','second','third','home','out'],first:['hold','second','third','home','out'],second:['hold','third','home','out'],third:['hold','home','out']};
+      if(!allowed[id]?.includes(destination))issues.push(`Choose a valid destination for ${id}.`);
+    }
+  }
   if (!record(board.movements)) issues.push('Invalid movement data.');
   else for(const [id,segments] of Object.entries(board.movements)) {
     if(!(POSITIONS.includes(id)||board.runners?.[id]) || !Array.isArray(segments) || !segments.length || segments.length>MAX_SEGMENTS){issues.push(`Invalid movements for ${id}.`);continue;}
     for(let i=0;i<segments.length;i++) {
       const segment=segments[i],path=segment?.path;
       if(!Array.isArray(path)||path.length<2||path.length>512||!path.every(point)){issues.push(`Invalid path for ${id} movement ${i+1}.`);continue;}
+      if(segment.durationMs!==undefined&&(!Number.isFinite(segment.durationMs)||segment.durationMs<250||segment.durationMs>30000))issues.push(`Choose a movement duration of 250–30000 ms for ${id} movement ${i+1}.`);
       const start=startCondition(segment,i);
-      if(!['contact','previous_movement','ball_fielded','throw_started','throw_received'].includes(start.event) || (start.event==='previous_movement'&&!i)) issues.push(`Choose a valid start event for ${id} movement ${i+1}.`);
+      if(!['pre_pitch','pitch_started','contact','previous_movement','ball_fielded','throw_started','throw_received'].includes(start.event) || (start.event==='previous_movement'&&!i)) issues.push(`Choose a valid start event for ${id} movement ${i+1}.`);
       if(['throw_started','throw_received'].includes(start.event) && (!Number.isSafeInteger(start.throwIndex)||start.throwIndex<1||start.throwIndex>throwLegs(board).length)) issues.push(`${id} movement ${i+1} references an unavailable throw. Update its start event.`);
       const previous=i?segments[i-1]?.path?.at(-1):board.defenders?.[id]||board.runners?.[id];
       if(board.version===2&&point(previous)&&distance(path[0],previous)>0.01)issues.push(`${id} movement ${i+1} must start where the preceding movement ends.`);
@@ -49,6 +57,10 @@ export function validateBoard(board) {
 }
 export function fromSituation(situation) {
   const b = newBoard();
+  const result=situation.playOutcome?.result;
+  b.running={result:['single','double','triple','home_run','out'].includes(result)?result:'single',destinations:{}};
+  if(situation.playOutcome?.batterResult)b.running.destinations.batter=situation.playOutcome.batterResult;
+  for(const outcome of situation.runnerOutcomes||[])b.running.destinations[outcome.startingBase]=outcome.result;
   b.title = situation.title; b.outs = situation.outs; b.sourceSituation = clone(situation);
   b.defenders = { ...b.defenders, ...clone(situation.starts || {}) };
   for (const base of ['first','second','third']) if (situation.runnersOn?.[base]) b.runners[base] = clone(BASES_NATIVE[base]);
@@ -97,13 +109,21 @@ export function toSituation(board, metadata) {
   }));
   return { ...metadata, key: `board-${crypto.randomUUID()}`, title:board.title, desc:metadata.desc || '', category:metadata.category || 'Coach Board', difficulty:metadata.difficulty || 'foundational', primaryCategory:metadata.primaryCategory || 'base-coverage', relatedCategories:metadata.relatedCategories || [], outs:board.outs, runnersOn:Object.fromEntries(['first','second','third'].map(base=>[base,!!board.runners[base]])), starts:clone(board.defenders), targets, hit:clone(board.battedBall.destination), hitType:{ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[board.battedBall.type], playSeq:clone(board.playSeq), playSeq2:clone(board.playSeq2), batterAdvance:{out:0,first:1,second:2,third:3,home:4}[metadata.playOutcome.batterResult], boardAnimation:{version:2,movements:clone(board.movements),battedBall:clone(board.battedBall)} };
 }
-// Bounded sampling + corner-preserving simplification, then a gentle local filter.
+// Smooth newly drawn routes without changing saved routes or their exact endpoints.
 export function cleanPath(points) {
-  if (points.length < 2) return points;
-  const sampled = [points[0]];
-  for (const p of points.slice(1,-1)) if (Math.hypot(p.x-sampled.at(-1).x,p.y-sampled.at(-1).y) >= 8) sampled.push(p);
-  sampled.push(points.at(-1));
-  const stride = Math.max(1,Math.ceil(sampled.length/500));
-  const bounded = sampled.filter((_,i)=>i===0 || i===sampled.length-1 || i%stride===0);
-  return bounded.map((p,i)=>i===0 || i===bounded.length-1 ? p : {x:(bounded[i-1].x+p.x*6+bounded[i+1].x)/8,y:(bounded[i-1].y+p.y*6+bounded[i+1].y)/8});
+  if(points.length<3)return points.map(p=>({...p}));
+  let path=[points[0]];
+  for(const p of points.slice(1,-1))if(distance(p,path.at(-1))>=12)path.push(p);
+  path.push(points.at(-1));
+  // Two corner-cutting passes remove pointer zigzags while retaining broad curves.
+  for(let pass=0;pass<2;pass++){
+    const next=[path[0]];
+    for(let i=0;i<path.length-1;i++){
+      const a=path[i],b=path[i+1];
+      next.push({x:a.x*.75+b.x*.25,y:a.y*.75+b.y*.25},{x:a.x*.25+b.x*.75,y:a.y*.25+b.y*.75});
+    }
+    next.push(path.at(-1));path=next;
+  }
+  if(path.length>512){const source=path;path=Array.from({length:512},(_,i)=>source[Math.round(i*(source.length-1)/511)]);}
+  return path;
 }

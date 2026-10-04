@@ -139,3 +139,27 @@ All 55 script tests pass and the type check is clean. Presentation plus existing
 Use **Browse Library** for server-filtered search, baseball filters, sorting, independent copies and safe deletion/archive. Coach Board opens the card library first. Cards present paused by default; Edit opens authoring tools. New Board is available in the library header. Quick-load selectors were removed. See [Board & Situation Library](play-library.md) for permissions, draft-copy behavior and the local migration command.
 
 Teaching playback now runs four times slower at Normal speed, with Slow/Fast available. Labels always remain visible. Ball paths are drawn from the authored start to destination (ground balls dashed). Create new Boards from the library header; the Board editor no longer includes New Board or a Situation Details shortcut.
+
+## Board pitch and optional early movement
+
+Coach Board playback includes a pitch from the pitcher’s position to the authored contact point before the batted ball travels outwards. The hit line appears at contact, not during the pitch. Existing movement defaults remain at contact.
+
+In Movement, record a route and choose **Before the pitch** for a lead or defensive adjustment, or **During the pitch** for movement concurrent with the delivery. Both options work for defenders and runners. Add subsequent routes from the preceding endpoint; their start event may be during the pitch, at contact, or a later baseball event. The pitch waits for all pre-pitch routes to finish. A pre-pitch route cannot depend on a preceding route that starts at contact or later; preview reports that circular ordering.
+
+Newly drawn routes receive two smoothing passes with exact endpoints retained. Saved routes are not rewritten. These phases and the pitch animation are enabled only by Coach Board’s compiler option; normal situation playback retains its contact-first timeline.
+
+## Automatic running
+
+The batter is always included in Coach Board. In **Running**, choose Single, Double, Triple, Home Run or Out; suggested advances are one, two, three or four bases. Each runner’s destination can be changed independently, including Hold. Out depicts an attempted advance, not a simulated putout. Changes provide starting suggestions in Save as Situation, whose outcomes still require explicit review.
+
+Any custom post-contact route takes precedence over automatic running for that runner. **Use automatic running** removes that runner’s custom post-contact routes while retaining earlier lead/delivery routes. When only early routes exist, automatic running begins at the runner’s position at contact and interrupts any ongoing delivery movement without snapping back. Generated tracks are never written over authored movements. The full base-running route visits intervening bases.
+
+Settings save with the Board. Imported Situations retain their authored routes and known runner destinations. Legacy Boards receive default single advances for runners without custom routes. Normal app playback does not generate these automatic routes.
+
+## Portable Board files
+
+Use **Import Board** in the library to open a `.board.json` file as a new unsaved draft. Review the name and routes, then **Save Board**. Imports never overwrite an existing Board or publish a Situation. Existing duplicate-name protections still apply at save. Malformed, oversized (over 1 MB), unsupported-version, invalid-route and circular-timing files are rejected without changing the current draft.
+
+**Export Board** in editing tools downloads the current draft, including unsaved edits, running settings and outcome metadata. It does not mark the draft saved. Files use `format: "diamond-defence-coach-board"`, envelope `version: 1`, and a versioned `board` payload. Account/record identities, revisions and links to a source Situation are excluded. Only play fields are transferred.
+
+See [wheel-play example](examples/wheel-play.md) and its [importable JSON](examples/wheel-play.board.json).

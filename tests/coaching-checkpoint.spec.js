@@ -14,7 +14,7 @@ function examples(){
 }
 for(const example of examples())test(example.board.title,async({page,baseURL})=>{
  await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{role:'admin',password:'password'}});
- const board=clone(example.board);board.title+=` ${Date.now()}`;const play=compilePlay(board);
+ const board=clone(example.board);board.title+=` ${Date.now()}`;const play=compilePlay(board,{coachBoard:true});
  const response=await page.request.post('/api/boards',{headers:{Origin:new URL(baseURL).origin},data:{board}});expect(response.status()).toBe(201);const saved=await response.json();
  await page.goto('/coach-board?edit=1');await openLibraryPlay(page,'board',saved.id,board.title);
  await page.getByRole('button',{name:'Save as Situation',exact:true}).click();await expect(page.getByRole('navigation',{name:'Authoring modes'})).toHaveCount(0);await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption(example.result);await page.getByRole('combobox',{name:'Batter result',exact:true}).selectOption(example.batter);await page.getByRole('combobox',{name:'Outs recorded',exact:true}).selectOption(example.outs);await page.getByRole('combobox',{name:`Runner on ${example.runner}`,exact:true}).selectOption(example.runnerResult);if(example.tagged)await page.getByLabel(`Runner on ${example.runner} tagged up`,{exact:true}).check();await page.getByLabel('I confirm these play and runner outcomes').check();

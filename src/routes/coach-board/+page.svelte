@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import {importBoardFile,exportBoardFile,boardFileName} from '$lib/plays/board-transfer.js';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
   let libraryOpen=$state(false), libraryReturnToMain=$state(false);
@@ -10,6 +11,7 @@
   import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers } from '$lib/plays/token-presentation.js';
   import { BASES_NATIVE, IMG_W, IMG_H } from '$lib/plays/field.js';
   import { newBoard, clone, POSITIONS, BALL_TYPES, cleanPath, fromSituation, toSituation, upgradeBoard } from '$lib/plays/board.js';
+  import {RUN_RESULTS,hasCustomRunning,runningDestination,useAutomaticRunning} from '$lib/plays/running.js';
   import { MAX_SEGMENTS, segmentStart, reconcileSegments, eventOptions, conditionValue, parseCondition } from '$lib/plays/segments.js';
   import { situationDraft, situationPlayIssues, writeHandoff, readHandoff, clearHandoff } from '$lib/plays/authoring.js';
   import { presentationStatus } from '$lib/plays/presentation.js';
@@ -27,15 +29,15 @@
   const movementPaths=$derived.by(()=>{
     if(!presenting&&mode==='Movement'&&!savingSituation){
       const routes=Object.entries(board.movements).flatMap(([id,segments])=>segments.map((segment,index)=>({id,index,path:segment.path}))).filter(route=>!focusPlayers.length||focusPlayers.includes(route.id));
-      if(drag){const index=routes.findIndex(route=>route.id===drag.id&&route.index===drag.index);const active={id:drag.id,index:drag.index,path:drag.path};if(index>=0)routes[index]=active;else routes.push(active);}
+      if(drag){const index=routes.findIndex(route=>route.id===drag.id&&route.index===drag.index);const active={id:drag.id,index:drag.index,path:cleanPath(drag.path)};if(index>=0)routes[index]=active;else routes.push(active);}
       return routes.filter(route=>route.path.length>1);
     }
-    if(!showMovementPaths||!frame?.time)return [];try{const play=presenting?presentationPlay:compilePlay(board);return play.tracks.filter(track=>POSITIONS.includes(track.id)&&(!focusPlayers.length||focusPlayers.includes(track.id))).map(track=>({id:track.id,index:track.index,path:traveledPath(track,frame.time)})).filter(route=>route.path.length>1);}catch{return [];}});
-  const finalTargets=$derived.by(()=>{if(!showTargets)return [];try{const play=presenting?presentationPlay:compilePlay(board);const final=frameAt(play,play.duration);return POSITIONS.filter(id=>!focusPlayers.length||focusPlayers.includes(id)).map(id=>[id,final.positions[id]]);}catch{return [];}});
+    if(!showMovementPaths||!frame?.time)return [];try{const play=presenting?presentationPlay:compilePlay(board,{coachBoard:true});return play.tracks.filter(track=>POSITIONS.includes(track.id)&&(!focusPlayers.length||focusPlayers.includes(track.id))).map(track=>({id:track.id,index:track.index,path:traveledPath(track,frame.time)})).filter(route=>route.path.length>1);}catch{return [];}});
+  const finalTargets=$derived.by(()=>{if(!showTargets)return [];try{const play=presenting?presentationPlay:compilePlay(board,{coachBoard:true});const final=frameAt(play,play.duration);return POSITIONS.filter(id=>!focusPlayers.length||focusPlayers.includes(id)).map(id=>[id,final.positions[id]]);}catch{return [];}});
   const teachingStatus=$derived(presentationStatus(presentationPlay,frame));
   function enterPresentation(origin='board'){
     try{
-      presentationPlay=compilePlay(board);
+      presentationPlay=compilePlay(board,{coachBoard:true});
       presentationReturn={mode,savingSituation};presentationOrigin=origin;
       stop();playback=createPlayback(presentationPlay,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});
       playback.setSpeed(Number(speed));playback.restart();presenting=true;
@@ -81,20 +83,9 @@
   const movementOptions=$derived(eventOptions(board,movementIndex));
   const movementEvent=$derived(conditionValue(selectedSegments[movementIndex]||{},movementIndex));
   const ball=$derived(frame?.ball || board.battedBall?.destination);
-  const visibleBall=$derived.by(()=>{
-    if(!ball)return null;
-    // Throws follow the engine exactly, even when crossing another token.
-    if(frame?.events?.some(event=>event.type==='ball_fielded'))return frame.ball;
-    if(presenting||mode==='Playback'){
-      if(!frame?.time)return null;
-      const batter=positions.batter,hit=board.battedBall;
-      if(batter&&hit&&!frame.events?.some(event=>event.type==='ball_fielded')&&Math.hypot(hit.start.x-ball.x,hit.start.y-ball.y)<85){
-        const dx=hit.destination.x-hit.start.x,dy=hit.destination.y-hit.start.y,length=Math.hypot(dx,dy);
-        if(length)return {...ball,x:hit.start.x+dx/length*Math.min(85,length),y:hit.start.y+dy/length*Math.min(85,length)};
-      }
-    }
-    return ball;
-  });
+  // Render the shared frame directly across delivery, contact, hit and throws.
+  // A contact offset would jump forward and freeze until the flight caught up.
+  const visibleBall=$derived((presenting||mode==='Playback') ? (frame?.time>0?frame.ball:null) : ball);
   async function request(url,options) {
     const response=await fetch(url,options);const value=await response.json();
     if(!response.ok) throw new Error(value.error || value.message || 'Request failed.');return value;
@@ -103,7 +94,7 @@
   function edit(){stop();confirmed=false;}
   function showSituationForm(show){playback?.pause();savingSituation=show;if(tools)tools.scrollTop=0;}
   function setMode(next){stop();mode=next;movementIndex=0;}
-  function hydrate(value){stop();focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;mode='Setup';selected='P';board=upgradeBoard(value);movementIndex=0;board.offenseNumbers ||= createOffenseNumbers();throwSequence='playSeq';ballType=board.battedBall?.type||'ground_ball';confirmed=false;runnerResults={};taggedUp={};result='single';batterResult='first';outsRecorded=0;const outcome=board.situationMetadata?.playOutcome||board.sourceSituation?.playOutcome;if(outcome){confirmed=outcome.reviewStatus==='ready';result=outcome.result;batterResult=outcome.batterResult;outsRecorded=outcome.outsRecorded;}for(const r of board.situationMetadata?.runnerOutcomes||board.sourceSituation?.runnerOutcomes||[]){runnerResults[r.startingBase]=r.result;taggedUp[r.startingBase]=r.taggedUp;}}
+  function hydrate(value){stop();focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;mode='Setup';selected='P';board=upgradeBoard(value);board.runners.batter ||= clone(BASES_NATIVE.home);movementIndex=0;board.offenseNumbers ||= createOffenseNumbers();throwSequence='playSeq';ballType=board.battedBall?.type||'ground_ball';confirmed=false;runnerResults={};taggedUp={};result=board.running?.result==='out'?'groundout':board.running?.result||'single';batterResult=runningDestination(board,'batter');for(const id of ['first','second','third'].filter(id=>board.runners[id]))runnerResults[id]=runningDestination(board,id);outsRecorded=0;const outcome=board.situationMetadata?.playOutcome||board.sourceSituation?.playOutcome;if(outcome){confirmed=outcome.reviewStatus==='ready';result=outcome.result;batterResult=outcome.batterResult;outsRecorded=outcome.outsRecorded;}for(const r of board.situationMetadata?.runnerOutcomes||board.sourceSituation?.runnerOutcomes||[]){runnerResults[r.startingBase]=r.result;taggedUp[r.startingBase]=r.taggedUp;}}
   onMount(()=>{
     hasEditor=!data.startInLibrary;
     const observer=new ResizeObserver(([entry])=>metrics=tokenMetrics(entry.contentRect.width,entry.contentRect.height));
@@ -162,7 +153,7 @@
   }
   function cancel(){if(drag&&mode==='Setup'){if(board.defenders[drag.id])board.defenders[drag.id]=drag.start;else board.runners[drag.id]=drag.start;}drag=null;frame=null;}
   function destination(event){if(presenting||savingSituation||mode!=='Ball')return;edit();board.battedBall={type:ballType,start:clone(BASES_NATIVE.home),destination:point(event)};}
-  function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]='hold';}
+  function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]=runningDestination(board,base);}
   function appendThrow(id){
     if(board[throwSequence].at(-1)===id){message='Choose a different receiving fielder.';return;}
     if(board[throwSequence].length>=30){message='A sequence can contain up to 30 positions.';return;}
@@ -170,18 +161,27 @@
   }
   function undoThrow(){edit();board[throwSequence]=board[throwSequence].slice(0,-1);}
   function clearThrows(){edit();board[throwSequence]=[];}
+  function changeRunningResult(value){
+    edit();board.running={result:value,destinations:{}};
+    result=value==='out'?'groundout':value;batterResult=runningDestination(board,'batter');
+    for(const id of ['first','second','third'].filter(id=>board.runners[id]))runnerResults[id]=runningDestination(board,id);
+  }
+  function changeRunningDestination(id,value){
+    edit();board.running ||= {result:'single',destinations:{}};board.running.destinations[id]=value;
+    if(id==='batter')batterResult=value;else runnerResults[id]=value;
+  }
   function addMovement(){edit();movementIndex=selectedSegments.length;message='Drag the selected token from the previous endpoint to record its next movement.';}
   function deleteMovement(){edit();const segments=board.movements[selected]||[];segments.splice(movementIndex,1);
     if(segments.length){board.movements[selected]=segments;reconcileSegments(board,selected);if(segments[0].start?.event==='previous_movement')segments[0].start={event:'contact'};}
     else delete board.movements[selected];movementIndex=Math.max(0,Math.min(movementIndex,segments.length-1));message='Movement deleted. Remaining routes reconnected; preview before saving.';
   }
   function changeEvent(value){edit();selectedSegments[movementIndex].start=parseCondition(value);}
-  function controls(){if(!playback){const play=compilePlay(board);playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});frame=frameAt(play,0);playback.setSpeed(Number(speed));}return playback;}
+  function controls(){if(!playback){const play=compilePlay(board,{coachBoard:true});playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});frame=frameAt(play,0);playback.setSpeed(Number(speed));}return playback;}
   function playbackAction(action){try{const controller=controls();mode='Playback';controller[action]();}catch(e){message=e.message;}}
-  function previewIssues(){try{compilePlay(board);return '';}catch(e){return e.message;}}
+  function previewIssues(){try{compilePlay(board,{coachBoard:true});return '';}catch(e){return e.message;}}
   async function save(){busy=true;try{const issues=previewIssues();if(issues)throw new Error(issues);board.situationMetadata=outcomeMetadata();const value=await request('/api/boards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:boardId||undefined,revision,board})});boardId=value.id;revision=value.revision;if(!linkedSituation){pendingSituation=false;cleanSnapshot=editorSnapshot();}message='Board saved.';}catch(e){message=e.message;}finally{busy=false;}}
   function outcomeMetadata(){
-    const original=linkedSituation||board.sourceSituation||{};
+    const original=linkedSituation||board.sourceSituation||board.situationMetadata||{};
     const runnerOutcomes=['first','second','third'].filter(base=>board.runners[base]).map(base=>{
       const previous=original.runnerOutcomes?.find(r=>r.startingBase===base)||{};
       const value=runnerResults[base]||'hold';
@@ -221,6 +221,21 @@
   }catch(e){message=e.message;}finally{busy=false;}}
   function openSituationAfterSubmission(){const restored=situationBaseline||linkedSituation;hydrate(fromSituation(restored));linkedSituation=clone(restored);pendingSituation=false;rationale='';cleanSnapshot=editorSnapshot();}
   function restoreBoard(item){linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';hydrate(item.board);boardId=item.id;revision=item.revision;cleanSnapshot=editorSnapshot();message='Board loaded.';}
+  function importBoard(text){
+    const imported=importBoardFile(text);if(!allowReplace())return false;
+    if(presenting)exitPresentation();
+    hasEditor=true;libraryReturnToMain=false;
+    restoreBoard({board:imported,id:'',revision:0});pendingSituation=true;
+    message='Board imported as a new draft. Review its name and play, then Save Board.';return true;
+  }
+  function exportBoard(){
+    try{
+      const text=exportBoardFile({...board,situationMetadata:outcomeMetadata()});
+      const url=URL.createObjectURL(new Blob([text],{type:'application/json'}));
+      const link=document.createElement('a');link.href=url;link.download=boardFileName(board.title);link.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);message='Board exported.';
+    }catch(error){message=error.message;}
+  }
   async function libraryAction(item,action,name){
     if(action==='new')return newPlay();
     if(!allowReplace())return false;
@@ -268,7 +283,7 @@
     <aside inert={busy} hidden={presenting} class="card board-tools" aria-label="Coach Board tools" bind:this={tools}>
       <section class="board-controls board-save" aria-label="Board details">
     <label>Board name <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
-    <button disabled={busy} onclick={save}>Save Board</button>
+    <button class="save-board" disabled={busy} onclick={save}>Save Board</button><button disabled={busy} onclick={exportBoard}>Export Board</button>
       </section>
   {#if linkedSituation}<p class="board-message">Editing {linkedSituation.displayCode || linkedSituation.key} · {dirty?'Unsaved changes':'Saved'}</p>{/if}
   {#if data.canPublish||linkedSituation}<button class="situation-mode" aria-pressed={savingSituation} aria-controls="situation-conversion" onclick={()=>showSituationForm(!savingSituation)}>{linkedSituation?'Save Situation Changes':'Save as Situation'}</button>{/if}
@@ -285,11 +300,12 @@
   </section>
   {:else}
   <section class="board-controls playback-controls" aria-label="Playback controls"><button onclick={()=>playbackAction('play')} disabled={running}>Play</button><button onclick={()=>playback?.pause()} disabled={!running}>Pause</button><button onclick={()=>playbackAction('restart')}>Restart</button><button onclick={()=>{try{controls().step(-1);mode='Playback';}catch(e){message=e.message;}}}>Previous Step</button><button onclick={()=>{try{controls().step(1);mode='Playback';}catch(e){message=e.message;}}}>Next Step</button><label>Speed <select bind:value={speed} onchange={()=>playback?.setSpeed(Number(speed))}>{#each [0.5,1,2] as value}<option value={value}>{value}×</option>{/each}</select></label></section>
-  <nav class="board-controls" aria-label="Authoring modes">{#each ['Setup','Movement','Ball','Throws'] as item}<button aria-pressed={mode===item} onclick={()=>setMode(item)}>{item}</button>{/each}</nav>
+  <nav class="board-controls" aria-label="Authoring modes">{#each ['Setup','Movement','Running','Ball','Throws'] as item}<button aria-pressed={mode===item} onclick={()=>setMode(item)}>{item}</button>{/each}</nav>
   <section class="board-controls mode-controls" aria-label="Mode controls">
     {#if mode==='Setup'}
       <p>Drag tokens to set starting positions.</p><label>Outs <select bind:value={board.outs} onchange={edit}>{#each [0,1,2] as n}<option value={n}>{n}</option>{/each}</select></label>
-      {#each ['batter','first','second','third'] as base}<label><input type="checkbox" checked={!!board.runners[base]} onchange={e=>runner(base,e.currentTarget.checked)} /> {base}</label>{/each}
+      <p>The batter is always included. Add runners on base below.</p>
+      {#each ['first','second','third'] as base}<label><input type="checkbox" checked={!!board.runners[base]} onchange={e=>runner(base,e.currentTarget.checked)} /> {base}</label>{/each}
     {:else if mode==='Movement'}
       <p>Drag a token along its route. Dotted paths appear as you draw and remain here for review.</p>
       <label>Token <select bind:value={selected} onchange={()=>{stop();movementIndex=0;}}>{#each [...POSITIONS,...Object.keys(board.runners)] as id}<option value={id}>{id}{board.movements[id]?` · ${board.movements[id].length} movements`:''}</option>{/each}</select></label>
@@ -297,7 +313,15 @@
       <div class="button-row"><button disabled={!selectedSegments.length||selectedSegments.length>=MAX_SEGMENTS||movementIndex===selectedSegments.length} onclick={addMovement}>Add Movement</button><button disabled={!selectedSegments[movementIndex]} onclick={deleteMovement}>Delete Movement</button></div>
       {#if selectedSegments[movementIndex]}<label>Start movement <select value={movementEvent} onchange={e=>changeEvent(e.currentTarget.value)}>{#each movementOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>{/if}
       <button disabled={!selectedSegments.length} onclick={()=>{edit();delete board.movements[selected];movementIndex=0;}}>Clear Movement</button><span>Drag again to re-record the selected movement. Later routes reconnect to its endpoint.</span>
-        {:else if mode==='Ball'}
+    {:else if mode==='Running'}
+      <p>Automatic running starts at contact. Custom post-contact routes take precedence. Suggested advances can be changed below.</p>
+      <label>Hit result <select value={board.running?.result||'single'} onchange={e=>changeRunningResult(e.currentTarget.value)}>{#each RUN_RESULTS as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
+      {#each ['batter','first','second','third'].filter(id=>board.runners[id]) as id}
+        <label>{id==='batter'?'Batter destination':`Runner on ${id} destination`} <select disabled={hasCustomRunning(board,id)} value={runningDestination(board,id)} onchange={e=>changeRunningDestination(id,e.currentTarget.value)}>{#each (id==='batter'?['first','second','third','home','out']:id==='first'?['hold','second','third','home','out']:id==='second'?['hold','third','home','out']:['hold','home','out']) as destination}<option value={destination}>{destination}</option>{/each}</select></label>
+        {#if hasCustomRunning(board,id)}<p>{id}: Custom route</p><button onclick={()=>{edit();useAutomaticRunning(board,id);}}>Use automatic running for {id}</button>{/if}
+      {/each}
+      <p>Out shows an attempted advance; it does not determine a putout. Save as Situation outcomes still require your review.</p>
+    {:else if mode==='Ball'}
       <label>Batted-ball type <select bind:value={ballType} onchange={()=>{edit();if(board.battedBall)board.battedBall.type=ballType;}}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label><p>Tap the field to set the destination.</p>
     {:else if mode==='Throws'}
       <label>Sequence to edit <select bind:value={throwSequence}><option value="playSeq">Primary throws</option><option value="playSeq2">Secondary throws</option></select></label>
@@ -306,7 +330,7 @@
       <div class="throw-order" role="group" aria-label="Throw sequence">{#if board[throwSequence].length}{#each board[throwSequence] as id,i}<span>{#if i>0}<span aria-hidden="true">→ </span>{/if}{i+1}. {id}</span>{/each}{:else}<span>No throws yet. Choose the first fielder.</span>{/if}</div>
       <div class="button-row"><button disabled={!board[throwSequence].length} onclick={undoThrow}>Undo Last Throw</button><button disabled={!board[throwSequence].length} onclick={clearThrows}>Clear Throws</button></div>
       <p>Arrows represent defensive throws.</p>
-    {:else}<p>Play demonstrates all recorded movement concurrently with contact, followed by throws.</p>{/if}
+    {:else}<p>Play includes optional pre-pitch movement, the pitch, contact, and throws.</p>{/if}
   </section>
   {#if boardId||linkedSituation?.revision&&data.role==='admin'}<section class="board-controls manage-play" aria-label="Manage play">{#if boardId}<button disabled={busy} onclick={deleteBoard}>Delete Board</button>{/if}{#if linkedSituation?.revision&&data.role==='admin'}<button disabled={busy} onclick={archiveSituation}>Archive Situation</button>{/if}</section>{/if}
     {#if !data.canPublish}<p>Situation publishing permission is required to convert a Board.</p>{/if}
@@ -319,7 +343,7 @@
     <button class="field-surface" aria-label="Set batted-ball destination" tabindex={presenting?-1:0} aria-disabled={presenting} onclick={destination}></button>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true"><defs><marker id="boardThrowArrow" markerWidth="16" markerHeight="12" refX="15" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L15,6 L1,11 L4,6 Z" fill="var(--accent-primary)" /></marker></defs>
       {#if showMovementPaths||(!presenting&&mode==='Movement'&&!savingSituation)}{#each movementPaths as route (`${route.id}-${route.index}`)}<path class="board-movement-path" data-position={route.id} d={route.path.map((p,i)=>`${i?'L':'M'} ${p.x},${p.y}`).join(' ')} fill="none" stroke="#f4f7fb" stroke-width="8" stroke-dasharray="1 20" stroke-linecap="round" style="filter:drop-shadow(0 1px 2px #071722)" opacity="0.85" />{/each}{/if}
-      {#if board.battedBall && frame?.time>0 && !frame.events?.some(event=>event.type==='ball_fielded')}<path class="board-hit-path" d={`M ${board.battedBall.start.x},${board.battedBall.start.y} L ${board.battedBall.destination.x},${board.battedBall.destination.y}`} fill="none" stroke="var(--accent-primary)" stroke-width="8" stroke-dasharray={board.battedBall.type==='ground_ball'?'16 16':undefined} stroke-linecap="round" opacity="0.65" />{/if}
+      {#if board.battedBall && frame?.time>0 && frame.events?.some(event=>event.type==='contact') && !frame.events?.some(event=>event.type==='ball_fielded')}<path class="board-hit-path" d={`M ${board.battedBall.start.x},${board.battedBall.start.y} L ${board.battedBall.destination.x},${board.battedBall.destination.y}`} fill="none" stroke="var(--accent-primary)" stroke-width="8" stroke-dasharray={board.battedBall.type==='ground_ball'?'16 16':undefined} stroke-linecap="round" opacity="0.65" />{/if}
       {#each frame?.arrows || [] as arrow}<path class="seq-route-underlay" d={`M ${arrow.from.x} ${arrow.from.y} L ${arrow.from.x+(arrow.to.x-arrow.from.x)*arrow.progress} ${arrow.from.y+(arrow.to.y-arrow.from.y)*arrow.progress}`} stroke-width="14" /><path class="seq-route-active" d={`M ${arrow.from.x} ${arrow.from.y} L ${arrow.from.x+(arrow.to.x-arrow.from.x)*arrow.progress} ${arrow.from.y+(arrow.to.y-arrow.from.y)*arrow.progress}`} stroke-width="8" marker-end="url(#boardThrowArrow)" />{/each}
     </svg>
     {#each finalTargets as [id,p] (id)}<span class="ghost-target" style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} style:width={`${metrics.defender}px`} style:height={`${metrics.defender}px`} style:font-size={`${metrics.defenderFont}px`} aria-label={`${id} final target`}>{id}</span>{/each}
@@ -336,7 +360,7 @@
   </section>
   {/if}
 </main>
-{#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} />{/if}
+{#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
 <style>
   .focus-picker{position:relative}.focus-picker summary{cursor:pointer;min-height:40px;padding:8px 12px;box-sizing:border-box;border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}.focus-options{position:absolute;bottom:100%;left:0;z-index:10;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-control);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-width:240px}.focus-options button{grid-column:1/-1}.focus-options label{min-height:36px}
   .teaching-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:8px 0}.teaching-tools label{display:flex;align-items:center;gap:6px}
@@ -357,7 +381,7 @@
   .board-save>label,.mode-controls>label:not(:has(input[type=checkbox])),.conversion label{width:100%;display:grid;gap:6px}
   .board-controls input:not([type=checkbox]),.board-controls select{width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary)}
   .board-controls button{min-height:44px}.board-save>button{flex:1}
-  .board-save>button:last-child,.playback-controls>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
+  .board-save>.save-board,.playback-controls>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
   .board-controls p{margin:0;color:var(--text-secondary)}
   nav.board-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--border);padding-top:14px}
   nav button{padding:8px 4px}button[aria-pressed=true]{outline:2px solid var(--accent-primary)}

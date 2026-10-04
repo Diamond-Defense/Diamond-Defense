@@ -16,6 +16,8 @@ export function reconcileSegments(board,id) {
 }
 export function eventOptions(board,index=0) {
   return [
+    {value:'pre_pitch',label:'Before the pitch (optional)'},
+    {value:'pitch_started',label:'During the pitch (optional)'},
     {value:'contact',label:'At contact'},
     ...(index ? [{value:'previous_movement',label:'After previous movement'}] : []),
     {value:'ball_fielded',label:'When ball is fielded'},
