@@ -2105,7 +2105,7 @@
     ['targets', 'Targets, tolerances, and notes'], ['hit', 'Ball landing spot'],
     ['hitType', 'Ball type'], ['playOutcome', 'Play outcome'],
     ['runnerOutcomes', 'Runner outcomes'],
-    ['playSeq', 'Play sequence'], ['seqNote', 'Sequence coaching note'],
+    ['playSeq', 'Play sequence'], ['playSeq2', 'Secondary play sequence'], ['boardAnimation', 'Instructional movement'], ['seqNote', 'Sequence coaching note'],
   ];
   const OUTCOME_ATOMIC_FIELDS = ['runnersOn', 'batterAdvance', 'playOutcome', 'runnerOutcomes'];
   const situationEditor = byId('situationBuilderSubsec');
@@ -2378,25 +2378,9 @@
     if (!['foundational', 'intermediate', 'advanced'].includes(String(snapshot?.difficulty || ''))) {
       add('Choose a valid difficulty.', 'sbDetailsSection');
     }
-    POSITION_IDS.forEach((id) => {
-      const start = snapshot?.starts?.[id];
-      const target = snapshot?.targets?.[id];
-      if (!Number.isFinite(start?.x) || !Number.isFinite(start?.y)) {
-        add(`${id}: set a starting position.`, 'sbTargetsSubsec');
-      } else if (start.x < 0 || start.x > FIELD_WIDTH || start.y < 0 || start.y > FIELD_HEIGHT) {
-        add(`${id}: starting position is outside the field.`, 'sbTargetsSubsec');
-      }
-      if (!Number.isFinite(target?.x) || !Number.isFinite(target?.y)) {
-        add(`${id}: set a target position.`, 'sbTargetsSubsec');
-      } else if (target.x < 0 || target.x > FIELD_WIDTH || target.y < 0 || target.y > FIELD_HEIGHT) {
-        add(`${id}: target is outside the field.`, 'sbTargetsSubsec');
-      }
-      if (!Number.isFinite(Number(target?.tol)) || Number(target?.tol) < 5) {
-        add(`${id}: set a valid target tolerance.`, 'sbTargetsSubsec');
-      }
-      if (!String(target?.notes || target?.note || '').trim()) {
-        add(`${id}: add a coaching note.`, 'sbTargetsSubsec');
-      }
+    issues.push(...window._diqSituationAuthoring.situationPlayIssues(snapshot));
+    POSITION_IDS.forEach(id=>{
+      if(!String(snapshot?.targets?.[id]?.notes||snapshot?.targets?.[id]?.note||'').trim())add(`${id}: add a coaching note.`, 'sbTargetsSubsec','warning');
     });
     for (let i = 0; i < POSITION_IDS.length; i += 1) {
       for (let j = i + 1; j < POSITION_IDS.length; j += 1) {
@@ -2408,20 +2392,11 @@
         }
       }
     }
-    if (!Number.isFinite(snapshot?.hit?.x) || !Number.isFinite(snapshot?.hit?.y)) {
-      add('Set the ball landing spot.', 'sbBallHitSubsec');
-    } else if (snapshot.hit.x < 0 || snapshot.hit.x > FIELD_WIDTH || snapshot.hit.y < 0 || snapshot.hit.y > FIELD_HEIGHT) {
-      add('The ball landing spot is outside the field.', 'sbBallHitSubsec');
-    }
     const outcomeIssues = window._diqValidateSituationOutcomes?.(snapshot) || [];
     outcomeIssues.forEach((issue) => add(issue.message, issue.section || 'sbBallHitSubsec', issue.severity || 'error'));
     if (snapshot?.playOutcome?.reviewStatus === 'needs_review' && outcomeIssues.length === 0) {
       add('Confirm the converted play and runner outcomes before publishing.', 'sbBallHitSubsec');
     }
-    const sequence = Array.isArray(snapshot?.playSeq) ? snapshot.playSeq : [];
-    if (sequence.length === 1) add('A play sequence needs at least two positions, or it should be empty.', 'seqSubsec');
-    if (new Set(sequence).size !== sequence.length) add('Remove duplicate positions from the play sequence.', 'seqSubsec');
-    if (sequence.some((id) => !POSITION_IDS.includes(id))) add('The play sequence contains an invalid position.', 'seqSubsec');
     return issues;
   }
 
@@ -2770,7 +2745,7 @@
   }
   function openSituationEditorPane(){
     refreshPublicationUsage();
-    if(editorRole==='admin'){adminCard.appendChild(adminEditorMount.closest('[data-admin-view]'));adminWorkspace.classList.add('hidden');fieldCard?.classList.remove('hidden');}
+    if(editorRole==='admin'){const view=adminEditorMount.closest('[data-admin-view]');adminCard.appendChild(view);view.classList.remove('hidden');adminCard.classList.remove('hidden');adminUnlocked=true;if(adminStatus)adminStatus.textContent='unlocked';adminWorkspace.classList.add('hidden');fieldCard?.classList.remove('hidden');}
     document.body.classList.remove('situation-library-open');
     document.body.classList.add('situation-editing-open');
     focusEditorSection('sbDetailsSection');
@@ -3029,7 +3004,7 @@
   }
 
   function ensureReadyToSave() {
-    const snapshot = currentSnapshot();
+    const snapshot = window._diqSituationAuthoring.syncSituationAnimation(currentSnapshot());
     if (!snapshot) {
       setWorkflowStatus('Select a situation first.', 'error');
       return null;
@@ -3148,7 +3123,14 @@
       document.body.appendChild(bar);
       window._diqSetEditorMode?.(null);
     } else if (editorRole) {
+      const baseline = clone(editorBaseline);
+      const dirty = editorDirty;
       window._diqSetEditorMode?.(editorRole);
+      if (editorRole === 'coach') window._diqSetCoachWorkspaceMode?.('proposals');
+      editorBaseline = baseline;
+      editorDirty = dirty;
+      renderEditorState(currentSnapshot());
+      openSituationEditorPane();
     }
   }
 
@@ -3282,6 +3264,39 @@
   coachRationale?.addEventListener('input', () => renderEditorState(currentSnapshot()));
   byId('tolTargetSel')?.addEventListener('change', () => renderPositionCompleteness(currentSnapshot()));
   byId('saveSituationBtn')?.addEventListener('click', () => setTimeout(() => markEditorClean(currentSnapshot()), 0));
+
+  let authoringTransfer = false;
+  function transferToBoard(destination){
+    try {
+      const draft=window._diqSituationAuthoring.syncSituationAnimation(currentSnapshot());
+      window._diqSituationAuthoring.writeHandoff(sessionStorage,window.__DIQ_AUTH_USER__?.id,destination,draft,editorBaseline,coachRationale?.value||'');
+      authoringTransfer=true;
+      window.location.assign('/coach-board');
+    } catch(error) { setWorkflowStatus(error.message,'error'); }
+  }
+  byId('editInCoachBoardBtn')?.addEventListener('click',()=>transferToBoard('board'));
+  byId('presentSituationBtn')?.addEventListener('click',()=>transferToBoard('present'));
+  window.addEventListener('beforeunload',event=>{
+    if(editorRole&&editorDirty&&!authoringTransfer){event.preventDefault();event.returnValue='';}
+  });
+  window._diqRestoreAuthoringDraft = () => {
+    const user=window.__DIQ_AUTH_USER__;
+    if(!user||!['coach','admin'].includes(user.role))return;
+    const transfer=window._diqSituationAuthoring.readHandoff(sessionStorage,user.id,'details');
+    if(!transfer)return;
+    if(user.role==='coach'){
+      window._diqSetEditorMode?.('coach');
+      window._diqSetCoachWorkspaceMode?.('proposals');
+    }else window._diqSituationEditorOpened?.('admin');
+    setSituation(transfer.situation.key,clone(transfer.situation));
+    editorBaseline=clone(transfer.baseline||transfer.situation);
+    editorDirty=!transfer.situation.revision||!sameValue(transfer.situation,editorBaseline);
+    if(coachRationale)coachRationale.value=transfer.rationale||'';
+    renderEditorState(currentSnapshot());
+    openSituationEditorPane();
+    window._diqSituationAuthoring.clearHandoff(sessionStorage);
+    setWorkflowStatus('Situation draft restored. Switching editors did not publish changes.','success');
+  };
 
   window._diqMarkSituationDirty = (snapshot, role) => {
     if (!editorRole || role !== editorRole) return;

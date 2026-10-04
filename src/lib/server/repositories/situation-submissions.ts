@@ -1,11 +1,8 @@
-import { normalizeSuggestedDivisions } from '$lib/domain/situation-identity';
-import { normalizeAudience, BALL_LOCATIONS } from '$lib/domain/situation-identity';
 import type { Situation } from '$lib/domain/models';
 import {
   normalizeDifficulty,
   normalizeTeachingCategories,
 } from '$lib/domain/situation-metadata';
-import { normalizeSituationOutcomes } from '$lib/domain/situation-outcomes';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 import { writeAudit } from './audit';
 import {
@@ -13,7 +10,7 @@ import {
   RecordValidationError,
   RevisionConflictError,
 } from './errors';
-import { SqliteSituationRepository, type SituationRecord } from './situations';
+import { SqliteSituationRepository, validateSituation, type SituationRecord } from './situations';
 
 export type SituationSubmissionStatus =
   | 'pending'
@@ -60,49 +57,7 @@ export interface SituationSubmissionRecord {
 }
 
 function validateSubmissionSituation(input: Situation): Situation {
-  let suggestedDivisions;
-  try { suggestedDivisions=normalizeSuggestedDivisions(input?.suggestedDivisions); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid divisions.'); }
-  let audience;
-  try { audience = normalizeAudience(input?.audience); } catch(error) { throw new RecordValidationError(error instanceof Error ? error.message : 'Invalid audience.'); }
-  if (input.ballLocation && !(BALL_LOCATIONS as readonly string[]).includes(input.ballLocation)) throw new RecordValidationError('Choose a valid ball location.');
-  const key = String(input?.key || '').trim();
-  const title = String(input?.title || '').trim();
-  const category = String(input?.category || '').trim();
-  let difficulty: Situation['difficulty'];
-  let teachingCategories: ReturnType<typeof normalizeTeachingCategories>;
-  try {
-    difficulty = normalizeDifficulty(input?.difficulty);
-    teachingCategories = normalizeTeachingCategories(input);
-  } catch (error) {
-    throw new RecordValidationError(error instanceof Error ? error.message : 'Situation metadata is invalid.');
-  }
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(key)) {
-    throw new RecordValidationError(
-      'Situation key must use 2–80 letters, numbers, hyphens, or underscores.',
-    );
-  }
-  if (!title || title.length > 120) {
-    throw new RecordValidationError(
-      'Situation name is required and must be 120 characters or fewer.',
-    );
-  }
-  if (!category || category.length > 60) {
-    throw new RecordValidationError(
-      'Situation category is required and must be 60 characters or fewer.',
-    );
-  }
-  let outcomes: ReturnType<typeof normalizeSituationOutcomes>;
-  try {
-    outcomes = normalizeSituationOutcomes(input);
-  } catch (error) {
-    throw new RecordValidationError(error instanceof Error ? error.message : 'Situation outcomes are invalid.');
-  }
-  if (outcomes.playOutcome.reviewStatus === 'needs_review') {
-    throw new RecordValidationError(
-      'Confirm the play and runner outcomes before submitting this situation.',
-    );
-  }
-  return { ...input, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
+  return validateSituation(input);
 }
 
 function mapRow(row: SubmissionRow): SituationSubmissionRecord {
@@ -208,11 +163,13 @@ export class SqliteSituationSubmissionRepository {
       situation.key,
       true,
     );
+    if(published?.displayCode)situation.displayCode=published.displayCode;
     if (published && published.active === false) {
       throw new RecordValidationError(
         'This situation is archived. An administrator must restore it before changes can be proposed.',
       );
     }
+    if(published && (situationInput as SituationRecord).revision !== undefined && Number((situationInput as SituationRecord).revision)!==published.revision)throw new RevisionConflictError();
     const existingPending = await this.database.one<{ id: string }>(
       `SELECT id FROM situation_submissions
         WHERE submitted_by = ?1 AND situation_key = ?2 AND status = 'pending'
@@ -315,7 +272,7 @@ export class SqliteSituationSubmissionRepository {
 
     const selectableFields = [
       'title', 'desc', 'audience', 'suggestedDivisions', 'ballLocation', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit',
-      'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'seqNote',
+      'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'playSeq2', 'seqNote', 'boardAnimation',
     ];
     const acceptedFields = Array.from(new Set(acceptedFieldsInput))
       .filter((field) => selectableFields.includes(field));

@@ -11,11 +11,11 @@
   /* Gameplay is intentionally supported only on tablet-landscape and larger
      viewports. This replaces phone-specific shrinking with a clear boundary. */
   @media (max-width:1023px), (orientation:portrait){
-    body{min-height:100dvh;overflow:hidden}
-    body header,
-    body main,
-    body .playbook-browser-overlay,
-    body .modalOverlay{display:none!important}
+    body:has(#screenSizeGate){min-height:100dvh;overflow:hidden}
+    body:has(#screenSizeGate) header,
+    body:has(#screenSizeGate) main,
+    body:has(#screenSizeGate) .playbook-browser-overlay,
+    body:has(#screenSizeGate) .modalOverlay{display:none!important}
     body .screen-size-gate{
       position:fixed;
       inset:0;
@@ -2678,19 +2678,19 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 }
 .training-help .field-notice.is-visible{transform:none}
 .training-help .field-notice::before{left:0;background:var(--accent-primary);color:var(--text-on-accent);box-shadow:none}
-.training-board .chip:is(.Battery,.Infield,.Outfield){
+:is(.training-board,.board-field) .chip:is(.Battery,.Infield,.Outfield){
   color:var(--baseball-line);border-color:var(--defender-highlight);
   background-color:var(--defender);
   background-image:radial-gradient(circle at 35% 25%,var(--defender),#0b2442 72%);
   text-shadow:0 1px 2px #000;box-shadow:0 0 0 1px #071321,0 4px 8px rgb(0 0 0 / 65%),var(--glow-cool);
 }
-.training-board .chip::before{opacity:.2}
-.training-board .chip.seq-locked{outline-color:var(--accent-primary-hover)}
-.training-board :is(.runner,.baseRunner,.movingRunner){
+:is(.training-board,.board-field) .chip::before{opacity:.2}
+:is(.training-board,.board-field) .chip.seq-locked{outline-color:var(--accent-primary-hover)}
+:is(.training-board,.board-field) :is(.runner,.baseRunner,.movingRunner){
   border-color:var(--runner-highlight);background:var(--runner);
   box-shadow:0 0 0 2px var(--field-dark),0 0 12px rgb(199 165 102 / 40%);
 }
-.training-board :is(.runner,.baseRunner) .rlabel{color:var(--text-on-accent);text-shadow:none}
+:is(.training-board,.board-field) :is(.runner,.baseRunner) .rlabel{color:var(--text-on-accent);text-shadow:none}
 .training-board .tgt{
   border-color:var(--target);background:rgb(8 15 28 / 28%);
   box-shadow:0 0 0 3px var(--app-background),inset 0 0 0 2px var(--app-background);
@@ -3082,8 +3082,8 @@ body.player-experience .training-panel .context-bar>.card:not(.hidden){backgroun
 body.player-experience .training-board .tgt:not(.selected){box-shadow:none;border-width:2px}
 body.player-experience .training-board .tgt .tgt-label{font-size:0;padding:2px 4px;min-width:12px}
 body.player-experience .training-board .tgt .tgt-label::before{font-size:12px}
-body.player-experience .training-board .chip:not(.locked){cursor:grab}
-body.player-experience .training-board .chip:not(.locked):active{cursor:grabbing;outline:2px solid var(--accent-primary)}
+body.player-experience :is(.training-board,.board-field) .chip:not(.locked){cursor:grab}
+body.player-experience :is(.training-board,.board-field) .chip:not(.locked):active{cursor:grabbing;outline:2px solid var(--accent-primary)}
 body.player-experience .training-panel #playbookRail{display:none;position:static;margin:0;min-width:0}
 body.player-experience .training-panel #playbookRail.is-open{display:block}
 body.player-experience .training-panel #playbookRail .playbook-rail{position:static;inset:auto;width:100%;max-width:none;max-height:38dvh;overflow:auto;box-sizing:border-box;visibility:visible;opacity:1;transform:none;padding:10px;background:var(--surface);box-shadow:none;border:1px solid var(--border)}
@@ -3168,22 +3168,22 @@ body.player-experience.player-before-start .player-unchecked{display:none}
 }
 
 /* Stable offensive chips and secondary fielding-position numbers. */
-.training-board :is(.runner,.baseRunner,.movingRunner){
+:is(.training-board,.board-field) :is(.runner,.baseRunner,.movingRunner){
  border-radius:50%!important;transform:translate(-50%,-50%)!important;box-sizing:border-box;
  border:2px solid var(--runner-highlight);background:var(--runner);color:var(--text-on-accent);
  pointer-events:none;box-shadow:0 0 0 1px var(--field-dark),0 2px 5px rgb(0 0 0 / 35%);
 }
-.training-board :is(.runner,.baseRunner,.movingRunner) .rlabel{position:absolute;inset:0;display:grid;place-items:center;transform:none!important;color:var(--text-on-accent);font-weight:800;line-height:1;text-shadow:none}
-.training-board .chip[data-fielding-number]{padding:0;box-sizing:border-box}
+:is(.training-board,.board-field) :is(.runner,.baseRunner,.movingRunner) .rlabel{position:absolute;inset:0;display:grid;place-items:center;transform:none!important;color:var(--text-on-accent);font-weight:800;line-height:1;text-shadow:none}
+:is(.training-board,.board-field) .chip[data-fielding-number]{padding:0;box-sizing:border-box}
 .review-runner-number{fill:var(--text-on-accent);font-size:27px;text-anchor:middle;font-weight:800;dominant-baseline:central}
 
 /* Player layout polish: consistent navigation and a compact action hierarchy. */
-body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn){
+body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn,#coachBoardLink){
  min-height:40px;padding:8px 12px;border:1px solid var(--border-emphasis);
  border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);
  box-shadow:none;transition:background-color .15s ease,color .15s ease,border-color .15s ease;
 }
-body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn):is(:hover,:focus-visible,[aria-expanded="true"]):not(:disabled),
+body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn,#coachBoardLink):is(:hover,:focus-visible,[aria-expanded="true"]):not(:disabled),
 body.player-experience:has(#practiceWorkspace:not(.hidden)) .training-navigation #practiceToggle:not(:disabled){
  background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);box-shadow:none;
 }
@@ -3201,7 +3201,7 @@ body.player-experience .training-actions :is(#startBtn,#checkBtn,#continueBtn,#v
 body.player-experience .training-actions #watchSolutionBtn{order:5}
 body.player-experience .training-panel:has(#playbookRail.is-open)>.player-step-label{display:none}
 @media(prefers-reduced-motion:reduce){
- body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn){transition:none}
+ body.player-experience .training-navigation :is(#playbookBrowserToggle,#randomSitBtn,#practiceToggle,#playbookToggle,#staffToolsBtn,#coachBoardLink){transition:none}
 }
 
 
@@ -3209,7 +3209,7 @@ body.player-experience .training-board .tgt.selectable{cursor:pointer}
 body.player-experience .training-board .tgt.selected{outline:3px solid var(--accent-primary);outline-offset:4px;border-color:var(--accent-primary);box-shadow:none;animation:none}
 
 /* Gold offensive chips stay visible above defenders without intercepting dragging. */
-.training-board :is(.runner,.baseRunner,.movingRunner){z-index:9;pointer-events:none}
+:is(.training-board,.board-field) :is(.runner,.baseRunner,.movingRunner){z-index:9;pointer-events:none}
 
 /* Preserve the original board coordinates and the permanent artwork’s natural colors. */
 .training-board #fieldImg{aspect-ratio:3200 / 2133;object-fit:fill}
@@ -3228,7 +3228,7 @@ body.player-experience .training-board .tgt .tgt-label{font-size:12px;padding:3p
 body.player-experience .training-board .tgt.show-label .tgt-label{display:block}
 body.player-experience .training-board .tgt.good .tgt-label::before{color:var(--target-correct)}
 body.player-experience .training-board .tgt.bad .tgt-label::before{color:var(--target-incorrect)}
-.training-board .chip[data-fielding-number]::after{content:none}
+:is(.training-board,.board-field) .chip[data-fielding-number]::after{content:none}
 
 /* Throw playback uses the same brass and ivory as the field and controls. */
 .training-board{--dd-route:var(--accent-primary);--dd-route-edge:var(--field-dark)}

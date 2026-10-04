@@ -14,9 +14,10 @@ test('identity normalizes names and default variants while distinguishing staff 
   expect(situationIdentity({...fixture,audience:{teamId:'black'}})).toBe(situationIdentity(fixture));
   expect(situationIdentity({...fixture,audience:{baseDistance:90}})).toBe(situationIdentity(fixture));
 });
-test('retired metadata is ignored and staff labels distinguish variants', () => {
+test('retired metadata and staff labels preserve stable record identity', () => {
   expect(normalizeAudience({baseDistance:90,pitchingDistance:60.5,ageMin:13,teamId:'old'})).toEqual({});
-  expect(situationIdentity({...fixture,audience:{staffVariant:'Alternate approach'}})).not.toBe(situationIdentity(fixture));
+  expect(situationIdentity({...fixture,audience:{staffVariant:'Alternate approach'}})).toBe(situationIdentity(fixture));
+  expect(situationIdentity({...fixture,key:'different-record'})).not.toBe(situationIdentity(fixture));
   expect(() => normalizeAudience({staffVariant:'x'.repeat(81)})).toThrow();
 });
 

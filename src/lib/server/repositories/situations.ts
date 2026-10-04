@@ -1,3 +1,4 @@
+import { situationPlayIssues, syncSituationAnimation } from '$lib/plays/authoring.js';
 import { normalizeSuggestedDivisions } from '$lib/domain/situation-identity';
 import { normalizeAudience, situationIdentity, variationGroup, BALL_LOCATIONS } from '$lib/domain/situation-identity';
 import type { Situation } from '$lib/domain/models';
@@ -98,6 +99,9 @@ export function validateSituation(situation: Situation): Situation {
   }
   if (situation.variationNumber !== undefined && (!Number.isSafeInteger(situation.variationNumber) || situation.variationNumber < 1 || situation.variationNumber > 1000000)) throw new RecordValidationError('Invalid variation number.');
   if (situation.variationSourceKey !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(situation.variationSourceKey)) throw new RecordValidationError('Invalid variation source.');
+  const playIssues=situationPlayIssues(situation);
+  if(playIssues.length)throw new RecordValidationError(playIssues.map(issue=>issue.message).join('\n'));
+  situation=syncSituationAnimation(situation);
   const { displayCode: _clientDisplayCode, ...editableSituation } = situation;
   return { ...editableSituation, variationTagged: situation.variationTagged === true, suggestedDivisions, audience, key, title, category, difficulty, ...teachingCategories, ...outcomes } as Situation;
 }

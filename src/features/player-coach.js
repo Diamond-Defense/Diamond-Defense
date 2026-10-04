@@ -335,22 +335,7 @@ window.DIQ_TEACHING_CATEGORIES = Object.freeze([
 const POS_IDS = Object.freeze(['P','C','1B','2B','SS','3B','LF','CF','RF']);
 
 /** Don’t let defaults accidentally change at runtime */
-const DEFAULT_STARTS = Object.freeze({
-  P:{x:1570,y:1240},  C:{x:1578,y:1833},
-  '1B':{x:2081,y:1172}, '2B':{x:1934,y:941}, SS:{x:1202,y:935}, '3B':{x:1047,y:1170},
-  LF:{x:750,y:679},  CF:{x:1570,y:476}, RF:{x:2385,y:683}
-});
-Object.freeze(DEFAULT_STARTS.P); Object.freeze(DEFAULT_STARTS.C);
-Object.freeze(DEFAULT_STARTS['1B']); Object.freeze(DEFAULT_STARTS['2B']);
-Object.freeze(DEFAULT_STARTS.SS); Object.freeze(DEFAULT_STARTS['3B']);
-Object.freeze(DEFAULT_STARTS.LF); Object.freeze(DEFAULT_STARTS.CF); Object.freeze(DEFAULT_STARTS.RF);
-
-const IMG_W=3200, IMG_H=2133;
-const DEFAULT_TOL=69;
-const HOME_NATIVE = { x:1577, y:1734 };
-const BASES_NATIVE = {
-  home:{x:1577,y:1734}, first:{x:2170,y:1304}, second:{x:1572,y:854}, third:{x:962,y:1305}
-};
+const { DEFAULT_STARTS, IMG_W, IMG_H, DEFAULT_TOL, HOME_NATIVE, BASES_NATIVE } = window._diqFieldGeometry;
 
 const TIMER_START_SECS = 60;
 let _timerId = null;
@@ -4086,6 +4071,8 @@ function wireSeqBuilderOnce(){
 
 // Remove any in-progress Phase 2 sequence-throw visualization (ball + trail + RAF)
 function cleanupSeqThrowViz(){
+  wrap?.querySelector('.shared-solution-trail')?.remove();
+  _sharedSequencePlayback?.dispose();
   try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
   _seqAnimRaf = null;
 
@@ -4569,178 +4556,27 @@ function pulseChip(id){
   setTimeout(()=> rec.el?.classList?.remove('correctPulse'), 260);
 }
 
-/** Animate a high-contrast strategy route from A→B and move the real ball along it. */
-function animateThrowLeg(fromPt, toPt, _color, visualOffset){
-  return new Promise(function(resolve){
-    const trail = ensureSeqTrail();
-    const svg   = trail.querySelector('svg');
-    const svgNS = 'http://www.w3.org/2000/svg';
-
-    const ROUTE_COLOR = 'var(--accent-primary)';
-    const LINE_WIDTH = clamp(Math.round(Math.min(imgRect.width, imgRect.height) * 0.0035), 2.5, 4);
-
-    function getOrMakeMarker(){
-      const id = 'diamondDefenseRouteArrow';
-      let m = svg.querySelector(`#${id}`);
-      if (m) return m;
-
-      let defs = svg.querySelector('defs');
-      if (!defs){
-        defs = document.createElementNS(svgNS, 'defs');
-        svg.appendChild(defs);
-      }
-
-      m = document.createElementNS(svgNS, 'marker');
-      m.setAttribute('id', id);
-      m.setAttribute('markerUnits', 'userSpaceOnUse');
-      m.setAttribute('markerWidth', '16');
-      m.setAttribute('markerHeight', '12');
-      m.setAttribute('refX', '15');
-      m.setAttribute('refY', '6');
-      m.setAttribute('orient', 'auto');
-
-      const tri = document.createElementNS(svgNS, 'path');
-      tri.setAttribute('d', 'M1,1 L15,6 L1,11 L4,6 Z');
-      tri.style.fill = ROUTE_COLOR;
-      tri.style.stroke = 'none';
-      tri.style.strokeWidth = '1';
-      m.appendChild(tri);
-      defs.appendChild(m);
-      return m;
-    }
-
-    const marker = getOrMakeMarker();
-
-    // Offset duplicate legs, then trim the route so neither line nor arrowhead
-    // covers the throwing or receiving player chip.
-    const off = visualOffset || { x:0, y:0 };
-    const rawA = { x: fromPt.x + off.x, y: fromPt.y + off.y };
-    const rawB = { x: toPt.x   + off.x, y: toPt.y   + off.y };
-    const dx = rawB.x - rawA.x;
-    const dy = rawB.y - rawA.y;
-    const routeLength = Math.hypot(dx, dy) || 1;
-    const ux = dx / routeLength;
-    const uy = dy / routeLength;
-    const chipRadius = Math.max(11, CHIP_PX / 2);
-    const startClearance = chipRadius + 5;
-    const endClearance = chipRadius + 10;
-    const canTrim = routeLength > startClearance + endClearance + 12;
-    const A = canTrim
-      ? { x: rawA.x + ux * startClearance, y: rawA.y + uy * startClearance }
-      : rawA;
-    const B = canTrim
-      ? { x: rawB.x - ux * endClearance, y: rawB.y - uy * endClearance }
-      : rawB;
-
-    const route = `M ${A.x},${A.y} L ${B.x},${B.y}`;
-    const underlay = document.createElementNS(svgNS, 'path');
-    underlay.setAttribute('d', route);
-    underlay.classList.add('seq-route-underlay');
-    underlay.style.strokeWidth = String(LINE_WIDTH + 2);
-    svg.appendChild(underlay);
-
-    const path = document.createElementNS(svgNS, 'path');
-    path.setAttribute('d', route);
-    path.setAttribute('marker-end', `url(#${marker.id})`);
-    path.classList.add('seq-route-active');
-    path.style.strokeWidth = String(LINE_WIDTH);
-    svg.appendChild(path);
-
-    const pathLength = Math.max(1, path.getTotalLength());
-    path.style.strokeDasharray = String(pathLength);
-    path.style.strokeDashoffset = String(pathLength);
-
-    // move the actual ball
-    if (ballEl){
-      ballEl.style.display = 'block';
-      ballEl.style.left = A.x + 'px';
-      ballEl.style.top  = A.y + 'px';
-      ballEl.style.zIndex = '10';
-    }
-
-    const dist = Math.hypot(B.x - A.x, B.y - A.y);
-    const duration = clamp(420 + dist * 0.45, 380, 1100);
-
-    const t0 = playNow();
-    function step(now){
-      const t = clamp((now - t0) / duration, 0, 1);
-      const e = 1 - Math.pow(1 - t, 3);
-      path.style.strokeDashoffset = String(pathLength * (1 - e));
-      if (t < 1){
-        if (ballEl){
-          ballEl.style.left = (A.x + (B.x - A.x) * e) + 'px';
-          ballEl.style.top  = (A.y + (B.y - A.y) * e) + 'px';
-        }
-        _seqAnimRaf = requestPlayFrame(step);
-      } else {
-        if (ballEl){
-          ballEl.style.left = B.x + 'px';
-          ballEl.style.top  = B.y + 'px';
-        }
-        resolve();
-      }
-    }
-    _seqAnimRaf = requestPlayFrame(step);
-  });
-}
-
-
 /** Animate throws along the provided order of POS_IDS.
- *  Uses distinct colors and offsets duplicate legs to avoid stacking. */
+ *  Uses shared event timing and offsets duplicate legs to avoid stacking. */
 async function animateSequenceThrows(order){
-  try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
-  _seqAnimRaf = null;
-
-  var pts = (order || [])
-    .map(function(id){ return { id:id, pt:getCssPointForPosId(id) }; })
-    .filter(function(x){ return !!x.pt; });
-  if (pts.length < 2) return;
-
-  var trail = ensureSeqTrail();
-  var svg = trail.querySelector('svg');
-  svg.setAttribute('viewBox', '0 0 ' + imgRect.width + ' ' + imgRect.height);
-
-  if (ballEl){
-    ballEl.style.display = 'block';
-    ballEl.style.zIndex = '10';
-    ballEl.style.left = pts[0].pt.x + 'px';
-    ballEl.style.top  = pts[0].pt.y + 'px';
-  }
-
-  var seenPairs = {}; // track duplicates
-
-  pulseChip(pts[0].id);
-
-  var chain = Promise.resolve();
-  for (var i = 0; i < pts.length - 1; i++){
-    (function(i){
-      var a = pts[i];
-      var b = pts[i + 1];
-
-      // Key is undirected pair so A→B and B→A share
-      var key = [a.id, b.id].sort().join('|');
-      var count = seenPairs[key] || 0;
-      seenPairs[key] = count + 1;
-
-      // Compute perpendicular offset
-      var dx = b.pt.x - a.pt.x;
-      var dy = b.pt.y - a.pt.y;
-      var len = Math.sqrt(dx*dx + dy*dy) || 1;
-      var nx = -dy / len;
-      var ny =  dx / len;
-      var offsetPx = 8 * count; // 8px per duplicate
-      var vOff = { x: nx * offsetPx, y: ny * offsetPx };
-
-      chain = chain
-        .then(function(){ pulseChip(a.id); return animateThrowLeg(a.pt, b.pt, null, vOff); })
-        .then(function(){ pulseChip(b.id); return new Promise(r => playDelay(r, 120)); });
-    })(i);
-  }
-
-  chain.finally(function(){
-    try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
-    _seqAnimRaf = null;
-  });
+  _sharedSequencePlayback?.dispose();
+  const board=window._diqNewBoard();
+  board.playSeq=(order||[]).filter(id=>POS_IDS.includes(id));
+  if(board.playSeq.length<2)return;
+  for(const id of POS_IDS)board.defenders[id]={...tokens.get(id)?.pos||DEFAULT_STARTS[id]};
+  const play=window._diqPlayAnimation.compilePlay(board);
+  const svg=ensureSeqTrail().querySelector('svg');
+  if(ballEl){const p=nativeToCssPoint(board.defenders[board.playSeq[0]]);ballEl.style.display='block';ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
+  const pulsed=new Set();
+  _sharedSequencePlayback=window._diqPlayAnimation.createPlayback(play,frame=>{
+    svg.setAttribute('viewBox',`0 0 ${imgRect.width} ${imgRect.height}`);
+    window._diqPaintThrowFrame(svg,frame.arrows,nativeToCssPoint);
+    if(frame.ball&&ballEl){const p=nativeToCssPoint(frame.ball);ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
+    for(const event of frame.events)if(event.throwIndex&&!pulsed.has(event.id)){
+      pulsed.add(event.id);const leg=play.throws[event.throwIndex-1];pulseChip(event.type==='throw_started'?leg.fromId:leg.toId);
+    }
+  },()=>{}, {now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,reducedMotion:getPlayAnimationDuration()===0});
+  _sharedSequencePlayback.play();
 }
 
 

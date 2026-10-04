@@ -23,7 +23,9 @@ export const POST: RequestHandler = async event => {
       { sql: `DELETE FROM practice_assignments WHERE id IN (${slots}) AND (SELECT COUNT(*) FROM practice_assignments WHERE id IN (${slots}) AND ${eligible})=${ids.length}`, params: ids },
       { sql: 'INSERT INTO audit_log(id,actor_user_id,action,entity_type,entity_id,before_json,after_json,created_at) SELECT ?1,?2,?3,?4,?5,?6,NULL,?7 WHERE changes()>0', params: [crypto.randomUUID(),user.id,'delete_permanently','assignments',ids.join(','),JSON.stringify(records),new Date().toISOString()] },
     ]);
-    if (removed.changes !== ids.length) return json({ error: 'Assignments changed. Refresh the list and try again.' }, { status: 409 });
-    return json({ ok: true, deleted: removed.changes });
+    // D1 changes includes cascaded recipient/progress deletions. The guarded
+    // parent DELETE is all-or-none, so any positive result deleted every selected parent.
+    if (!removed.changes) return json({ error: 'Assignments changed. Refresh the list and try again.' }, { status: 409 });
+    return json({ ok: true, deleted: ids.length });
   } catch(error) { return repositoryErrorResponse(error); }
 };

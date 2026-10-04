@@ -103,9 +103,9 @@ test.describe('release readiness', () => {
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
     await page.locator('#playerBtn').click();
-    await page.locator('#accountLogoutBtn').click();
+    await Promise.all([page.waitForEvent('load'),page.locator('#accountLogoutBtn').click()]);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
-    expect(await page.evaluate(async () => (await fetch('/api/results/me')).status)).toBe(401);
+    expect((await page.request.get('/api/results/me')).status()).toBe(401);
   });
 
   test('coach reports load while administrator routes remain protected', async ({ page }) => {

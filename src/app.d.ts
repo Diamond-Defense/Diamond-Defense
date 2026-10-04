@@ -9,6 +9,7 @@ declare global {
 
   interface Window {
     __DIQ_READY__?: Promise<void>;
+    _diqRestoreAuthoringDraft?: () => void;
   }
 }
 

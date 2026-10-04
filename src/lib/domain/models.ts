@@ -90,7 +90,18 @@ export interface SituationAudience {
   staffVariant?: string;
 }
 
+export interface PlayMovementSegment {
+  path: Point[];
+  start?: {event:'contact'|'previous_movement'|'ball_fielded'|'throw_started'|'throw_received';throwIndex?:number};
+}
+export interface SituationAnimation {
+  version: 1 | 2;
+  movements: Partial<Record<PositionId | 'batter' | StartingBase, PlayMovementSegment[]>>;
+  battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point} | null;
+}
 export interface Situation {
+  /** Optional instructional geometry/events; never part of correctness scoring. */
+  boardAnimation?: SituationAnimation;
   variationNumber?: number;
   variationTagVersion?: number;
   variationSourceKey?: string;

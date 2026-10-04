@@ -17,6 +17,8 @@ let _allTargetsCorrect = false;
 // moving tokens here never changes the recorded Phase 1 score.
 let _solutionReview = null;
 let _solutionAnimationFrame = null;
+let _sharedSolutionPlayback = null;
+let _sharedSequencePlayback = null;
 let _solutionAnimationRun = 0;
 
 // Phase 1 (chip placement) summary for the most recently completed round
@@ -44,16 +46,13 @@ let ballSvg=null, ballPath=null, ballEl=null, hitMarker=null;
 let animReq=null;
 
 let liveRunners = { first:false, second:false, third:false };
-const FIELDING_NUMBERS = {P:1,C:2,'1B':3,'2B':4,'3B':5,SS:6,LF:7,CF:8,RF:9};
+const { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, MARKER_SIZES } = window._diqTokenPresentation;
 const offenseNumbersBySituation = new Map();
 let runnerIdentityAtBase = {first:'first',second:'second',third:'third'};
 let runnersAtDestination = new Set();
 function offenseNumbers(key=currentSituation?.key || 'default'){
   if(!offenseNumbersBySituation.has(key)){
-    const pool = Array.from({length:90},(_,i)=>i+10);
-    const picked = [];
-    for(let i=0;i<4;i++) picked.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
-    offenseNumbersBySituation.set(key,Object.fromEntries(['batter','first','second','third'].map((id,i)=>[id,picked[i]])));
+    offenseNumbersBySituation.set(key,createOffenseNumbers());
   }
   return offenseNumbersBySituation.get(key);
 }
@@ -564,6 +563,20 @@ const ensureHeaderGrouping = () => {
   if (staffToolsButton) utilityActions.appendChild(staffToolsButton);
   if (playerButton) accountActions.appendChild(playerButton);
   if (accountMenu) accountActions.appendChild(accountMenu);
+  if (!document.getElementById('coachBoardLink')) {
+    const link = document.createElement('button');
+    link.id = 'coachBoardLink';
+    link.type = 'button';
+    // The classic gameplay runtime must leave and re-enter through a fresh document.
+    link.addEventListener('click', () => window.location.assign('/coach-board'));
+    link.className = 'btn-slate hidden';
+    link.textContent = 'Coach Board';
+    utilityActions.appendChild(link);
+    const updateBoardAccess = () => link.classList.toggle('hidden', !['coach','admin'].includes(window.__DIQ_AUTH_USER__?.role));
+    const originalUpdateNavigation = window._diqUpdateAuthNavigation;
+    window._diqUpdateAuthNavigation = (...args) => { originalUpdateNavigation?.(...args); updateBoardAccess(); };
+    updateBoardAccess();
+  }
   window._diqUpdateAuthNavigation?.();
 
   const closePlaybook = () => {
@@ -994,12 +1007,10 @@ function cssToUnit(left,top){ return { x:left*(IMG_W/imgRect.width), y:top*(IMG_
 function nativeToCssPoint(pt){ const css=unitToCss(pt); return { x:css.left, y:css.top }; }
 
 function updateChipScale(){
-  const base = Math.min(imgRect.width, imgRect.height);
-  const size = clamp(Math.round(base * 0.052), 26, 44);
-  CHIP_PX = size;
-  const fz = clamp(Math.round(size * 0.40), 11, 16);
-  wrap.style.setProperty('--chip-size', Math.round(size * 0.9) + 'px');
-  wrap.style.setProperty('--chip-font', fz + 'px');
+  const metrics = tokenMetrics(imgRect.width,imgRect.height);
+  CHIP_PX = metrics.chip;
+  wrap.style.setProperty('--chip-size', metrics.defender + 'px');
+  wrap.style.setProperty('--chip-font', metrics.defenderFont + 'px');
 }
 
 function tolToCssDiameter(tol, allowTiny=false){
@@ -1043,12 +1054,7 @@ window.addEventListener('orientationchange', updateDescriptionHudText);
 // @diq:end [A1]
 /// @diq:begin [A2] Marker Scaling (single copy)
 // Increased starting sizes; still scale down/up responsively
-const BASE_MARKER_SIZES = {
-  ball:40,
-  runner:64,      // animated batter
-  baseRunner:64,  // static and moving base runners
-  hit:40
-};
+const BASE_MARKER_SIZES = MARKER_SIZES;
 
 function uiScale(){
   return Math.min(imgRect.width / IMG_W, imgRect.height / IMG_H);
@@ -1061,26 +1067,26 @@ function getBallStrokeWidth(){
 
 function scaleMarkers(){
   const s = uiScale();
+  const metrics = tokenMetrics(imgRect.width,imgRect.height);
   const sizePx = (base, min=8, max=28) => clamp(Math.round(base * s), min, max);
 
   wrap.querySelectorAll('.runner .rlabel, .baseRunner .rlabel, .movingRunner .rlabel').forEach(el=>{
-    const s = uiScale();
-    el.style.fontSize = clamp(Math.round(13 * s * 1.05), 11, 18) + 'px';
+    el.style.fontSize = metrics.runnerFont + 'px';
   });
 
   // Ball
   if (ballEl){
-    const d = sizePx(BASE_MARKER_SIZES.ball, 8, 26);
+    const d = metrics.ball;
     ballEl.style.width  = d + 'px';
     ballEl.style.height = d + 'px';
-    const outline = clamp(Math.round(2 * s), 1, 3);
-    const drop    = clamp(Math.round(3 * s), 1, 4);
+    const outline = metrics.ballOutline;
+    const drop = metrics.ballShadow;
     ballEl.style.boxShadow = `0 0 0 ${outline}px #000, 0 1px ${drop}px rgba(0,0,0,.35)`;
   }
 
   // Animated batter
   if (runnerEl){
-    const d = sizePx(BASE_MARKER_SIZES.runner, 25, 62);
+    const d = metrics.runner;
     runnerEl.style.width  = d + 'px';
     runnerEl.style.height = d + 'px';
   }
@@ -1089,7 +1095,7 @@ function scaleMarkers(){
   // Static + moving base runners
   if (wrap){
     wrap.querySelectorAll('.baseRunner, .movingRunner').forEach(el=>{
-      const d = sizePx(BASE_MARKER_SIZES.baseRunner, 25, 62);
+      const d = metrics.runner;
       el.style.width  = d + 'px';
       el.style.height = d + 'px';
     });
@@ -2432,7 +2438,7 @@ function getTargetFor(sKey,id){
 function normPoint(px){
   if (!px || isNaN(px.x) || isNaN(px.y)) return null;
   let x=Number(px.x), y=Number(px.y);
-  if (x>=0 && x<=1 && y>=0 && y<=1){ x=Math.round(x*IMG_W); y=Math.round(y*IMG_H); } else { x=Math.round(x); y=Math.round(y); }
+  if (x>=0 && x<=1 && y>=0 && y<=1){ x=Math.round(x*IMG_W); y=Math.round(y*IMG_H); }
   return {x,y};
 }
 function normalizeStarts(obj){
@@ -2448,9 +2454,9 @@ function normalizeTargets(obj){
       const p = normPoint(raw);
       if (p){
         out[id] = {
-          x:p.x, y:p.y,
+          ...raw, x:p.x, y:p.y,
           tol: Number(raw.tol) || DEFAULT_TOL,
-          notes: typeof raw.notes === 'string' ? raw.notes : ''
+          notes: typeof raw.notes === 'string' ? raw.notes : typeof raw.note === 'string' ? raw.note : ''
         };
       }
     }
@@ -3636,6 +3642,9 @@ function renderSolutionGhosts(){
 
 function cancelSolutionAnimation(){
   _solutionAnimationRun += 1;
+  _sharedSolutionPlayback?.dispose();_sharedSolutionPlayback=null;
+  if(ballEl)ballEl.style.scale='1';
+  wrap?.querySelector('.shared-solution-trail')?.remove();
   if(_solutionAnimationFrame !== null){
     cancelPlayFrame(_solutionAnimationFrame);
     _solutionAnimationFrame = null;
@@ -3753,68 +3762,64 @@ function watchSolution(){
     watchSolutionBtn.textContent = 'Showing Solution…';
   }
 
-  const hitType = currentSituation?.hitType || 'line';
   const resolvedOutcome=resolveSituationOutcome(currentSituation);
-  const completed = {
-    fielders: false,
-    ball: false,
-    existingRunners: false,
-    batter: false,
-  };
-  const isCancelled = ()=>run !== _solutionAnimationRun || !_solutionReview;
-  const markComplete = (actor)=>{
-    if(isCancelled()) return;
-    completed[actor] = true;
-    if(!Object.values(completed).every(Boolean)) return;
-
-    applyResolvedSituationOutcome(resolvedOutcome);
-    finishSolutionAnimation(run);
-  };
-
-  animateHit(hitType, {
-    duration,
-    isCancelled,
-    onDone: ()=>markComplete('ball'),
-  });
-  animateExistingRunnersByOutcome(resolvedOutcome, ()=>{
-    markComplete('existingRunners');
-  }, { duration, isCancelled });
-  animateBatterOutcome(resolvedOutcome.batterResult, ()=>{
-    markComplete('batter');
-  }, { duration, isCancelled });
-
-  if(duration === 0){
-    POS_IDS.forEach((id)=>{
-      const rec = tokens.get(id);
-      if(!rec) return;
-      rec.pos = Fcopy(targets[id]);
-      placeToken(id);
-    });
-    markComplete('fielders');
-    return;
+  let playBoard=window._diqFromSituation({...currentSituation,starts,targets});
+  // Legacy phase-one review keeps the original hit-only demonstration. Its
+  // verified throws use the same engine in phase two. Rich plays show full events.
+  if(!currentSituation.boardAnimation){playBoard.playSeq=[];playBoard.playSeq2=[];}
+  if(!currentSituation.boardAnimation)for(const base of ['first','second','third'])if(playBoard.runners[base]) {
+    playBoard.runners[base]=runnerLeadPoint(base);
+    if(playBoard.movements[base])playBoard.movements[base][0].path[0]={...playBoard.runners[base]};
   }
-
-  let startedAt = null;
-  const step = (now)=>{
-    if(run !== _solutionAnimationRun || !_solutionReview) return;
-    if(startedAt === null) startedAt = now;
-    const progress = Math.min(1, Math.max(0, (now - startedAt) / duration));
-    const eased = progress < 0.5
-      ? 4 * progress * progress * progress
-      : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-    POS_IDS.forEach((id)=>{
-      const rec = tokens.get(id);
-      if(!rec) return;
-      rec.pos = {
-        x: starts[id].x + ((targets[id].x - starts[id].x) * eased),
-        y: starts[id].y + ((targets[id].y - starts[id].y) * eased),
-      };
-      placeToken(id);
-    });
-    if(progress < 1) _solutionAnimationFrame = requestPlayFrame(step);
-    else markComplete('fielders');
-  };
-  _solutionAnimationFrame = requestPlayFrame(step);
+  let play;
+  try{play=window._diqPlayAnimation.compilePlay(playBoard);}
+  catch(error){
+    console.warn('Invalid instructional metadata; using correct-position fallback.',error);
+    playBoard=window._diqFromSituation({...currentSituation,boardAnimation:undefined,starts,targets});
+    playBoard.playSeq=[];playBoard.playSeq2=[];play=window._diqPlayAnimation.compilePlay(playBoard);
+  }
+  const movers=new Map();
+  wrap.querySelectorAll('.baseRunner').forEach(el=>el.remove());
+  for(const id of Object.keys(playBoard.runners)){
+    let el;
+    if(id==='batter'){ensureRunner();el=runnerEl;el.style.display='block';}
+    else{el=document.createElement('div');el.className='movingRunner';wrap.appendChild(el);labelOffensiveChip(el,id);}
+    el.style.opacity='1';movers.set(id,el);
+  }
+  scaleMarkers();
+  const trail=document.createElement('div');trail.className='throwTrail shared-solution-trail';
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');trail.appendChild(svg);wrap.appendChild(trail);
+  _sharedSolutionPlayback=window._diqPlayAnimation.createPlayback(play,value=>{
+    if(run!==_solutionAnimationRun)return;
+    for(const id of POS_IDS){const rec=tokens.get(id);if(rec){rec.pos={...value.positions[id]};placeToken(id);}}
+    for(const [id,el] of movers){const pos=nativeToCssPoint(value.positions[id]);el.style.left=pos.x+'px';el.style.top=pos.y+'px';
+      const retired=id==='batter'?resolvedOutcome.batterResult==='out':resolvedOutcome.runnerOutcomes?.some(outcome=>outcome.startingBase===id&&outcome.result==='out');
+      if(retired){const track=play.tracks.filter(track=>track.id===id).at(-1);if(track){const progress=Math.min(1,(value.time-track.start)/(track.duration||1));el.style.opacity=String(progress<0.82?1:Math.max(0,1-(progress-0.82)/0.18));}}
+    }
+    if(value.ball&&ballEl){ballEl.style.display='block';const pos=nativeToCssPoint(value.ball);ballEl.style.left=pos.x+'px';ballEl.style.top=pos.y+'px';ballEl.style.scale=String(value.scale);}
+    if(ballSvg&&playBoard.battedBall){
+      const showHit=value.time>0&&value.time<play.ballDuration;
+      let hitPath=ballSvg.querySelector('[data-solution-hit]');
+      if(showHit){
+        if(!hitPath){hitPath=document.createElementNS('http://www.w3.org/2000/svg','line');hitPath.dataset.solutionHit='1';ballSvg.appendChild(hitPath);}
+        const from=nativeToCssPoint(playBoard.battedBall.start),to=nativeToCssPoint(playBoard.battedBall.destination);
+        for(const [key,val] of Object.entries({x1:from.x,y1:from.y,x2:to.x,y2:to.y,stroke:'var(--accent-primary)','stroke-width':getBallStrokeWidth()}))hitPath.setAttribute(key,String(val));
+        if(playBoard.battedBall.type==='ground_ball')hitPath.setAttribute('stroke-dasharray','8 8');
+      }else hitPath?.remove();
+    }
+    svg.setAttribute('viewBox',`0 0 ${imgRect.width} ${imgRect.height}`);
+    window._diqPaintThrowFrame(svg,value.arrows,nativeToCssPoint);
+  },()=>{}, {
+    now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,reducedMotion:duration===0,
+    rate:window._diqPlayAnimation.TEACHING_PLAYBACK_RATE,
+    onComplete:()=>{
+      if(run!==_solutionAnimationRun)return;
+      for(const [id,el] of movers)if(id!=='batter')el.remove();
+      if(ballEl)ballEl.style.scale='1';
+      applyResolvedSituationOutcome(resolvedOutcome);finishSolutionAnimation(run);
+    },
+  });
+  _sharedSolutionPlayback.play();
 }
 
 window._diqWatchSolution = watchSolution;
