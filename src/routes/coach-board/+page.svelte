@@ -1,5 +1,6 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import {emptyHistory,recordHistory,stepHistory} from '$lib/plays/history.js';
   import {importBoardFile,exportBoardFile,boardFileName} from '$lib/plays/board-transfer.js';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
@@ -15,19 +16,19 @@
   import { MAX_SEGMENTS, segmentStart, reconcileSegments, eventOptions, conditionValue, parseCondition } from '$lib/plays/segments.js';
   import { situationDraft, situationPlayIssues, writeHandoff, readHandoff, clearHandoff } from '$lib/plays/authoring.js';
   import { presentationStatus } from '$lib/plays/presentation.js';
-  import { compilePlay, frameAt, traveledPath, createPlayback, TEACHING_PLAYBACK_RATE } from '$lib/plays/animation.js';
+  import { compilePlay, frameAt, traveledPath, createPlayback, TEACHING_PLAYBACK_RATE, movementDuration } from '$lib/plays/animation.js';
   let {data} = $props();
   let hasEditor=$state(false);
   let board=$state(newBoard()), mode=$state('Setup'), selected=$state('P'), ballType=$state('ground_ball');
   let frame=$state(null), running=$state(false), message=$state(''), busy=$state(false);
   let boardId=$state(''), revision=$state(0);
-  let field, tools, layout, playback;
+  let field, tools, layout, playback,moreMenu;
   let drag=$state(null);
   let presenting=$state(false), presentationWidth=$state(800), presentationPlay=$state(null);
   let presentationOrigin=$state('board'), presentationReturn, previousOverflow='';
   let focusPlayers=$state([]), showTargets=$state(false), showMovementPaths=$state(false);
   const movementPaths=$derived.by(()=>{
-    if(!presenting&&mode==='Movement'&&!savingSituation){
+    if(!presenting&&mode==='Movement'&&!savingSituation&&(!frame||drag)){
       const routes=Object.entries(board.movements).flatMap(([id,segments])=>segments.map((segment,index)=>({id,index,path:segment.path}))).filter(route=>!focusPlayers.length||focusPlayers.includes(route.id));
       if(drag){const index=routes.findIndex(route=>route.id===drag.id&&route.index===drag.index);const active={id:drag.id,index:drag.index,path:cleanPath(drag.path)};if(index>=0)routes[index]=active;else routes.push(active);}
       return routes.filter(route=>route.path.length>1);
@@ -59,6 +60,25 @@
   let savingSituation=$state(false), linkedSituation=$state(null), situationBaseline=$state(null), rationale=$state('');
   let cleanSnapshot=$state(''), pendingSituation=$state(false), leaving=false;
   function editorSnapshot(){return JSON.stringify({board,result,batterResult,outsRecorded,runnerResults,taggedUp,confirmed,rationale});}
+  let history=$state(emptyHistory()),historyText=$state(false);
+  $effect(()=>{
+    if(!hasEditor||busy||drag||historyText)return;
+    const next=recordHistory(history,editorSnapshot());if(next!==history)history=next;
+  });
+  function restoreSnapshot(snapshot){
+    stop();const value=JSON.parse(snapshot);board=value.board;result=value.result;batterResult=value.batterResult;
+    outsRecorded=value.outsRecorded;runnerResults=value.runnerResults;taggedUp=value.taggedUp;confirmed=value.confirmed;rationale=value.rationale;
+    ballType=board.battedBall?.type||'ground_ball';
+    if(!board.defenders[selected]&&!board.runners[selected])selected='P';
+    movementIndex=Math.max(0,Math.min(movementIndex,(board.movements[selected]?.length||1)-1));
+    if(mode==='Playback')mode='Movement';
+  }
+  function undoEdit(direction){
+    if(busy||drag||presenting)return;
+    history=recordHistory(history,editorSnapshot());const next=stepHistory(history,direction);
+    if(next===history)return;history=next;restoreSnapshot(history.entries[history.index]);message=direction<0?'Edit undone.':'Edit restored.';
+  }
+  function textEditing(event,active){if(event.target.matches('input:not([type]),input[type=text],textarea'))historyText=active;}
   const dirty=$derived(pendingSituation||!!cleanSnapshot&&editorSnapshot()!==cleanSnapshot);
   function allowReplace(){return !dirty||window.confirm('Discard unsaved edits and open another play?');}
   function newPlay(){if(!allowReplace())return false;libraryReturnToMain=false;hasEditor=true;linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';hydrate(newBoard());boardId='';revision=0;cleanSnapshot=editorSnapshot();message='New Board.';return true;}
@@ -73,7 +93,7 @@
   const positions=$derived.by(()=>{
     if(frame)return frame.positions;
     const starts={...board.defenders,...board.runners};
-    if(mode==='Movement'&&!savingSituation){
+    if(mode==='Movement'&&!savingSituation&&(!frame||drag)){
       for(const [id,segments] of Object.entries(board.movements)){const endpoint=segments.at(-1)?.path.at(-1);if(endpoint)starts[id]=endpoint;}
       starts[selected]=board.movements[selected]?.[movementIndex]?.path.at(-1)||segmentStart(board,selected,movementIndex);
     }
@@ -85,7 +105,7 @@
   const ball=$derived(frame?.ball || board.battedBall?.destination);
   // Render the shared frame directly across delivery, contact, hit and throws.
   // A contact offset would jump forward and freeze until the flight caught up.
-  const visibleBall=$derived((presenting||mode==='Playback') ? (frame?.time>0?frame.ball:null) : ball);
+  const visibleBall=$derived((presenting||frame) ? (frame?.time>0?frame.ball:null) : ball);
   async function request(url,options) {
     const response=await fetch(url,options);const value=await response.json();
     if(!response.ok) throw new Error(value.error || value.message || 'Request failed.');return value;
@@ -94,7 +114,7 @@
   function edit(){stop();confirmed=false;}
   function showSituationForm(show){playback?.pause();savingSituation=show;if(tools)tools.scrollTop=0;}
   function setMode(next){stop();mode=next;movementIndex=0;}
-  function hydrate(value){stop();focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;mode='Setup';selected='P';board=upgradeBoard(value);board.runners.batter ||= clone(BASES_NATIVE.home);movementIndex=0;board.offenseNumbers ||= createOffenseNumbers();throwSequence='playSeq';ballType=board.battedBall?.type||'ground_ball';confirmed=false;runnerResults={};taggedUp={};result=board.running?.result==='out'?'groundout':board.running?.result||'single';batterResult=runningDestination(board,'batter');for(const id of ['first','second','third'].filter(id=>board.runners[id]))runnerResults[id]=runningDestination(board,id);outsRecorded=0;const outcome=board.situationMetadata?.playOutcome||board.sourceSituation?.playOutcome;if(outcome){confirmed=outcome.reviewStatus==='ready';result=outcome.result;batterResult=outcome.batterResult;outsRecorded=outcome.outsRecorded;}for(const r of board.situationMetadata?.runnerOutcomes||board.sourceSituation?.runnerOutcomes||[]){runnerResults[r.startingBase]=r.result;taggedUp[r.startingBase]=r.taggedUp;}}
+  function hydrate(value){stop();focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;mode='Setup';selected='P';board=upgradeBoard(value);board.runners.batter ||= clone(BASES_NATIVE.home);movementIndex=0;board.offenseNumbers ||= createOffenseNumbers();throwSequence='playSeq';ballType=board.battedBall?.type||'ground_ball';confirmed=false;runnerResults={};taggedUp={};result=board.running?.result==='out'?'groundout':board.running?.result||'single';batterResult=runningDestination(board,'batter');for(const id of ['first','second','third'].filter(id=>board.runners[id]))runnerResults[id]=runningDestination(board,id);outsRecorded=0;const outcome=board.situationMetadata?.playOutcome||board.sourceSituation?.playOutcome;if(outcome){confirmed=outcome.reviewStatus==='ready';result=outcome.result;batterResult=outcome.batterResult;outsRecorded=outcome.outsRecorded;}for(const r of board.situationMetadata?.runnerOutcomes||board.sourceSituation?.runnerOutcomes||[]){runnerResults[r.startingBase]=r.result;taggedUp[r.startingBase]=r.taggedUp;}history=emptyHistory();historyText=false;}
   onMount(()=>{
     hasEditor=!data.startInLibrary;
     const observer=new ResizeObserver(([entry])=>metrics=tokenMetrics(entry.contentRect.width,entry.contentRect.height));
@@ -111,10 +131,13 @@
     cleanSnapshot=editorSnapshot();
     if(presentationTransfer)enterPresentation('details');
     else if(!transfer&&data.startInLibrary)libraryOpen=true;
-    const dismissFocus=event=>{for(const picker of document.querySelectorAll('.focus-picker[open]'))if(!picker.contains(event.target))picker.removeAttribute('open');};
+    const dismissFocus=event=>{for(const picker of document.querySelectorAll('.focus-picker[open],.board-more[open]'))if(!picker.contains(event.target))picker.removeAttribute('open');};
     document.addEventListener('pointerdown',dismissFocus);
     const shortcuts=event=>{
-      if(event.key==='Escape'){const picker=document.querySelector('.focus-picker[open]');if(picker){event.preventDefault();picker.removeAttribute('open');picker.querySelector('summary')?.focus();return;}}
+      if(!presenting&&!libraryOpen&&!busy&&!drag&&(event.ctrlKey||event.metaKey)&&!event.altKey&&!event.target.closest('input,select,textarea,[contenteditable]')){
+        if(event.key.toLowerCase()==='z'||event.ctrlKey&&event.key.toLowerCase()==='y'){event.preventDefault();undoEdit(event.shiftKey||event.key.toLowerCase()==='y'?1:-1);return;}
+      }
+      if(event.key==='Escape'){const picker=document.querySelector('.focus-picker[open],.board-more[open]');if(picker){event.preventDefault();picker.removeAttribute('open');picker.querySelector('summary')?.focus();return;}}
       if(!presenting||event.altKey||event.ctrlKey||event.metaKey)return;
       if(event.key==='Escape'){event.preventDefault();exitPresentation(presentationOrigin==='library'?'library':'editor');return;}
       if(event.target.closest('input,select,textarea')||(event.key===' '&&event.target.closest('button')))return;
@@ -131,10 +154,10 @@
     if(savingSituation||presenting)return;
     if(mode==='Throws'&&POSITIONS.includes(id)){event.preventDefault();appendThrow(id);return;}
     if(mode!=='Setup'&&mode!=='Movement')return;
-    event.preventDefault();edit();
+    const before=editorSnapshot();history=recordHistory(history,before);event.preventDefault();edit();
     if(selected!==id){selected=id;movementIndex=0;}
     const start=clone(mode==='Movement'?segmentStart(board,id,movementIndex):board.defenders[id]||board.runners[id]);
-    drag={id,index:movementIndex,pointer:event.pointerId,start,path:[start]};event.currentTarget.setPointerCapture(event.pointerId);
+    drag={before,id,index:movementIndex,pointer:event.pointerId,start,path:[start]};event.currentTarget.setPointerCapture(event.pointerId);
   }
   function move(event){if(!drag||event.pointerId!==drag.pointer)return;const p=point(event);
     if(mode==='Setup'){if(board.defenders[drag.id])board.defenders[drag.id]=p;else board.runners[drag.id]=p;}
@@ -144,15 +167,15 @@
     if(mode==='Movement'){
       drag.path.push(point(event));
       const segments=board.movements[drag.id]||[];
-      segments[drag.index]={path:cleanPath(drag.path),start:segments[drag.index]?.start||{event:drag.index?'previous_movement':'contact'}};
+      segments[drag.index]={...(segments[drag.index]||{}),path:cleanPath(drag.path),start:segments[drag.index]?.start||{event:drag.index?'previous_movement':'contact'}};
       board.movements[drag.id]=segments;reconcileSegments(board,drag.id);
       if(drag.index<segments.length-1)message='Later movements reconnected to the new endpoint; preview them before saving.';
     }
     else if(board.movements[drag.id]){delete board.movements[drag.id];message='Starting position changed; record movement again.';}
     drag=null;frame=null;
   }
-  function cancel(){if(drag&&mode==='Setup'){if(board.defenders[drag.id])board.defenders[drag.id]=drag.start;else board.runners[drag.id]=drag.start;}drag=null;frame=null;}
-  function destination(event){if(presenting||savingSituation||mode!=='Ball')return;edit();board.battedBall={type:ballType,start:clone(BASES_NATIVE.home),destination:point(event)};}
+  function cancel(){if(drag)restoreSnapshot(drag.before);drag=null;frame=null;}
+  function destination(event){if(presenting||savingSituation||mode!=='Ball')return;edit();board.battedBall={...(board.battedBall||{}),type:ballType,start:clone(BASES_NATIVE.home),destination:point(event)};}
   function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]=runningDestination(board,base);}
   function appendThrow(id){
     if(board[throwSequence].at(-1)===id){message='Choose a different receiving fielder.';return;}
@@ -175,11 +198,18 @@
     if(segments.length){board.movements[selected]=segments;reconcileSegments(board,selected);if(segments[0].start?.event==='previous_movement')segments[0].start={event:'contact'};}
     else delete board.movements[selected];movementIndex=Math.max(0,Math.min(movementIndex,segments.length-1));message='Movement deleted. Remaining routes reconnected; preview before saving.';
   }
+  function changeTiming(value){edit();const segment=selectedSegments[movementIndex];if(value==='automatic')delete segment.durationMs;else segment.durationMs=Math.max(250,movementDuration(segment));}
+  function changeDuration(event){
+    if(!event.currentTarget.reportValidity())return;
+    const duration=Math.round(Number(event.currentTarget.value)*1000*TEACHING_PLAYBACK_RATE);
+    if(duration<250||duration>30000)return;edit();selectedSegments[movementIndex].durationMs=duration;
+  }
+  const fieldingSummary=$derived.by(()=>{try{return compilePlay(board,{coachBoard:true});}catch{return null;}});
   function changeEvent(value){edit();selectedSegments[movementIndex].start=parseCondition(value);}
   function controls(){if(!playback){const play=compilePlay(board,{coachBoard:true});playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});frame=frameAt(play,0);playback.setSpeed(Number(speed));}return playback;}
-  function playbackAction(action){try{const controller=controls();mode='Playback';controller[action]();}catch(e){message=e.message;}}
+  function playbackAction(action){try{const controller=controls();controller[action]();}catch(e){message=e.message;}}
   function previewIssues(){try{compilePlay(board,{coachBoard:true});return '';}catch(e){return e.message;}}
-  async function save(){busy=true;try{const issues=previewIssues();if(issues)throw new Error(issues);board.situationMetadata=outcomeMetadata();const value=await request('/api/boards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:boardId||undefined,revision,board})});boardId=value.id;revision=value.revision;if(!linkedSituation){pendingSituation=false;cleanSnapshot=editorSnapshot();}message='Board saved.';}catch(e){message=e.message;}finally{busy=false;}}
+  async function save(){busy=true;try{const issues=previewIssues();if(issues)throw new Error(issues);board.situationMetadata=outcomeMetadata();const value=await request('/api/boards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:boardId||undefined,revision,board})});boardId=value.id;revision=value.revision;if(!linkedSituation){pendingSituation=false;cleanSnapshot=editorSnapshot();}if(history.index>=0)history.entries[history.index]=editorSnapshot();message='Board saved.';}catch(e){message=e.message;}finally{busy=false;}}
   function outcomeMetadata(){
     const original=linkedSituation||board.sourceSituation||board.situationMetadata||{};
     const runnerOutcomes=['first','second','third'].filter(base=>board.runners[base]).map(base=>{
@@ -206,7 +236,7 @@
         }
         value=await request(creating?'/api/situations':`/api/situations/${encodeURIComponent(situation.key)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json',...(creating?{}:{'If-Match':String(situation.revision)})},body:JSON.stringify(situation)});
         linkedSituation=clone(value.record);situationBaseline=clone(value.record);board.sourceSituation=clone(value.record);pendingSituation=false;cleanSnapshot=editorSnapshot();
-        message='Situation changes saved.';
+        history=emptyHistory();message='Situation changes saved.';
       }else{
         if(!rationale.trim())throw new Error('Add a short reason for the proposal.');
         await request('/api/situation-submissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({situation,rationale})});
@@ -216,7 +246,7 @@
       const situation=toSituation(board,{desc:board.sourceSituation?.desc||'',category:board.sourceSituation?.category||'Coach Board',difficulty:board.sourceSituation?.difficulty||'foundational',primaryCategory:board.sourceSituation?.primaryCategory||'base-coverage',relatedCategories:board.sourceSituation?.relatedCategories||[],...outcomeMetadata()});
       const value=await request('/api/situations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(situation)});
       linkedSituation=clone(value.record);situationBaseline=clone(value.record);board.sourceSituation=clone(value.record);pendingSituation=false;cleanSnapshot=editorSnapshot();
-      message=`Situation ${value.record.displayCode || value.record.title} created.`;
+      history=emptyHistory();message=`Situation ${value.record.displayCode || value.record.title} created.`;
     }
   }catch(e){message=e.message;}finally{busy=false;}}
   function openSituationAfterSubmission(){const restored=situationBaseline||linkedSituation;hydrate(fromSituation(restored));linkedSituation=clone(restored);pendingSituation=false;rationale='';cleanSnapshot=editorSnapshot();}
@@ -227,6 +257,13 @@
     hasEditor=true;libraryReturnToMain=false;
     restoreBoard({board:imported,id:'',revision:0});pendingSituation=true;
     message='Board imported as a new draft. Review its name and play, then Save Board.';return true;
+  }
+  function moreAction(action){if(moreMenu)moreMenu.open=false;action();}
+  function boardCopy(){
+    const name=window.prompt('Name for the new Board copy',`${board.title.slice(0,110)} copy`);if(!name?.trim())return;if(name.trim().length>120){message='Enter a Board name of 1–120 characters.';return;}
+    const copy=clone(board);copy.title=name.trim();copy.sourceSituation=null;copy.situationMetadata=outcomeMetadata();
+    linkedSituation=null;situationBaseline=null;hydrate(copy);boardId='';revision=0;pendingSituation=true;cleanSnapshot=editorSnapshot();
+    message='Independent Board copy opened. Save Board when ready.';
   }
   function exportBoard(){
     try{
@@ -278,18 +315,22 @@
   </div>
 {/snippet}
 <main hidden={!hasEditor} class="board-workspace" class:presentation={presenting}>
-  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to field</a>{/if}</header>
+  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to field</a></div>{/if}</header>
   <div class="board-layout" bind:this={layout}>
-    <aside inert={busy} hidden={presenting} class="card board-tools" aria-label="Coach Board tools" bind:this={tools}>
+    <aside inert={busy} hidden={presenting} class="card board-tools" aria-label="Coach Board tools" bind:this={tools} onfocusin={e=>textEditing(e,true)} onfocusout={e=>textEditing(e,false)}>
       <section class="board-controls board-save" aria-label="Board details">
-    <label>Board name <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
-    <button class="save-board" disabled={busy} onclick={save}>Save Board</button><button disabled={busy} onclick={exportBoard}>Export Board</button>
+        <label>Board name <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
+        <p class="save-status">{linkedSituation?`Editing ${linkedSituation.displayCode||linkedSituation.key} · `:''}{!boardId&&!linkedSituation?'New Board · Not saved':dirty?'Unsaved changes':'Saved'}</p>
+        <div class="save-actions"><button class="save-board" disabled={busy} onclick={()=>linkedSituation?showSituationForm(true):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
+          <details class="board-more" bind:this={moreMenu}><summary aria-label="More actions">More ⋯</summary><div class="more-options">
+            <button onclick={()=>moreAction(exportBoard)}>Export Board</button>
+            {#if linkedSituation}<button onclick={()=>moreAction(boardCopy)}>Save a Board Copy</button>{:else if data.canPublish}<button onclick={()=>moreAction(()=>showSituationForm(true))}>Save as Situation</button>{/if}
+            {#if boardId}<button onclick={()=>moreAction(deleteBoard)}>Delete Board</button>{/if}
+            {#if linkedSituation?.revision&&data.role==='admin'}<button onclick={()=>moreAction(archiveSituation)}>Archive Situation</button>{/if}
+          </div></details>
+        </div>
       </section>
-  {#if linkedSituation}<p class="board-message">Editing {linkedSituation.displayCode || linkedSituation.key} · {dirty?'Unsaved changes':'Saved'}</p>{/if}
-  {#if data.canPublish||linkedSituation}<button class="situation-mode" aria-pressed={savingSituation} aria-controls="situation-conversion" onclick={()=>showSituationForm(!savingSituation)}>{linkedSituation?'Save Situation Changes':'Save as Situation'}</button>{/if}
-  {#if !savingSituation}<button id="presentBoard" class="situation-mode" disabled={busy} onclick={()=>enterPresentation()}>Present</button>
-  <button id="browseLibrary" class="situation-mode" onclick={browseLibrary}>Browse Library</button>
-{/if}
+      <div class="editing-toolbar"><span>{savingSituation?'Outcomes':'Edit play'}</span><div class="edit-history" role="group" aria-label="Edit history"><button aria-label="Undo" title="Undo (Cmd/Ctrl+Z)" disabled={busy||!!drag||history.index<=0&&(!historyText||history.entries[history.index]===editorSnapshot())} onclick={()=>undoEdit(-1)}>↶</button><button aria-label="Redo" title="Redo (Cmd/Ctrl+Shift+Z)" disabled={busy||!!drag||history.index>=history.entries.length-1||historyText&&history.entries[history.index]!==editorSnapshot()} onclick={()=>undoEdit(1)}>↷</button></div></div>
   {#if savingSituation}
   <section class="conversion" id="situation-conversion" aria-label="Save Situation options"><div class="conversion-heading"><h2>{linkedSituation?'Save Situation Changes':'Save as Situation'}</h2><button onclick={()=>showSituationForm(false)}>Back to Board Tools</button></div><p>Final defender positions become correctness targets. Movement curves remain instructional metadata.</p>
     <div class="board-controls"><label>Play result <select bind:value={result} onchange={()=>confirmed=false}>{#each ['single','double','triple','home_run','ground_rule_double','groundout','caught_fly','caught_line','sacrifice_bunt','squeeze_bunt','sacrifice_fly','fielders_choice','double_play','error','other'] as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
@@ -299,7 +340,6 @@
     <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if linkedSituation&&!data.canPublish}<label>Proposal reason <textarea bind:value={rationale}></textarea></label>{/if}<button disabled={busy} onclick={publish}>{linkedSituation?(data.canPublish?'Publish Situation':'Submit for Review'):'Create Situation'}</button></div>
   </section>
   {:else}
-  <section class="board-controls playback-controls" aria-label="Playback controls"><button onclick={()=>playbackAction('play')} disabled={running}>Play</button><button onclick={()=>playback?.pause()} disabled={!running}>Pause</button><button onclick={()=>playbackAction('restart')}>Restart</button><button onclick={()=>{try{controls().step(-1);mode='Playback';}catch(e){message=e.message;}}}>Previous Step</button><button onclick={()=>{try{controls().step(1);mode='Playback';}catch(e){message=e.message;}}}>Next Step</button><label>Speed <select bind:value={speed} onchange={()=>playback?.setSpeed(Number(speed))}>{#each [0.5,1,2] as value}<option value={value}>{value}×</option>{/each}</select></label></section>
   <nav class="board-controls" aria-label="Authoring modes">{#each ['Setup','Movement','Running','Ball','Throws'] as item}<button aria-pressed={mode===item} onclick={()=>setMode(item)}>{item}</button>{/each}</nav>
   <section class="board-controls mode-controls" aria-label="Mode controls">
     {#if mode==='Setup'}
@@ -311,7 +351,11 @@
       <label>Token <select bind:value={selected} onchange={()=>{stop();movementIndex=0;}}>{#each [...POSITIONS,...Object.keys(board.runners)] as id}<option value={id}>{id}{board.movements[id]?` · ${board.movements[id].length} movements`:''}</option>{/each}</select></label>
       <label>Movement <select bind:value={movementIndex} onchange={stop}>{#each selectedSegments as segment,i}<option value={i}>Movement {i+1}</option>{/each}{#if !selectedSegments.length||movementIndex===selectedSegments.length}<option value={selectedSegments.length}>Record Movement {selectedSegments.length+1}</option>{/if}</select></label>
       <div class="button-row"><button disabled={!selectedSegments.length||selectedSegments.length>=MAX_SEGMENTS||movementIndex===selectedSegments.length} onclick={addMovement}>Add Movement</button><button disabled={!selectedSegments[movementIndex]} onclick={deleteMovement}>Delete Movement</button></div>
-      {#if selectedSegments[movementIndex]}<label>Start movement <select value={movementEvent} onchange={e=>changeEvent(e.currentTarget.value)}>{#each movementOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>{/if}
+      {#if selectedSegments[movementIndex]}<label>Start movement <select value={movementEvent} onchange={e=>changeEvent(e.currentTarget.value)}>{#each movementOptions as option}<option value={option.value}>{option.label}</option>{/each}</select></label>
+        <label>Movement timing <select value={selectedSegments[movementIndex].durationMs===undefined?'automatic':'custom'} onchange={e=>changeTiming(e.currentTarget.value)}><option value="automatic">Automatic</option><option value="custom">Custom duration</option></select></label>
+        {#if selectedSegments[movementIndex].durationMs!==undefined}<label>Duration at Normal speed (seconds) <input type="number" min="1" max="120" step="0.1" value={selectedSegments[movementIndex].durationMs/(1000*TEACHING_PLAYBACK_RATE)} onchange={changeDuration} /></label>
+        {:else}<p>Automatic duration: {(movementDuration(selectedSegments[movementIndex])/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1)} seconds at Normal speed.</p>{/if}
+      {/if}
       <button disabled={!selectedSegments.length} onclick={()=>{edit();delete board.movements[selected];movementIndex=0;}}>Clear Movement</button><span>Drag again to re-record the selected movement. Later routes reconnect to its endpoint.</span>
     {:else if mode==='Running'}
       <p>Automatic running starts at contact. Custom post-contact routes take precedence. Suggested advances can be changed below.</p>
@@ -323,6 +367,9 @@
       <p>Out shows an attempted advance; it does not determine a putout. Save as Situation outcomes still require your review.</p>
     {:else if mode==='Ball'}
       <label>Batted-ball type <select bind:value={ballType} onchange={()=>{edit();if(board.battedBall)board.battedBall.type=ballType;}}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label><p>Tap the field to set the destination.</p>
+      {#if board.battedBall}<label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Automatic (first throw or nearest route)</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+      {#if fieldingSummary?.fielder}<p>{fieldingSummary.fielder} fields the ball after {(fieldingSummary.ballDuration/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1)} seconds from contact at Normal speed.</p>{/if}
+      {#if fieldingSummary?.fieldingWarning}<p role="note">{fieldingSummary.fieldingWarning}</p>{/if}{/if}
     {:else if mode==='Throws'}
       <label>Sequence to edit <select bind:value={throwSequence}><option value="playSeq">Primary throws</option><option value="playSeq2">Secondary throws</option></select></label>
       <p>Tap defenders on the field or choose positions below in throw order. Positions can repeat, for example C → 2B → C.</p>
@@ -332,10 +379,12 @@
       <p>Arrows represent defensive throws.</p>
     {:else}<p>Play includes optional pre-pitch movement, the pitch, contact, and throws.</p>{/if}
   </section>
-  {#if boardId||linkedSituation?.revision&&data.role==='admin'}<section class="board-controls manage-play" aria-label="Manage play">{#if boardId}<button disabled={busy} onclick={deleteBoard}>Delete Board</button>{/if}{#if linkedSituation?.revision&&data.role==='admin'}<button disabled={busy} onclick={archiveSituation}>Archive Situation</button>{/if}</section>{/if}
-    {#if !data.canPublish}<p>Situation publishing permission is required to convert a Board.</p>{/if}
+  <section class="board-controls playback-controls" aria-label="Playback controls">
+    <div class="preview-main"><button onclick={()=>running?playback.pause():playbackAction('play')}>{running?'Pause':'Play'}</button><button onclick={()=>playbackAction('restart')}>Replay</button><button id="presentBoard" onclick={()=>enterPresentation()}>Present</button></div>
+    <label>Speed <select bind:value={speed} onchange={()=>playback?.setSpeed(Number(speed))}>{#each [0.5,1,2] as value}<option value={value}>{value}×</option>{/each}</select></label>
+    <details class="preview-options"><summary>Preview options</summary><div class="button-row"><button onclick={()=>{try{controls().step(-1);}catch(e){message=e.message;}}}>Previous Step</button><button onclick={()=>{try{controls().step(1);}catch(e){message=e.message;}}}>Next Step</button></div>{@render teachingTools()}</details>
+  </section>
   {/if}
-  {#if !savingSituation}{@render teachingTools()}{/if}
   <p role="status" class="board-message">{message}</p>
     </aside>
   <div class="board-field" style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
@@ -380,13 +429,17 @@
   .board-controls label{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
   .board-save>label,.mode-controls>label:not(:has(input[type=checkbox])),.conversion label{width:100%;display:grid;gap:6px}
   .board-controls input:not([type=checkbox]),.board-controls select{width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary)}
-  .board-controls button{min-height:44px}.board-save>button{flex:1}
-  .board-save>.save-board,.playback-controls>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
+  .board-controls button{min-height:44px}
+  .save-actions>.save-board,.preview-main>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
+  .save-status{font-size:12px;color:var(--text-muted);width:100%;margin:0}.save-actions{display:flex;gap:8px;width:100%;align-items:stretch}.save-actions>.save-board{flex:1;min-width:0}
+  .board-more{position:relative}.board-more summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-control);font-weight:700}.board-more summary::-webkit-details-marker{display:none}.more-options{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:220px;max-width:calc(100vw - 48px);display:grid;gap:6px;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-control);box-shadow:var(--shadow-raised)}.more-options button{text-align:left}
+  .editing-toolbar{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-weight:700}.edit-history{display:flex;gap:6px}.edit-history button{width:36px;min-height:36px;font-size:22px;padding:0}
+  .preview-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}.preview-options{width:100%}.preview-options>summary{cursor:pointer;min-height:40px;align-content:center;color:var(--text-secondary)}.preview-options .teaching-tools{justify-content:flex-start}.preview-options .button-row{margin-top:8px}
   .board-controls p{margin:0;color:var(--text-secondary)}
-  nav.board-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));border-top:1px solid var(--border);padding-top:14px}
-  nav button{padding:8px 4px}button[aria-pressed=true]{outline:2px solid var(--accent-primary)}
-  .playback-controls{position:sticky;top:-14px;z-index:20;background:var(--surface);padding:8px 0;border-bottom:1px solid var(--border)}
-  .playback-controls>button{flex:1}.playback-controls>label{width:100%}.playback-controls select{width:auto}
+  nav.board-controls{display:flex;gap:6px;flex-wrap:wrap}
+  nav button{padding:6px;font-size:13px;min-height:36px!important}button[aria-pressed=true]{outline:2px solid var(--accent-primary)}
+  .playback-controls{border-top:1px solid var(--border);padding-top:12px}
+  .playback-controls>label{width:100%}.playback-controls select{width:auto}
   .conversion{border-top:1px solid var(--border);padding-top:14px}
   .conversion .board-controls{margin-top:12px}
   .situation-mode{width:100%;min-height:44px}
@@ -405,7 +458,7 @@
   .board-throws{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .board-message{white-space:pre-line;margin:0;min-height:24px}
   .board-tools[hidden],.board-workspace[hidden]{display:none}
-  .presentation-navigation{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.manage-play{border-top:1px solid var(--border);padding-top:14px}.manage-play button{width:100%}
+  .presentation-navigation{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
   .presentation{position:fixed;inset:0;z-index:1000;max-width:none;width:100%;height:100dvh;box-sizing:border-box;background:var(--app-background);display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px;padding:12px;overflow:hidden}
   .presentation .board-header{margin:0;border:0}.presentation .board-brand,.presentation .board-brand>div{min-width:0}.presentation .board-header h1{overflow-wrap:anywhere}.presentation .board-header h1{font-size:clamp(18px,2vw,28px)}.presentation .board-header p{font-size:12px}
   .presentation .board-layout{display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}

@@ -44,3 +44,7 @@ npx playwright test tests/coaching-checkpoint.spec.js
 ```
 
 Result: **3 passed**. The test harness builds the app and uses its isolated database; it does not seed the user's normal local database. Existing build chunk-size warning remains. The broader regression already passed locally according to the user and was not repeated for this documentation/checkpoint addition.
+
+## Phase 05 follow-up, 2026-10-13
+
+The focused [timing and undo update](animation-authoring-refinements.md) now addresses fielder-arrival timing and provides segment duration controls and local undo/redo. The historical recommendation above records the original checkpoint; Phase 05 is no longer deferred. This does not claim a new live coaching session or resolve the separate outcome-detail fields described above.

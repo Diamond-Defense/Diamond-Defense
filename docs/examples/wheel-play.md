@@ -15,4 +15,4 @@ Source: the NBC Los Angeles article supplied in the conversation, with the follo
 - https://www.nbclosangeles.com/news/sports/what-is-the-wheel-play-how-mookie-betts-and-the-dodgers-pulled-off-baseballs-rarest-defensive-gem-to-save-game-2-of-the-nlds-against-the-phillies/3788287/
 - https://www.si.com/mlb/dodgers-wheel-play-phillies-bunt
 
-Movement segments can include optional `durationMs` (250–30000 animation milliseconds) in portable files to reproduce teaching timing. Coach Board uses this timing; normal app playback retains its distance-based timing. Re-recording a route restores automatic distance-based timing. Normal speed is the existing quarter-speed teaching clock.
+Movement segments can include optional `durationMs` (250–30000 animation milliseconds) in portable files to reproduce teaching timing. Coach Board uses this timing; normal app playback retains its distance-based timing. Movement tools can adjust the duration or restore Automatic timing. Re-recording a route preserves the selected duration. Normal speed is the existing quarter-speed teaching clock.

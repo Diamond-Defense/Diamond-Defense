@@ -163,3 +163,17 @@ Use **Import Board** in the library to open a `.board.json` file as a new unsave
 **Export Board** in editing tools downloads the current draft, including unsaved edits, running settings and outcome metadata. It does not mark the draft saved. Files use `format: "diamond-defence-coach-board"`, envelope `version: 1`, and a versioned `board` payload. Account/record identities, revisions and links to a source Situation are excluded. Only play fields are transferred.
 
 See [wheel-play example](examples/wheel-play.md) and its [importable JSON](examples/wheel-play.board.json).
+
+## Phase 05: timing and undo refinements
+
+The focused Phase 05 update is implemented. Movement now exposes Automatic/Custom duration controls measured at Normal playback speed; re-recording retains the chosen duration. Ball tools identify a fielder and show fielding timing or endpoint guidance. Coach Board waits for eligible fielder arrival before fielding and subsequent events. Local Undo/Redo restores board and outcome edits, groups drags, and retains current server identity/revision when saving. Presentation and normal app playback retain their existing controls and scope.
+
+See [the timing and undo guide](animation-authoring-refinements.md) for behavior, limits, shortcuts and validation. Earlier entries in this document record historical phase status; this section supersedes the deferred Phase 05 status.
+
+## Compact editing sidebar
+
+The board name, saved/unsaved status and a context-specific save action form the header: Save Board for private Boards, Save Situation Changes for linked Situations. The latter opens the existing focused outcome/review form. More contains Export Board, Save as Situation for eligible private Boards, Save a Board Copy for linked Situations, and applicable delete/archive actions. A Board copy asks for a name and opens an independent unsaved private draft; Save Board persists it without updating the source Situation.
+
+Back to Library is in the page header. Editing tools come immediately below the save header, with compact labeled Undo/Redo icons and the selected tool's controls. The preview below those tools uses a single Play/Pause toggle, Replay, Present and speed. Preview options expands step navigation, focus, targets and trails. Preview keeps the selected editing tool visible. Presentation controls retain their existing layout and behavior. More closes on action, outside click or Escape.
+
+Validation: 38 distinct focused browser cases passed across authoring, outcome review/publication, timing/undo, library navigation/permissions, JSON transfer, presentation, responsive sidebar and independent Board copying. Svelte checks pass without warnings. Screenshot review covers 1280px desktop and 390px phone layouts.

@@ -52,6 +52,7 @@ export function validateBoard(board) {
   const pointCount=Object.values(board.movements||{}).reduce((sum,segments)=>sum+(Array.isArray(segments)?segments.reduce((n,segment)=>n+(segment?.path?.length||0),0):0),0);
   if(pointCount>20000)issues.push('Too many movement points. Re-record shorter routes.');
   if (board.battedBall && (!BALL_TYPES.includes(board.battedBall.type) || !point(board.battedBall.start) || !point(board.battedBall.destination))) issues.push('Invalid batted ball.');
+  if(board.battedBall?.fielder!==undefined&&board.battedBall.fielder!==null&&!POSITIONS.includes(board.battedBall.fielder))issues.push('Choose a valid ball fielder.');
   for (const seq of [board.playSeq, board.playSeq2]) if (!Array.isArray(seq) || seq.length > 30 || !seq.every(id => POSITIONS.includes(id))) issues.push('Use defensive positions for throws.');
   return issues;
 }
