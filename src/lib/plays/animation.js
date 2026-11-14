@@ -236,7 +236,7 @@ export function frameAt(play,time) {
   for(const leg of play.throws)if(time>leg.start) {
     const p=Math.min(1,(time-leg.start)/leg.duration),eased=play.coachBoard?p:1-Math.pow(1-p,3);
     if(!leg.beforeContact||!hit||time<play.pitchStart)ball=pointOnPath([leg.route.from,leg.route.to],eased);
-    arrows.push({...leg,...leg.route,progress:eased});
+    arrows.push({...leg,...leg.route,progress:eased,untrimmed:Math.abs(Math.hypot(leg.to.x-leg.from.x,leg.to.y-leg.from.y)-Math.hypot(leg.route.to.x-leg.route.from.x,leg.route.to.y-leg.route.from.y))<1});
   }
   const activeStep=play.authoredTimeline?.find(step=>time>=step.start&&time<step.end)?.id || play.authoredTimeline?.findLast(step=>time>=step.start)?.id;
   return {time,activeStep,positions,ball,ballShadow,hitTrail,fieldingLabel,scale:1+Math.sin(progress*Math.PI)*lift,arrows,events:play.events.filter(event=>event.time<=time)};

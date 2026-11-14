@@ -1,5 +1,3 @@
-/* Phase 1 semantic foundation. Baseball tokens are reserved for a later phase;
-   existing field, chips, targets and animation deliberately retain their palette. */
 :root {
   color-scheme: dark;
   --app-background: #080f1c;
@@ -28,13 +26,41 @@
   --info-muted: #19314b;
   --focus-ring: #b9dfff;
   --overlay: rgb(2 7 15 / 82%);
+  --header-background: #081927;
+  --header-border: #234359;
+  --header-text: #f0f4fa;
+  --header-control: #17263b;
+  --header-control-hover: #253a54;
+  --header-control-border: #69829b;
+  --training-canvas: #06121e;
+  --training-panel: linear-gradient(160deg, #0c2031, #071723);
+  --training-panel-border: #29485f;
+  --field-surround: radial-gradient(ellipse at center, #0d382a 0%, #071b23 70%);
+  --field-surround-shadow: 0 0 0 1px #234557, inset 0 0 45px #04121b;
+  --training-action-gradient: linear-gradient(180deg, var(--accent-primary-hover), var(--accent-primary));
+  --recorded-out: #f4f8ff;
+  --accent-text: var(--accent-primary-hover);
+  --selection-background: #243b55;
+  --selection-border: #9ab9dc;
+  --selection-text: #f0f4fa;
   --field: #166444;
   --field-dark: #0c3d2b;
   --field-highlight: #31865d;
   --defender: #274e83;
   --defender-highlight: #719ed4;
-  --runner: var(--accent-primary);
-  --runner-highlight: var(--accent-primary-hover);
+  --field-route: #c7a566;
+  --field-route-edge: var(--field-dark);
+  --field-hit-path: var(--field-route);
+  --field-hit-marker: var(--runner);
+  --field-hit-marker-edge: var(--runner-highlight);
+  --field-movement-path: #f4f7fb;
+  --field-ball: #f4efdf;
+  --field-ball-edge: var(--field-dark);
+  --field-sequence-text: var(--text-on-runner);
+  --field-sequence-edge: var(--runner-highlight);
+  --runner: #c7a566;
+  --runner-highlight: #dec18c;
+  --text-on-runner: #101a29;
   --baseball-line: #f4f8ff;
   --ball: #ffffff;
   --target: #dbeaf8;
@@ -58,4 +84,95 @@
   --line-body: 1.5;
   --line-heading: 1.2;
   --muted: var(--text-muted);
+}
+
+/* Pick the default in src/app.html. Each light palette shares the same UI rules. */
+:root:where([data-theme="crisp-stadium"], [data-theme="cobalt-daylight"]) {
+  color-scheme: light;
+  --surface: #ffffff;
+  --border: #e2e8f0;
+  --border-emphasis: #8497aa;
+  --text-secondary: #42566b;
+  --text-muted: #516579;
+  --text-disabled: #64748b;
+  --success: #156645;
+  --success-muted: #e8f5ee;
+  --warning: #80500f;
+  --warning-muted: #fff3d9;
+  --error: #a12b42;
+  --error-muted: #fcecf0;
+  --info: #205887;
+  --info-muted: #e7f2fc;
+  --overlay: rgb(15 23 42 / 55%);
+  --selection-background: #e8f0fb;
+  --selection-border: #1d3557;
+  --selection-text: #1d3557;
+  --training-canvas: var(--app-background);
+  --training-panel-border: var(--border);
+  --training-action-gradient: none;
+  --recorded-out: var(--text-primary);
+  --field-surround: var(--app-background);
+  --field-surround-shadow: 0 0 0 1px var(--border);
+  --defender: #1d3557;
+  --defender-highlight: #a9c5e4;
+  --runner: #f4cf82;
+  --runner-highlight: #765421;
+  --field-ball: #fffdf5;
+  --field-ball-edge: #1d3557;
+  --field-hit-path: var(--runner);
+  --field-hit-marker: #fffdf5;
+  --field-hit-marker-edge: #203a50;
+  --field-route: #bdeaff;
+  --field-route-edge: #162c47;
+  --field-sequence-text: #162c47;
+  --field-sequence-edge: #162c47;
+  --shadow-low: 0 2px 8px rgb(15 23 42 / 7%);
+  --shadow-raised: 0 12px 32px rgb(15 23 42 / 16%);
+  --glow-brass: none;
+  --glow-green: none;
+  --glow-cool: none;
+}
+
+:root:where([data-theme="crisp-stadium"]) {
+  --app-background: #f8fafc;
+  --surface-raised: #f8fafc;
+  --surface-interactive: #f1f5f9;
+  --surface-hover: #e8eef4;
+  --text-primary: #1d3557;
+  --header-background: #1d3557;
+  --header-border: #324b6e;
+  --header-text: #f8fafc;
+  --header-control: #1d3557;
+  --header-control-hover: #2b4568;
+  --header-control-border: #7690ad;
+  --training-panel: #ffffff;
+  --accent-primary: #10b981;
+  --accent-primary-hover: #27c391;
+  --accent-primary-pressed: #10b581;
+  --accent-primary-muted: #e4f7ef;
+  --accent-text: #087653;
+  --text-on-accent: #1d3557;
+  --focus-ring: #087653;
+}
+
+:root:where([data-theme="cobalt-daylight"]) {
+  --app-background: #f7f8f6;
+  --surface-raised: #edf3f5;
+  --surface-interactive: #edf3f5;
+  --surface-hover: #e3edf1;
+  --text-primary: #263c4a;
+  --header-background: #edf3f5;
+  --header-border: #dbe5e9;
+  --header-text: #263c4a;
+  --header-control: #edf3f5;
+  --header-control-hover: #e3edf1;
+  --header-control-border: #8497aa;
+  --training-panel: #edf3f5;
+  --accent-primary: #2563eb;
+  --accent-primary-hover: #1d4ed8;
+  --accent-primary-pressed: #1e40af;
+  --accent-primary-muted: #e8f0ff;
+  --accent-text: #1d4ed8;
+  --text-on-accent: #ffffff;
+  --focus-ring: #2563eb;
 }

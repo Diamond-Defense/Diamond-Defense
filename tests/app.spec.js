@@ -295,6 +295,10 @@ test.describe('Diamond Defence regression behavior', () => {
     const browser = page.getByRole('dialog', { name: 'Playbook' });
     await expect(browser).toBeVisible();
     await expect(page.locator('#playbookResultCount')).toHaveText('22 situations');
+    const currentCard = browser.locator('.playbook-situation-card.is-current');
+    await expect(currentCard).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
+    await expect(currentCard).toHaveCSS('border-left-color', await semanticColor(page, '--selection-border'));
+    await expect(currentCard).toHaveCSS('box-shadow', 'none');
     const emptyCard=page.locator('.playbook-situation-card[data-situation-key="BD-01"]');
     await expect(emptyCard.locator('.training-base-map i')).toHaveCount(3);
     await expect(emptyCard.locator('.training-base-map .is-occupied')).toHaveCount(0);
@@ -557,9 +561,11 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#fieldImg')).toBeVisible();
   });
 
-  test('field artwork keeps its natural colors in the player view', async ({ page }) => {
+  test('all palettes render the recolored field at full strength', async ({ page }) => {
     await openCleanApp(page);
-    await expect(page.locator('#fieldImg')).toHaveCSS('filter', 'none');
+    const field = page.locator('#fieldImg');
+    await page.locator('html').evaluate(element => { element.dataset.theme = 'crisp-stadium'; });
+    await expect(field).toHaveCSS('filter', 'none');
     await loginAsSeedPlayer(page);
 
     for (const viewport of [
@@ -569,9 +575,19 @@ test.describe('Diamond Defence regression behavior', () => {
     ]) {
       await page.setViewportSize(viewport);
       await expect(page.locator('body')).toHaveClass(/player-experience/);
-      await expect(page.locator('#fieldImg')).toHaveCSS('filter', 'none');
-      await expect(page.locator('#fieldImg')).toHaveAttribute('src', /diamond-defense-soft-field/);
+      await expect(field).toHaveCSS('filter', 'none');
+      await expect(field).toHaveAttribute('src', /diamond-defense-soft-field/);
     }
+
+    const goldRunner = await semanticColor(page, '--runner');
+    const header = page.locator('#appHeader');
+    await expect(header).toHaveCSS('background-color', 'rgb(29, 53, 87)');
+    await page.locator('html').evaluate(element => { element.dataset.theme = 'cobalt-daylight'; });
+    await expect(header).toHaveCSS('background-color', 'rgb(237, 243, 245)');
+    await expect(field).toHaveCSS('filter', 'none');
+    expect(await semanticColor(page, '--runner')).toBe(goldRunner);
+    await page.locator('html').evaluate(element => { element.dataset.theme = 'classic-dark'; });
+    await expect(field).toHaveCSS('filter', 'none');
   });
 
   test('field geometry keeps every token aligned on supported screens', async ({ page }) => {
@@ -779,11 +795,16 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(check).toBeEnabled();
     await expect(reset).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
     await expect(page.locator('#triesVal')).toHaveText('3/3');
+    await expect(page.locator('#timerVal')).toHaveCSS('color', await semanticColor(page, '--text-primary'));
+    await page.evaluate(() => startTimer(10));
+    await expect(page.locator('#timerBadge')).toHaveClass(/low/);
+    await expect(page.locator('#timerVal')).toHaveCSS('color', await semanticColor(page, '--error'));
     await expect.poll(() => page.evaluate(() => runnerEl?.style.display)).toBe('none');
     await expect(page.locator('.baseRunner[data-base="first"]')).toHaveCount(1);
     await expect(page.locator('#ballLayer svg')).toHaveClass(/is-context-hit-path/);
     await expect(page.locator('#ballLayer svg line, #ballLayer svg path')).toHaveCount(1);
-    await expect(page.locator('#ballLayer svg')).toHaveCSS('opacity', '0.42');
+    await expect(page.locator('#ballLayer svg')).toHaveCSS('opacity', '0.72');
+    await expect(page.locator('#ballLayer svg :is(line,path)')).toHaveCSS('stroke', await semanticColor(page, '--field-hit-path'));
 
 
 
@@ -1959,6 +1980,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#staffToolsBtn').click();
 
     await expect(page.locator('[data-coach-tab="reviews"]')).toHaveClass(/is-active/);
+    await expect(page.locator('[data-coach-tab="reviews"]')).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
+    await expect(page.locator('#coachOverviewTab')).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     await expect(page.locator('#teamsSubsec')).toHaveCount(0);
@@ -2227,7 +2250,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#playbookClose').click();
     await expect(page.locator('.seq-route-active')).toHaveCount(2);
     await expect(page.locator('.seq-route-underlay')).toHaveCount(2);
-    await expect(page.locator('.seq-route-active').first()).toHaveCSS('stroke', await semanticColor(page, '--accent-primary'));
+    await expect(page.locator('.seq-route-active').first()).toHaveCSS('stroke', await semanticColor(page, '--field-route'));
     await expect(page.locator('#seqPanel')).toContainText('Play Review');
     const reviewDoesNotOverlap = await page.evaluate(() => {
       const contextRect = document.querySelector('#contextBar').getBoundingClientRect();

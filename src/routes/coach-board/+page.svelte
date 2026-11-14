@@ -8,6 +8,7 @@
   function closeLibrary(){libraryOpen=false;if(!presenting&&(!hasEditor||libraryReturnToMain)){leaving=true;window.location.assign('/');return;}requestAnimationFrame(()=>document.getElementById(presenting?(presentationOrigin==='library'?'backToLibrary':'exitPresentation'):'browseLibrary')?.focus());}
   function browseLibrary(){playback?.pause();libraryReturnToMain=false;libraryOpen=true;}
   import brandLogo from '$lib/assets/diamond-defence-logo.png';
+  import { throwArrowGeometry } from '$lib/plays/throws.js';
   import fieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers } from '$lib/plays/token-presentation.js';
   import { BASES_NATIVE, IMG_W, IMG_H } from '$lib/plays/field.js';
@@ -652,14 +653,14 @@
   <div class="board-field" style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
     <img src={fieldImage} alt="Baseball field" draggable="false" />
     <button class="field-surface" aria-label="Set batted-ball destination" tabindex={presenting||!stepBall||(!board.battedBall&&!newHitResult)?-1:0} aria-disabled={presenting||!stepBall||(!board.battedBall&&!newHitResult)} onclick={destination}></button>
-    <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true"><defs><marker id="boardThrowArrow" markerWidth="16" markerHeight="12" refX="15" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M1,1 L15,6 L1,11 L4,6 Z" fill="var(--accent-primary)" /></marker></defs>
-      {#if movementPaths.length}{#each movementPaths as route (`${route.id}-${route.index}`)}<path class="board-movement-path" class:route-selected={movementEditor?.id===route.id&&movementEditor.index===route.index} data-position={route.id} d={route.path.map((p,i)=>`${i?'L':'M'} ${p.x},${p.y}`).join(' ')} fill="none" stroke="#f4f7fb" stroke-width="8" stroke-dasharray="1 20" stroke-linecap="round" style="filter:drop-shadow(0 1px 2px #071722)" opacity="0.85" />{/each}{/if}
+    <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true">
+      {#if movementPaths.length}{#each movementPaths as route (`${route.id}-${route.index}`)}<path class="board-movement-path" class:route-selected={movementEditor?.id===route.id&&movementEditor.index===route.index} data-position={route.id} d={route.path.map((p,i)=>`${i?'L':'M'} ${p.x},${p.y}`).join(' ')} fill="none" stroke="var(--field-movement-path)" stroke-width="8" stroke-dasharray="1 20" stroke-linecap="round" style="filter:drop-shadow(0 1px 2px #071722)" opacity="0.85" />{/each}{/if}
       {#if frame?.hitTrail?.length}
         <g class="board-hit-path">
           {#each frame.hitTrail.slice(1) as point,i}
             {@const previous=frame.hitTrail[i]}
             <path d={`M ${previous.x} ${previous.y} L ${point.x} ${point.y}`}
-              fill="none" stroke="var(--accent-primary)" stroke-width={board.battedBall.type==='line_drive'?5:8}
+              fill="none" stroke="var(--field-hit-path)" stroke-width={board.battedBall.type==='line_drive'?5:8}
               stroke-linecap="round" opacity={(i+1)*0.085}
               style:display={board.battedBall.type==='ground_ball'&&i%2?'none':undefined} />
           {/each}
@@ -668,7 +669,12 @@
       {#if frame?.ballShadow}
         <ellipse class="board-ball-shadow" cx={frame.ballShadow.x} cy={frame.ballShadow.y} rx="24" ry="10" fill="#060e16" opacity="0.55" />
       {/if}
-      {#each frame?.arrows || [] as arrow}<path class="seq-route-underlay" d={`M ${arrow.from.x} ${arrow.from.y} L ${arrow.from.x+(arrow.to.x-arrow.from.x)*arrow.progress} ${arrow.from.y+(arrow.to.y-arrow.from.y)*arrow.progress}`} stroke-width="14" /><path class="seq-route-active" d={`M ${arrow.from.x} ${arrow.from.y} L ${arrow.from.x+(arrow.to.x-arrow.from.x)*arrow.progress} ${arrow.from.y+(arrow.to.y-arrow.from.y)*arrow.progress}`} stroke-width="8" marker-end="url(#boardThrowArrow)" />{/each}
+      {#each frame?.arrows || [] as arrow}
+        {@const route = throwArrowGeometry(arrow, undefined, 2.5)}
+        <path class="seq-route-underlay" d={route.shaft} />
+        <path class="seq-route-active" d={route.shaft} />
+        <path class="seq-route-head" d={route.head} />
+      {/each}
     </svg>
     {#each finalTargets as [id,p] (id)}<span class="ghost-target" style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} style:width={`${metrics.defender}px`} style:height={`${metrics.defender}px`} style:font-size={`${metrics.defenderFont}px`} aria-label={`${id} final target`}>{id}</span>{/each}
     {#each Object.entries(positions) as [id,p] (id)}<button class:board-runner={!POSITIONS.includes(id)} class:movement-ready={recordingMovement&&!presenting&&!frame} class={`board-token ${POSITIONS.includes(id)?'chip '+(['P','C'].includes(id)?'Battery':['LF','CF','RF'].includes(id)?'Outfield':'Infield'):'baseRunner'}`} class:chosen={!presenting&&(movementEditor?.id===id||selectingThrow&&stepThrowFrom===id)} class:teaching-focus={focusPlayers.includes(id)} class:teaching-secondary={!!focusPlayers.length&&POSITIONS.includes(id)&&!focusPlayers.includes(id)} data-fielding-number={FIELDING_NUMBERS[id]} style:width={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:height={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:font-size={`${metrics.defenderFont}px`} style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} aria-label={`${id} token`} tabindex={presenting?-1:0} aria-disabled={presenting} onpointerdown={e=>down(e,id)} onpointermove={move} onpointerup={up} onpointercancel={cancel} onclick={e=>tokenClick(e,id)}>{#if POSITIONS.includes(id)}{id}{:else}<span class="rlabel" style:font-size={`${metrics.runnerFont}px`}>{board.offenseNumbers[id]}</span>{/if}</button>{/each}
@@ -685,7 +691,7 @@
       {/if}
       <span class="ball board-ball" style:left style:top style:scale={frame?.scale||1}
         style:width={`${metrics.ball}px`} style:height={`${metrics.ball}px`}
-        style:box-shadow={`0 0 0 ${metrics.ballOutline}px #000, 0 1px ${metrics.ballShadow}px rgba(0,0,0,.35)`}
+        style:box-shadow={`0 0 0 ${metrics.ballOutline}px var(--field-ball-edge), 0 1px ${metrics.ballShadow}px rgba(0,0,0,.35)`}
         aria-label="Baseball"></span>
     {/if}
   </div>
@@ -905,7 +911,7 @@
   .focus-picker{position:relative}.focus-picker summary{cursor:pointer;min-height:40px;padding:8px 12px;box-sizing:border-box;border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}.focus-options{position:absolute;bottom:100%;left:0;z-index:10;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-control);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-width:240px}.focus-options button{grid-column:1/-1}.focus-options label{min-height:36px}
   .teaching-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:8px 0}.teaching-tools label{display:flex;align-items:center;gap:6px}
   .board-token.teaching-focus{outline:3px solid var(--accent-primary);outline-offset:4px;z-index:5}.board-token.teaching-secondary{opacity:0.65}
-  .ghost-target{position:absolute;transform:translate(-50%,-50%);border:2px dashed var(--accent-primary);border-radius:50%;color:var(--text-primary);background:rgba(7,23,34,.55);display:flex;align-items:center;justify-content:center;box-sizing:border-box;pointer-events:none;font-weight:700}
+  .ghost-target{position:absolute;transform:translate(-50%,-50%);border:2px dashed var(--accent-primary);border-radius:50%;color:var(--baseball-line);background:rgba(7,23,34,.55);display:flex;align-items:center;justify-content:center;box-sizing:border-box;pointer-events:none;font-weight:700}
 
   .board-workspace{padding:16px;max-width:1800px;margin:auto}
   .board-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}
@@ -928,7 +934,6 @@
   .editing-toolbar{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-weight:700}.edit-history{display:flex;gap:6px}.edit-history button{width:36px;min-height:36px;font-size:22px;padding:0}
   .preview-main{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;width:100%}.preview-options{width:100%}.preview-options>summary{cursor:pointer;min-height:40px;align-content:center;color:var(--text-secondary)}.preview-options .teaching-tools{justify-content:flex-start}.preview-options .button-row{margin-top:8px}
   .board-controls p{margin:0;color:var(--text-secondary)}
-  button[aria-pressed=true]{outline:2px solid var(--accent-primary)}
   .playback-controls{border-top:1px solid var(--border);padding-top:12px}
   .playback-controls>label{width:100%}.playback-controls select{width:auto}
   .conversion{border-top:1px solid var(--border);padding-top:14px}
@@ -964,14 +969,14 @@
   .steps-sidebar ol{display:grid;gap:4px;margin:0;padding-left:26px}
   .steps-sidebar li button{width:100%;text-align:left}
   .steps-sidebar button{min-height:40px}
-  .steps-sidebar button[aria-current=step]{border-color:var(--accent-primary);background:var(--surface-hover)}
+  .steps-sidebar button[aria-current=step]{border-color:var(--selection-border);background:var(--selection-background);color:var(--selection-text)}
   .runner-suggestions{width:100%}
   .field-instruction{margin:0;padding:8px 12px;background:var(--surface);border-radius:var(--radius-control);color:var(--text-secondary)}
   .step-section-label{font-size:13px;margin:8px 0 0;width:100%;color:var(--text-secondary)}
   .step-actions>li{width:100%;min-width:0}
   .step-actions>li>button{width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left}
   .step-actions small{display:block;color:var(--text-secondary);margin-top:3px}
-  .action-edit{color:var(--accent-primary)}
+  .action-edit{color:var(--accent-text)}
   .action-groups,.action-group{width:100%;min-width:0}
   .action-groups{display:grid;gap:12px}
   .action-group{border-inline-start:2px solid var(--border);padding-inline-start:10px;box-sizing:border-box}
@@ -994,7 +999,10 @@
   .board-token:hover:not(:disabled),.board-token:active:not(:disabled){transform:translate(-50%,-50%)}
   .board-field .board-token{pointer-events:auto}.board-runner{z-index:9}.chosen{outline:2px solid white}
   .fielding-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:11;padding:5px 10px;border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);pointer-events:none}
-  .board-ball{position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:default;z-index:10}
+  .board-ball{background:var(--field-ball);border-color:var(--field-ball);position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:default;z-index:10}
+  .board-throws .seq-route-underlay{stroke:var(--field-route-edge);stroke-width:15;fill:none;stroke-linecap:round}
+  .board-throws .seq-route-active{stroke:var(--field-route);stroke-width:7.5;fill:none;stroke-linecap:round}
+  .board-throws .seq-route-head{fill:var(--field-route);stroke:var(--field-route-edge);stroke-width:3.75;stroke-linejoin:round}
   .board-throws{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .board-message{white-space:pre-line;margin:0;min-height:24px}
   .board-tools[hidden],.board-workspace[hidden]{display:none}

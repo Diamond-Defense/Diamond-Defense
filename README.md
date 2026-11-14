@@ -88,6 +88,18 @@ Either behavior can be overridden with an explicit `WRANGLER_LOG_PATH` or
 `WRANGLER_WRITE_LOGS` environment variable. These local diagnostics and state
 files are never included in a Cloudflare deployment.
 
+## Training appearance
+
+Set `data-theme` on the `<html>` element in `src/app.html` to
+`crisp-stadium` (default), `cobalt-daylight`, or `classic-dark`.
+Palette values live in `src/styles/tokens.css`. Header colors, button accents
+and their readable text colors are separate. All palettes share the field artwork at full opacity. The grass and clay
+colors are part of the image. Field coordinates and gameplay marker colors
+are handled separately.
+
+The selected palette also applies to Coach Board, the Board & Situation
+Library, Coach Presentation, reviews, assignments, and Admin.
+
 ## Initial local accounts
 
 The development seed contains two teams with active Spring 2027 seasons, two

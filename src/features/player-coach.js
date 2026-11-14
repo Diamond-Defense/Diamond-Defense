@@ -4444,27 +4444,6 @@ function ensureSeqTrail(){
   const svg = document.createElementNS(svgNS,'svg');
   svg.setAttribute('viewBox', `0 0 ${imgRect.width} ${imgRect.height}`);
 
-  // Define a smaller arrowhead marker once (scaled by stroke width)
-  const defs = document.createElementNS(svgNS, 'defs');
-  const marker = document.createElementNS(svgNS, 'marker');
-  marker.setAttribute('id', 'arrowHead');
-  marker.setAttribute('markerUnits', 'strokeWidth'); // scale with stroke width
-  marker.setAttribute('markerWidth', '4.5');         // smaller base
-  marker.setAttribute('markerHeight', '4.5');
-  marker.setAttribute('refX', '4.2');                // positions tip at end of path
-  marker.setAttribute('refY', '2.25');
-  marker.setAttribute('orient', 'auto');
-
-  const arrowPath = document.createElementNS(svgNS, 'path');
-  // small triangle; fill inherits line color via currentColor
-  arrowPath.setAttribute('d', 'M0,0 L0,4.5 L4.5,2.25 z');
-  arrowPath.setAttribute('fill', 'currentColor');
-  arrowPath.setAttribute('stroke', 'none');
-  marker.appendChild(arrowPath);
-
-  defs.appendChild(marker);
-  svg.appendChild(defs);
-
   _seqTrail.appendChild(svg);
   wrap.appendChild(_seqTrail);
   return _seqTrail;

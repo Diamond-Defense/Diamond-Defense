@@ -32,7 +32,13 @@ test('legacy Situation adapter and conversion preserve targets and optional inst
 });
 
 test('shared throw geometry trims chips while retaining short and offset legs', async()=>{
- const {throwRoute}=await import('../src/lib/plays/throws.js');
+ const {throwRoute,throwArrowGeometry}=await import('../src/lib/plays/throws.js');
  assert.deepEqual(throwRoute({x:0,y:0},{x:200,y:0},20),{from:{x:25,y:0},to:{x:170,y:0}});
  assert.deepEqual(throwRoute({x:0,y:0},{x:10,y:0},20,{x:3,y:4}),{from:{x:3,y:4},to:{x:13,y:4}});
+ const short=throwArrowGeometry({from:{x:0,y:0},to:{x:12,y:0},progress:1});
+ assert.equal(short.shaft,'M 0 31 L 12 31');
+ assert.equal(short.head,'M 12 31 L 2 36.5 L 2 25.5 Z');
+ const long=throwArrowGeometry({from:{x:0,y:0},to:{x:100,y:0},progress:1});
+ assert.equal(long.shaft,'M 0 0 L 91 0');
+ assert.equal(long.head,'M 91 0 L 81 5.5 L 81 -5.5 Z');
 });
