@@ -267,7 +267,6 @@
 
   /* Ball path + ball */
   #ballLayer svg{width:100%;height:100%;display:block}
-  #ballLayer svg.is-context-hit-path{opacity:.42;transition:opacity .25s ease}
   .ball{
     position:absolute;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;
     background:#fff;box-shadow:0 0 0 2px #000, 0 1px 3px rgba(0,0,0,.35);
@@ -2337,7 +2336,6 @@ body.situation-player-preview.proposal-field-preview .topbar{opacity:1;pointer-e
 .playbook-situation-card.is-current{border-color:var(--accent-primary);box-shadow:var(--shadow-low)}
 .playbook-card-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.playbook-card-heading strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#f3fbff;font-size:14px}
 .playbook-card-description{color:#d8e8f3;font-size:13px;line-height:1.35}.playbook-card-metadata{color:#8fc4d5;font-size:12px;font-weight:700;line-height:1.35}
-.playbook-difficulty{flex:none;padding:3px 7px;border-radius:999px;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.playbook-difficulty.is-foundational,.playbook-difficulty.is-beginner{color:#071b25;background:#6ff0bb}.playbook-difficulty.is-intermediate{color:#251b04;background:#ffd66b}.playbook-difficulty.is-advanced{color:#fff;background:#d94875}
 .playbook-browser-empty{margin:0 22px 22px;padding:30px;text-align:center;color:var(--text-muted);border:1px dashed var(--border);border-radius:13px}
 .situation-title-fields{display:grid;grid-template-columns:minmax(140px,.7fr) minmax(0,1.3fr);gap:12px;margin-bottom:12px}.situation-title-fields .field{display:grid;gap:5px;min-width:0}.situation-title-fields input{width:100%;min-width:0;box-sizing:border-box}.situation-metadata-row{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(150px,.55fr);gap:12px!important}.situation-metadata-row .field{display:grid;gap:5px;min-width:0}.situation-metadata-row input,.situation-metadata-row select{width:100%;box-sizing:border-box}.situation-related-categories{grid-column:1/-1;min-width:0;margin:0;padding:10px;border:1px solid var(--border);border-radius:10px}.situation-related-categories legend{padding:0 5px;color:#b9d0e0;font-size:11px;font-weight:800}.situation-category-checklist{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px 10px}.situation-category-toggle{display:block;min-width:0;width:100%;padding:8px 10px;text-align:left;border:1px solid var(--border);border-radius:8px;background:rgba(8,32,60,.6);color:#c9ddeb;font-size:11px;font-weight:750;line-height:1.3;white-space:normal;overflow-wrap:normal;word-break:normal}.situation-category-toggle:hover{border-color:var(--border-emphasis);background:rgba(18,55,88,.82)}.situation-category-toggle[aria-pressed="true"]{color:var(--text-on-accent);border-color:var(--accent-primary);background:var(--accent-primary);box-shadow:var(--shadow-low)}
 body.playbook-browser-open{overflow:hidden}
@@ -3044,10 +3042,6 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .playbook-browser-filters .field>span,.playbook-browser-summary,.playbook-card-description{color:var(--text-secondary)}
 .playbook-card-heading strong{color:var(--text-primary)}
 .playbook-card-metadata{color:var(--text-muted)}
-.playbook-difficulty{font-size:var(--type-help)}
-.playbook-difficulty:is(.is-foundational,.is-beginner){color:#b8ddb5;background:#284333;border:1px solid rgb(184 221 181 / 45%)}
-.playbook-difficulty.is-intermediate{color:#e8c477;background:#483a24;border:1px solid rgb(232 196 119 / 45%)}
-.playbook-difficulty.is-advanced{color:#f0ac98;background:#4a302c;border:1px solid rgb(240 172 152 / 45%)}
 .sequence-coach-note{margin-top:10px;padding:12px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-secondary)}
 .sequence-coach-note strong{display:block;margin-bottom:6px;color:var(--text-primary)}
 .database-unavailable{position:fixed;inset:1rem;z-index:100000;display:grid;place-items:center;overflow:auto;text-align:center;padding:2rem;border:1px solid var(--error);border-radius:var(--radius-panel);background:var(--app-background);color:var(--text-primary);box-shadow:var(--shadow-raised)}
@@ -3124,15 +3118,26 @@ body.player-experience .training-panel:has(#playbookRail.is-open)>:is(.context-b
 .playbook-browser-list{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 .playbook-card-heading{align-items:flex-start;flex-wrap:wrap}
 .playbook-card-heading strong{overflow:visible;white-space:normal;text-overflow:clip;line-height:1.4;font-size:16px;flex:1 1 180px}
-.playbook-difficulty{font-size:11px;font-weight:600;text-transform:none;letter-spacing:0;padding:3px 6px}
 .playbook-card-reference{font-size:11px;font-weight:500;white-space:nowrap;color:var(--text-muted)}
-.playbook-card-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.playbook-card-current{font-size:11px;font-weight:600;color:var(--accent-text)}
+.playbook-card-current{white-space:nowrap;font-size:11px;font-weight:600;color:var(--accent-text)}
+.playbook-situation-card .playbook-card-heading{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) 9ch;
+  align-items:start;
+}
+.playbook-situation-card .playbook-card-current{
+  justify-self:end;
+  line-height:1.4;
+  padding-top:2px;
+}
 .playbook-situation-card{gap:7px;padding:12px 14px}
 .playbook-situation-card:hover{transform:none;background:var(--surface-hover);border-color:var(--border-emphasis)}
 .playbook-situation-card.is-current:hover{border-color:var(--selection-border);background:var(--selection-background)}
 #playbookMoreFilterCount{color:var(--accent-text);font-size:12px}
-.playbook-card-metadata{font-size:12px}
+.playbook-card-metadata{font-size:12px;font-weight:500}
+.playbook-card-difficulty{font-weight:700;color:var(--text-primary)}
+.playbook-card-difficulty:is([data-difficulty="foundational"],[data-difficulty="beginner"]){color:var(--success)}
+.playbook-card-difficulty[data-difficulty="intermediate"]{color:var(--info)}
 .playbook-browser-header{padding:16px 20px}
 .playbook-browser-header p{max-width:65ch;line-height:1.5}
 @media(max-width:1100px){.playbook-browser-filters{grid-template-columns:minmax(150px,1fr) minmax(130px,1fr) minmax(120px,1fr) auto}}
@@ -3240,7 +3245,8 @@ body.player-experience .training-board .tgt.bad .tgt-label::before{color:var(--t
 .training-board #seqPanel:not(.hidden){border-color:var(--border-emphasis);background:var(--surface)}
 
 /* Keep arrowheads and batted-ball paths tied to their own colors. */
-.training-board #ballLayer svg :is(line,path){stroke:var(--field-hit-path);stroke-linecap:round;filter:none}
+.board-hit-path{stroke:var(--field-hit-path);stroke-linecap:round;fill:none}
+.board-ball-shadow{fill:var(--field-ball-edge);opacity:.55}
 
 /* Coaching is an explicit next action, using the navy/brass panel palette. */
 .player-coaching-prompt{display:none}
@@ -3685,7 +3691,7 @@ body.situation-library-open main#appWorkspace:has(#adminWorkspace:not(.hidden)):
 .playbook-card-state .training-out-map{height:32px}
 .playbook-card-state .training-out-map i{width:12px;height:12px}
 
-.editor-live-preview{margin:16px 0}.editor-live-preview h4,#situationSimilarPanel h4{margin:0 0 10px}.editor-preview-card{display:grid;gap:10px;max-width:340px;padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}.editor-preview-card .playbook-difficulty{justify-self:start}.similar-situation-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--border)}.similar-situation-row>span{flex:1 1 240px}#situationSimilarPanel[hidden]{display:none}
+.editor-live-preview{margin:16px 0}.editor-live-preview h4,#situationSimilarPanel h4{margin:0 0 10px}.editor-preview-card{display:grid;gap:10px;max-width:340px;padding:14px;border:1px solid var(--border);border-radius:13px;background:var(--surface)}.similar-situation-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--border)}.similar-situation-row>span{flex:1 1 240px}#situationSimilarPanel[hidden]{display:none}
 
 .team-playbook-filters{display:grid;grid-template-columns:2fr repeat(3,1fr);gap:10px;margin:16px 0}.team-playbook-list{display:grid;gap:8px;margin-bottom:16px}.team-playbook-choice{display:flex;align-items:center;gap:12px;padding:14px;border:1px solid var(--border);border-radius:8px;cursor:pointer}.team-playbook-choice input,.division-tags input{width:18px;height:18px;flex:none}.division-tags{display:flex;flex-wrap:wrap;gap:12px}.division-tags label{display:flex;align-items:center;gap:6px}@media(max-width:800px){.team-playbook-filters{grid-template-columns:1fr 1fr}}
 
@@ -3713,52 +3719,43 @@ body.coach-team-playbook-open main#appWorkspace > .tools-drawer:has(#coachCard:n
 [data-member-section]:not([data-member-section="permissions"]) #adminCoachPermissions{display:none}
 
 /* Header controls use their own foreground and surfaces so either header can be used. */
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader {
   color:var(--header-text);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader h1,
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader .account-trigger-role {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader h1,
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader .account-trigger-role {
   color:var(--header-text);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation > :is(.situation-controls,.utility-actions) > button, #playerBtn):not([aria-expanded="true"],:disabled):where(:not(body:has(#practiceWorkspace:not(.hidden)) #practiceToggle,body:has(:is(#coachCard,#coachResultsWorkspace,#adminWorkspace):not(.hidden)) #staffToolsBtn)) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation > :is(.situation-controls,.utility-actions) > button, #playerBtn):not([aria-expanded="true"],:disabled):where(:not(body:has(#practiceWorkspace:not(.hidden)) #practiceToggle,body:has(:is(#coachCard,#coachResultsWorkspace,#adminWorkspace):not(.hidden)) #staffToolsBtn)) {
   color:var(--header-text);
   border-color:var(--header-control-border);
   background:var(--header-control);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation > :is(.situation-controls,.utility-actions) > button, #playerBtn):not([aria-expanded="true"],:disabled):where(:not(body:has(#practiceWorkspace:not(.hidden)) #practiceToggle,body:has(:is(#coachCard,#coachResultsWorkspace,#adminWorkspace):not(.hidden)) #staffToolsBtn)):hover {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation > :is(.situation-controls,.utility-actions) > button, #playerBtn):not([aria-expanded="true"],:disabled):where(:not(body:has(#practiceWorkspace:not(.hidden)) #practiceToggle,body:has(:is(#coachCard,#coachResultsWorkspace,#adminWorkspace):not(.hidden)) #staffToolsBtn)):hover {
   background:var(--header-control-hover);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation button,#playerBtn):focus-visible {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #appHeader :is(.training-navigation button,#playerBtn):focus-visible {
   outline-color:var(--header-text);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) .playbook-difficulty:is(.is-foundational,.is-beginner) {
-  color:var(--success);background:var(--success-muted);border-color:var(--border);
-}
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) .playbook-difficulty.is-intermediate {
-  color:var(--warning);background:var(--warning-muted);border-color:var(--border);
-}
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) .playbook-difficulty.is-advanced {
-  color:var(--error);background:var(--error-muted);border-color:var(--border);
-}
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #playerModalOverlay :is(.field > span,.modalHeader .eyebrow) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #playerModalOverlay :is(.field > span,.modalHeader .eyebrow) {
   color:var(--text-secondary);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #timerBadge,
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #timerVal {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #timerBadge,
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #timerVal {
   color:var(--text-primary);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) #timerBadge.low :is(#timerVal,.status-label) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) #timerBadge.low :is(#timerVal,.status-label) {
   color:var(--error);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) body.player-experience .training-board .tgt.good .tgt-label::before {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) body.player-experience .training-board .tgt.good .tgt-label::before {
   color:var(--success);
 }
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) body.player-experience .training-board .tgt.bad .tgt-label::before {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) body.player-experience .training-board .tgt.bad .tgt-label::before {
   color:var(--error);
 }
 
 /* Staff workspaces use the same daylight surfaces and semantic status colors. */
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) {
   & #coachCard {
     background:var(--surface)!important;
     border-color:var(--border)!important;
@@ -3862,7 +3859,7 @@ body.coach-team-playbook-open main#appWorkspace > .tools-drawer:has(#coachCard:n
 }
 
 /* Daylight field markers use flat fills and a visible edge over grass, dirt, and chalk. */
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) {
   & :is(.training-board,.board-field) .chip:is(.Battery,.Infield,.Outfield) {
     background-image:none;
     text-shadow:none;
@@ -3873,7 +3870,6 @@ body.coach-team-playbook-open main#appWorkspace > .tools-drawer:has(#coachCard:n
     background:var(--field-hit-marker);
     border-color:var(--field-hit-marker-edge);
   }
-  & .training-board #ballLayer svg.is-context-hit-path {opacity:.72}
 }
 
 /* Selection stays visible independently of hover and keyboard focus. */
@@ -3915,11 +3911,11 @@ body.player-experience:has(:is(#coachResultsWorkspace,#adminWorkspace,#coachCard
   box-shadow:none;
 }
 
-:root[data-theme="crisp-stadium"] #appHeader {
-  --selection-border:#a9c5e4;
+:root[data-theme="classic-ballpark"] #appHeader {
+  --selection-border:var(--accent-secondary);
 }
 
-:root:is([data-theme="crisp-stadium"],[data-theme="cobalt-daylight"]) {
+:root:is([data-theme="classic-ballpark"],[data-theme="cobalt-daylight"]) {
   & body.player-experience .training-board .tgt.bad {
     --target-incorrect:#ffd2dc;
     border-width:3px;
@@ -3930,4 +3926,35 @@ body.player-experience:has(:is(#coachResultsWorkspace,#adminWorkspace,#coachCard
     background:var(--surface)!important;
     border-color:var(--border-emphasis)!important;
   }
+}
+
+/* Keep the transparent Classic mark distinct from the navy header. */
+:root[data-theme="classic-ballpark"] #appHeader .brand-mark img {
+  filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
+.training-board .chip {
+  --sequence-pick-fill: var(--field-route);
+  --sequence-pick-text: var(--field-sequence-text);
+  --sequence-pick-border: var(--field-sequence-edge);
+}
+.training-board .chip.seq-locked {
+  --sequence-pick-fill: var(--success);
+  --sequence-pick-text: var(--surface);
+  --sequence-pick-border: var(--success-muted);
+  outline-color:var(--selection-border);
+}
+.training-board .seq-badge {
+  color:var(--sequence-pick-text);
+  background:var(--sequence-pick-fill);
+  border:1px solid var(--sequence-pick-border);
+}
+:root[data-theme="classic-ballpark"] .training-board .chip.seq-locked {
+  --sequence-pick-text:#fff;
+  outline-color:#75d887;
+}
+
+:is(.playbook-situation-card,.editor-preview-card) .playbook-card-state {
+  border-bottom:0;
+  padding-bottom:0;
 }

@@ -91,7 +91,7 @@ files are never included in a Cloudflare deployment.
 ## Training appearance
 
 Set `data-theme` on the `<html>` element in `src/app.html` to
-`crisp-stadium` (default), `cobalt-daylight`, or `classic-dark`.
+Classic Ballpark (`classic-ballpark`, default), `cobalt-daylight`, or `classic-dark`.
 Palette values live in `src/styles/tokens.css`. Header colors, button accents
 and their readable text colors are separate. All palettes share the field artwork at full opacity. The grass and clay
 colors are part of the image. Field coordinates and gameplay marker colors

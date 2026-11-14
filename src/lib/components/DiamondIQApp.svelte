@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import brandLogo from '$lib/assets/diamond-defence-logo.png';
-  import appIcon from '$lib/assets/diamond-defence-dd.svg';
+  import brandLogo from '$lib/assets/diamond-defence-classic.png';
   import softFieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import legacyDocument from '../../../index.html?raw';
   import { loadLegacyRuntime } from '$lib/legacy/loadRuntime';
@@ -26,7 +25,6 @@
 
 <svelte:head>
   <title>Diamond Defence</title>
-  <link rel="icon" href={appIcon} data-diamond-defense-icon />
   <meta
     name="description"
     content="Diamond Defence is a baseball situation simulator and interactive playbook trainer for players and coaches."

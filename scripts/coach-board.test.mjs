@@ -42,3 +42,22 @@ test('shared throw geometry trims chips while retaining short and offset legs', 
  assert.equal(long.shaft,'M 0 0 L 91 0');
  assert.equal(long.head,'M 91 0 L 81 5.5 L 81 -5.5 Z');
 });
+
+test('shared hit flight distinguishes grounders, line drives, fly balls and popups', async () => {
+  const { sampleHitFlight } = await import('../src/lib/plays/animation.js');
+  const start = { x: 100, y: 400 };
+  const destination = { x: 500, y: 400 };
+  const frame = (type, progress) => sampleHitFlight({ type, start, destination }, progress);
+  const ground = frame('ground_ball', .5);
+  const line = frame('line_drive', .5);
+  const fly = frame('fly_ball', .5);
+  const popup = frame('pop_fly', .5);
+  assert.equal(ground.ballShadow, null);
+  assert.equal(line.ballShadow, null);
+  assert.deepEqual(fly.ballShadow, { x: 300, y: 400 });
+  assert.deepEqual(popup.ballShadow, fly.ballShadow);
+  assert.ok(ground.ball.y > line.ball.y && line.ball.y > fly.ball.y && fly.ball.y > popup.ball.y);
+  for (const type of ['ground_ball', 'line_drive', 'fly_ball', 'pop_fly']) {
+    assert.deepEqual(frame(type, 1).ball, destination);
+  }
+});

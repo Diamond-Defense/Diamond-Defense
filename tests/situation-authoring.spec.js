@@ -56,3 +56,62 @@ test('a new Situation draft creates its first record only when published from Co
  expect((await (await page.request.get('/api/situations')).json()).some(s=>s.key===draft.key)).toBe(false);
  await page.getByRole('button',{name:'Save Situation Changes',exact:true}).click();await page.getByRole('button',{name:'Publish Situation',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Situation changes saved.');const saved=(await (await page.request.get('/api/situations')).json()).find(s=>s.key===draft.key);expect(saved.revision).toBe(1);await page.request.delete(`/api/situations/${saved.key}`,{headers:{...headers,'If-Match':'1'}});
 });
+
+test('Admin library opens the shared training stages and publishes a new situation', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => window.__DIQ_READY__);
+  await page.locator('#playerBtn').click();
+  await page.locator('#authAdminTab').click();
+  await page.locator('#adminPwInput').fill('password');
+  await page.locator('#adminPwOk').click();
+  await page.locator('#staffToolsBtn').click();
+  await page.getByRole('button', { name: 'Situations', exact: true }).click();
+  await page.locator('#situationLibrary').getByRole('button', { name: 'New situation', exact: true }).click();
+  const stages = page.getByRole('navigation', { name: 'Training situation stages' });
+  await expect(stages.getByRole('button')).toHaveCount(5);
+  const title = `Training stages ${Date.now()}`;
+  await page.getByLabel('Board name').fill(title);
+  await page.getByLabel('Difficulty').selectOption('advanced');
+  await stages.getByRole('button', { name: 'Starting situation' }).click();
+  await page.getByRole('combobox', { name: 'Outs', exact: true }).selectOption('1');
+  await stages.getByRole('button', { name: 'Batted ball' }).click();
+  await page.getByLabel('Batted-ball type').selectOption('fly_ball');
+  await stages.getByRole('button', { name: 'Defense & throws' }).click();
+  await page.getByLabel('Target tolerance').fill('125');
+  await page.getByRole('button', { name: '+ Add Step', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Before the pitch', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Add pickoff throw', exact: true })).toHaveCount(0);
+  await stages.getByRole('button', { name: 'Review', exact: true }).click();
+  await page.getByRole('button', { name: 'Preview opening hit' }).click();
+  await expect(page.locator('.board-hit-path')).toBeVisible();
+  await page.getByRole('button', { name: 'Stop preview' }).click();
+  await page.getByLabel('I confirm these play and runner outcomes').check();
+  await page.getByRole('button', { name: 'Publish Situation', exact: true }).click();
+  await expect(page.getByRole('status')).toHaveText('Situation changes saved.');
+  const situations = await (await page.request.get('/api/situations')).json();
+  expect(situations.find(record => record.title === title)).toMatchObject({
+    outs: 1, difficulty: 'advanced', targets: { P: { tol: 125 } },
+    boardAnimation: { battedBall: { type: 'fly_ball' } },
+  });
+});
+
+test('Coach workspace opens the shared stages and submits edits as a proposal', async ({ page, baseURL }) => {
+  const auth = await page.request.post('/api/auth/login', {
+    headers: { Origin: new URL(baseURL).origin },
+    data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'password' },
+  });
+  expect(auth.ok()).toBe(true);
+  await page.goto('/');
+  await page.evaluate(() => window.__DIQ_READY__);
+  await page.locator('#staffToolsBtn').click();
+  await page.getByRole('button', { name: 'Situation Proposals', exact: true }).click();
+  await page.locator('#situationLibrary').getByRole('button', { name: 'Propose changes', exact: true }).first().click();
+  const stages = page.getByRole('navigation', { name: 'Training situation stages' });
+  await stages.getByRole('button', { name: 'Review', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Publish Situation' })).toHaveCount(0);
+  await expect(page.getByLabel('Player context')).toHaveCount(0);
+  await page.getByLabel('Proposal reason').fill('Clarifies the defensive teaching focus.');
+  await page.getByLabel('I confirm these play and runner outcomes').check();
+  await page.getByRole('button', { name: 'Submit for Review', exact: true }).click();
+  await expect(page.getByRole('status')).toContainText('Proposal submitted');
+});

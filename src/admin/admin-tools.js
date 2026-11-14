@@ -2613,7 +2613,7 @@
     const tabs=document.createElement('div');tabs.className='situation-library-tabs';toolbar.append(tabs);
     let mode='library', bundle=null, loading=false, order=null, draggedKey=null;
     const selected=new Set();
-    const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;openSituationEditorPane();byId('newSituationBtn').click();});create.className='btn btn-brand situation-library-create';toolbar.append(create);
+    const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;transferToBoard('training',makeSituationDraft(),null);});create.className='btn btn-brand situation-library-create';toolbar.append(create);
     if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
@@ -2697,7 +2697,14 @@
           row.ondragstart=event=>{draggedKey=item.key;event.dataTransfer.setData('text/plain',item.key);};row.ondragover=event=>event.preventDefault();
           row.ondrop=event=>{event.preventDefault();const from=order.situations.findIndex(record=>record.key===draggedKey);const to=order.situations.findIndex(record=>record.key===item.key);if(from<0||from===to)return;const [moved]=order.situations.splice(from,1);order.situations.splice(to,0,moved);draw();};
         }else{
-          const edit=button(isAdmin||window.__DIQ_AUTH_USER__?.canPublishSituations?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;setSituation(item.key,clone(item));openSituationEditorPane();});const variation=button('Create variation',()=>createSituationVariation(item));row.append(title,edit,variation);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
+          const edit=button(isAdmin||window.__DIQ_AUTH_USER__?.canPublishSituations?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;transferToBoard('training',item,item);});const variation=button('Create variation',async()=>{
+          if(editorDirty && !await requestConfirmation({title:'Replace local changes?',message:'Creating a variation replaces your unsubmitted draft.',confirmLabel:'Create variation'}))return;
+          transferToBoard('training',makeSituationDraft(item),null);
+        });const legacyEdit=button('Open classic editor',async()=>{
+          if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;
+          setSituation(item.key,clone(item));
+          openSituationEditorPane();
+        });row.append(title,edit,variation,legacyEdit);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
         }list.append(row);
       }
       if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';
@@ -2836,9 +2843,15 @@
     const card=document.createElement('div');card.className='editor-preview-card';
     card.setAttribute('aria-label',`${snapshot.title}. ${playbookRunnerLabel(snapshot)}, ${snapshot.outs} outs`);
     const title=document.createElement('strong');title.textContent=playbookCardTitle(snapshot);
-    const difficulty=document.createElement('span');difficulty.className=`playbook-difficulty is-${snapshot.difficulty}`;difficulty.textContent=difficultyLabel(snapshot.difficulty);
-    const category=document.createElement('span');category.className='playbook-card-metadata';category.textContent=teachingCategoryLabel(snapshot.primaryCategory);
-    card.append(title,difficulty);if(snapshot.desc){const context=document.createElement('span');context.textContent=snapshot.desc;card.append(context);}card.append(playbookStateGraphic(snapshot),category);preview.append(card);
+    card.append(title,playbookCardMetadata(snapshot));
+    if(snapshot.desc){
+      const context=document.createElement('span');
+      context.className='playbook-card-description';
+      context.textContent=snapshot.desc;
+      card.append(context);
+    }
+    card.append(playbookStateGraphic(snapshot));
+    preview.append(card);
     const list=byId('situationSimilarList');list.replaceChildren();
     const intentional=Boolean(snapshot.variationSourceKey);
     const matches=intentional ? SITUATIONS.filter(item=>item.key!==snapshot.key && Number(item.revision)>0 && (item.key===snapshot.variationSourceKey || item.variationSourceKey===snapshot.variationSourceKey)) : similarSituations(snapshot);
@@ -3266,10 +3279,10 @@
   byId('saveSituationBtn')?.addEventListener('click', () => setTimeout(() => markEditorClean(currentSnapshot()), 0));
 
   let authoringTransfer = false;
-  function transferToBoard(destination){
+  function transferToBoard(destination,snapshot=currentSnapshot(),baseline=editorBaseline){
     try {
-      const draft=window._diqSituationAuthoring.syncSituationAnimation(currentSnapshot());
-      window._diqSituationAuthoring.writeHandoff(sessionStorage,window.__DIQ_AUTH_USER__?.id,destination,draft,editorBaseline,coachRationale?.value||'');
+      const draft=window._diqSituationAuthoring.syncSituationAnimation(snapshot);
+      window._diqSituationAuthoring.writeHandoff(sessionStorage,window.__DIQ_AUTH_USER__?.id,destination,draft,baseline,destination==='training'?'':coachRationale?.value||'');
       authoringTransfer=true;
       window.location.assign('/coach-board');
     } catch(error) { setWorkflowStatus(error.message,'error'); }

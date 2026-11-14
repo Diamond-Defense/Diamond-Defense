@@ -4257,9 +4257,6 @@ function setChipPickIndex(el, n){
     fontSize: '11px',
     lineHeight: '16px',
     textAlign: 'center',
-    color: 'var(--text-on-accent)',
-    background: 'var(--accent-primary)',
-    border: '1px solid var(--runner-highlight)',
     boxShadow: '0 1px 2px rgba(0,0,0,.25)',
     pointerEvents: 'none',
     userSelect: 'none',
@@ -4481,12 +4478,9 @@ function sizeOverlays(){
   }
 
   // 5) Ball graphics: reset and rebuild SVG to match new viewBox
-  const restoreContextHitPath = ballSvg?.classList.contains('is-context-hit-path');
   if (animReq){ cancelPlayFrame(animReq); animReq = null; }
   buildBallGraphics(); // also calls syncBallToHit()
-  if (restoreContextHitPath && currentSituation){
-    animateHit(currentSituation.hitType, { duration:0, persistPath:true });
-  }
+  if (ballEl) ballEl.style.scale = '1';
 
   // 6) Reposition coach hit marker (if visible)
   if (hitMarker && currentSituation && currentSituation.hit){
@@ -4693,7 +4687,7 @@ function wireOnce(){
     const ht = (currentSituation.hitType) || (hitTypeSel && hitTypeSel.value) || 'line';
     const animationDuration = getPlayAnimationDuration();
     const animationOptions = { duration:animationDuration };
-    animateHit(ht, { ...animationOptions, persistPath:true });
+    animateHit(ht, { ...animationOptions, useAuthoredType:true });
 
     const resolvedOutcome = resolveSituationOutcome(currentSituation);
     liveRunners = { ...resolvedOutcome.initialRunners };

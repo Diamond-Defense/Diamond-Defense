@@ -87,7 +87,7 @@
 }
 
 /* Pick the default in src/app.html. Each light palette shares the same UI rules. */
-:root:where([data-theme="crisp-stadium"], [data-theme="cobalt-daylight"]) {
+:root:where([data-theme="classic-ballpark"], [data-theme="cobalt-daylight"]) {
   color-scheme: light;
   --surface: #ffffff;
   --border: #e2e8f0;
@@ -133,26 +133,33 @@
   --glow-cool: none;
 }
 
-:root:where([data-theme="crisp-stadium"]) {
+:root:where([data-theme="classic-ballpark"]) {
   --app-background: #f8fafc;
   --surface-raised: #f8fafc;
   --surface-interactive: #f1f5f9;
   --surface-hover: #e8eef4;
   --text-primary: #1d3557;
-  --header-background: #1d3557;
+  --header-background: #042142;
   --header-border: #324b6e;
   --header-text: #f8fafc;
-  --header-control: #1d3557;
-  --header-control-hover: #2b4568;
+  --header-control: var(--header-background);
+  --header-control-hover: #173858;
   --header-control-border: #7690ad;
   --training-panel: #ffffff;
-  --accent-primary: #10b981;
-  --accent-primary-hover: #27c391;
-  --accent-primary-pressed: #10b581;
-  --accent-primary-muted: #e4f7ef;
-  --accent-text: #087653;
-  --text-on-accent: #1d3557;
-  --focus-ring: #087653;
+  --accent-secondary: #7cc4f7;
+  --field-route: var(--accent-secondary);
+  --success: #0b6d16;
+  --success-muted: color-mix(in srgb, #0a9913 10%, var(--surface));
+  --selection-background: color-mix(in srgb, var(--accent-secondary) 24%, var(--surface));
+  --selection-border: var(--header-background);
+  --selection-text: var(--header-background);
+  --accent-primary: var(--header-background);
+  --accent-primary-hover: #173858;
+  --accent-primary-pressed: #03152c;
+  --accent-primary-muted: var(--selection-background);
+  --accent-text: var(--header-background);
+  --text-on-accent: #ffffff;
+  --focus-ring: #24628f;
 }
 
 :root:where([data-theme="cobalt-daylight"]) {

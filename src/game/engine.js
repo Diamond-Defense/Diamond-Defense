@@ -42,7 +42,7 @@ let runnerLastBase = 'home';
 let imgRect={width:1,height:1,left:0,top:0};
 let CHIP_PX = 36;
 
-let ballSvg=null, ballPath=null, ballEl=null, hitMarker=null;
+let ballSvg=null, ballEl=null, hitMarker=null;
 let animReq=null;
 
 let liveRunners = { first:false, second:false, third:false };
@@ -1575,7 +1575,8 @@ function buildBallGraphics(){
 }
 function clearBallHitPath(){
   if (!ballSvg) return;
-  ballSvg.classList.remove('is-context-hit-path');
+  delete ballSvg.dataset.hitType;
+  if (ballEl) ballEl.style.scale = '1';
   ballSvg.innerHTML = '';
 }
 function ensureDefaultHit(){
@@ -1662,94 +1663,49 @@ function mapHitTypeToAdvance(hitType){
   }
 }
 function animateHit(style, options={}){
-  const sit=currentSituation; if(!sit) return;
-  ensureDefaultHit(); style = style || sit.hitType || 'line';
+  const situation = currentSituation;
+  if (!situation) return;
+  ensureDefaultHit();
+  if (animReq) cancelPlayFrame(animReq);
+  animReq = null;
   clearBallHitPath();
-  const startCss=nativeToCssPoint(HOME_NATIVE), endCss=nativeToCssPoint(sit.hit);
-  const svgNS='http://www.w3.org/2000/svg';
 
-  // Popup path controls (used for both the blue line + the moving ball so it always follows the line)
-  let popupC1=null, popupC2=null;
+  const legacyTypes = { grounder:'ground_ball', line:'line_drive', popup:'pop_fly' };
+  const authored = situation.boardAnimation?.battedBall;
+  const hit = {
+    type: options.useAuthoredType && ['ground_ball','line_drive','fly_ball','pop_fly'].includes(authored?.type)
+      ? authored.type : legacyTypes[style || situation.hitType] || 'line_drive',
+    start: HOME_NATIVE,
+    destination: situation.hit,
+  };
+  const { sampleHitFlight, hitFlightDuration, TEACHING_PLAYBACK_RATE } = window._diqPlayAnimation;
+  const duration = options.duration === 0 ? 0 : hitFlightDuration(hit.type,true) / TEACHING_PLAYBACK_RATE;
+  ballSvg.dataset.hitType = hit.type;
+  const started = playNow();
 
-  if (style==='line' || style==='grounder'){
-    ballPath=document.createElementNS(svgNS,'line');
-    Object.entries({x1:startCss.x,y1:startCss.y,x2:endCss.x,y2:endCss.y}).forEach(([k,v])=>ballPath.setAttribute(k,v));
-    ballPath.setAttribute('stroke','var(--accent-primary)');
-    ballPath.setAttribute('stroke-width', String(getBallStrokeWidth()));
-    if (style==='grounder') ballPath.setAttribute('stroke-dasharray','8 8');
-    ballSvg.appendChild(ballPath);
-  } else {
-    // Cubic bezier gives a nice high arch while allowing a gentler "descent" near the end.
-    const distLocal=Math.hypot(endCss.x-startCss.x,endCss.y-startCss.y);
-    const archH=clamp(distLocal*0.70, 180, 420); // higher arch
-    const dx=endCss.x-startCss.x, dy=endCss.y-startCss.y;
-
-    // Peak earlier + reduce lift near landing so there's less arch at the very end.
-    popupC1={ x:startCss.x + dx*0.35, y:startCss.y + dy*0.35 - archH };
-    popupC2={ x:startCss.x + dx*0.78, y:startCss.y + dy*0.78 - archH*0.25 };
-
-    const d=`M ${startCss.x},${startCss.y} C ${popupC1.x},${popupC1.y} ${popupC2.x},${popupC2.y} ${endCss.x},${endCss.y}`;
-    ballPath=document.createElementNS(svgNS,'path');
-    ballPath.setAttribute('d',d); ballPath.setAttribute('fill','none');
-    ballPath.setAttribute('stroke','var(--accent-primary)');
-    ballPath.setAttribute('stroke-width', String(getBallStrokeWidth()));
-    ballSvg.appendChild(ballPath);
-  }
-
-  ballEl.style.left=`${startCss.x}px`; ballEl.style.top=`${startCss.y}px`; ballEl.style.display='block';
-  const dist=Math.hypot(endCss.x-startCss.x,endCss.y-startCss.y);
-  const requestedDuration = Number(options.duration);
-  const duration = Number.isFinite(requestedDuration)
-    ? Math.max(0, requestedDuration)
-    : clamp(1200 + dist * 0.90, 1500, 3200); // slower + smoother
-  let t0=playNow(); if (animReq) cancelPlayFrame(animReq);
-  const p0={x:startCss.x,y:startCss.y}, p3={x:endCss.x,y:endCss.y};
-
-  function cubicPoint(a,b,c,d,t){
-    const mt=1-t, mt2=mt*mt, t2=t*t;
-    const w0=mt2*mt, w1=3*mt2*t, w2=3*mt*t2, w3=t2*t;
-    return { x:w0*a.x + w1*b.x + w2*c.x + w3*d.x,
-             y:w0*a.y + w1*b.y + w2*c.y + w3*d.y };
-  }
-
-  function step(now){
-    if(options.isCancelled?.()){
-      animReq=null;
+  function step(now) {
+    if (options.isCancelled?.()) {
+      animReq = null;
+      clearBallHitPath();
       return;
     }
-    const t=clamp((now-t0)/duration,0,1);
-
-    // For popup: ease-in-out to simulate "hang time" while still tracking the same blue line path.
-    const u=(style==='popup')?(0.5-0.5*Math.cos(Math.PI*t)):t;
-
-    const pos=(style==='popup' && popupC1 && popupC2)
-      ? cubicPoint(p0,popupC1,popupC2,p3,u)
-      : {x:lerp(p0.x,p3.x,t), y:lerp(p0.y,p3.y,t)};
-
-    ballEl.style.left=`${pos.x}px`; ballEl.style.top=`${pos.y}px`;
-    if (t<1) animReq=requestPlayFrame(step);
-    else {
-      if (ballSvg){
-        if(options.persistPath) ballSvg.classList.add('is-context-hit-path');
-        else clearBallHitPath();
-      }
-      animReq=null;
-      if (ballEl) ballEl.style.display='block';
-      options.onDone?.();
+    const progress = duration ? clamp((now-started)/duration,0,1) : 1;
+    const frame = sampleHitFlight(hit,progress);
+    const ball = nativeToCssPoint(frame.ball);
+    ballEl.style.left = `${ball.x}px`;
+    ballEl.style.top = `${ball.y}px`;
+    ballEl.style.scale = String(frame.scale);
+    ballEl.style.display = 'block';
+    window._diqPaintHitVisuals(ballSvg, progress < 1 ? frame : null, hit.type, nativeToCssPoint);
+    if (progress < 1) {
+      animReq = requestPlayFrame(step);
+      return;
     }
-  }
-  if(duration === 0){
-    ballEl.style.left=`${endCss.x}px`;
-    ballEl.style.top=`${endCss.y}px`;
-    if (ballSvg){
-      if(options.persistPath) ballSvg.classList.add('is-context-hit-path');
-      else clearBallHitPath();
-    }
-    animReq=null;
+    animReq = null;
     options.onDone?.();
-    return;
   }
-  animReq=requestPlayFrame(step);
+
+  step(started);
 }
 function ensureRunner(){
   if (!runnerEl){
@@ -2668,7 +2624,7 @@ function makeBlankSituation(){
   };
 }
 
-function addNewSituation(source=null){
+function makeSituationDraft(source=null){
   const s = source ? JSON.parse(JSON.stringify(source)) : makeBlankSituation();
   if(source){
     s.key=genUniqueKey(s.title);
@@ -2678,6 +2634,11 @@ function addNewSituation(source=null){
     for(const field of ['revision','displayCode','active','createdAt','updatedAt','createdBy','archivedAt','archivedBy'])delete s[field];
   }
 
+  return s;
+}
+
+function addNewSituation(source=null){
+  const s = makeSituationDraft(source);
   // Add to model + persist default starts for this key
   SITUATIONS.push(s);
   startsMap[s.key] = Fcopy(s.starts);
@@ -2829,6 +2790,10 @@ function playbookRunnerLabel(situation){
   return runners.length ? runners.join(', ') : 'Bases empty';
 }
 
+function playbookTeachingCategories(situation){
+  return [situation.primaryCategory, ...(situation.relatedCategories || [])];
+}
+
 function filteredPlaybookSituations(){
   const query = String(playbookSearch?.value || '').trim().toLowerCase();
   const category = String(playbookCategory?.value || '');
@@ -2836,7 +2801,7 @@ function filteredPlaybookSituations(){
   const difficulty = String(playbookDifficulty?.value || '');
   const runners = String(playbookRunners?.value || '');
   return (SITUATIONS || []).filter((situation) => {
-    const teachingCategories = [situation.primaryCategory, ...(situation.relatedCategories || [])];
+    const teachingCategories = playbookTeachingCategories(situation);
     const categoryLabels = teachingCategories.map(teachingCategoryLabel).join(' ');
     const haystack = `${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key} ${situation.displayCode||''}`.toLowerCase();
     const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
@@ -2911,10 +2876,24 @@ function playbookStateGraphic(situation){
   return state;
 }
 
+function playbookCardMetadata(situation){
+  const metadata = document.createElement('span');
+  metadata.className = 'playbook-card-metadata';
+  const difficulty = document.createElement('span');
+  difficulty.className = 'playbook-card-difficulty';
+  difficulty.dataset.difficulty = situation.difficulty;
+  difficulty.textContent = difficultyLabel(situation.difficulty);
+  metadata.append(difficulty);
+  const category = teachingCategoryLabel(situation.primaryCategory);
+  if (category) metadata.append(` · ${category}`);
+  return metadata;
+}
+
 function renderPlaybookBrowser(){
   if (!playbookBrowserList) return;
-  const categories = window.DIQ_TEACHING_CATEGORIES || [];
   if (playbookCategory) {
+    const represented = new Set((SITUATIONS || []).flatMap(playbookTeachingCategories));
+    const categories = (window.DIQ_TEACHING_CATEGORIES || []).filter(category => represented.has(category.id));
     const selected = playbookCategory.value;
     playbookCategory.replaceChildren(new Option('All categories', ''));
     categories.forEach(category => playbookCategory.appendChild(new Option(category.label, category.id)));
@@ -2927,7 +2906,11 @@ function renderPlaybookBrowser(){
     button.type = 'button';
     button.className = 'playbook-situation-card';
     button.dataset.situationKey = situation.key;
-    if (situation.key === currentSituation?.key) button.classList.add('is-current');
+    const isCurrent = situation.key === currentSituation?.key;
+    if (isCurrent) {
+      button.classList.add('is-current');
+      button.setAttribute('aria-current', 'true');
+    }
     const displayLabel = situationDisplayLabel(situation);
     const runnerLabel = playbookRunnerLabel(situation);
     const outLabel = `${situation.outs} ${situation.outs === 1 ? 'out' : 'outs'}`;
@@ -2937,27 +2920,19 @@ function renderPlaybookBrowser(){
     heading.className = 'playbook-card-heading';
     const title = document.createElement('strong');
     title.textContent = playbookCardTitle(situation);
-    const difficulty = document.createElement('span');
-    difficulty.className = `playbook-difficulty is-${situation.difficulty}`;
-    difficulty.textContent = difficultyLabel(situation.difficulty);
-    heading.appendChild(title);
-    const badges = document.createElement('span');
-    badges.className = 'playbook-card-badges';
-    badges.appendChild(difficulty);
-    if (situation.key === currentSituation?.key) {
+    heading.append(title);
+    if (isCurrent) {
       const current = document.createElement('span');
       current.className = 'playbook-card-current';
-      current.textContent = 'Current';
-      badges.appendChild(current);
+      const check = document.createElement('span');
+      check.setAttribute('aria-hidden', 'true');
+      check.textContent = '✓';
+      current.append(check, ' Current');
+      heading.append(current);
     }
-
-    const description = playbookStateGraphic(situation);
-    const metadata = document.createElement('span');
-    metadata.className = 'playbook-card-metadata';
-    metadata.textContent = teachingCategoryLabel(situation.primaryCategory);
-    button.append(heading, badges);
+    button.append(heading, playbookCardMetadata(situation));
     if(situation.desc){const context=document.createElement('span');context.className='playbook-card-description';context.textContent=situation.desc;button.append(context);}
-    button.append(description, metadata);
+    button.append(playbookStateGraphic(situation));
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
     playbookBrowserList.appendChild(button);
   });
@@ -3772,11 +3747,11 @@ function watchSolution(){
     if(playBoard.movements[base])playBoard.movements[base][0].path[0]={...playBoard.runners[base]};
   }
   let play;
-  try{play=window._diqPlayAnimation.compilePlay(playBoard);}
+  try{play=window._diqPlayAnimation.compilePlay(playBoard,{showHitFlight:true});}
   catch(error){
     console.warn('Invalid instructional metadata; using correct-position fallback.',error);
     playBoard=window._diqFromSituation({...currentSituation,boardAnimation:undefined,starts,targets});
-    playBoard.playSeq=[];playBoard.playSeq2=[];play=window._diqPlayAnimation.compilePlay(playBoard);
+    playBoard.playSeq=[];playBoard.playSeq2=[];play=window._diqPlayAnimation.compilePlay(playBoard,{showHitFlight:true});
   }
   const movers=new Map();
   wrap.querySelectorAll('.baseRunner').forEach(el=>el.remove());
@@ -3798,14 +3773,7 @@ function watchSolution(){
     }
     if(value.ball&&ballEl){ballEl.style.display='block';const pos=nativeToCssPoint(value.ball);ballEl.style.left=pos.x+'px';ballEl.style.top=pos.y+'px';ballEl.style.scale=String(value.scale);}
     if(ballSvg&&playBoard.battedBall){
-      const showHit=value.time>0&&value.time<play.ballDuration;
-      let hitPath=ballSvg.querySelector('[data-solution-hit]');
-      if(showHit){
-        if(!hitPath){hitPath=document.createElementNS('http://www.w3.org/2000/svg','line');hitPath.dataset.solutionHit='1';ballSvg.appendChild(hitPath);}
-        const from=nativeToCssPoint(playBoard.battedBall.start),to=nativeToCssPoint(playBoard.battedBall.destination);
-        for(const [key,val] of Object.entries({x1:from.x,y1:from.y,x2:to.x,y2:to.y,stroke:'var(--accent-primary)','stroke-width':getBallStrokeWidth()}))hitPath.setAttribute(key,String(val));
-        if(playBoard.battedBall.type==='ground_ball')hitPath.setAttribute('stroke-dasharray','8 8');
-      }else hitPath?.remove();
+      window._diqPaintHitVisuals(ballSvg,value,playBoard.battedBall.type,nativeToCssPoint);
     }
     svg.setAttribute('viewBox',`0 0 ${imgRect.width} ${imgRect.height}`);
     window._diqPaintThrowFrame(svg,value.arrows,nativeToCssPoint);

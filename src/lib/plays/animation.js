@@ -40,14 +40,18 @@ export function movementDuration(segment,coachBoard=true){
  return geometry.total?Math.max(500,Math.min(2400,geometry.total*1.5)):0;
 }
 const eventKey=start=>start.throwIndex?`${start.event}:${start.throwIndex}`:start.event;
+export function hitFlightDuration(type, coachBoard = false) {
+  const durations = coachBoard
+    ? {ground_ball:650,line_drive:450,fly_ball:1000,pop_fly:1400}
+    : {ground_ball:1400,line_drive:900,fly_ball:2300,pop_fly:3000};
+  return durations[type] || 0;
+}
+
 export function compilePlay(input, options={}) {
   const board=upgradeBoard(input),issues=validateBoard(board);
   if(issues.length)throw new Error(issues.join('\n'));
   if(options.coachBoard)board.runners.batter ||= clone(BASES_NATIVE.home);
-  const flightDurations=options.coachBoard
-    ? {ground_ball:650,line_drive:450,fly_ball:1000,pop_fly:1400}
-    : {ground_ball:1400,line_drive:900,fly_ball:2300,pop_fly:3000};
-  const ballDuration=flightDurations[board.battedBall?.type]||0;
+  const ballDuration=hitFlightDuration(board.battedBall?.type,options.coachBoard);
   const nodes=new Map(),tracks=[],legs=throwLegs(board);
   const coachBoard=!!options.coachBoard;
   const authoredSteps=coachBoard && board.steps ? playSteps(board) : undefined;
@@ -192,7 +196,7 @@ export function compilePlay(input, options={}) {
   const authoredTimeline=authoredSteps?.map(step=>({
     ...step,start:begins.get(startKey(step.id)),end:ends.get(endKey(step.id))
   }));
-  return {version:2,authoredTimeline,board,tracks,throws,ballDuration,fieldingTime,fielding,lateCatch,caught,fielder,fieldingWarning,contactTime,pitchStart,pitchFrom,coachBoard,duration,events,steps:authoredTimeline?.length?[...new Set([0,...authoredTimeline.map(step=>step.end).sort((a,b)=>a-b),duration])]:[...new Set(events.map(event=>event.time))]};
+  return {version:2,authoredTimeline,board,tracks,throws,ballDuration,fieldingTime,fielding,lateCatch,caught,fielder,fieldingWarning,contactTime,pitchStart,pitchFrom,coachBoard,showHitFlight:coachBoard||options.showHitFlight,duration,events,steps:authoredTimeline?.length?[...new Set([0,...authoredTimeline.map(step=>step.end).sort((a,b)=>a-b),duration])]:[...new Set(events.map(event=>event.time))]};
 }
 // Project height on screen while keeping field coordinates and gameplay targets intact.
 function hitPoint(hit, progress, caught) {
@@ -205,6 +209,19 @@ function hitPoint(hit, progress, caught) {
   const gloveLift=caught?18*progress:0;
   return {ground,ball:{x:ground.x,y:ground.y-height-gloveLift},height:height+gloveLift};
 }
+export function sampleHitFlight(hit, progress, caught = false) {
+  const position = hitPoint(hit, progress, caught);
+  const lift = { ground_ball:.03, line_drive:.06, fly_ball:.25, pop_fly:.4 }[hit.type];
+  const trailLength = { ground_ball:.3, line_drive:.24, fly_ball:.32, pop_fly:.38 }[hit.type];
+  const tail = Math.max(0, progress - trailLength);
+  return {
+    ball: position.ball,
+    ballShadow: position.height > 5 && ['fly_ball','pop_fly'].includes(hit.type) ? position.ground : null,
+    hitTrail: Array.from({length:9}, (_,i) => hitPoint(hit, tail + (progress-tail)*i/8, caught).ball),
+    scale: 1 + Math.sin(progress*Math.PI)*lift,
+  };
+}
+
 export function frameAt(play,time) {
   time=Math.max(0,Math.min(play.duration,time));
   const positions={...clone(play.board.defenders),...clone(play.board.runners)};
@@ -216,16 +233,12 @@ export function frameAt(play,time) {
   const progress=Math.min(1,hitTime/(play.ballDuration||1));
   const lift={ground_ball:0.03,line_drive:0.06,fly_ball:0.25,pop_fly:0.4}[hit?.type]||0;
   let hitTrail=[], ballShadow=null;
-  const inFlight=play.coachBoard&&hit&&time>=play.contactTime&&progress<1;
+  const inFlight=play.showHitFlight&&hit&&time>=play.contactTime&&progress<1;
   const caught=play.caught;
   // A missed catch settles at the same destination and uses the pickup timing.
 
   if(inFlight){
-    const position=hitPoint(hit,progress,caught);
-    ball=position.ball;
-    if(position.height>5&&['fly_ball','pop_fly'].includes(hit.type))ballShadow=position.ground;
-    const tail=Math.max(0,progress-({ground_ball:.3,line_drive:.24,fly_ball:.32,pop_fly:.38}[hit.type]));
-    hitTrail=Array.from({length:9},(_,i)=>hitPoint(hit,tail+(progress-tail)*i/8,caught).ball);
+    ({ball,ballShadow,hitTrail}=sampleHitFlight(hit,progress,caught));
   }else if(caught&&ball&&time>=play.fieldingTime){
     ball={x:hit.destination.x,y:hit.destination.y-18};
   }
