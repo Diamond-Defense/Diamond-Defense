@@ -1,3 +1,4 @@
+import {selectBoardStep} from './helpers/play-library.js';
 import {boardAction} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
 import {readFileSync} from 'node:fs';
@@ -9,7 +10,7 @@ test('wheel import opens an unsaved draft, saves privately and exports current e
  const writes=[];page.on('request',r=>{if(r.url().endsWith('/api/boards')&&r.method()==='POST')writes.push(r);});
  await library.getByLabel('Import Board JSON file',{exact:true}).setInputFiles({name:'wheel-play.board.json',mimeType:'application/json',buffer:Buffer.from(readFileSync(example))});
  await expect(library).toHaveCount(0);await expect(page.getByLabel('Board name')).toHaveValue('Wheel Play — Dodgers NLDS Game 2');await expect(page.getByRole('status')).toContainText('new draft');expect(writes).toHaveLength(0);
- await page.getByRole('button',{name:'Movement',exact:true}).click();await page.getByRole('combobox',{name:'Token',exact:true}).selectOption('SS');await expect(page.getByRole('combobox',{name:'Movement',exact:true}).locator('option')).toHaveCount(2);
+ await selectBoardStep(page,'Before the pitch');await expect(page.getByRole('button',{name:'SS · Movement 1',exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Save Board',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Board saved.');expect(writes).toHaveLength(1);
  const saved=(await (await page.request.get('/api/boards')).json()).find(row=>row.board.title==='Wheel Play — Dodgers NLDS Game 2');expect(saved.board.movements.SS[1].durationMs).toBe(850);expect(saved.board.sourceSituation).toBeNull();expect(saved.board.situationMetadata.runnerOutcomes[0].outType).toBe('tag');
  await page.getByLabel('Board name').fill('Wheel Play — exported draft');

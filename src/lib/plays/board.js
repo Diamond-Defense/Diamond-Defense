@@ -1,8 +1,12 @@
+import { stepIssues } from './steps.js';
 import { startCondition, reconcileSegments, MAX_SEGMENTS, throwLegs, distance } from './segments.js';
 import { createOffenseNumbers } from './token-presentation.js';
 import { DEFAULT_STARTS, BASES_NATIVE, IMG_W, IMG_H, DEFAULT_TOL } from './field.js';
 export const POSITIONS = Object.keys(DEFAULT_STARTS);
 export const BALL_TYPES = ['ground_ball', 'line_drive', 'fly_ball', 'pop_fly'];
+export function hitFielding(hit){
+  return hit?.fielding ?? (['fly_ball','pop_fly'].includes(hit?.type)?'caught':'ground');
+}
 export const clone = value => JSON.parse(JSON.stringify(value));
 export function newBoard() {
   return { version: 2, offenseNumbers: createOffenseNumbers(), title: 'Untitled Board', outs: 0, defenders: clone(DEFAULT_STARTS), runners: {batter:clone(BASES_NATIVE.home)}, running:{result:'single',destinations:{}}, movements: {}, battedBall: null, playSeq: [], playSeq2: [], animation: { version: 2 }, sourceSituation: null };
@@ -43,7 +47,7 @@ export function validateBoard(board) {
       if(!Array.isArray(path)||path.length<2||path.length>512||!path.every(point)){issues.push(`Invalid path for ${id} movement ${i+1}.`);continue;}
       if(segment.durationMs!==undefined&&(!Number.isFinite(segment.durationMs)||segment.durationMs<250||segment.durationMs>30000))issues.push(`Choose a movement duration of 250–30000 ms for ${id} movement ${i+1}.`);
       const start=startCondition(segment,i);
-      if(!['pre_pitch','pitch_started','contact','previous_movement','ball_fielded','throw_started','throw_received'].includes(start.event) || (start.event==='previous_movement'&&!i)) issues.push(`Choose a valid start event for ${id} movement ${i+1}.`);
+      if(!['step','pre_pitch','pitch_started','contact','previous_movement','ball_fielded','throw_started','throw_received'].includes(start.event) || (start.event==='previous_movement'&&!i)) issues.push(`Choose a valid start event for ${id} movement ${i+1}.`);
       if(['throw_started','throw_received'].includes(start.event) && (!Number.isSafeInteger(start.throwIndex)||start.throwIndex<1||start.throwIndex>throwLegs(board).length)) issues.push(`${id} movement ${i+1} references an unavailable throw. Update its start event.`);
       const previous=i?segments[i-1]?.path?.at(-1):board.defenders?.[id]||board.runners?.[id];
       if(board.version===2&&point(previous)&&distance(path[0],previous)>0.01)issues.push(`${id} movement ${i+1} must start where the preceding movement ends.`);
@@ -52,11 +56,12 @@ export function validateBoard(board) {
   const pointCount=Object.values(board.movements||{}).reduce((sum,segments)=>sum+(Array.isArray(segments)?segments.reduce((n,segment)=>n+(segment?.path?.length||0),0):0),0);
   if(pointCount>20000)issues.push('Too many movement points. Re-record shorter routes.');
   if (board.battedBall && (!BALL_TYPES.includes(board.battedBall.type) || !point(board.battedBall.start) || !point(board.battedBall.destination))) issues.push('Invalid batted ball.');
+  if(board.battedBall?.fielding!==undefined&&!['caught','ground'].includes(board.battedBall.fielding))issues.push('Choose a valid fielding outcome.');
   if(board.battedBall?.fielder!==undefined&&board.battedBall.fielder!==null&&!POSITIONS.includes(board.battedBall.fielder))issues.push('Choose a valid ball fielder.');
   for (const seq of [board.playSeq, board.playSeq2]) if (!Array.isArray(seq) || seq.length > 30 || !seq.every(id => POSITIONS.includes(id))) issues.push('Use defensive positions for throws.');
-  return issues;
+  return [...issues, ...stepIssues(board)];
 }
-export function fromSituation(situation) {
+export function fromSituation(situation, {coachBoard = false} = {}) {
   const b = newBoard();
   const result=situation.playOutcome?.result;
   b.running={result:['single','double','triple','home_run','out'].includes(result)?result:'single',destinations:{}};
@@ -86,6 +91,21 @@ export function fromSituation(situation) {
   if ([1,2].includes(situation.boardAnimation?.version)) {
     b.movements = {...b.movements,...clone(situation.boardAnimation.movements)};
     b.battedBall = clone(situation.boardAnimation.battedBall);
+    if (situation.boardAnimation.steps !== undefined) b.steps = clone(situation.boardAnimation.steps);
+    if (situation.boardAnimation.throwSteps !== undefined) {
+      b.throwSteps = clone(situation.boardAnimation.throwSteps);
+    }
+    if (coachBoard && situation.boardAnimation.running) {
+      b.running = clone(situation.boardAnimation.running);
+      for (const id of Object.keys(b.runners)) {
+        if (!situation.boardAnimation.movements?.[id]) delete b.movements[id];
+      }
+    }
+    if (coachBoard && situation.boardAnimation.runnerStarts) {
+      for (const id of Object.keys(b.runners)) {
+        if (situation.boardAnimation.runnerStarts[id]) b.runners[id] = clone(situation.boardAnimation.runnerStarts[id]);
+      }
+    }
   }
   if(b.battedBall&&situation.hit)b.battedBall.destination=clone(situation.hit);
   const canonicalType={grounder:'ground_ball',line:'line_drive',popup:'pop_fly'}[situation.hitType];
@@ -98,6 +118,17 @@ export function fromSituation(situation) {
   }
   return upgradeBoard(b);
 }
+export function boardAnimation(board) {
+  return clone({
+    version: 2,
+    movements: board.movements,
+    battedBall: board.battedBall,
+    runnerStarts: board.runners,
+    running: board.running,
+    steps: board.steps,
+    throwSteps: board.throwSteps
+  });
+}
 export function toSituation(board, metadata) {
   const issues = validateBoard(board);
   if (!board.battedBall) issues.push('Set the batted-ball destination before saving as a Situation.');
@@ -108,7 +139,7 @@ export function toSituation(board, metadata) {
     const path = board.movements[id]?.at(-1)?.path;
     return [id, { ...(path?.at(-1) || board.defenders[id]), tol: board.sourceSituation?.targets?.[id]?.tol || DEFAULT_TOL }];
   }));
-  return { ...metadata, key: `board-${crypto.randomUUID()}`, title:board.title, desc:metadata.desc || '', category:metadata.category || 'Coach Board', difficulty:metadata.difficulty || 'foundational', primaryCategory:metadata.primaryCategory || 'base-coverage', relatedCategories:metadata.relatedCategories || [], outs:board.outs, runnersOn:Object.fromEntries(['first','second','third'].map(base=>[base,!!board.runners[base]])), starts:clone(board.defenders), targets, hit:clone(board.battedBall.destination), hitType:{ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[board.battedBall.type], playSeq:clone(board.playSeq), playSeq2:clone(board.playSeq2), batterAdvance:{out:0,first:1,second:2,third:3,home:4}[metadata.playOutcome.batterResult], boardAnimation:{version:2,movements:clone(board.movements),battedBall:clone(board.battedBall)} };
+  return { ...metadata, key: `board-${crypto.randomUUID()}`, title:board.title, desc:metadata.desc || '', category:metadata.category || 'Coach Board', difficulty:metadata.difficulty || 'foundational', primaryCategory:metadata.primaryCategory || 'base-coverage', relatedCategories:metadata.relatedCategories || [], outs:board.outs, runnersOn:Object.fromEntries(['first','second','third'].map(base=>[base,!!board.runners[base]])), starts:clone(board.defenders), targets, hit:clone(board.battedBall.destination), hitType:{ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[board.battedBall.type], playSeq:clone(board.playSeq), playSeq2:clone(board.playSeq2), batterAdvance:{out:0,first:1,second:2,third:3,home:4}[metadata.playOutcome.batterResult], boardAnimation:boardAnimation(board) };
 }
 // Smooth newly drawn routes without changing saved routes or their exact endpoints.
 export function cleanPath(points) {

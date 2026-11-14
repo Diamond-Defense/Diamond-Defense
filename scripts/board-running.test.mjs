@@ -39,3 +39,18 @@ test('legacy boards gain a batter only in board playback and incomplete boards d
  const b=fixture();delete b.runners.batter;const play=compilePlay(b,{coachBoard:true});assert.ok(play.tracks.some(t=>t.id==='batter'));assert.equal(b.runners.batter,undefined);
  b.battedBall=null;assert.equal(compilePlay(b,{coachBoard:true}).tracks.length,0);
 });
+
+test('automatic double reaches second ahead of the throw to the bag',()=>{
+ const b=fixture();
+ b.running.result='double';
+ b.playSeq=['CF','SS','2B'];
+ b.defenders['2B']=clone(BASES_NATIVE.second);
+ const play=compilePlay(b,{coachBoard:true});
+ const runner=play.tracks.find(track=>track.id==='batter');
+ const throwToSecond=play.throws.at(-1);
+ assert.equal(runner.start,play.contactTime);
+ assert.ok(runner.start+runner.duration<throwToSecond.start+throwToSecond.duration);
+ assert.deepEqual(frameAt(play,throwToSecond.start+throwToSecond.duration-1).positions.batter,BASES_NATIVE.second);
+ const withoutThrow=compilePlay({...b,playSeq:[]},{coachBoard:true});
+ assert.ok(withoutThrow.tracks.find(track=>track.id==='batter').duration>runner.duration);
+});

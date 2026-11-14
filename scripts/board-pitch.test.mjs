@@ -12,11 +12,12 @@ test('board pitch waits for optional leads, then concurrent pitch movement prece
  assert.deepEqual(validateBoard(b),[]);
  const play=compilePlay(b,{coachBoard:true});
  assert.equal(play.pitchStart,play.tracks[0].duration);
- assert.equal(play.contactTime,play.pitchStart+700);
+ assert.equal(play.contactTime,play.pitchStart+500);
  assert.equal(play.tracks[1].start,play.pitchStart);
+ assert.equal(play.tracks.find(track=>track.id==='batter'&&track.automatic).start,play.contactTime);
  assert.equal(frameAt(play,play.pitchStart-1).ball,null);
  assert.deepEqual(frameAt(play,play.pitchStart).ball,b.defenders.P);
- const midway=frameAt(play,play.pitchStart+350).ball;
+ const midway=frameAt(play,play.pitchStart+250).ball;
  assert.equal(midway.x,(b.defenders.P.x+b.battedBall.start.x)/2);
  assert.equal(midway.y,(b.defenders.P.y+b.battedBall.start.y)/2);
  assert.deepEqual(frameAt(play,play.contactTime).ball,b.battedBall.start);
@@ -28,7 +29,7 @@ test('existing board routes retain contact timing after the board-only pitch',()
  const b=newBoard();b.battedBall={type:'ground_ball',start:{x:1577,y:1734},destination:{x:1300,y:900}};
  b.movements.SS=[{path:[b.defenders.SS,{x:1300,y:900}]}];
  assert.equal(compilePlay(b).tracks[0].start,0);
- assert.equal(compilePlay(b,{coachBoard:true}).tracks[0].start,700);
+ assert.equal(compilePlay(b,{coachBoard:true}).tracks[0].start,500);
 });
 test('drawn routes smooth jitter while retaining endpoints, curvature and bounds',()=>{
  const points=Array.from({length:160},(_,i)=>({x:100+i*4,y:300+Math.sin(i/159*Math.PI)*200+(i%2?8:-8)}));
@@ -46,8 +47,8 @@ test('pitch and hit remain continuous across contact with no stationary launch i
  const play=compilePlay(b,{coachBoard:true}),contact=play.contactTime;
  const before=frameAt(play,contact-1).ball,at=frameAt(play,contact).ball,after=frameAt(play,contact+1).ball;
  assert.deepEqual(at,b.battedBall.start);
- assert.ok(Math.hypot(before.x-at.x,before.y-at.y)<3);
- assert.ok(Math.hypot(after.x-at.x,after.y-at.y)<3);
+ assert.ok(Math.hypot(before.x-at.x,before.y-at.y)<4);
+ assert.ok(Math.hypot(after.x-at.x,after.y-at.y)<4);
  for(let offset=16;offset<100;offset+=16){
   const previous=frameAt(play,contact+offset-16).ball,next=frameAt(play,contact+offset).ball;
   assert.ok(Math.hypot(next.x-previous.x,next.y-previous.y)>0);

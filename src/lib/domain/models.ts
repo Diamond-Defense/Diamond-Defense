@@ -92,12 +92,21 @@ export interface SituationAudience {
 
 export interface PlayMovementSegment {
   path: Point[];
-  start?: {event:'contact'|'previous_movement'|'ball_fielded'|'throw_started'|'throw_received';throwIndex?:number};
+  durationMs?: number;
+  stepId?: string;
+  start?: {event:'step'|'pre_pitch'|'pitch_started'|'contact'|'previous_movement'|'ball_fielded'|'throw_started'|'throw_received';throwIndex?:number};
 }
 export interface SituationAnimation {
   version: 1 | 2;
   movements: Partial<Record<PositionId | 'batter' | StartingBase, PlayMovementSegment[]>>;
-  battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point} | null;
+  battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point;fielder?:PositionId | null;fielding?:'caught'|'ground';stepId?:string} | null;
+  steps?: {id:string;name:string;timing?:'pre_pitch'}[];
+  throwSteps?: (string | null)[];
+  runnerStarts?: Partial<Record<'batter' | StartingBase, Point>>;
+  running?: {
+    result: 'single' | 'double' | 'triple' | 'home_run' | 'out';
+    destinations: Partial<Record<'batter' | StartingBase, StartingBase | 'hold' | 'home' | 'out'>>;
+  };
 }
 export interface Situation {
   /** Optional instructional geometry/events; never part of correctness scoring. */

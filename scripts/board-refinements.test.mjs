@@ -7,23 +7,32 @@ function fixture(){const b=newBoard();b.battedBall={type:'line_drive',start:clon
 test('board fielding waits for arrival and schedules later movement and throws from that event',()=>{
  const b=fixture(),snapshot=JSON.stringify(b);b.movements.C=[{path:[b.defenders.C,{x:1500,y:1600}],start:{event:'ball_fielded'}}];
  const play=compilePlay(b,{coachBoard:true}),fielded=play.events.find(e=>e.type==='ball_fielded').time;
- assert.equal(fielded,play.contactTime+5000);assert.equal(play.ballDuration,5000);assert.equal(play.fielder,'SS');
+ assert.equal(fielded,play.contactTime+5000);assert.equal(play.ballDuration,450);assert.equal(play.fielder,'SS');
  assert.equal(play.tracks.find(t=>t.id==='C').start,fielded);assert.ok(play.throws[0].start>=fielded);
  const before=frameAt(play,fielded-100);assert.ok(!before.events.some(e=>e.type==='ball_fielded'));assert.notDeepEqual(before.positions.SS,b.battedBall.destination);
+ const arrived=frameAt(play,play.contactTime+play.ballDuration);
+ assert.deepEqual(arrived.ball,b.battedBall.destination);
+ assert.ok(!arrived.events.some(e=>e.type==='ball_fielded'));
+ const runner=play.tracks.find(track=>track.id==='batter');
+ assert.equal(runner.start,play.contactTime);
+ assert.ok(play.ballDuration<runner.duration);
+ assert.deepEqual(before.ball,b.battedBall.destination);
  const caught=frameAt(play,fielded);assert.deepEqual(caught.positions.SS,caught.ball);
  delete b.movements.C;assert.equal(JSON.stringify(b),snapshot);
  const normal=compilePlay(b);assert.equal(normal.ballDuration,900);assert.equal(normal.events.find(e=>e.type==='ball_fielded').time,900);
 });
 test('short fielder routes retain minimum flight and explicit fielder works without throws',()=>{
  const b=fixture();b.movements.SS[0].durationMs=250;
- assert.equal(compilePlay(b,{coachBoard:true}).ballDuration,900);
+ assert.equal(compilePlay(b,{coachBoard:true}).ballDuration,450);
  b.playSeq=[];b.battedBall.fielder='SS';b.movements.SS[0].durationMs=2500;
- assert.equal(compilePlay(b,{coachBoard:true}).ballDuration,2500);
+ const delayed=compilePlay(b,{coachBoard:true});
+ assert.equal(delayed.ballDuration,450);
+ assert.equal(delayed.fieldingTime,delayed.contactTime+2500);
  b.battedBall.fielder='bad';assert.match(validateBoard(b).join(),/fielder/);
 });
 test('movement after fielding cannot become a circular fielding dependency and mismatches are explained',()=>{
  const b=fixture();b.movements.SS[0].start={event:'ball_fielded'};
- const play=compilePlay(b,{coachBoard:true});assert.match(play.fieldingWarning,/before it is fielded/);assert.equal(play.ballDuration,900);
+ const play=compilePlay(b,{coachBoard:true});assert.match(play.fieldingWarning,/before it is fielded/);assert.equal(play.ballDuration,450);
  b.movements.SS[0].start={event:'contact'};b.movements.SS[0].path[1]={x:1800,y:1000};assert.match(compilePlay(b,{coachBoard:true}).fieldingWarning,/ends away/);
 });
 test('history restores exact snapshots, ignores duplicate states and clears redo after an edit',()=>{
@@ -45,4 +54,23 @@ test('board throws use quicker steady flight while normal app keeps existing thr
   assert.ok(Math.abs(frame.ball.x-(leg.route.from.x+(leg.route.to.x-leg.route.from.x)*progress))<1e-8);
   assert.ok(Math.abs(frame.ball.y-(leg.route.from.y+(leg.route.to.y-leg.route.from.y)*progress))<1e-8);
  }
+});
+
+test('Coach Board shows a catch at arrival and a late catch becomes a ground pickup',()=>{
+ const b=fixture();
+ b.battedBall.type='pop_fly';
+ b.movements.SS[0].durationMs=500;
+ const play=compilePlay(b,{coachBoard:true});
+ const mid=frameAt(play,play.contactTime+play.ballDuration/2);
+ assert.ok(mid.ball.y<mid.ballShadow.y);
+ assert.deepEqual(mid.hitTrail.at(-1),mid.ball);
+ assert.equal(frameAt(play,play.fieldingTime).fieldingLabel,'Caught by SS');
+ assert.ok(play.throws[0].start>=play.fieldingTime);
+
+ b.movements.SS[0].durationMs=5000;
+ const late=compilePlay(b,{coachBoard:true});
+ assert.match(late.fieldingWarning,/after the ball lands/);
+ assert.deepEqual(frameAt(late,late.contactTime+late.ballDuration).ball,b.battedBall.destination);
+ assert.equal(frameAt(late,late.fieldingTime).fieldingLabel,'Fielded by SS');
+ assert.equal(frameAt(compilePlay(b),200).hitTrail.length,0);
 });

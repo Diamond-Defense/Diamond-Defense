@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {newBoard,upgradeBoard,validateBoard,toSituation,fromSituation} from '../src/lib/plays/board.js';
+import {removeStep} from '../src/lib/plays/steps.js';
 import {reconcileSegments} from '../src/lib/plays/segments.js';
 import {compilePlay,frameAt,createPlayback} from '../src/lib/plays/animation.js';
 const segment=(from,to,event='contact',throwIndex)=>({path:[{...from},{...to}],start:{event,...(throwIndex?{throwIndex}:{})}});
@@ -73,4 +74,35 @@ test('runner segments wait independently for throws and repeated throw routes re
  assert.deepEqual(frameAt(play,play.duration).positions.first,end);
  assert.notDeepEqual(play.throws[0].route,play.throws[2].route);
  assert.equal(frameAt(play,play.duration).arrows.length,3);
+});
+
+test('a pickoff plays before the pitch and a later hit uses its own fielder',()=>{
+ const board=newBoard();
+ board.steps=[{id:'step-pickoff',name:'Pickoff'},{id:'step-hit',name:'Hit'},{id:'step-relay',name:'Relay'}];
+ board.battedBall={type:'ground_ball',start:{x:1500,y:1800},destination:board.defenders.SS,stepId:'step-hit'};
+ board.playSeq=['P','1B'];
+ board.playSeq2=['SS','2B'];
+ board.throwSteps=['step-pickoff','step-relay'];
+ const play=compilePlay(board,{coachBoard:true});
+ const [pickoff,relay]=play.throws;
+ assert.equal(pickoff.fromId,'P');
+ assert.ok(pickoff.start+pickoff.duration<=play.pitchStart);
+ assert.equal(play.fielder,'SS');
+ assert.ok(relay.start>=play.contactTime+play.ballDuration);
+ assert.equal(frameAt(play,play.contactTime).ball.x,board.battedBall.start.x);
+});
+
+test('deleting the only editable step clears the play and keeps the starting alignment',()=>{
+ const b=fixture(),alignment=structuredClone({defenders:b.defenders,runners:b.runners,outs:b.outs});
+ b.steps=[{id:'step-hit',name:'Contact'}];
+ b.battedBall.stepId='step-hit';
+ b.throwSteps=['step-hit','step-hit'];
+ b.movements.SS=[{...segment(b.defenders.SS,b.battedBall.destination),stepId:'step-hit'}];
+ removeStep(b,'step-hit');
+ assert.deepEqual({defenders:b.defenders,runners:b.runners,outs:b.outs},alignment);
+ assert.deepEqual(b.steps,[]);
+ assert.deepEqual(b.movements,{});
+ assert.equal(b.battedBall,null);
+ assert.deepEqual(b.playSeq,[]);
+ assert.deepEqual(compilePlay(b,{coachBoard:true}).throws,[]);
 });

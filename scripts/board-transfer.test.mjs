@@ -29,7 +29,7 @@ test('wheel file gives the late rotation, tag timing and one-out fielder choice'
  const board=importBoardFile(readFileSync(new URL('../docs/examples/wheel-play.board.json',import.meta.url),'utf8')),snapshot=clone(board),play=compilePlay(board,{coachBoard:true});
  assert.equal(board.outs,0);assert.deepEqual(Object.keys(board.runners).sort(),['batter','second']);assert.deepEqual(board.playSeq,['3B','SS']);
  const ss=play.tracks.find(t=>t.id==='SS'&&t.index===1),charge=play.tracks.find(t=>t.id==='1B'&&t.index===0),rotation=play.tracks.find(t=>t.id==='1B'&&t.index===1),runner=play.tracks.find(t=>t.id==='second'&&t.index===1);
- assert.equal(ss.start,play.contactTime);assert.ok(charge.start<play.contactTime);assert.equal(rotation.start,play.contactTime);assert.ok(ss.start+ss.duration<=play.throws[0].start);
+ assert.equal(ss.start,play.contactTime);assert.ok(charge.start<play.contactTime);assert.equal(rotation.start,Math.max(play.contactTime,charge.start+charge.duration));assert.ok(ss.start+ss.duration<=play.throws[0].start);
  assert.ok(runner.start+runner.duration>play.throws[0].start+play.throws[0].duration);
  assert.deepEqual(frameAt(play,play.duration).positions.batter,{x:2170,y:1304});assert.deepEqual(frameAt(play,play.duration).positions['1B'],{x:1572,y:854});
  assert.notEqual(compilePlay(board).tracks.find(t=>t.id==='P'&&t.index===0).duration,550);

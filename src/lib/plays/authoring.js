@@ -1,4 +1,4 @@
-import { clone, fromSituation, POSITIONS } from './board.js';
+import { boardAnimation, clone, fromSituation, POSITIONS, validateBoard } from './board.js';
 import { compilePlay } from './animation.js';
 
 // Situation owns identity, correctness, outcomes and details. Board is its spatial projection.
@@ -13,22 +13,47 @@ export function situationDraft(board, source = board.sourceSituation) {
   }));
   draft.playSeq=clone(board.playSeq);draft.playSeq2=clone(board.playSeq2);
   if(board.battedBall){draft.hit=clone(board.battedBall.destination);draft.hitType={ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[board.battedBall.type];}
-  draft.boardAnimation={version:2,movements:clone(board.movements),battedBall:clone(board.battedBall)};
+  draft.boardAnimation=boardAnimation(board);
+  const original=fromSituation(source,{coachBoard:true});
+  if(!source.boardAnimation?.runnerStarts&&JSON.stringify(board.runners)===JSON.stringify(original.runners))delete draft.boardAnimation.runnerStarts;
+  if(!source.boardAnimation?.running&&JSON.stringify(board.running)===JSON.stringify(original.running))delete draft.boardAnimation.running;
   return draft;
 }
 export function syncSituationAnimation(situation) {
   if(!situation)return null;
   const draft=clone(situation);
   if(draft.boardAnimation){
-    const board=fromSituation(draft);
-    draft.boardAnimation={version:2,movements:board.movements,battedBall:board.battedBall};
+    const { running, runnerStarts, steps, throwSteps } = draft.boardAnimation;
+    const board=fromSituation(draft,{coachBoard:true});
+    draft.boardAnimation={
+      version:2,
+      movements:board.movements,
+      battedBall:board.battedBall,
+      ...(running && {running:board.running}),
+      ...(runnerStarts && {runnerStarts:board.runners}),
+      ...(steps !== undefined && {steps:board.steps}),
+      ...(throwSteps !== undefined && {throwSteps:board.throwSteps})
+    };
   }
   return draft;
 }
 export function animationIssues(situation) {
   if(!situation?.boardAnimation)return [];
   if(![1,2].includes(situation.boardAnimation.version))return [{message:'Unsupported instructional animation version.',section:'sbTargetsSubsec',severity:'error'}];
-  try{compilePlay(fromSituation(situation));return [];}catch(error){return [{message:`Instructional movement: ${error.message}`,section:'sbTargetsSubsec',severity:'error'}];}
+  try{
+    compilePlay(fromSituation(situation));
+    const {running, runnerStarts}=situation.boardAnimation;
+    if(running!==undefined||runnerStarts!==undefined||situation.boardAnimation.steps!==undefined){
+      const board=fromSituation(situation,{coachBoard:true});
+      // Validate the optional source fields before reconciling them with Situation occupancy.
+      if(runnerStarts!==undefined&&(!runnerStarts||typeof runnerStarts!=='object'||Array.isArray(runnerStarts)))throw new Error('Invalid runner starting positions.');
+      if(running!==undefined&&(!running||typeof running!=='object'||Array.isArray(running)))throw new Error('Invalid automatic running settings.');
+      const issues=validateBoard({...board,running,runners:{...board.runners,...runnerStarts},movements:{}});
+      if(issues.length)throw new Error(issues.join(' '));
+      compilePlay(board,{coachBoard:true});
+    }
+    return [];
+  }catch(error){return [{message:`Instructional movement: ${error.message}`,section:'sbTargetsSubsec',severity:'error'}];}
 }
 
 // Per-tab, per-user navigation transfer; never an intermediate database record.

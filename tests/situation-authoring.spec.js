@@ -1,3 +1,4 @@
+import {selectBoardStep} from './helpers/play-library.js';
 import {openLibraryPlay} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
 import {fromSituation} from '../src/lib/plays/board.js';
@@ -18,7 +19,7 @@ test('Coach Board edits preserve structured details and publish the same Situati
   await expect(page.getByRole('button',{name:'Situation Details',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'New Board',exact:true})).toHaveCount(0);
   expect((await (await page.request.get('/api/situations')).json()).length).toBe(count);await page.getByLabel('Board name').fill('Structured and visual draft');
   await expect(page.getByLabel('Board name')).toHaveValue('Structured and visual draft');
-  await page.getByRole('button',{name:'Movement',exact:true}).click();await page.getByRole('combobox',{name:'Token',exact:true}).selectOption('SS');await expect(page.getByRole('combobox',{name:'Movement',exact:true}).locator('option')).toHaveCount(2);
+  await selectBoardStep(page,'Contact');await expect(page.getByRole('button',{name:'SS · Movement 1',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Back to Library',exact:true}).click();page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('dialog').getByRole('button',{name:'New Board',exact:true}).click();await page.getByRole('dialog').getByRole('button',{name:'Close Library'}).click();await expect(page.getByLabel('Board name')).toHaveValue('Structured and visual draft');
   await page.getByRole('button',{name:'Save Situation Changes',exact:true}).click();await expect(page.getByRole('region',{name:'Playback controls'})).toHaveCount(0);await page.getByRole('button',{name:'Publish Situation',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Situation changes saved.');
   const records=await (await page.request.get('/api/situations')).json();expect(records.length).toBe(count);const saved=records.find(s=>s.key===record.key);expect(saved.revision).toBe(record.revision+1);expect(saved.displayCode).toBe(record.displayCode);expect(saved.title).toBe('Structured and visual draft');expect(saved.targets).toEqual(record.targets);expect(saved.extension).toEqual(record.extension);expect(saved.playSeq2).toEqual(record.playSeq2);expect(saved.boardAnimation.movements.SS).toEqual(record.boardAnimation.movements.SS);record=saved;expect(errors).toEqual([]);
