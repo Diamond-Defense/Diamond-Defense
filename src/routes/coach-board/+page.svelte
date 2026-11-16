@@ -4,7 +4,7 @@
   import {importBoardFile,exportBoardFile,boardFileName} from '$lib/plays/board-transfer.js';
   import { TEACHING_CATEGORIES, SITUATION_DIFFICULTIES } from '$lib/domain/situation-metadata';
   import { validateSituationOutcomes, recommendedSituationOutcomes } from '$lib/domain/situation-outcomes';
-  import { BALL_LOCATIONS, suggestSituationName, normalizeAudience } from '$lib/domain/situation-identity';
+  import { inferBallLocation, suggestSituationName, normalizeAudience } from '$lib/domain/situation-identity';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
   let libraryOpen=$state(false), libraryReturnToMain=$state(false);
@@ -12,15 +12,14 @@
   function browseLibrary(){playback?.pause();libraryReturnToMain=false;libraryOpen=true;}
   import brandLogo from '$lib/assets/diamond-defence-classic.png';
   import { paintHitVisuals } from '$lib/plays/hit-visuals.js';
-  import { throwArrowGeometry } from '$lib/plays/throws.js';
   import fieldImage from '$lib/assets/diamond-defense-soft-field.png';
-  import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers } from '$lib/plays/token-presentation.js';
+  import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, positionThrownBall } from '$lib/plays/token-presentation.js';
   import { BASES_NATIVE, IMG_W, IMG_H } from '$lib/plays/field.js';
   import { newBoard, clone, POSITIONS, BALL_TYPES, hitFielding, cleanPath, fromSituation, toSituation, upgradeBoard } from '$lib/plays/board.js';
   import {RUN_RESULTS,hasCustomRunning,runningDestination,useAutomaticRunning} from '$lib/plays/running.js';
   import { MAX_STEPS, playSteps, hitStep, isAuthoredStep, movementStep, removeStep, stepMovementIndex, stepPositions, throwStep } from '$lib/plays/steps.js';
   import { throwLegs, MAX_SEGMENTS, segmentStart, reconcileSegments, eventOptions, conditionValue, parseCondition } from '$lib/plays/segments.js';
-  import { situationDraft, situationPlayIssues, writeHandoff, readHandoff, clearHandoff } from '$lib/plays/authoring.js';
+  import { consolidateSituationRelay, situationDraft, situationPlayIssues, writeHandoff, readHandoff, clearHandoff } from '$lib/plays/authoring.js';
   import { presentationStatus } from '$lib/plays/presentation.js';
   import { compilePlay, hitFlightDuration, frameAt, traveledPath, createPlayback, TEACHING_PLAYBACK_RATE, movementDuration } from '$lib/plays/animation.js';
   let hitOverlay = $state();
@@ -38,7 +37,7 @@
   let boardId=$state(''), revision=$state(0);
   let field, tools, layout, playback,moreMenu;
   let movementEditor=$state(null), throwEditor=$state(null), ballEditor=$state(false), outcomesOpen=$state(false);
-  let drag=$state(null);
+  let drag=$state(null), ballDrag=$state(null);
   let presenting=$state(false), presentationWidth=$state(800), presentationPlay=$state(null);
   let presentationOrigin=$state('board'), presentationReturn, previousOverflow='';
   let focusPlayers=$state([]), showTargets=$state(false), showMovementPaths=$state(false);
@@ -80,11 +79,10 @@
     {id:'timeline',label:'Play timeline'},
     {id:'review',label:'Review'}
   ];
-  let editorPanel=$state('timeline'), trainingDetails=$state(null), targetPosition=$state('P'), placingTarget=$state(false), scoringOpen=$state(false);
+  let editorPanel=$state('timeline'), trainingDetails=$state(null), targetPosition=$state('P'), scoringOpen=$state(false);
   const trainingMode=$derived(linkedSituation!==null);
   const hasThrows=$derived(board.playSeq.length>0||board.playSeq2.length>0);
   function selectEditorPanel(panel){
-    placingTarget=false;
     scoringOpen=false;
     editorPanel=panel;
     savingSituation=panel==='review';
@@ -94,7 +92,6 @@
   function playerPreview(solution){
     try {
       stop();
-      placingTarget=false;
       const draft=draftSituation();
       const preview=fromSituation(draft);
       if(!preview.battedBall)throw new Error('Set the landing spot on the timeline before previewing.');
@@ -120,6 +117,7 @@
   });
   function restoreSnapshot(snapshot){
     renameDraft=null;
+    redrawArmed=false;
     stop();const value=JSON.parse(snapshot);board=value.board;result=value.result;batterResult=value.batterResult;
     outsRecorded=value.outsRecorded;runnerResults=value.runnerResults;taggedUp=value.taggedUp;outDetails=value.outDetails;confirmed=value.confirmed;rationale=value.rationale;trainingDetails=value.trainingDetails??null;
     ballType=board.battedBall?.type||'ground_ball';
@@ -150,10 +148,11 @@
     situationBaseline=clone(baseline);
     pendingSituation=!situation.revision||JSON.stringify(situation)!==JSON.stringify(baseline);
     rationale=reason;
-    hydrate(fromSituation(situation,{coachBoard:true}));
+    hydrate(consolidateSituationRelay(fromSituation(situation,{coachBoard:true})));
     boardId='';revision=0;
-    const {desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation,audience,seqNote,suggestedDivisions}=situation;
-    trainingDetails=clone({desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation:ballLocation||'',audience:audience||{},seqNote:seqNote||'',suggestedDivisions:suggestedDivisions||[]});
+    const {desc,primaryCategory,difficulty,relatedCategories,targets,audience,seqNote,suggestedDivisions}=situation;
+    trainingDetails=clone({desc,primaryCategory,difficulty,relatedCategories,targets,audience:audience||{},seqNote:seqNote||'',suggestedDivisions:suggestedDivisions||[]});
+    syncPlayOutcome();
     selectEditorPanel(panel);
     cleanSnapshot=editorSnapshot();
     message='Situation loaded for editing.';
@@ -198,7 +197,12 @@
     }else restoreSituation(item);
   }
   function applyRecommendedOutcomes(){
-    const defaults=recommendedSituationOutcomes(draftSituation(),result);
+    const defaults=recommendedSituationOutcomes(draftSituation(),caughtInAir&&result==='double_play'?catchResult:result);
+    if(caughtInAir&&result==='double_play'){
+      const runner=defaults.runnerOutcomes[0];
+      Object.assign(runner,{result:'out',outType:'other',outOrder:2});
+      defaults.playOutcome.outsRecorded=2;
+    }
     confirmed=false;
     trainingDetails.category=result==='single'?'Singles':
       ['double','triple','home_run','ground_rule_double'].includes(result)?'Extra-base hits':'General';
@@ -210,6 +214,61 @@
       taggedUp[runner.startingBase]=runner.taggedUp;
       outDetails[runner.startingBase]={type:runner.outType,order:runner.outOrder};
     }
+    if(caughtInAir)updateRunningOutcomes();
+  }
+  const caughtInAir=$derived(!!board.battedBall&&hitFielding(board.battedBall)==='caught');
+  const catchResult=$derived(board.battedBall?.type==='line_drive'?'caught_line':'caught_fly');
+  const playResults=$derived.by(()=>{
+    const hasRunners=['first','second','third'].some(base=>board.runners[base]);
+    const canRecordTwoOuts=board.outs<2;
+    if(caughtInAir)return [
+      catchResult,
+      ...(canRecordTwoOuts&&hasRunners?['sacrifice_fly','double_play']:[])
+    ];
+    const canBunt=board.battedBall?.type==='ground_ball'&&canRecordTwoOuts&&hasRunners;
+    return [
+      'single','double','triple','home_run','ground_rule_double','groundout',
+      ...(canBunt?['sacrifice_bunt']:[]),
+      ...(canBunt&&board.runners.third?['squeeze_bunt']:[]),
+      ...(hasRunners?['fielders_choice']:[]),
+      ...(hasRunners&&canRecordTwoOuts?['double_play']:[]),
+      'error','other'
+    ];
+  });
+
+  function syncPlayOutcome(){
+    if(!trainingMode||!board.battedBall)return;
+    if(!playResults.includes(result)){
+      result=caughtInAir?catchResult:'single';
+      applyRecommendedOutcomes();
+      if(!caughtInAir)updateRunningOutcomes();
+    }else if(caughtInAir&&(batterResult!=='out'||outDetails.batter.type!=='catch'||outsRecorded<1||outsRecorded>3-board.outs)){
+      applyRecommendedOutcomes();
+    }
+  }
+  function changePlayResult(value){
+    confirmed=false;
+    result=value;
+    if(caughtInAir)applyRecommendedOutcomes();
+  }
+  function changeHitField(key,value){
+    const wasCaught=caughtInAir;
+    edit();
+    board.battedBall[key]=value;
+    if(board.battedBall.type==='ground_ball'&&board.battedBall.fielding==='caught'){
+      board.battedBall.fielding='ground';
+    }
+    if(trainingMode&&wasCaught&&!caughtInAir&&result==='double_play'){
+      applyRecommendedOutcomes();
+      updateRunningOutcomes();
+    }
+    syncPlayOutcome();
+  }
+  function updateRunningOutcomes(){
+    board.running={result:RUN_RESULTS.includes(result)?result:batterResult==='out'?'out':'single',destinations:{
+      batter:batterResult,
+      ...Object.fromEntries(['first','second','third'].filter(base=>board.runners[base]).map(base=>[base,runnerResults[base]||'hold'])),
+    }};
   }
   const relayTemplates=[
     ['LF','SS','2B','C'],['CF','SS','3B'],['RF','1B'],['SS','2B','1B']
@@ -223,19 +282,18 @@
     board.playSeq=value.split(',');
     board.playSeq2=[];
     board.throwSteps=board.playSeq.slice(1).map(()=>contact);
-    selectStep(contact);
   }
   const canReplaceThrows=$derived(!Object.values(board.movements).flat().some(segment=>segment.start?.throwIndex));
   const reviewWarnings=$derived.by(()=>{
     if(!trainingDetails)return [];
     const warnings=[];
     for(const id of POSITIONS){
-      if(!String(trainingDetails.targets[id]?.notes||trainingDetails.targets[id]?.note||'').trim())warnings.push(`${id}: add a coaching note.`);
+      if(resolvedTargets[id]?.enabled!==false&&!String(resolvedTargets[id]?.notes||resolvedTargets[id]?.note||'').trim())warnings.push(`${id}: add a coaching note.`);
     }
     for(let i=0;i<POSITIONS.length;i++){
       for(let j=i+1;j<POSITIONS.length;j++){
-        const a=trainingDetails.targets[POSITIONS[i]],b=trainingDetails.targets[POSITIONS[j]];
-        if(a&&b&&Math.hypot(a.x-b.x,a.y-b.y)<35)warnings.push(`${POSITIONS[i]} and ${POSITIONS[j]} scoring targets overlap. Confirm this is intentional.`);
+        const a=resolvedTargets[POSITIONS[i]],b=resolvedTargets[POSITIONS[j]];
+        if(a&&b&&a.enabled!==false&&b.enabled!==false&&Math.hypot(a.x-b.x,a.y-b.y)<35)warnings.push(`${POSITIONS[i]} and ${POSITIONS[j]} scoring targets overlap. Confirm this is intentional.`);
       }
     }
     return warnings;
@@ -249,10 +307,51 @@
       window.location.assign('/');
     }catch(error){message=error.message;}
   }
+  function linkedMovementIndex(id,target){
+    const route=board.movements[id]||[];
+    if(target.follow==='final')return route.length-1;
+    if(target.follow==='step'&&target.followStep)return route.findIndex((segment,index)=>movementStep(segment,index,steps)===target.followStep);
+    return -1;
+  }
+  function resolvedTarget(id,target){
+    if(target.enabled===false)return {...target};
+    const index=linkedMovementIndex(id,target);
+    const live=drag?.id===id&&drag.position&&(drag.index===index||target.follow==='final'&&drag.index>index);
+    const endpoint=live?drag.position:board.movements[id]?.[index]?.path.at(-1);
+    return endpoint?{...target,x:endpoint.x,y:endpoint.y}:{...target};
+  }
+  const resolvedTargets=$derived.by(()=>Object.fromEntries(
+    Object.entries(trainingDetails?.targets||{}).map(([id,target])=>[id,resolvedTarget(id,target)])
+  ));
+  function setTargetLink(id,mode,step){
+    const target=trainingDetails.targets[id];
+    const next=resolvedTarget(id,target);
+    delete next.followStep;
+    if(mode==='saved')delete next.follow;
+    else next.follow=mode;
+    if(mode==='step')next.followStep=step;
+    trainingDetails.targets[id]=resolvedTarget(id,next);
+  }
+  function toggleTarget(id,enabled){
+    const target=trainingDetails.targets[id];
+    trainingDetails.targets[id]={...resolvedTarget(id,target),enabled};
+    if(enabled&&board.movements[id]?.length)setTargetLink(id,'final');
+  }
+  function rememberTargetCenters(){
+    if(trainingMode)trainingDetails.targets=clone(resolvedTargets);
+  }
+  function detachMissingTargetLinks(){
+    if(!trainingMode)return;
+    for(const [id,target] of Object.entries(trainingDetails.targets)){
+      if(target.follow&&linkedMovementIndex(id,target)<0)setTargetLink(id,'saved');
+    }
+  }
   function draftSituation(){
     const draft={...situationDraft(board,linkedSituation),...outcomeMetadata()};
-    return trainingMode ? {...draft,...trainingDetails,relatedCategories:(trainingDetails.relatedCategories||[]).filter(id=>id!==trainingDetails.primaryCategory)} : draft;
+    return trainingMode ? {...draft,...trainingDetails,ballLocation:inferBallLocation(draft.hit),targets:resolvedTargets,relatedCategories:(trainingDetails.relatedCategories||[]).filter(id=>id!==trainingDetails.primaryCategory)} : draft;
   }
+
+  const suggestedName=$derived(trainingMode&&board.battedBall?suggestSituationName(draftSituation()):'');
 
   function backToField(event){if(dirty&&!window.confirm('Leave without saving these edits?')){event.preventDefault();return;}leaving=true;}
 
@@ -260,17 +359,19 @@
   let throwSequence=$state('playSeq'), speed=$state(1);
   let confirmed=$state(false), result=$state('single'), batterResult=$state('first'), outsRecorded=$state(0), runnerResults=$state({}), taggedUp=$state({}), outDetails=$state({batter:{},first:{},second:{},third:{}});
   const outTypes=[['force','Force'],['tag','Tag'],['catch','Catch'],['batter_first','Batter retired before first'],['other','Other']];
+  let recordingMovement=$state(false), redrawArmed=$state(false);
+  const redraw=$derived(redrawArmed?movementEditor:null);
   const positions=$derived.by(()=>{
     if(frame)return frame.positions;
     const starts={...board.defenders,...board.runners};
     if(editingStep&&!savingSituation){
       const positions=stepPositions(board,stepId,steps);
+      if(redraw)positions[redraw.id]=segmentStart(board,redraw.id,redraw.index);
       if(drag?.position)positions[drag.id]=drag.position;
       return positions;
     }
     return starts;
   });
-  let recordingMovement=$state(false);
   const beforePitchStep=$derived(currentStep?.timing==='pre_pitch'||stepId==='pre_pitch');
   const canAddHit=$derived(!board.battedBall&&!beforePitchStep&&!stepThrows.length);
   const actionInProgress=$derived(recordingMovement||stepBall||selectingThrow||ballEditor||!!movementEditor||throwEditor!==null||!!drag);
@@ -280,6 +381,8 @@
   });
   const runnersOnBase=$derived(['first','second','third'].some(base=>board.runners[base]));
   const stepThrows=$derived(throwLegs(board).filter(leg=>throwStep(board,leg.index,steps)===stepId));
+  const inspectedThrow=$derived(!presenting&&!frame&&editorPanel==='timeline'&&!ballEditor&&!movementEditor&&!selectingThrow
+    ? stepThrows.find(leg=>leg.index===throwEditor) ?? (stepThrows.length===1?stepThrows[0]:null) : null);
   let stepPreview=$state(false);
   const stepMovements=$derived(Object.entries(board.movements).flatMap(([id,segments])=>
     segments.flatMap((segment,index)=>movementStep(segment,index,steps)===stepId?[{id,index}]:[])));
@@ -287,7 +390,7 @@
     const groups=new Map();
     function add(cue,action){
       if(!groups.has(cue))groups.set(cue,[]);
-      groups.get(cue).push(action);
+      groups.get(cue).push({...action,cue});
     }
     const hitId=hitStep(board,steps);
     const hitIndex=steps.findIndex(step=>step.id===hitId);
@@ -321,6 +424,7 @@
   const stepBallPosition=$derived.by(()=>{
     if(!currentStep)return null;
     if(!editingStep)return ball;
+    if(ballEditor&&hitStep(board)===stepId)return ballDrag?.position||ball;
     const index=steps.findIndex(step=>step.id===stepId);
     const hitIndex=steps.findIndex(step=>step.id===hitStep(board,steps));
     const latest=throwLegs(board).filter(leg=>{
@@ -329,7 +433,9 @@
     }).at(-1);
     return latest?positions[latest.to]:hitIndex>=0&&hitIndex<=index?ball:null;
   });
-  const visibleBall=$derived((presenting||frame) ? (frame?.time>0?frame.ball:null) : stepBallPosition);
+  const visibleBall=$derived((presenting||frame)
+    ? (frame?.time>0?positionThrownBall(frame,metrics):null)
+    : stepBallPosition);
   async function request(url,options) {
     const response=await fetch(url,options);const value=await response.json();
     if(!response.ok) throw new Error(value.error || value.message || 'Request failed.');return value;
@@ -339,6 +445,8 @@
   function resetActionEditors(){
     addStepOpen=false;
     recordingMovement=false;
+    redrawArmed=false;
+    ballDrag=null;
     renameDraft=null;
     stop();
     movementEditor=null;
@@ -354,6 +462,7 @@
   function selectStep(id){
     resetActionEditors();
     stepId=id;
+    if(!id)scoringOpen=false;
   }
   let addStepOpen=$state(false);
   const canAddBeforePitch=$derived(!steps.some(step=>step.timing==='pre_pitch'||step.id==='pre_pitch'));
@@ -385,7 +494,9 @@
   }
   function deleteStep(){
     const lastStep=steps.length===1;
+    rememberTargetCenters();
     removeStep(board,stepId);
+    detachMissingTargetLinks();
     if(lastStep){
       changeRunningResult('single');
       ballType='ground_ball';
@@ -457,6 +568,7 @@
   }
   function openStepMovement(id,index,toggle=true){
     stop();
+    redrawArmed=false;
     stepBall=false;
     selectingThrow=false;
     movementEditor=toggle&&movementEditor?.id===id&&movementEditor.index===index?null:{id,index};
@@ -527,14 +639,14 @@
     const presentationTransfer=readHandoff(sessionStorage,data.userId,'present');
     const reviewTransfer=readHandoff(sessionStorage,data.userId,'training-review');
     const outcomeTransfer=readHandoff(sessionStorage,data.userId,'training-outcomes');
-    const transfer=reviewTransfer||outcomeTransfer||readHandoff(sessionStorage,data.userId,'training')||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
+    const newTransfer=readHandoff(sessionStorage,data.userId,'training-new');
+    const transfer=reviewTransfer||outcomeTransfer||newTransfer||readHandoff(sessionStorage,data.userId,'training')||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
     if(transfer){
       hasEditor=true;
       restoreSituation(transfer.situation,transfer.baseline,transfer.rationale,reviewTransfer?'review':'timeline');
-      if(outcomeTransfer&&hitStep(board)){
+      if((outcomeTransfer||newTransfer)&&hitStep(board)){
         selectStep(hitStep(board));
-        ballEditor=true;
-        outcomesOpen=true;
+        outcomesOpen=!!outcomeTransfer;
       }
       clearHandoff(sessionStorage);
     }
@@ -562,9 +674,9 @@
   function point(event){const r=field.getBoundingClientRect();return {x:Math.max(0,Math.min(IMG_W,(event.clientX-r.left)/r.width*IMG_W)),y:Math.max(0,Math.min(IMG_H,(event.clientY-r.top)/r.height*IMG_H))};}
   function down(event,id){
     if(busy||savingSituation||presenting)return;
-    if(placingTarget){event.preventDefault();destination(event);return;}
     if(editorPanel!=='timeline'&&!stepBall)return;
-    if(trainingMode&&!POSITIONS.includes(id)&&!stepBall)return;
+    if(redraw&&redraw.id!==id)return;
+    if(trainingMode&&!POSITIONS.includes(id)&&!stepBall&&redraw?.id!==id)return;
     if(editingStep&&selectingThrow&&POSITIONS.includes(id)){event.preventDefault();chooseThrowFielder(id);return;}
     if(stepBall){
       event.preventDefault();
@@ -572,9 +684,9 @@
       return;
     }
     if(selectingThrow)return;
-    if(!alignment&&!recordingMovement){selectTokenAction(id);return;}
+    if(!alignment&&!recordingMovement&&!redraw){selectTokenAction(id);return;}
     const segments=board.movements[id]||[];
-    const index=editingStep?stepMovementIndex(segments,stepId,steps):0;
+    const index=redraw?.index??(editingStep?stepMovementIndex(segments,stepId,steps):0);
     if(editingStep&&segments.length>=MAX_SEGMENTS&&(!segments[index]||movementStep(segments[index],index,steps)!==stepId)){
       message='This token has reached its movement limit.';
       return;
@@ -595,7 +707,7 @@
       const id=drag.id;
       drag=null;
       frame=null;
-      selectTokenAction(id);
+      if(!redraw)selectTokenAction(id);
       return;
     }
     confirmed=false;
@@ -609,6 +721,8 @@
       const action={...(replaces?existing:{}),path,stepId,start:replaces&&existing.start?existing.start:beforePitchStep?{event:'pre_pitch'}:isAuthoredStep(stepId)?{event:'step'}:parseCondition(stepId==='previous_movement'&&!drag.index?'contact':stepId)};
       segments.splice(drag.index,replaces?1:0,action);
       board.movements[drag.id]=segments;reconcileSegments(board,drag.id);
+      const target=trainingDetails?.targets[drag.id];
+      if(target&&target.enabled!==false&&!target.follow)setTargetLink(drag.id,'final');
       if(drag.index<segments.length-1)message='Later movements reconnected to the new endpoint; preview them before saving.';
     }
     else {
@@ -620,16 +734,44 @@
         message='Routes now start from the new alignment.';
       }
     }
+    if(redraw){
+      redrawArmed=false;
+      message='Route redrawn.';
+    }
     drag=null;frame=null;
   }
   function cancel(){if(drag)restoreSnapshot(drag.before);drag=null;frame=null;}
+  function startBallDrag(event){
+    if(!ballEditor||event.button!==0||ballDrag)return;
+    event.preventDefault();
+    stop();
+    const origin=point(event);
+    const position=clone(board.battedBall.destination);
+    ballDrag={pointer:event.pointerId,origin,position,offset:{x:position.x-origin.x,y:position.y-origin.y}};
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveBallDrag(event){
+    if(ballDrag?.pointer!==event.pointerId)return;
+    const cursor=point(event);
+    ballDrag.position={
+      x:Math.max(0,Math.min(IMG_W,cursor.x+ballDrag.offset.x)),
+      y:Math.max(0,Math.min(IMG_H,cursor.y+ballDrag.offset.y))
+    };
+  }
+  function finishBallDrag(event){
+    if(ballDrag?.pointer!==event.pointerId)return;
+    moveBallDrag(event);
+    const {position}=ballDrag;
+    ballDrag=null;
+    if(position.x===board.battedBall.destination.x&&position.y===board.battedBall.destination.y)return;
+    edit();
+    board.battedBall.destination=clone(position);
+  }
+  function cancelBallDrag(event){
+    if(ballDrag?.pointer===event.pointerId)ballDrag=null;
+  }
   function destination(event){
     if(busy||presenting||savingSituation)return;
-    if(placingTarget){
-      trainingDetails.targets[targetPosition]={...trainingDetails.targets[targetPosition],...point(event)};
-      placingTarget=false;
-      return;
-    }
     if(!stepBall)return;
     const existing=board.battedBall;
     if(!existing&&!RUN_RESULTS.includes(newHitResult))return;
@@ -641,18 +783,24 @@
       stepId='contact';
     }else board.steps=[...steps];
     board.battedBall={...existing,type:ballType,start:clone(BASES_NATIVE.home),destination:point(event),stepId};
+    syncPlayOutcome();
     ballEditor=true;
     stepBall=false;
   }
-  function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]=runningDestination(board,base);}
+  function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]=runningDestination(board,base);syncPlayOutcome();}
   function tokenClick(event,id){
-    if(busy||presenting||editorPanel!=='timeline'||event.detail!==0)return;
+    if(busy||presenting||editorPanel!=='timeline'||event.detail!==0||redraw)return;
     if(editingStep&&selectingThrow&&POSITIONS.includes(id))chooseThrowFielder(id);
     else selectTokenAction(id);
   }
-  function selectTokenAction(id){
+  async function selectTokenAction(id){
     const action=stepMovements.find(action=>action.id===id);
-    if(action)openStepMovement(action.id,action.index,false);
+    if(!action)return;
+    openStepMovement(action.id,action.index,false);
+    await tick();
+    if(movementEditor?.id!==id)return;
+    const group=tools?.querySelector('details.action-category .step-actions .action-open')?.closest('details.action-category');
+    if(group)group.open=true;
   }
   function previewStep(){
     if(stepPreview&&running){playback.pause();return;}
@@ -693,9 +841,9 @@
     edit();board.running ||= {result:'single',destinations:{}};board.running.destinations[id]=value;
     if(id==='batter')batterResult=value;else runnerResults[id]=value;
   }
-  function deleteMovement(actor,index){edit();const segments=board.movements[actor]||[];segments.splice(index,1);
+  function deleteMovement(actor,index){edit();redrawArmed=false;rememberTargetCenters();const segments=board.movements[actor]||[];segments.splice(index,1);
     if(segments.length){board.movements[actor]=segments;reconcileSegments(board,actor);if(segments[0].start?.event==='previous_movement')segments[0].start={event:'contact'};}
-    else delete board.movements[actor];movementEditor=null;message='Movement deleted. Remaining routes reconnected; preview before saving.';
+    else delete board.movements[actor];detachMissingTargetLinks();movementEditor=null;message='Movement deleted. Remaining routes reconnected; preview before saving.';
   }
   function changeTiming(segment,value){edit();if(value==='automatic')delete segment.durationMs;else segment.durationMs=Math.max(250,movementDuration(segment));}
   function changeDuration(segment,event){
@@ -853,8 +1001,8 @@
 
 <svelte:head><title>Coach Board — Diamond Defence</title></svelte:head>
 {#snippet fieldingControls()}
-                <label>How it’s fielded <select value={hitFielding(board.battedBall)} onchange={e=>{edit();board.battedBall.fielding=e.currentTarget.value;}}>
-                  <option value="caught">Caught in the air</option>
+                <label>How it’s fielded <select value={hitFielding(board.battedBall)} onchange={e=>changeHitField('fielding',e.currentTarget.value)}>
+                  {#if board.battedBall.type!=='ground_ball'}<option value="caught">Caught in the air</option>{/if}
                   <option value="ground">Fielded on the ground</option>
                 </select></label>
                 <label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Nearest fielder</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
@@ -865,6 +1013,107 @@
         <label>{id==='batter'?'Batter destination':`Runner on ${id} destination`} <select id={`advance-${id}`} disabled={hasCustomRunning(board,id)} value={runningDestination(board,id)} onchange={e=>changeRunningDestination(id,e.currentTarget.value)}>{#each (id==='batter'?['first','second','third','home','out']:id==='first'?['hold','second','third','home','out']:id==='second'?['hold','third','home','out']:['hold','home','out']) as destination}<option value={destination}>{destination}</option>{/each}</select></label>
         {#if hasCustomRunning(board,id)}<p>{id}: Custom route</p><button onclick={()=>{edit();useAutomaticRunning(board,id);}}>Use automatic running for {id}</button>{/if}
       {/each}
+{/snippet}
+{#snippet outcomeAction()}
+  <li class:action-open={outcomesOpen}>
+    <button aria-expanded={outcomesOpen} aria-label="Edit play outcomes" onclick={()=>outcomesOpen=!outcomesOpen}>
+      <strong>Play outcomes</strong>
+      <span class="action-edit">{outcomesOpen?'Done':'Edit'}</span>
+    </button>
+    {#if outcomesOpen}
+      <div class="board-controls inline-fields">
+        {#if trainingMode}{@render outcomes()}{:else}{@render runningControls()}{/if}
+      </div>
+    {/if}
+  </li>
+{/snippet}
+{#snippet recordedAction(action)}
+  {#if action.kind==='hit'}
+    <li class:action-open={ballEditor}>
+      <button aria-expanded={ballEditor} onclick={()=>{stop();ballEditor=!ballEditor;movementEditor=null;throwEditor=null;}} aria-label="Edit batted ball action"><span><strong>Batted ball</strong><small>{board.battedBall.type.replaceAll('_',' ')} · {(trainingMode?result:board.running?.result||'single').replaceAll('_',' ')}</small></span><span class="action-edit">{ballEditor?'Done':'Edit'}</span></button>
+      {#if ballEditor}
+        <div class="board-controls inline-fields">
+          {#if !stepBall}<label>Batted-ball type <select bind:value={ballType} onchange={e=>changeHitField('type',e.currentTarget.value)}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label>{/if}
+          {@render fieldingControls()}
+          {#if fieldingSummary?.fielder}<p>{fieldingSummary.fielder} {fieldingSummary.caught?'catches':'fields'} the ball after {((fieldingSummary.fieldingTime-fieldingSummary.contactTime)/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1)} seconds from contact at Normal speed.</p>{/if}
+          {#if fieldingSummary?.fieldingWarning}<p role="note">{fieldingSummary.fieldingWarning}</p>{/if}
+
+        </div>
+      {/if}
+    </li>
+  {:else if action.kind==='move'}
+    {@const segment=board.movements[action.id][action.index]}
+    {@const expanded=movementEditor?.id===action.id&&movementEditor.index===action.index}
+    <li class:action-open={expanded}>
+      <button aria-expanded={expanded} onclick={()=>openStepMovement(action.id,action.index)} aria-label={`${action.id} · Movement ${action.index+1}`}><span><strong>{action.id} · Movement {action.index+1}</strong><small>{cueLabel(action.cue)}{segment.durationMs===undefined?'':` · ${Number((segment.durationMs/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1))} s`}</small></span><span class="action-edit">{expanded?'Done':'Edit'}</span></button>
+      {#if expanded}
+        <div class="board-controls inline-fields">
+          <details class="action-category">
+            <summary>Timing options</summary>
+            <div class="board-controls">
+              <label>Start movement <select value={conditionValue(segment,action.index)} onchange={e=>{edit();board.steps=[...steps];segment.stepId=stepId;segment.start=parseCondition(e.currentTarget.value);}}>
+                {#if isAuthoredStep(stepId)}<option value="step">At the start of this step</option>{/if}
+                {#each eventOptions(board,action.index).filter(option=>!trainingMode||!['pre_pitch','pitch_started'].includes(option.value)) as option}<option value={option.value}>{option.label}</option>{/each}
+              </select></label>
+              <label>Movement timing <select value={segment.durationMs===undefined?'automatic':'custom'} onchange={e=>changeTiming(segment,e.currentTarget.value)}><option value="automatic">Automatic</option><option value="custom">Custom duration</option></select></label>
+              {#if segment.durationMs!==undefined}<label>Duration at Normal speed (seconds) <input type="number" min="1" max="120" step="0.1" value={segment.durationMs/(1000*TEACHING_PLAYBACK_RATE)} onchange={e=>changeDuration(segment,e)} /></label>{/if}
+            </div>
+          </details>
+          <button aria-pressed={!!redraw} onclick={()=>{stop();redrawArmed=!redrawArmed;}}>{redraw?'Cancel redraw':'Redraw route'}</button>
+          <div class="button-row">
+            <button disabled={segment.path.length<3} onclick={()=>cleanMovement(segment,true)}>Straighten path</button>
+            <button disabled={segment.path.length<3} onclick={()=>cleanMovement(segment,false)}>Smooth curve</button>
+          </div>
+          {#if trainingMode&&POSITIONS.includes(action.id)}
+            {@render targetToggle(action.id)}
+            {#if trainingDetails.targets[action.id].enabled!==false}
+              <details class="training-scoring-tools">
+                <summary>Player target</summary>
+                <div class="board-controls">{@render targetControls(action.id,stepId)}</div>
+              </details>
+            {/if}
+  {/if}
+          <button onclick={()=>deleteMovement(action.id,action.index)}>Delete Movement</button>
+        </div>
+      {/if}
+    </li>
+  {:else}
+    {@const leg=action.leg}
+    {@const key=leg.stage?'playSeq2':'playSeq'}
+    {@const vertex=leg.index-(leg.stage?Math.max(0,board.playSeq.length-1):0)}
+    <li class:action-open={throwEditor===leg.index}>
+      <button aria-expanded={throwEditor===leg.index} onclick={()=>{stop();throwEditor=throwEditor===leg.index?null:leg.index;ballEditor=false;movementEditor=null;}} aria-label={`${leg.from} → ${leg.to}`}><span><strong>{!canThrowAfterHit&&leg.from==='P'?'Pickoff':'Throw'}</strong><small>{leg.from} → {leg.to}</small></span><span class="action-edit">{throwEditor===leg.index?'Done':'Edit'}</span></button>
+      {#if throwEditor===leg.index}
+        <div class="board-controls inline-fields">
+          <label>Thrower <select value={leg.from} onchange={e=>editThrow(leg,'from',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.to||id===board[key][vertex-2]}>{id}</option>{/each}</select></label>
+          <label>Receiver <select value={leg.to} onchange={e=>editThrow(leg,'to',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.from||id===board[key][vertex+1]}>{id}</option>{/each}</select></label>
+          <button onclick={()=>deleteThrow(leg)}>Delete throw</button>
+        </div>
+      {/if}
+    </li>
+  {/if}
+{/snippet}
+{#snippet targetToggle(id)}
+  {@const target=trainingDetails.targets[id]}
+  <label><input type="checkbox" checked={target.enabled!==false} onchange={event=>toggleTarget(id,event.currentTarget.checked)} /> Enable scoring target</label>
+{/snippet}
+{#snippet targetControls(id,movementId=undefined)}
+  {@const target=trainingDetails.targets[id]}
+    <label>Target center <select value={target.follow||'saved'} onchange={event=>setTargetLink(id,event.currentTarget.value,movementId||target.followStep)}>
+      {#if !target.follow}<option value="saved" disabled>Saved position</option>{/if}
+      <option value="final" disabled={!board.movements[id]?.length}>Follow final movement</option>
+      {#if movementId}<option value="step">Use this endpoint</option>
+      {:else if target.follow==='step'}<option value="step">Follow selected movement</option>{/if}
+    </select></label>
+    {#if movementId&&target.follow==='step'&&target.followStep!==movementId}
+      <button onclick={()=>setTargetLink(id,'step',movementId)}>Use this endpoint</button>
+    {/if}
+    <label>Target tolerance slider <input type="range" min="5" max="400" step="1" bind:value={target.tol} /></label>
+    <label>Target tolerance <input type="number" min="5" max="400" step="1" bind:value={target.tol} /></label>
+    <label>Position notes <textarea value={target.notes??target.note??''} oninput={event=>{
+      target.notes=event.currentTarget.value;
+      delete target.note;
+    }}></textarea></label>
 {/snippet}
 {#snippet outControls(actor,label)}
   <label>{label} out type <select bind:value={outDetails[actor].type} onchange={()=>confirmed=false}>
@@ -877,12 +1126,13 @@
   </select></label>
 {/snippet}
 {#snippet outcomes()}
-<label>Play result <select bind:value={result} onchange={()=>confirmed=false}>{#each ['single','double','triple','home_run','ground_rule_double','groundout','caught_fly','caught_line','sacrifice_bunt','squeeze_bunt','sacrifice_fly','fielders_choice','double_play','error','other'] as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
-    <label>Batter result <select bind:value={batterResult} onchange={()=>confirmed=false}>{#each ['out','first','second','third','home'] as value}<option value={value}>{value}</option>{/each}</select></label>
-    {#if batterResult==='out'}{@render outControls('batter','Batter')}{/if}
-    <label>Outs recorded <select bind:value={outsRecorded} onchange={()=>confirmed=false}>{#each [0,1,2,3] as value}<option value={value}>{value}</option>{/each}</select></label>
+    <label>Play result <select value={result} onchange={e=>changePlayResult(e.currentTarget.value)}>{#each playResults as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
+    <button onclick={applyRecommendedOutcomes}>Use recommended outcomes</button>
+    <label>Batter result <select bind:value={batterResult} disabled={caughtInAir} onchange={()=>confirmed=false}>{#each (caughtInAir?['out']:['out','first','second','third','home']) as value}<option value={value}>{value}</option>{/each}</select></label>
+    {#if batterResult==='out'&&!caughtInAir}{@render outControls('batter','Batter')}{/if}
+    <label>Outs recorded <select bind:value={outsRecorded} onchange={()=>confirmed=false}>{#each (caughtInAir?[1,2,3].slice(0,3-board.outs):[0,1,2,3]) as value}<option value={value}>{value}</option>{/each}</select></label>
     {#each ['first','second','third'].filter(base=>board.runners[base]) as base}
-      <label>Runner on {base}<select bind:value={runnerResults[base]} onchange={()=>confirmed=false}>
+      <label>Runner on {base}<select value={runnerResults[base]} onchange={e=>{runnerResults[base]=e.currentTarget.value;confirmed=false;if(caughtInAir)updateRunningOutcomes();}}>
         {#each ['hold',...['second','third'].slice(['first','second','third'].indexOf(base)),'home','out'] as value}<option {value}>{value}</option>{/each}
       </select></label>
       {#if runnerResults[base]==='out'}{@render outControls(base,`Runner on ${base}`)}{/if}
@@ -914,41 +1164,39 @@
       ? (board.battedBall||newHitResult?'Tap the field to place the batted ball.':'Choose a hit result in the sidebar.')
       : selectingThrow
         ? (stepThrowFrom?`Choose a receiver for ${stepThrowFrom}.`:'Choose the throwing fielder.')
-        : recordingMovement?'Drag a fielder or runner to record a move.':'Choose Add movement to record a route.'}</p>
+        : redraw?`Drag the ${redraw.id} chip to redraw its route.`:recordingMovement?'Drag a fielder or runner to record a move.':ballEditor?'Drag the ball to change its landing spot.':'Choose Add movement to record a route.'}</p>
   {/if}
   {/if}
-  <div class="board-field" class:placing-point={stepBall||placingTarget} style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
+  <div class="board-field" class:placing-point={stepBall} style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
     <img src={fieldImage} alt="Baseball field" draggable="false" />
-    <button class="field-surface" aria-label={placingTarget?'Place scoring target on field':'Set batted-ball destination'} tabindex={presenting||(!placingTarget&&(!stepBall||(!board.battedBall&&!newHitResult)))?-1:0} aria-disabled={presenting||(!placingTarget&&(!stepBall||(!board.battedBall&&!newHitResult)))} onclick={destination}></button>
+    <button class="field-surface" aria-label="Set batted-ball destination" tabindex={presenting||(!stepBall||(!board.battedBall&&!newHitResult))?-1:0} aria-disabled={presenting||(!stepBall||(!board.battedBall&&!newHitResult))} onclick={destination}></button>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true" bind:this={hitOverlay}></svg>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true">
       {#if movementPaths.length}{#each movementPaths as route (`${route.id}-${route.index}`)}<path class="board-movement-path" class:route-selected={movementEditor?.id===route.id&&movementEditor.index===route.index} data-position={route.id} d={route.path.map((p,i)=>`${i?'L':'M'} ${p.x},${p.y}`).join(' ')} fill="none" stroke="var(--field-movement-path)" stroke-width="8" stroke-dasharray="1 20" stroke-linecap="round" style="filter:drop-shadow(0 1px 2px #071722)" opacity="0.85" />{/each}{/if}
-      {#each frame?.arrows || [] as arrow}
-        {@const route = throwArrowGeometry(arrow, undefined, 2.5)}
-        <path class="seq-route-underlay" d={route.shaft} />
-        <path class="seq-route-active" d={route.shaft} />
-        <path class="seq-route-head" d={route.head} />
-      {/each}
     </svg>
-    {#if trainingMode&&editorPanel==='timeline'&&scoringOpen&&!frame&&!presenting}
-      {#each Object.entries(trainingDetails.targets) as [id,target]}
+    {#if trainingMode&&(movementEditor||recordingMovement&&drag||editorPanel==='review'&&scoringOpen)&&!frame&&!presenting}
+      {#each Object.entries(resolvedTargets).filter(([id,target])=>target.enabled!==false&&(id===movementEditor?.id||id===drag?.id||scoringOpen)) as [id,target]}
         <span class="ghost-target training-scoring-target" style:left={`${target.x/IMG_W*100}%`} style:top={`${target.y/IMG_H*100}%`} style:width={`${target.tol*2/IMG_W*100}%`} title={`${id} scoring target`}>{id}</span>
       {/each}
     {/if}
     {#each finalTargets as [id,p] (id)}<span class="ghost-target" style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} style:width={`${metrics.defender}px`} style:height={`${metrics.defender}px`} style:font-size={`${metrics.defenderFont}px`} aria-label={`${id} final target`}>{id}</span>{/each}
-    {#each Object.entries(positions) as [id,p] (id)}<button class:board-runner={!POSITIONS.includes(id)} class:movement-ready={recordingMovement&&!presenting&&!frame} class={`board-token ${POSITIONS.includes(id)?'chip '+(['P','C'].includes(id)?'Battery':['LF','CF','RF'].includes(id)?'Outfield':'Infield'):'baseRunner'}`} class:chosen={!presenting&&(movementEditor?.id===id||selectingThrow&&stepThrowFrom===id)} class:teaching-focus={focusPlayers.includes(id)} class:teaching-secondary={!!focusPlayers.length&&POSITIONS.includes(id)&&!focusPlayers.includes(id)} data-fielding-number={FIELDING_NUMBERS[id]} style:width={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:height={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:font-size={`${metrics.defenderFont}px`} style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} aria-label={`${id} token`} tabindex={presenting?-1:0} aria-disabled={presenting} onpointerdown={e=>down(e,id)} onpointermove={move} onpointerup={up} onpointercancel={cancel} onclick={e=>tokenClick(e,id)}>{#if POSITIONS.includes(id)}{id}{:else}<span class="rlabel" style:font-size={`${metrics.runnerFont}px`}>{board.offenseNumbers[id]}</span>{/if}</button>{/each}
+    {#each Object.entries(positions) as [id,p] (id)}<button class:board-runner={!POSITIONS.includes(id)} class:movement-ready={(recordingMovement||redraw?.id===id)&&!presenting&&!frame} class={`board-token ${POSITIONS.includes(id)?'chip '+(['P','C'].includes(id)?'Battery':['LF','CF','RF'].includes(id)?'Outfield':'Infield'):'baseRunner'}`} class:chosen={!presenting&&(movementEditor?.id===id||selectingThrow&&stepThrowFrom===id)} class:relay-highlight={frame?.relayHighlights.has(id)||inspectedThrow?.from===id||inspectedThrow?.to===id} class:teaching-focus={focusPlayers.includes(id)} class:teaching-secondary={!!focusPlayers.length&&POSITIONS.includes(id)&&!focusPlayers.includes(id)} data-fielding-number={FIELDING_NUMBERS[id]} style:width={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:height={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:font-size={`${metrics.defenderFont}px`} style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} aria-label={`${id} token`} tabindex={presenting?-1:0} aria-disabled={presenting} onpointerdown={e=>down(e,id)} onpointermove={move} onpointerup={up} onpointercancel={cancel} onclick={e=>tokenClick(e,id)}>{#if POSITIONS.includes(id)}{id}{#if frame?.relayOrder[id]}<span class="seq-badge" aria-hidden="true">{frame.relayOrder[id].join(', ')}</span>{/if}{:else}<span class="rlabel" style:font-size={`${metrics.runnerFont}px`}>{board.offenseNumbers[id]}</span>{/if}</button>{/each}
     {#if frame?.fieldingLabel}
       <span class="fielding-label">{frame.fieldingLabel}</span>
+    {:else if inspectedThrow}
+      <span class="fielding-label">{inspectedThrow.from} → {inspectedThrow.to}</span>
     {/if}
     {#if visibleBall}
       {@const left=`${visibleBall.x/IMG_W*100}%`}
       {@const top=`${visibleBall.y/IMG_H*100}%`}
-      {#if !presenting&&!frame&&!savingSituation&&editorPanel==='timeline'&&hitStep(board)===stepId&&!selectingThrow&&!stepBall}
-        <button class="ball-edit-target" aria-label="Edit batted ball" style:left style:top
+      {#if !presenting&&!frame&&!savingSituation&&editorPanel==='timeline'&&hitStep(board)===stepId&&!selectingThrow&&!stepBall&&!recordingMovement&&!redraw}
+        <button class="ball-edit-target" class:ball-drag-ready={ballEditor} aria-label={ballEditor?'Drag batted ball':'Edit batted ball'} style:left style:top
           style:width={`${Math.max(28,metrics.ball)}px`} style:height={`${Math.max(28,metrics.ball)}px`}
-          onclick={()=>{stop();ballEditor=true;stepBall=true;selectingThrow=false;}}></button>
+          onpointerdown={startBallDrag} onpointermove={moveBallDrag} onpointerup={finishBallDrag}
+          onpointercancel={cancelBallDrag} onlostpointercapture={cancelBallDrag}
+          onclick={()=>{stop();ballEditor=true;}}></button>
       {/if}
-      <span class="ball board-ball" style:left style:top style:scale={frame?.scale||1}
+      <span class="ball board-ball" class:is-thrown={!!frame?.ballThrow} style:left style:top style:scale={frame?.scale||1}
         style:width={`${metrics.ball}px`} style:height={`${metrics.ball}px`}
         style:box-shadow={`0 0 0 ${metrics.ballOutline}px var(--field-ball-edge), 0 1px ${metrics.ballShadow}px rgba(0,0,0,.35)`}
         aria-label="Baseball"></span>
@@ -958,6 +1206,12 @@
     <aside inert={busy} hidden={presenting} class="card board-tools" aria-label="Coach Board tools" bind:this={tools} onfocusin={e=>textEditing(e,true)} onfocusout={e=>textEditing(e,false)}>
       <section class="board-controls board-save" aria-label="Board details">
         <label>{trainingMode?'Situation name':'Board name'} <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
+        {#if suggestedName&&suggestedName!==board.title}
+          <div class="name-suggestion">
+            <p>Suggested name — {suggestedName}</p>
+            <button disabled={busy} onclick={()=>board.title=suggestedName}>Use suggested name</button>
+          </div>
+        {/if}
         <p class="save-status">{linkedSituation?`Editing ${linkedSituation.displayCode||linkedSituation.key} · `:''}{!boardId&&!linkedSituation?'New Board · Not saved':dirty?'Unsaved changes':'Saved'}</p>
         <div class="save-actions"><button class="save-board" disabled={busy} onclick={()=>trainingMode?selectEditorPanel('review'):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
           <details class="board-more" bind:this={moreMenu}><summary aria-label="More actions">More ⋯</summary><div class="more-options">
@@ -1000,8 +1254,6 @@
     <p>Private Coach Board</p>
   {:else if editorPanel==='review'&&trainingMode}
   <section class="conversion" id="situation-conversion" aria-label="Save Situation options"><div class="conversion-heading"><h2>Save Situation Changes</h2><button onclick={()=>selectEditorPanel('timeline')}>Back to play timeline</button></div>
-    <p>Suggested name — {suggestSituationName(draftSituation())}</p>
-    <button onclick={()=>board.title=suggestSituationName(draftSituation())}>Use suggested name</button>
     <p>Preview as player to test the opening hit, positioning checks and Watch Solution with this unpublished draft.</p>
     {#if reviewIssues.length}<ul aria-label="Review issues">{#each reviewIssues as issue}<li>{issue}</li>{/each}</ul>{/if}
     {#if reviewWarnings.length}<details><summary>Coaching suggestions ({reviewWarnings.length})</summary><ul>{#each reviewWarnings as warning}<li>{warning}</li>{/each}</ul></details>{/if}
@@ -1019,7 +1271,35 @@
         {/each}</ul>
       </details>
     {/if}
-    <p>Expected throw order — {[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')||'Positioning only'}</p>
+    <details class="training-scoring-tools">
+      <summary>Expected throws</summary>
+      <div class="board-controls">
+        <p>Expected throw order — {[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')||'Positioning only'}</p>
+        {#if hasThrows}<button onclick={()=>{const step=throwStep(board,1);selectEditorPanel('timeline');selectStep(step);throwEditor=1;}}>Edit recorded throws</button>{/if}
+      <label>Relay template <select disabled={!board.battedBall||!canReplaceThrows} value="" onchange={event=>{
+        applyRelayTemplate(event.currentTarget.value);
+        event.currentTarget.value='';
+      }}>
+        <option value="">Choose a relay</option>
+        {#each relayTemplates as sequence}<option value={sequence.join(',')}>{sequence.join(' → ')}</option>{/each}
+      </select></label>
+      {#if !canReplaceThrows}<p>Change the movement timing linked to throws before replacing the sequence.</p>{/if}
+      {#if hasThrows}
+        <button disabled={!canReplaceThrows} onclick={()=>{edit();board.playSeq=[];board.playSeq2=[];delete board.throwSteps;resetActionEditors();}}>Clear throw sequences</button>
+        <p>{[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')}</p>
+      {:else}<p>This situation currently scores positioning only.</p>{/if}
+      <label>Throw sequence note <textarea bind:value={trainingDetails.seqNote}></textarea></label>
+      {#if !board.battedBall}<p>Set the batted ball before adding throws.</p>{/if}
+      </div>
+    </details>
+    <details class="training-scoring-tools" bind:open={scoringOpen}>
+      <summary>Scoring targets</summary>
+      <div class="board-controls">
+        <label>Fielder <select bind:value={targetPosition}>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+        {@render targetToggle(targetPosition)}
+        {#if trainingDetails.targets[targetPosition].enabled!==false}{@render targetControls(targetPosition)}{/if}
+      </div>
+    </details>
     <div class="button-row"><button onclick={openPlayerPreview}>Preview as player</button><button onclick={()=>playerPreview(false)}>Preview opening hit</button><button onclick={()=>playerPreview(true)}>Preview solution</button><button onclick={stop}>Stop preview</button></div>
     <div class="board-controls">
     <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if !data.canPublish}<label>Proposal reason <textarea bind:value={rationale}></textarea></label>{/if}<button disabled={busy} onclick={publish}>{data.canPublish?'Publish Situation':'Submit for Review'}</button></div>
@@ -1053,7 +1333,7 @@
   <section class="board-controls mode-controls" aria-label="Selected step controls">
     {#if alignment}
       <p>Drag fielders to set their starting positions.</p>
-      <button onclick={()=>{edit();board.defenders=clone(newBoard().defenders);for(const id of POSITIONS)reconcileSegments(board,id);}}>Reset starting positions</button><label>Outs <select bind:value={board.outs} onchange={edit}>{#each [0,1,2] as n}<option value={n}>{n}</option>{/each}</select></label>
+      <button onclick={()=>{edit();board.defenders=clone(newBoard().defenders);for(const id of POSITIONS)reconcileSegments(board,id);}}>Reset starting positions</button><label>Outs <select value={board.outs} onchange={e=>{edit();board.outs=Number(e.currentTarget.value);syncPlayOutcome();}}>{#each [0,1,2] as n}<option value={n}>{n}</option>{/each}</select></label>
       <fieldset class="starting-runners">
         <legend>Runners on base</legend>
         {#each ['first','second','third'] as base}<label><input type="checkbox" checked={!!board.runners[base]} onchange={e=>runner(base,e.currentTarget.checked)} /> {base}</label>{/each}
@@ -1127,75 +1407,34 @@
       <h3 class="step-section-label">Recorded actions</h3>
       <div class="action-groups">
         {#each actionGroups as [cue,actions] (cue)}
+          {@const hit=actions.find(action=>action.kind==='hit')}
+          {@const defense=actions.filter(action=>action.kind==='move'&&POSITIONS.includes(action.id))}
+          {@const offense=actions.filter(action=>action.kind==='move'&&!POSITIONS.includes(action.id))}
+          {@const throws=actions.filter(action=>action.kind==='throw')}
           <section class="action-group" aria-label={cueLabel(cue)}>
             <h4>{cueLabel(cue)}</h4>
-            <ul class="step-actions">
-              {#each actions as action (action.kind==='move'?`move:${action.id}:${action.index}`:action.kind==='throw'?`throw:${action.leg.index}`:'hit')}
-                {#if action.kind==='hit'}
-          <li class:action-open={ballEditor}>
-            <button aria-expanded={ballEditor} onclick={()=>{stop();ballEditor=!ballEditor;movementEditor=null;throwEditor=null;}} aria-label="Edit batted ball action"><span><strong>Batted ball</strong><small>{board.battedBall.type.replaceAll('_',' ')} · {(board.running?.result||'single').replaceAll('_',' ')}</small></span><span class="action-edit">{ballEditor?'Done':'Edit'}</span></button>
-            {#if ballEditor}
-              <div class="board-controls inline-fields">
-                {#if !stepBall}<label>Batted-ball type <select bind:value={ballType} onchange={()=>{edit();board.battedBall.type=ballType;}}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label>{/if}
-                {@render fieldingControls()}
-                <button aria-pressed={stepBall} onclick={()=>{stop();stepBall=!stepBall;selectingThrow=false;}}>Move batted ball</button>
-                {#if fieldingSummary?.fielder}<p>{fieldingSummary.fielder} {fieldingSummary.caught?'catches':'fields'} the ball after {((fieldingSummary.fieldingTime-fieldingSummary.contactTime)/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1)} seconds from contact at Normal speed.</p>{/if}
-                {#if fieldingSummary?.fieldingWarning}<p role="note">{fieldingSummary.fieldingWarning}</p>{/if}
-
-                {#if trainingMode}
-                  <label>Ball location <select bind:value={trainingDetails.ballLocation}><option value="">Choose location</option>{#each BALL_LOCATIONS as location}<option value={location}>{location}</option>{/each}</select></label>
-                  <details bind:open={outcomesOpen}>
-                    <summary>Play outcomes</summary>
-                    <div class="board-controls">
-                      {@render outcomes()}
-                      <button onclick={applyRecommendedOutcomes}>Use recommended outcomes</button>
-                    </div>
-                  </details>
-                {:else}
-                  {@render runningControls()}
-                {/if}
-
-              </div>
+            {#if hit||throws.length}
+              <ul class="step-actions">
+                {#if hit}{@render recordedAction(hit)}{@render outcomeAction()}{/if}
+                {#each throws as action (action.leg.index)}{@render recordedAction(action)}{/each}
+              </ul>
             {/if}
-          </li>
-                {:else if action.kind==='move'}
-          {@const segment=board.movements[action.id][action.index]}
-          {@const expanded=movementEditor?.id===action.id&&movementEditor.index===action.index}
-          <li class:action-open={expanded}>
-            <button aria-expanded={expanded} onclick={()=>openStepMovement(action.id,action.index)} aria-label={`${action.id} · Movement ${action.index+1}`}><strong>{action.id} · Movement {action.index+1}</strong><span class="action-edit">{expanded?'Done':'Edit'}</span></button>
-            {#if expanded}
-              <div class="board-controls inline-fields">
-                <label>Start movement <select value={conditionValue(segment,action.index)} onchange={e=>{edit();board.steps=[...steps];segment.stepId=stepId;segment.start=parseCondition(e.currentTarget.value);}}>
-                  {#if isAuthoredStep(stepId)}<option value="step">At the start of this step</option>{/if}
-                  {#each eventOptions(board,action.index).filter(option=>!trainingMode||!['pre_pitch','pitch_started'].includes(option.value)) as option}<option value={option.value}>{option.label}</option>{/each}
-                </select></label>
-                <label>Movement timing <select value={segment.durationMs===undefined?'automatic':'custom'} onchange={e=>changeTiming(segment,e.currentTarget.value)}><option value="automatic">Automatic</option><option value="custom">Custom duration</option></select></label>
-                {#if segment.durationMs!==undefined}<label>Duration at Normal speed (seconds) <input type="number" min="1" max="120" step="0.1" value={segment.durationMs/(1000*TEACHING_PLAYBACK_RATE)} onchange={e=>changeDuration(segment,e)} /></label>{/if}
-                <div class="button-row">
-                  <button disabled={segment.path.length<3} onclick={()=>cleanMovement(segment,true)}>Straighten path</button>
-                  <button disabled={segment.path.length<3} onclick={()=>cleanMovement(segment,false)}>Smooth curve</button>
-                </div>
-                <button onclick={()=>deleteMovement(action.id,action.index)}>Delete Movement</button>
-              </div>
+            {#if defense.length}
+              <details class="action-category" open={defense.length<=3||defense.some(action=>action.id===movementEditor?.id&&action.index===movementEditor.index)}>
+                <summary>Defense · {defense.length} {defense.length===1?'movement':'movements'}</summary>
+                <ul class="step-actions">
+                  {#each defense as action (`${action.id}:${action.index}`)}{@render recordedAction(action)}{/each}
+                </ul>
+              </details>
             {/if}
-          </li>
-                {:else}
-                  {@const leg=action.leg}
-          {@const key=leg.stage?'playSeq2':'playSeq'}
-          {@const vertex=leg.index-(leg.stage?Math.max(0,board.playSeq.length-1):0)}
-          <li class:action-open={throwEditor===leg.index}>
-            <button aria-expanded={throwEditor===leg.index} onclick={()=>{stop();throwEditor=throwEditor===leg.index?null:leg.index;ballEditor=false;movementEditor=null;}} aria-label={`${leg.from} → ${leg.to}`}><span><strong>{!canThrowAfterHit&&leg.from==='P'?'Pickoff':'Throw'}</strong><small>{leg.from} → {leg.to}</small></span><span class="action-edit">{throwEditor===leg.index?'Done':'Edit'}</span></button>
-            {#if throwEditor===leg.index}
-              <div class="board-controls inline-fields">
-                <label>Thrower <select value={leg.from} onchange={e=>editThrow(leg,'from',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.to||id===board[key][vertex-2]}>{id}</option>{/each}</select></label>
-                <label>Receiver <select value={leg.to} onchange={e=>editThrow(leg,'to',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.from||id===board[key][vertex+1]}>{id}</option>{/each}</select></label>
-                <button onclick={()=>deleteThrow(leg)}>Delete throw</button>
-              </div>
+            {#if offense.length}
+              <details class="action-category" open={offense.some(action=>action.id===movementEditor?.id&&action.index===movementEditor.index)}>
+                <summary>Batter &amp; runner movements</summary>
+                <ul class="step-actions">
+                  {#each offense as action (`${action.id}:${action.index}`)}{@render recordedAction(action)}{/each}
+                </ul>
+              </details>
             {/if}
-          </li>
-                {/if}
-              {/each}
-            </ul>
           </section>
         {/each}
       </div>
@@ -1204,38 +1443,6 @@
     {/if}
   </section>
 
-  {#if trainingMode&&editorPanel==='timeline'}
-    <details class="training-scoring-tools" bind:open={scoringOpen} ontoggle={event=>{if(!event.currentTarget.open)placingTarget=false;}}>
-      <summary>Scoring targets &amp; expected throws</summary>
-      <section class="board-controls mode-controls" aria-label="Scored positioning targets">
-      <label>Relay template <select disabled={!board.battedBall||!canReplaceThrows} value="" onchange={event=>{
-        applyRelayTemplate(event.currentTarget.value);
-        event.currentTarget.value='';
-      }}>
-        <option value="">Choose a relay</option>
-        {#each relayTemplates as sequence}<option value={sequence.join(',')}>{sequence.join(' → ')}</option>{/each}
-      </select></label>
-      {#if !canReplaceThrows}<p>Change the movement timing linked to throws before replacing the sequence.</p>{/if}
-      {#if hasThrows}
-        <button disabled={!canReplaceThrows} onclick={()=>{edit();board.playSeq=[];board.playSeq2=[];delete board.throwSteps;resetActionEditors();}}>Clear throw sequences</button>
-        <p>{[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')}</p>
-      {:else}<p>This situation currently scores positioning only.</p>{/if}
-      <label>Throw sequence note <textarea bind:value={trainingDetails.seqNote}></textarea></label>
-      {#if !board.battedBall}<p>Set the batted ball before adding throws.</p>{/if}
-      <label>Scoring target <select bind:value={targetPosition}>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
-      <p>Scoring center — {Math.round(trainingDetails.targets[targetPosition].x)}, {Math.round(trainingDetails.targets[targetPosition].y)}. Instructional movement paths are edited separately.</p>
-      <label>Target tolerance <input type="number" min="5" max="400" bind:value={trainingDetails.targets[targetPosition].tol} /></label>
-      <label>Position notes <textarea value={trainingDetails.targets[targetPosition].notes??trainingDetails.targets[targetPosition].note??''} oninput={event=>{
-        const target=trainingDetails.targets[targetPosition];
-        target.notes=event.currentTarget.value;
-        delete target.note;
-      }}></textarea></label>
-      <button onclick={()=>{stop();trainingDetails.targets[targetPosition]={...trainingDetails.targets[targetPosition],...board.defenders[targetPosition]};}}>Reset target to starting position</button>
-      <button aria-pressed={placingTarget} onclick={()=>{stop();resetActionEditors();placingTarget=!placingTarget;}}>{placingTarget?'Cancel target placement':'Place scoring target'}</button>
-      {#if placingTarget}<p>Select the target center on the field.</p>{/if}
-      </section>
-    </details>
-  {/if}
   {/if}
   <p role="status" class="board-message">{message}</p>
     </aside>
@@ -1251,9 +1458,10 @@
 </main>
 {#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
 <style>
+  .action-category{margin-top:8px}.action-category>summary{cursor:pointer;padding:8px 0;font-weight:700}.action-category>summary:focus-visible{outline-offset:2px}
   .training-scoring-tools{margin-top:12px}.training-scoring-tools>summary{cursor:pointer;font-weight:700}
   .training-authoring-stages{display:flex;flex-wrap:wrap;gap:6px}
-  .training-scoring-target{aspect-ratio:1;border-color:var(--baseball-line)}
+  .ghost-target.training-scoring-target{aspect-ratio:1;border:2px solid #83ed83;background:rgba(46,170,70,.2);box-shadow:0 0 0 1px #163820}
   .focus-picker{position:relative}.focus-picker summary{cursor:pointer;min-height:40px;padding:8px 12px;box-sizing:border-box;border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}.focus-options{position:absolute;bottom:100%;left:0;z-index:10;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-control);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-width:240px}.focus-options button{grid-column:1/-1}.focus-options label{min-height:36px}
   .teaching-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:8px 0}.teaching-tools label{display:flex;align-items:center;gap:6px}
   .board-token.teaching-focus{outline:3px solid var(--accent-primary);outline-offset:4px;z-index:5}.board-token.teaching-secondary{opacity:0.65}
@@ -1275,6 +1483,8 @@
   .board-controls button{min-height:44px}
   .save-actions>.save-board,.preview-main>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
   .board-save{position:sticky;top:-14px;z-index:14;background:var(--surface);padding-block:8px}
+  .name-suggestion{display:grid;justify-items:start;gap:4px;width:100%}
+  .name-suggestion p{font-size:12px;color:var(--text-muted);margin:0;overflow-wrap:anywhere}
   .save-status{font-size:12px;color:var(--text-muted);width:100%;margin:0}.save-actions{display:flex;gap:8px;width:100%;align-items:stretch}.save-actions>.save-board{flex:1;min-width:0}
   .board-more{position:relative}.board-more summary{list-style:none;cursor:pointer;min-height:44px;display:flex;align-items:center;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-control);font-weight:700}.board-more summary::-webkit-details-marker{display:none}.more-options{position:absolute;right:0;top:calc(100% + 6px);z-index:30;width:220px;max-width:calc(100vw - 48px);display:grid;gap:6px;padding:8px;background:var(--surface-raised);border:1px solid var(--border);border-radius:var(--radius-control);box-shadow:var(--shadow-raised)}.more-options button{text-align:left}
   .editing-toolbar{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--border);padding-top:10px;font-weight:700}.edit-history{display:flex;gap:6px}.edit-history button{width:36px;min-height:36px;font-size:22px;padding:0}
@@ -1330,11 +1540,14 @@
   .action-group h4{font-size:13px;color:var(--text-secondary);margin:0 0 6px}
   .board-movement-path.route-selected{stroke:var(--accent-primary);stroke-width:12;opacity:1}
   .step-actions button{min-height:36px;padding:6px 9px}
-  .action-open{width:100%}
-  .inline-fields{padding:8px;border:1px solid var(--border);border-radius:var(--radius-control);margin-top:6px}
+  .step-actions>li.action-open{border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface-raised);box-sizing:border-box}
+  .step-actions>li.action-open>button{border:0;border-radius:var(--radius-control) var(--radius-control) 0 0;background:transparent}
+  .inline-fields{padding:8px;border-top:1px solid var(--border)}
   .inline-fields>label:not(:has(input[type=checkbox])){width:100%;display:grid}
   .step-actions{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0;padding:0;list-style:none;width:100%}
   .ball-edit-target{position:absolute;transform:translate(-50%,-50%);z-index:5;border-radius:50%;min-width:0;min-height:0;padding:0;cursor:pointer}
+  .ball-edit-target.ball-drag-ready{cursor:grab;touch-action:none;z-index:12}
+  .ball-edit-target.ball-drag-ready:active{cursor:grabbing}
   .ball-edit-target:is(:hover,:active,:focus){transform:translate(-50%,-50%)}
   .ball-edit-target,.ball-edit-target:is(:hover,:active,:focus){background:transparent;border:0;box-shadow:none;outline:none}
   .ball-edit-target:focus-visible + .board-ball{outline:2px solid var(--text-primary);outline-offset:2px}
@@ -1347,9 +1560,6 @@
   .board-field .board-token{pointer-events:auto}.board-field.placing-point .board-token{pointer-events:none}.board-runner{z-index:9}.chosen{outline:2px solid white}
   .fielding-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:11;padding:5px 10px;border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);pointer-events:none}
   .board-ball{background:var(--field-ball);border-color:var(--field-ball);position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:default;z-index:10}
-  .board-throws .seq-route-underlay{stroke:var(--field-route-edge);stroke-width:15;fill:none;stroke-linecap:round}
-  .board-throws .seq-route-active{stroke:var(--field-route);stroke-width:7.5;fill:none;stroke-linecap:round}
-  .board-throws .seq-route-head{fill:var(--field-route);stroke:var(--field-route-edge);stroke-width:3.75;stroke-linejoin:round}
   .board-throws{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .board-message{white-space:pre-line;margin:0;min-height:24px}
   .board-tools[hidden],.board-workspace[hidden]{display:none}

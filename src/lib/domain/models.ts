@@ -35,6 +35,9 @@ export interface Point {
 export interface Target extends Point {
   tol: number;
   note?: string;
+  enabled?: boolean;
+  follow?: 'final' | 'step';
+  followStep?: string;
 }
 
 export interface RunnersOn {

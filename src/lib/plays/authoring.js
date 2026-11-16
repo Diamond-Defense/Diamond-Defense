@@ -1,5 +1,29 @@
 import { boardAnimation, clone, fromSituation, POSITIONS, validateBoard } from './board.js';
 import { compilePlay } from './animation.js';
+import { throwLegs } from './segments.js';
+import { playSteps, hitStep, movementStep } from './steps.js';
+
+// Pack generated throw-only steps into one relay when opening a training situation.
+export function consolidateSituationRelay(board) {
+  const legs=throwLegs(board);
+  if(legs.length<2||board.playSeq2?.length||board.throwSteps?.some(Boolean))return board;
+  const steps=playSteps(board);
+  const contact=steps.findIndex(step=>step.id===hitStep(board,steps));
+  const first=steps.findIndex(step=>step.id==='throw_started:1');
+  if(contact<0||first<=contact)return board;
+
+  const relaySteps=steps.slice(first,first+legs.length);
+  if(!legs.every((leg,index)=>relaySteps[index]?.id===`throw_started:${leg.index}`&&
+    relaySteps[index].name===`${leg.from} → ${leg.to}`))return board;
+  const relayIds=new Set(relaySteps.map(step=>step.id));
+  if(Object.values(board.movements).some(segments=>segments.some((segment,index)=>
+    relayIds.has(movementStep(segment,index,steps)))))return board;
+
+  // Reuse a generated event ID so the relay does not add an authored timing barrier.
+  const id=relaySteps[0].id;
+  return {...board,steps:[...steps.slice(0,first),{id,name:'Relay'},...steps.slice(first+legs.length)],
+    throwSteps:legs.map(()=>id)};
+}
 
 // Situation owns identity, correctness, outcomes and details. Board is its spatial projection.
 export function situationDraft(board, source = board.sourceSituation) {
@@ -79,6 +103,7 @@ export function situationPlayIssues(situation) {
     if(!point(situation?.targets?.[id]))add(`${id}: set a target position within the field.`,'sbTargetsSubsec');
     if(!Number.isFinite(Number(situation?.targets?.[id]?.tol))||Number(situation.targets[id].tol)<5)add(`${id}: set a valid target tolerance.`,'sbTargetsSubsec');
   }
+  if(POSITIONS.every(id=>situation?.targets?.[id]?.enabled===false))add('Enable at least one scoring target.','sbTargetsSubsec');
   if(!point(situation?.hit))add('Set the ball landing spot within the field.','sbBallHitSubsec');
   if(![0,1,2].includes(situation?.outs))add('Choose 0, 1, or 2 starting outs.','sbRunnersSubsec');
   for(const field of ['playSeq','playSeq2']){

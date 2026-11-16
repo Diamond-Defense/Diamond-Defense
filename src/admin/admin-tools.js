@@ -2609,7 +2609,7 @@
     const tabs=document.createElement('div');tabs.className='situation-library-tabs';toolbar.append(tabs);
     let mode='library', bundle=null, loading=false, order=null, draggedKey=null;
     const selected=new Set();
-    const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;transferToBoard('training',makeSituationDraft(),null);});create.className='btn btn-brand situation-library-create';toolbar.append(create);
+    const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;transferToBoard('training-new',makeSituationDraft(),null,'');});create.className='btn btn-brand situation-library-create';toolbar.append(create);
     if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',()=>transferToBoard('training',currentSnapshot(),editorBaseline,coachRationale?.value)));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);

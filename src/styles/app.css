@@ -270,7 +270,7 @@
   .ball{
     position:absolute;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;
     background:#fff;box-shadow:0 0 0 2px #000, 0 1px 3px rgba(0,0,0,.35);
-    z-index:10; /* ⬅️ higher than chips (1), runners (3), trails (3), seqBall (4) */
+    z-index:10; /* Above fielders and runners */
     pointer-events:auto;cursor:grab;
   }
   .ball.locked{pointer-events:none;cursor:default;opacity:.95}
@@ -341,28 +341,6 @@
   .hint{font-size:12px;color:#64748b;font-weight:700}
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace}
   .hidden{display:none!important}
-
-  /* Phase 2: throw animation ball + trail */
-  .seqBall {
-    position:absolute;
-    width:14px;height:14px;border-radius:50%;
-    background:#fff;
-    box-shadow:0 0 0 2px #000, 0 1px 3px rgba(0,0,0,.35);
-    transform:translate(-50%,-50%);
-    z-index:4; /* above chips */
-    pointer-events:none;
-  }
-  .throwTrail {
-    position:absolute; inset:0; pointer-events:none; z-index:3;
-  }
-  .throwTrail svg path {
-    stroke:#334155;            /* darker fallback if no color is set */
-    fill:none;
-    stroke-width:4;            /* thicker for visibility */
-    stroke-linecap:round;
-    stroke-linejoin:round;
-    opacity:.95;
-  }
 
   /* Collapsible description behavior (legacy support if used) */
   #sitDescBar.desc-collapsed{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1090,23 +1068,6 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .field-notice.is-visible{opacity:1;transform:translate(-50%,-50%) scale(1)}
 
 .chip::after{content:"";position:absolute;inset:-7px;border-radius:50%}
-.throwTrail{z-index:5}
-.throwTrail svg{width:100%;height:100%;overflow:visible}
-.throwTrail svg path.seq-route-underlay{
-  stroke:var(--dd-route-edge);
-  fill:none;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  opacity:.88;
-}
-.throwTrail svg path.seq-route-active{
-  stroke:var(--dd-route);
-  fill:none;
-  stroke-linecap:round;
-  stroke-linejoin:round;
-  opacity:1;
-  filter:drop-shadow(0 2px 2px rgba(19,35,58,.28));
-}
 
 @media (max-width:1400px){
   .header-shell,.app{width:calc(100vw - 24px)}
@@ -1435,7 +1396,6 @@ button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visi
 .chip{z-index:6}
 .tgt{z-index:3}
 .tgt.selectable{z-index:8}
-.throwTrail{z-index:4}
 
 @media (max-width:1699px){
   .header-shell{grid-template-columns:minmax(0,1fr) auto;gap:7px 12px}
@@ -1907,7 +1867,7 @@ input:disabled,select:disabled,textarea:disabled{color:var(--text-disabled);curs
   to{filter:brightness(1.16)}
 }
 
-.ball,.seqBall{
+.ball{
   border:1px solid #dffaff;
   background:#fff;
   box-shadow:
@@ -1928,11 +1888,6 @@ input:disabled,select:disabled,textarea:disabled{color:var(--text-disabled);curs
   box-shadow:0 0 0 2px rgba(108,8,40,.80),0 0 15px rgba(255,79,120,.58);
 }
 
-.throwTrail svg path.seq-route-underlay{stroke:var(--dd-route-edge);opacity:.94}
-.throwTrail svg path.seq-route-active{
-  stroke:var(--dd-route);
-  filter:drop-shadow(0 0 4px rgba(89,231,255,.78));
-}
 
 .subsec,.seq-list,.seq-item,.pos-btn,.tokenPill,.coachTblWrap{
   color:var(--dd-text);
@@ -2701,7 +2656,7 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .training-board .tgt.good .tgt-label::before{content:"✓ ";color:var(--success)}
 .training-board .tgt.bad .tgt-label::before{content:"× ";color:var(--error)}
 .training-board .tgt .tgt-label{color:var(--text-primary);border-color:var(--border-emphasis);background:var(--surface);box-shadow:none}
-.training-board :is(.ball,.seqBall){border-color:var(--ball);background:var(--ball);box-shadow:0 0 0 2px var(--field-dark),var(--glow-cool)!important}
+.training-board .ball{border-color:var(--ball);background:var(--ball);box-shadow:0 0 0 2px var(--field-dark),var(--glow-cool)!important}
 .training-board .hitTarget{border-color:var(--runner-highlight);background:var(--runner);box-shadow:0 0 0 2px var(--field-dark),var(--glow-brass)}
 @media (max-width:1200px){
   .training-board{grid-template-columns:minmax(0,1fr) 260px;gap:10px;padding:10px}
@@ -3234,13 +3189,9 @@ body.player-experience .training-board .tgt.good .tgt-label::before{color:var(--
 body.player-experience .training-board .tgt.bad .tgt-label::before{color:var(--target-incorrect)}
 :is(.training-board,.board-field) .chip[data-fielding-number]::after{content:none}
 
-/* Separate throw routes, batted-ball paths, and sequence badges. */
+/* Field and sequence colors */
 .training-board{--dd-route:var(--field-route);--dd-route-edge:var(--field-route-edge)}
-.training-board .throwTrail svg path.seq-route-active{stroke:var(--dd-route);stroke-width:3;filter:none}
-.training-board .throwTrail svg path.seq-route-underlay{stroke:var(--dd-route-edge);stroke-width:6;opacity:1}
-.training-board .throwTrail svg path.seq-route-head{fill:var(--dd-route);stroke:var(--dd-route-edge);stroke-width:1.5;opacity:1}
-.training-board :is(.ball,.seqBall){background:var(--field-ball);border-color:var(--field-ball);box-shadow:0 0 0 1px var(--field-ball-edge),0 1px 3px rgb(0 0 0 / 25%)!important}
-.training-board .seqBall{z-index:10}
+.training-board .ball{background:var(--field-ball);border-color:var(--field-ball);box-shadow:0 0 0 1px var(--field-ball-edge),0 1px 3px rgb(0 0 0 / 25%)!important}
 .training-board .seq-num{color:var(--field-sequence-text);background:var(--field-route);border-color:var(--field-sequence-edge)}
 .training-board #seqPanel:not(.hidden){border-color:var(--border-emphasis);background:var(--surface)}
 
@@ -3933,7 +3884,7 @@ body.player-experience:has(:is(#coachResultsWorkspace,#adminWorkspace,#coachCard
   filter:drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
 }
 
-.training-board .chip {
+:is(.training-board,.board-field) .chip {
   --sequence-pick-fill: var(--field-route);
   --sequence-pick-text: var(--field-sequence-text);
   --sequence-pick-border: var(--field-sequence-edge);
@@ -3944,10 +3895,28 @@ body.player-experience:has(:is(#coachResultsWorkspace,#adminWorkspace,#coachCard
   --sequence-pick-border: var(--success-muted);
   outline-color:var(--selection-border);
 }
-.training-board .seq-badge {
+.ball.is-thrown{z-index:5!important}
+.seq-badge {
+  position:absolute;
+  right:-6px;
+  top:-6px;
+  min-width:16px;
+  height:16px;
+  padding:0 4px;
+  border-radius:999px;
+  font:900 11px/16px var(--font-ui, sans-serif);
+  text-align:center;
+  box-shadow:0 1px 2px rgb(0 0 0 / 25%);
+  pointer-events:none;
+  user-select:none;
+  z-index:2;
   color:var(--sequence-pick-text);
   background:var(--sequence-pick-fill);
   border:1px solid var(--sequence-pick-border);
+}
+:is(.training-board,.board-field) .chip.relay-highlight {
+  outline:3px solid var(--field-route);
+  outline-offset:3px;
 }
 :root[data-theme="classic-ballpark"] .training-board .chip.seq-locked {
   --sequence-pick-text:#fff;

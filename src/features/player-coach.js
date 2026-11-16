@@ -4069,18 +4069,13 @@ function wireSeqBuilderOnce(){
 
 }
 
-// Remove any in-progress Phase 2 sequence-throw visualization (ball + trail + RAF)
+// Stop phase-two playback and clear its temporary highlights.
 function cleanupSeqThrowViz(){
-  wrap?.querySelector('.shared-solution-trail')?.remove();
-  _sharedSequencePlayback?.dispose();
-  try{ if (_seqAnimRaf){ cancelPlayFrame(_seqAnimRaf); } }catch{}
-  _seqAnimRaf = null;
-
-  if (_seqTrail && _seqTrail.parentNode) _seqTrail.remove();
-  _seqTrail = null;
-
-  if (_seqBallEl && _seqBallEl.parentNode) _seqBallEl.remove();
-  _seqBallEl = null;
+  if(!_sharedSequencePlayback)return;
+  _sharedSequencePlayback.dispose();
+  _sharedSequencePlayback=null;
+  ballEl?.classList.remove('is-thrown');
+  window._diqTokenPresentation.renderRelayCue(tokens,null);
 }
 
 function formatSecs(s){
@@ -4241,28 +4236,8 @@ function setChipPickIndex(el, n){
   clearChipPickMarker(el);
   if (!Number.isFinite(n) || n <= 0) return;
 
-  const badge = document.createElement('span');
-  badge.className = 'seq-badge';
+  const badge = window._diqTokenPresentation.createSequenceBadge(n);
   badge.setAttribute('data-role', 'seq-badge');
-  badge.textContent = String(n);
-  Object.assign(badge.style, {
-    position: 'absolute',
-    right: '-6px',
-    top: '-6px',
-    minWidth: '16px',
-    height: '16px',
-    padding: '0 4px',
-    borderRadius: '999px',
-    fontWeight: '900',
-    fontSize: '11px',
-    lineHeight: '16px',
-    textAlign: 'center',
-    boxShadow: '0 1px 2px rgba(0,0,0,.25)',
-    pointerEvents: 'none',
-    userSelect: 'none',
-    zIndex: 2
-  });
-
   el.appendChild(badge);
   el.setAttribute('data-pick-idx', String(n));
 }
@@ -4418,36 +4393,6 @@ function chipIsMarked(el){
   return !!(el && (el.hasAttribute('data-pick') || el.querySelector('.seq-badge')));
 }
 
-let _seqBallEl = null;
-let _seqTrail = null;
-let _seqAnimRaf = null;
-
-/** Build (or reuse) the tiny ball used for throw animations */
-function ensureSeqBall(){
-  if (_seqBallEl && _seqBallEl.parentNode) return _seqBallEl;
-  _seqBallEl = document.createElement('div');
-  _seqBallEl.className = 'seqBall';
-  wrap.appendChild(_seqBallEl);
-  return _seqBallEl;
-}
-
-/** Build (or reuse) an SVG overlay to draw throw lines, with arrowhead marker */
-/** Build (or reuse) an SVG overlay to draw throw lines, with a small arrowhead marker */
-function ensureSeqTrail(){
-  if (_seqTrail && _seqTrail.parentNode) return _seqTrail;
-  _seqTrail = document.createElement('div');
-  _seqTrail.className = 'throwTrail';
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(svgNS,'svg');
-  svg.setAttribute('viewBox', `0 0 ${imgRect.width} ${imgRect.height}`);
-
-  _seqTrail.appendChild(svg);
-  wrap.appendChild(_seqTrail);
-  return _seqTrail;
-}
-
-
-/** Remove temporary ball + trail */
 function sizeOverlays(){
   if (!wrap) return;
 
@@ -4521,35 +4466,27 @@ function getCssPointForPosId(posId){
   return tgt ? nativeToCssPoint({ x: tgt.x, y: tgt.y }) : null;
 }
 
-/** Small chip pulse for feedback */
-function pulseChip(id){
-  const rec = tokens.get(id);
-  if (!rec?.el) return;
-  rec.el.classList.add('correctPulse');
-  setTimeout(()=> rec.el?.classList?.remove('correctPulse'), 260);
-}
-
-/** Animate throws along the provided order of POS_IDS.
- *  Uses shared event timing and offsets duplicate legs to avoid stacking. */
+/** Animate the verified relay using the same cues as Watch Solution. */
 async function animateSequenceThrows(order){
-  _sharedSequencePlayback?.dispose();
+  cleanupSeqThrowViz();
   const board=window._diqNewBoard();
   board.playSeq=(order||[]).filter(id=>POS_IDS.includes(id));
   if(board.playSeq.length<2)return;
   for(const id of POS_IDS)board.defenders[id]={...tokens.get(id)?.pos||DEFAULT_STARTS[id]};
   const play=window._diqPlayAnimation.compilePlay(board);
-  const svg=ensureSeqTrail().querySelector('svg');
   if(ballEl){const p=nativeToCssPoint(board.defenders[board.playSeq[0]]);ballEl.style.display='block';ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
-  const pulsed=new Set();
-  _sharedSequencePlayback=window._diqPlayAnimation.createPlayback(play,frame=>{
-    svg.setAttribute('viewBox',`0 0 ${imgRect.width} ${imgRect.height}`);
-    window._diqPaintThrowFrame(svg,frame.arrows,nativeToCssPoint);
-    if(frame.ball&&ballEl){const p=nativeToCssPoint(frame.ball);ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
-    for(const event of frame.events)if(event.throwIndex&&!pulsed.has(event.id)){
-      pulsed.add(event.id);const leg=play.throws[event.throwIndex-1];pulseChip(event.type==='throw_started'?leg.fromId:leg.toId);
-    }
-  },()=>{}, {now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,reducedMotion:getPlayAnimationDuration()===0});
-  _sharedSequencePlayback.play();
+  const playback=window._diqPlayAnimation.createPlayback(play,frame=>{
+    if(frame.ball&&ballEl){ballEl.classList.toggle('is-thrown',!!frame.ballThrow);const p=renderedBallPoint(frame);ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
+    window._diqTokenPresentation.renderRelayCue(tokens,frame);
+  },()=>{}, {
+    now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,
+    reducedMotion:getPlayAnimationDuration()===0,
+    onComplete:()=>playDelay(()=>{
+      if(_sharedSequencePlayback===playback)cleanupSeqThrowViz();
+    },300),
+  });
+  _sharedSequencePlayback=playback;
+  playback.play();
 }
 
 

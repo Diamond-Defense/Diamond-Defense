@@ -32,9 +32,7 @@ export async function addBoardStep(page, preset='Blank step') {
 }
 
 export async function openRunnerAdvances(page) {
-  await selectBoardStep(page,'Contact');
-  const ball=page.getByRole('button',{name:'Edit batted ball action',exact:true});
-  if(await ball.getAttribute('aria-expanded')==='false')await ball.click();
+  await openBattedBall(page,{outcomes:true});
 }
 
 export async function addBoardThrow(page, from, to) {
@@ -50,5 +48,13 @@ export async function openBattedBall(page,{outcomes=false}={}){
   if(await step.getAttribute('aria-current')!=='step')await step.click();
   const ball=page.getByRole('button',{name:'Edit batted ball action',exact:true});
   if(await ball.getAttribute('aria-expanded')!=='true')await ball.click();
-  if(outcomes)await page.getByText('Play outcomes',{exact:true}).click();
+  if(outcomes){
+    const running=page.getByRole('button',{name:'Edit play outcomes',exact:true});
+    if(await running.getAttribute('aria-expanded')!=='true')await running.click();
+  }
+}
+
+export async function openDefense(page,cue='At contact'){
+  const summary=page.getByRole('region',{name:cue,exact:true}).getByText(/^Defense · /);
+  if(await summary.evaluate(el=>!el.parentElement.open))await summary.click();
 }

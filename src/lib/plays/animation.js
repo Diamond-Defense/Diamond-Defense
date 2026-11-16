@@ -1,6 +1,5 @@
 import {BASES_NATIVE} from './field.js';
 import {RUNNERS,hasCustomRunning,runningDestination,automaticRoute,movementPhase} from './running.js';
-import { throwRoute } from './throws.js';
 import { clone, upgradeBoard, validateBoard, POSITIONS, hitFielding } from './board.js';
 import { hitStep, isAuthoredStep, movementStep, playSteps, throwStep } from './steps.js';
 import { startCondition, throwLegs } from './segments.js';
@@ -54,6 +53,9 @@ export function compilePlay(input, options={}) {
   const ballDuration=hitFlightDuration(board.battedBall?.type,options.coachBoard);
   const nodes=new Map(),tracks=[],legs=throwLegs(board);
   const coachBoard=!!options.coachBoard;
+  const hit=board.battedBall;
+  const fielding=hit&&(coachBoard||options.showHitFlight&&hit.fielding==='ground')?hitFielding(hit):null;
+  const groundPickupDelay=fielding==='ground'?150:0;
   const authoredSteps=board.steps ? playSteps(board) : undefined;
   const order=new Map((authoredSteps || []).map((step,index)=>[step.id,index]));
   const hitOrder=order.get(hitStep(board));
@@ -71,7 +73,11 @@ export function compilePlay(input, options={}) {
   }
   if(coachBoard){nodes.set('pre_pitch',{duration:0,deps:[]});nodes.set('pitch_started',{duration:0,deps:[...early,...(board.battedBall?legs.filter(beforeContact).map(leg=>`throw_received:${leg.index}`):[])]});}
   nodes.set('contact',{duration:coachBoard&&board.battedBall?500:0,deps:coachBoard?['pitch_started',...(hitOrder>0&&isAuthoredStep(authoredSteps[hitOrder].id)?[startKey(authoredSteps[hitOrder].id)]:[])]:[]});
-  if(coachBoard&&board.battedBall){nodes.set('ball_flight',{duration:ballDuration,deps:['contact']});nodes.set('ball_fielded',{duration:0,deps:['ball_flight']});}
+  if(fielding){
+    nodes.set('ball_flight',{duration:ballDuration,deps:['contact']});
+    nodes.set('pickup_ready',{duration:groundPickupDelay,deps:['ball_flight']});
+    nodes.set('ball_fielded',{duration:0,deps:['pickup_ready']});
+  }
   else nodes.set('ball_fielded',{duration:ballDuration,deps:['contact']});
   if(hitOrder!==undefined)nodes.get(endKey(authoredSteps[hitOrder].id)).deps.push('ball_fielded');
   // The selected baseball event can delay an action within its authored step.
@@ -90,19 +96,55 @@ export function compilePlay(input, options={}) {
     nodes.set(key,{duration,deps});tracks.push({key,id,index:i,path:segment.path,geometry,duration,condition:start});
   }
   let fielder=null,fieldingWarning='';
-  if(coachBoard&&board.battedBall){
+  if(fielding){
     const hit=board.battedBall.destination;
     const eligible=tracks.filter(track=>POSITIONS.includes(track.id)&&(['pre_pitch','pitch_started','contact'].includes(movementPhase(board.movements[track.id],track.index)) ||
       track.condition.event==='step' && (hitOrder===undefined || movementOrder(board.movements[track.id][track.index],track.index)<=hitOrder)));
-    const nearby=track=>Math.hypot(track.path.at(-1).x-hit.x,track.path.at(-1).y-hit.y)<=100;
-    fielder=board.battedBall.fielder||firstHitThrow?.from||(!legs.length?board.playSeq[0]:null)||eligible.find(nearby)?.id||null;
-    const candidates=eligible.filter(track=>track.id===fielder);
-    const arrival=candidates.find(nearby)||candidates.at(-1);
-    if(arrival)nodes.get('ball_fielded').deps.push(arrival.key);
+    const distance=position=>Math.hypot(position.x-hit.x,position.y-hit.y);
+    const nearby=track=>distance(track.path.at(-1))<=100;
+    const assigned=board.battedBall.fielder;
+    let arrival;
+    if(assigned){
+      fielder=assigned;
+      const candidates=eligible.filter(track=>track.id===fielder);
+      arrival=candidates.find(nearby)||candidates.at(-1);
+    }else{
+      let closestDistance=Infinity;
+      for(const id of POSITIONS){
+        const routes=eligible.filter(track=>track.id===id);
+        const candidates=routes.length?routes:[null];
+        for(const track of candidates){
+          const candidateDistance=distance(track?.path.at(-1)||board.defenders[id]);
+          if(candidateDistance>=closestDistance)continue;
+          closestDistance=candidateDistance;
+          fielder=id;
+          arrival=track;
+        }
+      }
+    }
+    if(arrival){
+      nodes.get('ball_fielded').deps.push(arrival.key);
+      const segments=board.movements[fielder];
+      const order=movementOrder(segments[arrival.index],arrival.index);
+      const atContact=movementPhase(segments,arrival.index)==='contact'||
+        arrival.condition.event==='step'&&(hitOrder===undefined||order===hitOrder);
+      if(groundPickupDelay&&atContact&&nearby(arrival)){
+        nodes.get(arrival.key).finishAfter='pickup_ready';
+      }
+    }
     const position=arrival?.path.at(-1)||board.defenders[fielder];
-    if(fielder&&position&&Math.hypot(position.x-hit.x,position.y-hit.y)>100)fieldingWarning=`${fielder}'s route ends away from the ball. Move its endpoint or the ball destination to match.`;
-    if(board.battedBall.fielder&&firstHitThrow&&firstHitThrow.from!==fielder)fieldingWarning+=` The throw sequence starts with ${firstHitThrow.from}, rather than ${fielder}.`;
-    if(fielder&&!arrival&&(board.movements[fielder]||[]).length)fieldingWarning=`${fielder} needs a movement to the ball before it is fielded.`;
+    const warnings=[];
+    if(!arrival&&(board.movements[fielder]||[]).length){
+      warnings.push(`${fielder} needs a movement to the ball before it is fielded.`);
+    }else if(distance(position)>100){
+      warnings.push(arrival
+        ? `${fielder}'s route ends away from the ball. Move its endpoint or the ball destination to match.`
+        : `${fielder} starts away from the ball. Add a movement to its landing spot.`);
+    }
+    if(firstHitThrow&&firstHitThrow.from!==fielder){
+      warnings.push(`The first throw starts with ${firstHitThrow.from}. Edit the throw or choose a different ball fielder.`);
+    }
+    fieldingWarning=warnings.join(' ');
   }
   // A throw waits for its participants' movements triggered by earlier events,
   // while movements triggered by that throw can run concurrently with its flight.
@@ -131,12 +173,15 @@ export function compilePlay(input, options={}) {
     if(resolving.has(key))throw new Error('Movement start events create a circular dependency. Choose an earlier baseball event.');
     const node=nodes.get(key);if(!node)throw new Error(`Unavailable animation event: ${key}.`);
     resolving.add(key);const start=Math.max(0,...node.deps.map(resolve));
-    begins.set(key,start);ends.set(key,start+node.duration);resolving.delete(key);return start+node.duration;
+    const end=Math.max(start+node.duration,node.finishAfter?resolve(node.finishAfter):0);
+    begins.set(key,start);ends.set(key,end);resolving.delete(key);return end;
   }
   for(const key of nodes.keys())resolve(key);
-  for(const track of tracks)track.start=begins.get(track.key);
+  for(const track of tracks){
+    track.start=begins.get(track.key);
+    track.duration=ends.get(track.key)-track.start;
+  }
   const fieldingTime=ends.get('ball_fielded');
-  const fielding=coachBoard&&board.battedBall?hitFielding(board.battedBall):null;
   const catchTime=ends.get('contact')+ballDuration;
   const lateCatch=fielding==='caught'&&fieldingTime>catchTime;
   if(lateCatch)fieldingWarning=[fieldingWarning,`${fielder} reaches the spot after the ball lands. Start the route earlier or shorten its duration for a catch.`].filter(Boolean).join(' ');
@@ -177,19 +222,14 @@ export function compilePlay(input, options={}) {
       ends.set(key,contact+duration);
     }
   }
-  const routeCounts=new Map();
   const throws=legs.map(leg=>{
     const start=ends.get(`throw_started:${leg.index}`),end=ends.get(`throw_received:${leg.index}`);
-    const from=positionsAt(start)[leg.from],to=positionsAt(end)[leg.to];
-    const pair=[leg.from,leg.to].sort().join(':'),count=routeCounts.get(pair)||0;
-    routeCounts.set(pair,count+1);
-    const length=Math.hypot(to.x-from.x,to.y-from.y)||1;
-    const offset=count?{x:-(to.y-from.y)/length*24*count,y:(to.x-from.x)/length*24*count}:{x:0,y:0};
-    return {...leg,beforeContact:beforeContact(leg),fromId:leg.from,toId:leg.to,from,to,start,duration:end-start,route:throwRoute(from,to,65,offset)};
+    return {...leg,beforeContact:beforeContact(leg),fromId:leg.from,toId:leg.to,
+      from:positionsAt(start)[leg.from],to:positionsAt(end)[leg.to],start,duration:end-start};
   });
   const duration=Math.max(0,...ends.values());
   const rank={contact:0,ball_fielded:1,movement_complete:2,throw_received:3,throw_started:4,play_complete:5};
-  const events=[{id:'initial',type:'initial',time:0},...Array.from(nodes.keys()).filter(key=>!key.startsWith('movement:')&&key!=='ball_flight'&&!key.startsWith('step_')).map(key=>({id:key,type:key.split(':')[0],throwIndex:Number(key.split(':')[1])||undefined,time:ends.get(key)})),...tracks.map(track=>({id:`${track.key}:complete`,type:'movement_complete',actor:track.id,segmentIndex:track.index,time:track.start+track.duration})),{id:'play_complete',type:'play_complete',time:duration}];
+  const events=[{id:'initial',type:'initial',time:0},...Array.from(nodes.keys()).filter(key=>!key.startsWith('movement:')&&key!=='ball_flight'&&key!=='pickup_ready'&&!key.startsWith('step_')).map(key=>({id:key,type:key.split(':')[0],throwIndex:Number(key.split(':')[1])||undefined,time:ends.get(key)})),...tracks.map(track=>({id:`${track.key}:complete`,type:'movement_complete',actor:track.id,segmentIndex:track.index,time:track.start+track.duration})),{id:'play_complete',type:'play_complete',time:duration}];
   events.sort((a,b)=>a.time-b.time||(rank[a.type]??-1)-(rank[b.type]??-1));
   const contactTime=ends.get('contact'),pitchStart=coachBoard?ends.get('pitch_started'):0;
   const pitchFrom=coachBoard?positionsAt(pitchStart).P:null;
@@ -222,6 +262,35 @@ export function sampleHitFlight(hit, progress, caught = false) {
   };
 }
 
+const landingBounces = {
+  line_drive:{duration:100,distance:46,height:14},
+  fly_ball:{duration:120,distance:27,height:26},
+  pop_fly:{duration:105,distance:10,height:18},
+};
+export const hitBounceDuration = type => landingBounces[type]?.duration ?? 0;
+
+export function sampleBattedBall(hit,elapsed,flightDuration,{caught=false,grounded=false}={}){
+  const bounce=grounded?landingBounces[hit.type]:null;
+  const progress=Math.min(1,elapsed/(flightDuration||1));
+  if(!bounce)return sampleHitFlight(hit,progress,caught);
+
+  const distance=Math.hypot(hit.destination.x-hit.start.x,hit.destination.y-hit.start.y);
+  const touchdown=pointOnPath([hit.start,hit.destination],1-Math.min(bounce.distance/(distance||1),.25));
+  if(elapsed<flightDuration){
+    const frame=sampleHitFlight({...hit,destination:touchdown},progress);
+    if(hit.type==='line_drive')frame.ballShadow=pointOnPath([hit.start,touchdown],progress);
+    return frame;
+  }
+  if(elapsed>=flightDuration+bounce.duration){
+    return {ball:hit.destination,ballShadow:null,hitTrail:[],scale:1};
+  }
+
+  const hop=(elapsed-flightDuration)/bounce.duration;
+  const ground=pointOnPath([touchdown,hit.destination],1-(1-hop)**1.5);
+  const height=Math.sin(hop*Math.PI)*bounce.height;
+  return {ball:{x:ground.x,y:ground.y-height},ballShadow:ground,hitTrail:[],scale:1+height/240};
+}
+
 export function frameAt(play,time) {
   time=Math.max(0,Math.min(play.duration,time));
   const positions={...clone(play.board.defenders),...clone(play.board.runners)};
@@ -230,29 +299,42 @@ export function frameAt(play,time) {
   const hitTime=Math.max(0,time-(play.contactTime||0));
   let ball=hit?pointOnPath([hit.start,hit.destination],play.ballDuration?hitTime/play.ballDuration:1):null;
   if(play.coachBoard&&hit&&time<play.contactTime){ball=time<play.pitchStart?null:pointOnPath([play.pitchFrom,hit.start],(time-play.pitchStart)/(play.contactTime-play.pitchStart));}
-  const progress=Math.min(1,hitTime/(play.ballDuration||1));
-  const lift={ground_ball:0.03,line_drive:0.06,fly_ball:0.25,pop_fly:0.4}[hit?.type]||0;
-  let hitTrail=[], ballShadow=null;
-  const inFlight=play.showHitFlight&&hit&&time>=play.contactTime&&progress<1;
-  const caught=play.caught;
-  // A missed catch settles at the same destination and uses the pickup timing.
-
-  if(inFlight){
-    ({ball,ballShadow,hitTrail}=sampleHitFlight(hit,progress,caught));
+  let hitTrail=[], ballShadow=null, scale=1;
+  const grounded=play.fielding==='ground', caught=play.caught;
+  const bounceDuration=grounded?hitBounceDuration(hit.type):0;
+  if(play.showHitFlight&&hit&&time>=play.contactTime&&hitTime<play.ballDuration+bounceDuration){
+    ({ball,ballShadow,hitTrail,scale}=sampleBattedBall(hit,hitTime,play.ballDuration,{caught,grounded}));
   }else if(caught&&ball&&time>=play.fieldingTime){
     ball={x:hit.destination.x,y:hit.destination.y-18};
   }
   const fieldingLabel=play.fielding&&time>=play.fieldingTime&&time<=play.fieldingTime+400
     ? `${caught?'Caught':'Fielded'}${play.fielder?` by ${play.fielder}`:''}`
     : '';
-  const arrows=[];
-  for(const leg of play.throws)if(time>leg.start) {
+  const relayOrder={};
+  const relayHighlights=new Set();
+  let previousReceiver=null, relayIndex=0, ballThrow=null;
+  function mark(id){
+    (relayOrder[id] ||= []).push(++relayIndex);
+  }
+  for(const leg of play.throws){
+    if(time<leg.start)break;
+    const receivedAt=leg.start+leg.duration;
+    if(previousReceiver!==leg.fromId)mark(leg.fromId);
+    if(time>=receivedAt){
+      mark(leg.toId);
+      previousReceiver=leg.toId;
+      if(time<=receivedAt+120)relayHighlights.add(leg.toId);
+    }
+    if(time<receivedAt)relayHighlights.add(leg.fromId);
     const p=Math.min(1,(time-leg.start)/leg.duration),eased=play.coachBoard?p:1-Math.pow(1-p,3);
-    if(!leg.beforeContact||!hit||time<play.pitchStart)ball=pointOnPath([leg.route.from,leg.route.to],eased);
-    arrows.push({...leg,...leg.route,progress:eased,untrimmed:Math.abs(Math.hypot(leg.to.x-leg.from.x,leg.to.y-leg.from.y)-Math.hypot(leg.route.to.x-leg.route.from.x,leg.route.to.y-leg.route.from.y))<1});
+    if(!leg.beforeContact||!hit||time<play.pitchStart){
+      ballThrow=leg;
+      // The ball stays with the receiver while they move before the next throw.
+      ball=time>=receivedAt?positions[leg.toId]:pointOnPath([leg.from,leg.to],eased);
+    }
   }
   const activeStep=play.authoredTimeline?.find(step=>time>=step.start&&time<step.end)?.id || play.authoredTimeline?.findLast(step=>time>=step.start)?.id;
-  return {time,activeStep,positions,ball,ballShadow,hitTrail,fieldingLabel,scale:1+Math.sin(progress*Math.PI)*lift,arrows,events:play.events.filter(event=>event.time<=time)};
+  return {time,activeStep,positions,ball,ballShadow,hitTrail,fieldingLabel,ballThrow,scale:ballThrow?1:scale,relayOrder,relayHighlights,events:play.events.filter(event=>event.time<=time)};
 }
 // Teaching views use a shared quarter-speed clock; authored event times stay unchanged.
 export const TEACHING_PLAYBACK_RATE = 0.25;

@@ -46,7 +46,7 @@ let ballSvg=null, ballEl=null, hitMarker=null;
 let animReq=null;
 
 let liveRunners = { first:false, second:false, third:false };
-const { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, MARKER_SIZES } = window._diqTokenPresentation;
+const { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, MARKER_SIZES, positionThrownBall } = window._diqTokenPresentation;
 const offenseNumbersBySituation = new Map();
 let runnerIdentityAtBase = {first:'first',second:'second',third:'third'};
 let runnersAtDestination = new Set();
@@ -976,6 +976,10 @@ const run3B = document.getElementById('run3B');
 function unitToCss(native){ return { left:native.x*(imgRect.width/IMG_W), top:native.y*(imgRect.height/IMG_H) }; }
 function cssToUnit(left,top){ return { x:left*(IMG_W/imgRect.width), y:top*(IMG_H/imgRect.height) }; }
 function nativeToCssPoint(pt){ const css=unitToCss(pt); return { x:css.left, y:css.top }; }
+function renderedBallPoint(frame){
+  return nativeToCssPoint(positionThrownBall(frame,tokenMetrics(imgRect.width,imgRect.height)));
+}
+
 
 function updateChipScale(){
   const metrics = tokenMetrics(imgRect.width,imgRect.height);
@@ -1214,10 +1218,15 @@ function makeChipDraggable(el,id){
 /// @diq:begin [A4] Targets (rings)
 function getRingEl(id){ return wrap.querySelector(`.tgt[data-id="${id}"]`); }
 function getAllRings(){ return Array.from(wrap.querySelectorAll('.tgt')); }
+function scoredPositionCount(situation=currentSituation){
+  return POS_IDS.filter(id=>situation?.targets?.[id]?.enabled!==false).length;
+}
+
 function buildTargets(){
   getAllRings().forEach(n=>n.remove());
   const t=currentSituation?.targets||{};
   Object.entries(t).forEach(([id,pt])=>{
+    if(pt.enabled===false)return;
     const ring=document.createElement('div');
     ring.className='tgt'; ring.dataset.id = id;
     const css=unitToCss(pt);
@@ -1649,8 +1658,11 @@ function animateHit(style, options={}){
     start: HOME_NATIVE,
     destination: situation.hit,
   };
-  const { sampleHitFlight, hitFlightDuration, TEACHING_PLAYBACK_RATE } = window._diqPlayAnimation;
-  const duration = options.duration === 0 ? 0 : hitFlightDuration(hit.type,true) / TEACHING_PLAYBACK_RATE;
+  const { sampleBattedBall, hitFlightDuration, hitBounceDuration, TEACHING_PLAYBACK_RATE } = window._diqPlayAnimation;
+  const grounded = options.useAuthoredType && authored?.fielding === 'ground';
+  const flightDuration = hitFlightDuration(hit.type);
+  const animationLength = flightDuration + (grounded ? hitBounceDuration(hit.type) : 0);
+  const rate = flightDuration / (hitFlightDuration(hit.type,true) / TEACHING_PLAYBACK_RATE);
   ballSvg.dataset.hitType = hit.type;
   const started = playNow();
 
@@ -1660,15 +1672,15 @@ function animateHit(style, options={}){
       clearBallHitPath();
       return;
     }
-    const progress = duration ? clamp((now-started)/duration,0,1) : 1;
-    const frame = sampleHitFlight(hit,progress);
+    const elapsed = options.duration === 0 ? animationLength : clamp((now-started)*rate,0,animationLength);
+    const frame = sampleBattedBall(hit,elapsed,flightDuration,{grounded});
     const ball = nativeToCssPoint(frame.ball);
     ballEl.style.left = `${ball.x}px`;
     ballEl.style.top = `${ball.y}px`;
     ballEl.style.scale = String(frame.scale);
     ballEl.style.display = 'block';
-    window._diqPaintHitVisuals(ballSvg, progress < 1 ? frame : null, hit.type, nativeToCssPoint);
-    if (progress < 1) {
+    window._diqPaintHitVisuals(ballSvg, elapsed < animationLength ? frame : null, hit.type, nativeToCssPoint);
+    if (elapsed < animationLength) {
       animReq = requestPlayFrame(step);
       return;
     }
@@ -2102,9 +2114,10 @@ function updateHud(scoreCount){
     } else {
       // Phase 1 score (0..9)
       const n = (typeof scoreCount === 'number') ? scoreCount : (Number(scoreVal?.textContent) || 0);
-      setScoreDisplay(n, 9);
+      const total=scoredPositionCount();
+      setScoreDisplay(n,total);
       if (scoreBadge){
-        const pct = n / 9;
+        const pct = total?n/total:0;
         const state = pct >= 2/3 ? 'green' : (pct >= 1/3 ? 'yellow' : 'red');
         setBadgeState(scoreBadge, state, 'score');
       }
@@ -3450,6 +3463,7 @@ function checkPositions(){
   if (!coachUnlocked && !gameActive) return;
 
   const t = currentSituation?.targets || {};
+  const scoreTotal=scoredPositionCount();
   let correct = 0;
   const positionResults = [];
 
@@ -3487,14 +3501,14 @@ function checkPositions(){
   // Update numeric score + badge color
   updateHud(correct);
   if (scoreBadge){
-    const pct = correct / 9;
+    const pct = scoreTotal?correct/scoreTotal:0;
     const state = pct >= 2/3 ? 'green' : (pct >= 1/3 ? 'yellow' : 'red');
     setBadgeState(scoreBadge, state, 'score');
   }
 
   // Non-coach: handle tries, end-of-round, and Phase-2 handoff
   if (!coachUnlocked){
-    const allCorrectNow = (correct === POS_IDS.length);
+    const allCorrectNow = (correct === scoreTotal);
     _allTargetsCorrect = allCorrectNow;
 
     if (gameActive){
@@ -3503,7 +3517,7 @@ function checkPositions(){
       updateHud(correct);
       window._diqTrackPhaseOneCheck?.({
         scoreCorrect:correct,
-        scoreTotal:Array.isArray(POS_IDS) ? POS_IDS.length : 9,
+        scoreTotal,
         triesUsed:MAX_TRIES - remainingTries,
         remainingTries,
       });
@@ -3520,7 +3534,7 @@ function checkPositions(){
         _phase1Summary = {
           ok: !!allCorrectNow,
           scoreCorrect: correct,
-          scoreTotal: (Array.isArray(POS_IDS) ? POS_IDS.length : 9),
+          scoreTotal,
           triesUsed: (MAX_TRIES - remainingTries),
           elapsed: (typeof _timerSecs === 'number') ? Math.max(0, TIMER_START_SECS - _timerSecs) : null,
           ts: Date.now()
@@ -3589,8 +3603,8 @@ function renderSolutionGhosts(){
 function cancelSolutionAnimation(){
   _solutionAnimationRun += 1;
   _sharedSolutionPlayback?.dispose();_sharedSolutionPlayback=null;
-  if(ballEl)ballEl.style.scale='1';
-  wrap?.querySelector('.shared-solution-trail')?.remove();
+  if(ballEl){ballEl.style.scale='1';ballEl.classList.remove('is-thrown');}
+  window._diqTokenPresentation.renderRelayCue(tokens,null,true);
   if(_solutionAnimationFrame !== null){
     cancelPlayFrame(_solutionAnimationFrame);
     _solutionAnimationFrame = null;
@@ -3622,7 +3636,7 @@ function clearSolutionReview(){
   }
 }
 
-function finishSolutionAnimation(run){
+function finishSolutionAnimation(run,lastThrow){
   if(run !== _solutionAnimationRun || !_solutionReview) return;
   _solutionAnimationFrame = null;
   _solutionReview.animating = false;
@@ -3633,10 +3647,17 @@ function finishSolutionAnimation(run){
   POS_IDS.forEach((id)=>{
     const target = currentSituation?.targets?.[id];
     const rec = tokens.get(id);
-    if(!target || !rec) return;
+    if(!target || target.enabled===false || !rec) return;
     rec.pos = { x:Number(target.x), y:Number(target.y) };
     placeToken(id);
   });
+
+  const receiverPosition=tokens.get(lastThrow?.toId)?.pos;
+  if(ballEl&&receiverPosition){
+    const point=renderedBallPoint({ball:receiverPosition,ballThrow:lastThrow});
+    ballEl.style.left=point.x+'px';
+    ballEl.style.top=point.y+'px';
+  }
 
   getAllRings().forEach((ring)=>{
     ring.style.display = 'block';
@@ -3710,9 +3731,6 @@ function watchSolution(){
 
   const resolvedOutcome=resolveSituationOutcome(currentSituation);
   let playBoard=window._diqFromSituation({...currentSituation,starts,targets});
-  // Legacy phase-one review keeps the original hit-only demonstration. Its
-  // verified throws use the same engine in phase two. Rich plays show full events.
-  if(!currentSituation.boardAnimation){playBoard.playSeq=[];playBoard.playSeq2=[];}
   if(!currentSituation.boardAnimation)for(const base of ['first','second','third'])if(playBoard.runners[base]) {
     playBoard.runners[base]=runnerLeadPoint(base);
     if(playBoard.movements[base])playBoard.movements[base][0].path[0]={...playBoard.runners[base]};
@@ -3733,8 +3751,6 @@ function watchSolution(){
     el.style.opacity='1';movers.set(id,el);
   }
   scaleMarkers();
-  const trail=document.createElement('div');trail.className='throwTrail shared-solution-trail';
-  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');trail.appendChild(svg);wrap.appendChild(trail);
   _sharedSolutionPlayback=window._diqPlayAnimation.createPlayback(play,value=>{
     if(run!==_solutionAnimationRun)return;
     for(const id of POS_IDS){const rec=tokens.get(id);if(rec){rec.pos={...value.positions[id]};placeToken(id);}}
@@ -3742,12 +3758,11 @@ function watchSolution(){
       const retired=id==='batter'?resolvedOutcome.batterResult==='out':resolvedOutcome.runnerOutcomes?.some(outcome=>outcome.startingBase===id&&outcome.result==='out');
       if(retired){const track=play.tracks.filter(track=>track.id===id).at(-1);if(track){const progress=Math.min(1,(value.time-track.start)/(track.duration||1));el.style.opacity=String(progress<0.82?1:Math.max(0,1-(progress-0.82)/0.18));}}
     }
-    if(value.ball&&ballEl){ballEl.style.display='block';const pos=nativeToCssPoint(value.ball);ballEl.style.left=pos.x+'px';ballEl.style.top=pos.y+'px';ballEl.style.scale=String(value.scale);}
+    if(value.ball&&ballEl){ballEl.classList.toggle('is-thrown',!!value.ballThrow);ballEl.style.display='block';const pos=renderedBallPoint(value);ballEl.style.left=pos.x+'px';ballEl.style.top=pos.y+'px';ballEl.style.scale=String(value.scale);}
     if(ballSvg&&playBoard.battedBall){
       window._diqPaintHitVisuals(ballSvg,value,playBoard.battedBall.type,nativeToCssPoint);
     }
-    svg.setAttribute('viewBox',`0 0 ${imgRect.width} ${imgRect.height}`);
-    window._diqPaintThrowFrame(svg,value.arrows,nativeToCssPoint);
+    window._diqTokenPresentation.renderRelayCue(tokens,value,true);
   },()=>{}, {
     now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,reducedMotion:duration===0,
     rate:window._diqPlayAnimation.TEACHING_PLAYBACK_RATE,
@@ -3755,7 +3770,11 @@ function watchSolution(){
       if(run!==_solutionAnimationRun)return;
       for(const [id,el] of movers)if(id!=='batter')el.remove();
       if(ballEl)ballEl.style.scale='1';
-      applyResolvedSituationOutcome(resolvedOutcome);finishSolutionAnimation(run);
+      applyResolvedSituationOutcome(resolvedOutcome);
+      finishSolutionAnimation(run,play.throws.at(-1));
+      if(play.throws.length)playDelay(()=>{
+        if(run===_solutionAnimationRun)window._diqTokenPresentation.renderRelayCue(tokens,null);
+      },300);
     },
   });
   _sharedSolutionPlayback.play();
@@ -4076,7 +4095,7 @@ function refreshPlayerPresentation(){
   setText('playerStepLabel', beforeStart ? 'Position the defense' : complete ? 'Situation complete'
     : phase2Active ? 'Choose the throw sequence'
     : solution || _phase1Summary ? 'Review positions' : 'Position the defense');
-  const result = `${_phase1Summary?.scoreCorrect ?? scoreVal?.textContent ?? 0} of ${POS_IDS.length} positions correct`;
+  const result = `${_phase1Summary?.scoreCorrect ?? scoreVal?.textContent ?? 0} of ${scoredPositionCount()} positions correct`;
   const text = beforeStart || complete ? ''
     : phase2Active ? 'Select defenders in throwing order, then verify your sequence.'
     : solution ? ''

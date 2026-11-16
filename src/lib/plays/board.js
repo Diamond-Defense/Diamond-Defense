@@ -5,6 +5,7 @@ import { DEFAULT_STARTS, BASES_NATIVE, IMG_W, IMG_H, DEFAULT_TOL } from './field
 export const POSITIONS = Object.keys(DEFAULT_STARTS);
 export const BALL_TYPES = ['ground_ball', 'line_drive', 'fly_ball', 'pop_fly'];
 export function hitFielding(hit){
+  if(hit?.type==='ground_ball')return 'ground';
   return hit?.fielding ?? (['fly_ball','pop_fly'].includes(hit?.type)?'caught':'ground');
 }
 export const clone = value => JSON.parse(JSON.stringify(value));
@@ -134,7 +135,7 @@ export function toSituation(board, metadata) {
   if (issues.length) throw new Error(issues.join('\n'));
   const targets = Object.fromEntries(POSITIONS.map(id => {
     const path = board.movements[id]?.at(-1)?.path;
-    return [id, { ...(path?.at(-1) || board.defenders[id]), tol: board.sourceSituation?.targets?.[id]?.tol || DEFAULT_TOL }];
+    return [id, { ...(path?.at(-1) || board.defenders[id]), tol: board.sourceSituation?.targets?.[id]?.tol || DEFAULT_TOL, ...(path && {follow:'final'}) }];
   }));
   return { ...metadata, key: `board-${crypto.randomUUID()}`, title:board.title, desc:metadata.desc || '', category:metadata.category || 'Coach Board', difficulty:metadata.difficulty || 'foundational', primaryCategory:metadata.primaryCategory || 'base-coverage', relatedCategories:metadata.relatedCategories || [], outs:board.outs, runnersOn:Object.fromEntries(['first','second','third'].map(base=>[base,!!board.runners[base]])), starts:clone(board.defenders), targets, hit:clone(board.battedBall.destination), hitType:{ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[board.battedBall.type], playSeq:clone(board.playSeq), playSeq2:clone(board.playSeq2), batterAdvance:{out:0,first:1,second:2,third:3,home:4}[metadata.playOutcome.batterResult], boardAnimation:boardAnimation(board) };
 }

@@ -269,7 +269,8 @@ export function recommendedSituationOutcomes(situation: Pick<Situation, 'runners
   }else if(['caught_fly','caught_line'].includes(result)){outsRecorded=1;batterOutType='catch';batterOutOrder=1;}
   else if(result==='sacrifice_fly'){
     outsRecorded=1;batterOutType='catch';batterOutOrder=1;
-    if(runners.has('third')) runners.set('third',{startingBase:'third',result:'home',taggedUp:true});
+    const leadRunner=bases.at(-1);
+    if(leadRunner)runners.set(leadRunner,{startingBase:leadRunner,result:'home',taggedUp:true});
   }else if(result==='fielders_choice'){
     batterAdvance=1;outsRecorded=bases.length?1:0;
     const forcedOut=bases.includes('third')&&bases.includes('second')&&bases.includes('first')?'third':bases.includes('second')&&bases.includes('first')?'second':bases.includes('first')?'first':null;

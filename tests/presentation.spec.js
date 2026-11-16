@@ -2,7 +2,7 @@ import {selectBoardStep,openRunnerAdvances} from './helpers/play-library.js';
 import {openLibraryPlay} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
 import {newBoard} from '../src/lib/plays/board.js';
-import {compilePlay,frameAt} from '../src/lib/plays/animation.js';
+import {compilePlay,frameAt,hitBounceDuration} from '../src/lib/plays/animation.js';
 import {presentationStatus} from '../src/lib/plays/presentation.js';
 test.use({hasTouch:true});
 async function login(page,baseURL){await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{role:'admin',password:'password'}});}
@@ -14,9 +14,9 @@ test('saved segmented Board presents stable event steps and restores authoring w
  await selectBoardStep(page,'Ball fielded');await page.getByRole('button',{name:'SS · Movement 2',exact:true}).click();await page.getByRole('button',{name:'Present',exact:true}).click();
  const controls=page.getByRole('region',{name:'Presentation controls'});const fieldBounds=await page.locator('.board-field').boundingBox();await expect(page.locator('.board-hit-path')).toHaveCount(0);await expect(page.getByRole('complementary',{name:'Coach Board tools'})).toHaveCount(0);await expect(controls.getByRole('status')).toHaveText('Starting alignment');
  for(let i=1;i<play.steps.length;i++){
-  await controls.getByRole('button',{name:'Next Step',exact:true}).click();const frame=frameAt(play,play.steps[i]);await expect(controls.getByRole('status')).toHaveText(presentationStatus(play,frame));expect(await page.locator('.board-field').boundingBox()).toEqual(fieldBounds);if(frame.time>=play.contactTime&&frame.time<play.contactTime+play.ballDuration)await expect(page.locator('.board-hit-path')).toHaveCount(1);else await expect(page.locator('.board-hit-path')).toHaveCount(0);const actual=await tokenPosition(page,'SS');expect(actual.x).toBeCloseTo(frame.positions.SS.x/3200*100);expect(actual.y).toBeCloseTo(frame.positions.SS.y/2133*100);await expect(page.locator('.board-throws .seq-route-active')).toHaveCount(frame.arrows.length);
+  await controls.getByRole('button',{name:'Next Step',exact:true}).click();const frame=frameAt(play,play.steps[i]);await expect(controls.getByRole('status')).toHaveText(presentationStatus(play,frame));expect(await page.locator('.board-field').boundingBox()).toEqual(fieldBounds);if(frame.time>=play.contactTime&&frame.time<play.contactTime+play.ballDuration)await expect(page.locator('.board-hit-path')).toHaveCount(1);else await expect(page.locator('.board-hit-path')).toHaveCount(0);const actual=await tokenPosition(page,'SS');expect(actual.x).toBeCloseTo(frame.positions.SS.x/3200*100);expect(actual.y).toBeCloseTo(frame.positions.SS.y/2133*100);await expect(page.locator('.board-field .seq-badge')).toHaveCount(Object.keys(frame.relayOrder).length);
  }
- await controls.getByRole('button',{name:'Previous Step',exact:true}).click();await controls.getByRole('button',{name:'Next Step',exact:true}).click();await expect(controls.getByRole('status')).toContainText('Final state');await controls.getByRole('button',{name:'Replay',exact:true}).click();await expect(controls.getByRole('status')).toHaveText('Starting alignment');await expect(page.locator('.board-throws .seq-route-active')).toHaveCount(0);
+ await controls.getByRole('button',{name:'Previous Step',exact:true}).click();await controls.getByRole('button',{name:'Next Step',exact:true}).click();await expect(controls.getByRole('status')).toContainText('Final state');await controls.getByRole('button',{name:'Replay',exact:true}).click();await expect(controls.getByRole('status')).toHaveText('Starting alignment');await expect(page.locator('.board-field .seq-badge')).toHaveCount(0);
  await expect(controls.getByLabel('Show Labels')).toHaveCount(0);await expect(page.getByRole('button',{name:'SS token',exact:true})).toHaveText('SS');await expect(page.locator('.board-hit-path')).toHaveCount(0);
  const startingToken=page.getByRole('button',{name:'SS token',exact:true});const rect=await startingToken.boundingBox();await page.mouse.move(rect.x+rect.width/2,rect.y+rect.height/2);await page.mouse.down();await page.mouse.move(rect.x+80,rect.y+40,{steps:5});await page.mouse.up();expect((await tokenPosition(page,'SS')).x).toBeCloseTo(board.defenders.SS.x/3200*100);expect((await tokenPosition(page,'SS')).y).toBeCloseTo(board.defenders.SS.y/2133*100);
  const start=await tokenPosition(page,'SS');await controls.getByRole('button',{name:'Play',exact:true}).click();await expect.poll(()=>tokenPosition(page,'SS')).not.toEqual(start);await expect(page.locator('.board-hit-path')).toHaveCount(1);await controls.getByRole('button',{name:'Pause',exact:true}).click();const frozen=await tokenPosition(page,'SS');await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));expect(await tokenPosition(page,'SS')).toEqual(frozen);await expect(controls.getByRole('button',{name:'Play',exact:true})).toBeVisible();await controls.getByRole('button',{name:'Next Step',exact:true}).click();await controls.getByRole('button',{name:'Play',exact:true}).click();await controls.getByRole('button',{name:'Pause',exact:true}).click();
@@ -57,12 +57,28 @@ test('teaching comparisons and focused targets use shared final snapshots withou
  await page.screenshot({path:'/tmp/phase7-presentation.png'});const stored=await (await page.request.get('/api/boards')).json();expect(stored.find(value=>value.id===saved.id).board).toEqual(board);
 });
 
-test('actual first-and-second CF situation renders the ball on its throw line',async({page,baseURL})=>{
- const {readFileSync}=await import('node:fs');const {fromSituation}=await import('../src/lib/plays/board.js');const situation=JSON.parse(readFileSync(new URL('./fixtures/cf-throw-situation.json',import.meta.url)));const board=fromSituation(situation);board.title=`CF render regression ${Date.now()}`;const play=compilePlay(board,{coachBoard:true}),leg=play.throws[0];
+test('actual first-and-second CF situation parks the thrown ball beside the receiving chip',async({page,baseURL})=>{
+ const {readFileSync}=await import('node:fs');const {fromSituation}=await import('../src/lib/plays/board.js');const situation=JSON.parse(readFileSync(new URL('./fixtures/cf-throw-situation.json',import.meta.url)));const board=fromSituation(situation);board.title=`CF render regression ${Date.now()}`;const play=compilePlay(board,{coachBoard:true}),leg=play.throws.at(-1);
  await login(page,baseURL);await loadBoard(page,baseURL,board);await page.getByRole('button',{name:'Present',exact:true}).click();await page.clock.install();const controls=page.getByRole('region',{name:'Presentation controls'});await controls.getByRole('button',{name:'Next Step',exact:true}).click();while(await controls.getByRole('status').textContent().then(text=>!text.includes('Throw 1 started')))await controls.getByRole('button',{name:'Next Step',exact:true}).click();await controls.getByRole('button',{name:'Play',exact:true}).click();
- for(let i=0;i<6;i++){
-  await page.clock.runFor(180);const rendered=await page.locator('.board-ball').evaluate(el=>{const b=el.getBoundingClientRect(),f=el.closest('.board-field').getBoundingClientRect();return {x:(b.x+b.width/2-f.x)/f.width*3200,y:(b.y+b.height/2-f.y)/f.height*2133};});const dx=leg.route.to.x-leg.route.from.x,dy=leg.route.to.y-leg.route.from.y;const distance=Math.abs(dx*(rendered.y-leg.route.from.y)-dy*(rendered.x-leg.route.from.x))/Math.hypot(dx,dy);expect(distance).toBeLessThan(1);if(i===2)await page.screenshot({path:'/tmp/cf-throw-render.png'});
+ const ball=page.locator('.board-ball');
+ const receiver=page.getByRole('button',{name:`${leg.toId} token`,exact:true});
+ async function expectBallClearance(){
+  const b=await ball.boundingBox(),r=await receiver.boundingBox();
+  const gap=Math.hypot(b.x+b.width/2-r.x-r.width/2,b.y+b.height/2-r.y-r.height/2)-(b.width+r.width)/2;
+  expect(gap).toBeGreaterThan(4);
+  expect(b.x+b.width/2).toBeLessThan(r.x+r.width/2);
+  expect(b.y+b.height/2).toBeGreaterThan(r.y+r.height/2);
  }
+ for(let i=0;i<7;i++){
+  await page.clock.runFor(180);
+  await expect(ball).toHaveClass(/is-thrown/);
+ }
+ await controls.getByRole('button',{name:'Pause',exact:true}).click();
+ for(let i=0;i<play.steps.length&&!((await controls.getByRole('status').textContent()).includes('Final state'));i++){
+  await controls.getByRole('button',{name:'Next Step',exact:true}).click();
+ }
+ await expect(controls.getByRole('status')).toContainText('Final state');
+ await expectBallClearance();
 });
 
  test('board pitch is visible before contact while optional lead routes run first',async({page,baseURL})=>{
@@ -70,7 +86,8 @@ test('actual first-and-second CF situation renders the ball on its throw line',a
  board.runners.first={x:2200,y:1400};const lead={x:2100,y:1300};
  board.movements.first=[{path:[board.runners.first,lead],start:{event:'pre_pitch'}},{path:[lead,{x:1900,y:1100}],start:{event:'pitch_started'}}];
  const play=compilePlay(board,{coachBoard:true});await login(page,baseURL);await loadBoard(page,baseURL,board);
- await selectBoardStep(page,'Before the pitch');await page.getByRole('button',{name:'first · Movement 1',exact:true}).click();
+ await selectBoardStep(page,'Before the pitch');await page.getByText('Batter & runner movements',{exact:true}).click();await page.getByRole('button',{name:'first · Movement 1',exact:true}).click();
+ await page.getByText('Timing options',{exact:true}).click();
  await expect(page.getByRole('combobox',{name:'Start movement',exact:true})).toHaveValue('pre_pitch');
  await page.getByRole('button',{name:'Present',exact:true}).click();await page.clock.install();
  const controls=page.getByRole('region',{name:'Presentation controls'});await controls.getByRole('button',{name:'Play',exact:true}).click();
@@ -104,4 +121,56 @@ test('Running tools save advances and preserve early movement when replacing cus
  const batter=await tokenPosition(page,'batter'),runner=await tokenPosition(page,'first');
  expect(batter.x).toBeCloseTo(1572/3200*100);expect(batter.y).toBeCloseTo(854/2133*100);
  expect(runner.x).toBeCloseTo(1577/3200*100);expect(runner.y).toBeCloseTo(1734/2133*100);
+});
+
+test('throws stay straight and hand off on the same side of each chip',async()=>{
+ const {positionThrownBall,tokenMetrics}=await import('../src/lib/plays/token-presentation.js');
+ const a={x:1200,y:1300}, b={x:2000,y:650}, c={x:900,y:550};
+ for(const width of [360,1200]){
+  const metrics=tokenMetrics(width,width*2133/3200);
+  const position=ball=>positionThrownBall({ball,ballThrow:true},metrics);
+  const receive=position(b), release=position(a);
+  expect(receive.x).toBeLessThan(b.x);
+  expect(receive.y).toBeGreaterThan(b.y);
+  for(const to of [b,c,{x:a.x-4,y:a.y+4},a]){
+   const end=position(to);
+   for(const progress of [0,0.25,0.5,0.75,1]){
+    const mid=position({x:a.x+(to.x-a.x)*progress,y:a.y+(to.y-a.y)*progress});
+    expect(mid.x).toBeCloseTo(release.x+(end.x-release.x)*progress);
+    expect(mid.y).toBeCloseTo(release.y+(end.y-release.y)*progress);
+   }
+  }
+ }
+});
+
+test('airborne hits fielded on the ground touch down, bounce, and settle before pickup',()=>{
+ for(const type of ['line_drive','fly_ball','pop_fly']){
+  const board=demonstration();
+  const destination={x:1500,y:900};
+  board.battedBall={...board.battedBall,type,destination,fielding:'ground',fielder:'SS'};
+  board.movements.SS=[{path:[board.defenders.SS,destination],start:{event:'contact'},durationMs:250}];
+  for(const coachBoard of [true,false]){
+   const play=compilePlay(board,{coachBoard,showHitFlight:true});
+   const land=play.contactTime+play.ballDuration;
+   const bounceDuration=hitBounceDuration(type);
+   const touchdown=frameAt(play,land);
+   expect(touchdown.ball).toEqual(touchdown.ballShadow);
+   expect(touchdown.ball).not.toEqual(destination);
+   expect(touchdown.fieldingLabel).toBe('');
+   const bounced=frameAt(play,land+bounceDuration/2);
+   expect(bounced.ball.y).toBeLessThan(bounced.ballShadow.y);
+   const settled=frameAt(play,land+bounceDuration);
+   expect(settled.ball).toEqual(destination);
+   expect(settled.ballShadow).toBeNull();
+   expect(settled.positions.SS).not.toEqual(destination);
+   expect(play.fieldingTime).toBeGreaterThan(land+bounceDuration);
+   expect(frameAt(play,play.fieldingTime).positions.SS).toEqual(destination);
+   expect(play.throws[0].start).toBeGreaterThanOrEqual(play.fieldingTime);
+  }
+  expect(board.movements.SS[0].durationMs).toBe(250);
+  const catchPlay=compilePlay({...board,battedBall:{...board.battedBall,fielding:'caught'}},{coachBoard:true});
+  expect(catchPlay.fieldingTime).toBe(catchPlay.contactTime+catchPlay.ballDuration);
+  expect(catchPlay.caught).toBe(true);
+  expect(frameAt(catchPlay,catchPlay.fieldingTime+50).ballShadow).toBeNull();
+ }
 });

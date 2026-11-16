@@ -9,7 +9,7 @@ export function tokenMetrics(width,height) {
   const scale = Math.min(width/IMG_W,height/IMG_H);
   const chip = clamp(Math.round(Math.min(width,height)*0.052),26,44);
   return {
-    chip, defender:Math.round(chip*0.9), defenderFont:clamp(Math.round(chip*0.4),11,16),
+    width,height,chip, defender:Math.round(chip*0.9), defenderFont:clamp(Math.round(chip*0.4),11,16),
     runner:clamp(Math.round(MARKER_SIZES.runner*scale),25,62),
     runnerFont:clamp(Math.round(13*scale*1.05),11,18),
     ball:clamp(Math.round(MARKER_SIZES.ball*scale),8,26),
@@ -22,4 +22,39 @@ export function createOffenseNumbers() {
   return Object.fromEntries(['batter','first','second','third'].map(id=>[
     id,pool.splice(Math.floor(Math.random()*pool.length),1)[0],
   ]));
+}
+
+// Park the ball at the lower-left edge of each chip, clear of its relay badge.
+export function positionThrownBall(frame, metrics) {
+  const {ball,ballThrow}=frame;
+  if(!ballThrow||!metrics.width||!metrics.height)return ball;
+  const clearance=(metrics.defender+metrics.ball)/2+metrics.ballOutline+8;
+  const offset=clearance*Math.SQRT1_2;
+  return {x:ball.x-offset*IMG_W/metrics.width,y:ball.y+offset*IMG_H/metrics.height};
+}
+
+export function createSequenceBadge(label) {
+  const badge=document.createElement('span');
+  badge.className='seq-badge';
+  badge.setAttribute('aria-hidden','true');
+  badge.textContent=String(label);
+  return badge;
+}
+
+export function renderRelayCue(tokens, frame, showOrder=false) {
+  for(const [id,{el}] of tokens){
+    if(!el)continue;
+    el.classList.toggle('relay-highlight',!!frame?.relayHighlights.has(id));
+    if(!showOrder)continue;
+    const label=frame?.relayOrder[id]?.join(', ');
+    const badge=el.querySelector('.relay-badge');
+    if(!label)badge?.remove();
+    else if(badge){
+      if(badge.textContent!==label)badge.textContent=label;
+    }else{
+      const next=createSequenceBadge(label);
+      next.classList.add('relay-badge');
+      el.appendChild(next);
+    }
+  }
 }

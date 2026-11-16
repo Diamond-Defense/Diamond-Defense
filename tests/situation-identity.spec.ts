@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { suggestSituationName, normalizeAudience, situationIdentity, normalizeSuggestedDivisions } from '../src/lib/domain/situation-identity';
+import { inferBallLocation, suggestSituationName, normalizeAudience, situationIdentity, normalizeSuggestedDivisions } from '../src/lib/domain/situation-identity';
 import type { Situation } from '../src/lib/domain/models';
 
 const fixture = {key:'example',title:'Ground Ball to LF',hitType:'grounder',ballLocation:'LF',runnersOn:{first:false,second:true,third:false}} as Situation;
@@ -25,4 +25,10 @@ test('suggested divisions are optional discovery tags from 9U through 18U',()=>{
  expect(normalizeSuggestedDivisions(undefined)).toEqual([]);
  expect(normalizeSuggestedDivisions([14,11,14])).toEqual([11,14]);
  for(const value of [[8],[19],[11.5],['11'],null])expect(()=>normalizeSuggestedDivisions(value)).toThrow();
+});
+
+test('ball location follows the hit coordinates', () => {
+  expect(inferBallLocation({x:679,y:722})).toBe('LF');
+  expect(inferBallLocation({x:1570,y:300})).toBe('Deep CF');
+  expect(inferBallLocation({x:2170,y:1304})).toBe('First Base');
 });

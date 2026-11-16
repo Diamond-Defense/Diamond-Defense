@@ -945,6 +945,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
+    await page.clock.install();
     await page.getByRole('button', { name: 'Watch Solution' }).click();
     expect(await page.evaluate(() => ({
       state: document.querySelector('#wrap')?.dataset.solutionState,
@@ -964,21 +965,25 @@ test.describe('Diamond Defence regression behavior', () => {
       movingRunners: 1,
       batterVisible: true,
     });
-    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready', { timeout: 7000 });
+    await page.clock.runFor(12000);
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
     await expect(page.locator('.solution-ghost')).toHaveCount(9);
     await expect(page.locator('.solution-ghost').first()).toHaveCSS('border-top-color', await semanticColor(page, '--error'));
     await expect(page.locator('.solution-ghost').first()).toHaveCSS('border-top-style', 'dashed');
     await expect(page.locator('.tgt.selectable')).toHaveCount(9);
     expect(await page.evaluate(() => {
       const expectedRunners = resolveSituationOutcome(currentSituation).finalRunners;
-      const hit = nativeToCssPoint(currentSituation.hit);
+      const finalReceiver = currentSituation.playSeq2?.at(-1) || currentSituation.playSeq.at(-1);
+      const receiver = tokens.get(finalReceiver);
+      const destination = nativeToCssPoint(receiver?.pos || currentSituation.hit);
+      const ballDistance = Math.hypot(parseFloat(ballEl.style.left) - destination.x, parseFloat(ballEl.style.top) - destination.y);
       return {
         fieldersAtTargets: POS_IDS.every((position) => {
           const token = tokens.get(position)?.pos;
           const target = currentSituation?.targets?.[position];
           return token && target && Math.hypot(token.x - target.x, token.y - target.y) < 0.01;
         }),
-        ballAtHit: Math.hypot(parseFloat(ballEl.style.left) - hit.x, parseFloat(ballEl.style.top) - hit.y) < 0.01,
+        ballAtDestination: receiver ? ballDistance > (receiver.el.offsetWidth + ballEl.offsetWidth) / 2 : ballDistance < 0.01,
         runnersAtDestinations: JSON.stringify(normalizeRunnersOn(liveRunners)) === JSON.stringify(normalizeRunnersOn(expectedRunners)),
         staticRunnerBases: [...document.querySelectorAll('.baseRunner:not(.movingRunner)')]
           .map((runner) => runner.dataset.base)
@@ -996,7 +1001,7 @@ test.describe('Diamond Defence regression behavior', () => {
       };
     })).toEqual({
       fieldersAtTargets: true,
-      ballAtHit: true,
+      ballAtDestination: true,
       runnersAtDestinations: true,
       staticRunnerBases: ['first', 'second'],
       staticRunnersAtBags: true,
@@ -1546,16 +1551,41 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.goto('/coach-board');
     await openLibraryPlay(page,'situation',original.key,original.title);
     await openBattedBall(page,{outcomes:true});
-    await page.getByRole('button',{name:'Move batted ball',exact:true}).click();
-    await page.getByRole('button',{name:'Set batted-ball destination',exact:true}).click({position:{x:180,y:180}});
+    await expect(page.getByRole('button',{name:'Move batted ball',exact:true})).toHaveCount(0);
+    const ball=page.getByRole('button',{name:'Drag batted ball',exact:true});
+    await ball.scrollIntoViewIfNeeded();
+    const hit=await ball.boundingBox();
+    const field=await page.getByRole('group',{name:'Baseball play field'}).boundingBox();
+    const firstBase={x:2170,y:1304};
+    const x=hit.x+hit.width/2,y=hit.y+hit.height/2;
+    await page.mouse.move(x,y);
+    await page.mouse.down();
+    await page.mouse.move(field.x+field.width*firstBase.x/3200,field.y+field.height*firstBase.y/2133,{steps:6});
+    await page.mouse.up();
+    await expect(page.getByRole('button',{name:'Edit batted ball action',exact:true})).toHaveAttribute('aria-expanded','true');
+    await page.getByRole('button',{name:'Undo',exact:true}).click();
+    await expect.poll(async()=> (await ball.boundingBox()).x).toBeCloseTo(hit.x);
+    await page.getByRole('button',{name:'Redo',exact:true}).click();
+    const name=page.getByLabel('Situation name');
+    const suggestion=page.getByRole('region',{name:'Board details'}).getByText(/^Suggested name .* to First Base/);
+    await expect(suggestion).toBeVisible();
+    await expect(name).toHaveValue(original.title);
+    const suggestedTitle=(await suggestion.innerText()).replace('Suggested name — ','');
+    await page.getByRole('button',{name:'Use suggested name',exact:true}).click();
+    await expect(name).toHaveValue(suggestedTitle);
+    await expect(suggestion).toHaveCount(0);
     await selectStage(page,'Review');
     await page.getByLabel('I confirm these play and runner outcomes').check();
     const savedResponse=page.waitForResponse(response=>response.url().endsWith(`/api/situations/${original.key}`)&&response.request().method()==='PUT');
     await page.getByRole('button',{name:'Publish Situation',exact:true}).click();
     const {record}=await (await savedResponse).json();
-    expect(record.hit).not.toEqual(original.hit);
+    expect(Math.abs(record.hit.x-firstBase.x)).toBeLessThan(10);
+    expect(Math.abs(record.hit.y-firstBase.y)).toBeLessThan(10);
+    expect(record.title).toBe(suggestedTitle);
+    expect(record.ballLocation).toBe('First Base');
     const reloaded=(await (await page.request.get('/api/situations')).json()).find(item=>item.key===original.key);
     expect(reloaded.hit).toEqual(record.hit);
+    expect(reloaded.ballLocation).toBe(record.ballLocation);
 
   });
 
@@ -1581,14 +1611,15 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByRole('checkbox',{name:'first',exact:true}).check();
     await openBattedBall(page,{outcomes:true});
     await page.getByLabel('Batted-ball type').selectOption('ground_ball');
-    await page.getByLabel('Ball location').selectOption('LF');
+    await expect(page.getByLabel('Ball location')).toHaveCount(0);
     await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption('double');
     await page.getByRole('button',{name:'Use recommended outcomes'}).click();
     await expect(page.getByLabel('Batter result')).toHaveValue('second');
-    await selectStage(page,'Play timeline');
-    await page.getByText('Scoring targets & expected throws',{exact:true}).click();
-    await page.getByLabel('Target tolerance').fill('125');
+    await selectStage(page,'Review');
+    await page.getByText('Scoring targets',{exact:true}).click();
+    await page.getByRole('spinbutton',{name:'Target tolerance',exact:true}).fill('125');
     await page.getByLabel('Position notes').fill('Published pitcher coaching note');
+    await page.getByText('Expected throws',{exact:true}).click();
     await page.getByLabel('Relay template').selectOption('CF,SS,3B');
     await page.getByLabel('Throw sequence note').fill('Published throw sequence note');
     await selectStage(page,'Review');
@@ -2055,8 +2086,11 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
+    await page.clock.install();
     await page.getByRole('button', { name: 'Watch Solution' }).click();
+    await page.clock.runFor(12000);
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
+    await expect(page.locator('#wrap .relay-badge')).toHaveCount(3);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeVisible();
     await expect(page.locator('body')).toHaveClass(/player-solution-state/);
@@ -2133,9 +2167,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#howToCard .howto-body')).not.toContainText('Verify Sequence');
     await expect(page.locator('#fieldPaletteToggle')).toHaveCount(0);
     await page.locator('#playbookClose').click();
-    await expect(page.locator('.seq-route-active')).toHaveCount(2);
-    await expect(page.locator('.seq-route-underlay')).toHaveCount(2);
-    await expect(page.locator('.seq-route-active').first()).toHaveCSS('stroke', await semanticColor(page, '--field-route'));
+    await expect(page.locator('.throwTrail')).toHaveCount(0);
     await expect(page.locator('#seqPanel')).toContainText('Play Review');
     const reviewDoesNotOverlap = await page.evaluate(() => {
       const contextRect = document.querySelector('#contextBar').getBoundingClientRect();
@@ -2144,40 +2176,6 @@ test.describe('Diamond Defence regression behavior', () => {
     });
     expect(reviewDoesNotOverlap).toBe(true);
 
-    const routeLayout = await page.evaluate(() => {
-      const ids = ['LF', 'SS', '2B'];
-      const centers = Object.fromEntries(ids.map((id) => {
-        const element = [...document.querySelectorAll('#wrap .chip')]
-          .find((chip) => chip.childNodes[0]?.textContent?.trim() === id);
-        return [id, {
-          x: Number(element.style.left.replace('px', '')),
-          y: Number(element.style.top.replace('px', '')),
-          radius: element.getBoundingClientRect().width / 2,
-          zIndex: Number(getComputedStyle(element).zIndex),
-        }];
-      }));
-      const routes = [...document.querySelectorAll('.seq-route-active')].map((path, index) => {
-        const points = path.getAttribute('d').replace(/[ML,]/g, ' ').trim().split(/\s+/).map(Number);
-        const source = centers[ids[index]];
-        const destination = centers[ids[index + 1]];
-        return {
-          sourceClearance: Math.hypot(points[0] - source.x, points[1] - source.y),
-          destinationClearance: Math.hypot(points[2] - destination.x, points[3] - destination.y),
-          sourceRadius: source.radius,
-          destinationRadius: destination.radius,
-        };
-      });
-      return {
-        routes,
-        routeZIndex: Number(getComputedStyle(document.querySelector('.throwTrail')).zIndex),
-        chipZIndex: centers.LF.zIndex,
-      };
-    });
-    expect(routeLayout.routeZIndex).toBeLessThan(routeLayout.chipZIndex);
-    for (const route of routeLayout.routes) {
-      expect(route.sourceClearance).toBeGreaterThan(route.sourceRadius);
-      expect(route.destinationClearance).toBeGreaterThan(route.destinationRadius);
-    }
     const phaseTwo = await page.evaluate(() => RESULTS.bySituation['BD-01'].lastPhase2Stage1);
     expect(phaseTwo).toEqual(expect.objectContaining({
       success: true,
