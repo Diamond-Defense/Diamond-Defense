@@ -206,7 +206,7 @@
   /* Chips */
   :root { --chip-size: 32px; --chip-font: 13px; }
   .chip{
-    position:absolute;transform:translate(-50%,-50%);
+    position:absolute;transform:translate(-50%,-50%) scale(var(--fielder-scale,1));
     box-sizing:border-box;width:var(--chip-size);height:var(--chip-size);
     border-radius:50%;display:flex;align-items:center;justify-content:center;
     font-weight:800;font-size:var(--chip-font);color:#fff;cursor:grab;
@@ -217,7 +217,7 @@
     user-select:none;touch-action:none;pointer-events:auto;z-index:1;
   }
   .chip:active{
-    transform:translate(-50%,-50%) scale(1.07);
+    transform:translate(-50%,-50%) scale(calc(var(--fielder-scale,1)*1.07));
     box-shadow:0 0 0 2px rgba(19,35,58,.45),0 5px 8px rgba(15,23,42,.30),0 9px 16px rgba(15,23,42,.22);
   }
   .chip.Battery{background:#f04464}
@@ -229,8 +229,8 @@
   .chip.selectableChip{outline:3px solid rgba(19,35,58,.82);outline-offset:3px}
   .chip.correctPulse{outline:3px solid #16a34a;outline-offset:3px;animation:chipPulse .28s ease-in-out}
   .chip.wrongShake{outline:3px solid #e11d48;outline-offset:3px;animation:chipShake .22s ease-in-out}
-  @keyframes chipPulse{ 0%{transform:translate(-50%,-50%) scale(1)} 50%{transform:translate(-50%,-50%) scale(1.10)} 100%{transform:translate(-50%,-50%) scale(1)} }
-  @keyframes chipShake{ 0%,100%{transform:translate(-50%,-50%)} 25%{transform:translate(calc(-50% - 4px),-50%)} 75%{transform:translate(calc(-50% + 4px),-50%)} }
+  @keyframes chipPulse{0%,100%{transform:translate(-50%,-50%) scale(var(--fielder-scale,1))}50%{transform:translate(-50%,-50%) scale(calc(var(--fielder-scale,1)*1.1))}}
+  @keyframes chipShake{0%,100%{transform:translate(-50%,-50%) scale(var(--fielder-scale,1))}25%{transform:translate(calc(-50% - 4px),-50%) scale(var(--fielder-scale,1))}75%{transform:translate(calc(-50% + 4px),-50%) scale(var(--fielder-scale,1))}}
 
   /* Locked-correct chip highlight for Phase 2 */
   .chip.seq-locked{
@@ -1839,8 +1839,8 @@ input:disabled,select:disabled,textarea:disabled{color:var(--text-disabled);curs
   animation:solutionGhostIn .2s ease-out both;
 }
 @keyframes solutionGhostIn{
-  from{opacity:0;transform:translate(-50%,-50%) scale(.84)}
-  to{opacity:1;transform:translate(-50%,-50%) scale(1)}
+  from{opacity:0;transform:translate(-50%,-50%) scale(calc(var(--fielder-scale,1)*.84))}
+  to{opacity:1;transform:translate(-50%,-50%) scale(var(--fielder-scale,1))}
 }
 
 .tgt{
@@ -3192,6 +3192,16 @@ body.player-experience .training-board .tgt.show-label .tgt-label{display:block}
 body.player-experience .training-board .tgt.good .tgt-label::before{color:var(--target-correct)}
 body.player-experience .training-board .tgt.bad .tgt-label::before{color:var(--target-incorrect)}
 :is(.training-board,.board-field) .chip[data-fielding-number]::after{content:none}
+@media (min-width:900px) and (pointer:fine){
+  :is(.training-board,.board-field) .chip[data-fielding-number],.training-board .solution-ghost{
+    --fielder-scale:.9;
+  }
+  :is(.training-board,.board-field) .chip[data-fielding-number]::after{
+    /* Extend the pointer target back to the original chip edge. */
+    content:"";inset:calc(-2.25px - 5.56%);pointer-events:inherit;
+  }
+}
+
 
 /* Field and sequence colors */
 .training-board{--dd-route:var(--field-route);--dd-route-edge:var(--field-route-edge)}

@@ -1553,9 +1553,9 @@
   .board-field{position:relative;width:100%;aspect-ratio:3200/2133;overflow:hidden;border-radius:12px;border:1px solid var(--border)}
   .board-field img{width:100%;height:100%;display:block}
   .field-surface{position:absolute;inset:0;width:100%;height:100%;background:transparent;border:0;border-radius:0}
-  .board-token{position:absolute;transform:translate(-50%,-50%);padding:0;min-width:0;min-height:0;border-radius:50%;touch-action:none;z-index:6}
+  .board-token{position:absolute;transform:translate(-50%,-50%) scale(var(--fielder-scale,1));padding:0;min-width:0;min-height:0;border-radius:50%;touch-action:none;z-index:6}
   .board-token.movement-ready{cursor:grab;outline:2px solid var(--accent-primary)}
-  .board-token:hover:not(:disabled),.board-token:active:not(:disabled){transform:translate(-50%,-50%)}
+  .board-token:hover:not(:disabled),.board-token:active:not(:disabled){transform:translate(-50%,-50%) scale(var(--fielder-scale,1))}
   .board-field .board-token{pointer-events:auto}.board-field.placing-point .board-token{pointer-events:none}.board-runner{z-index:9}.chosen{outline:2px solid white}
   .fielding-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:11;padding:5px 10px;border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);pointer-events:none}
   .board-ball{pointer-events:none;cursor:default}

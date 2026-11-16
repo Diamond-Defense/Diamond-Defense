@@ -7,6 +7,14 @@ test('preview stays with the field and secondary actions stay collapsed',async({
  await expect(page.getByRole('button',{name:'Save Board',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Export Board',exact:true})).toBeHidden();await expect(page.getByRole('button',{name:'Pause',exact:true})).toHaveCount(0);
  await expect(preview.getByRole('button',{name:'Previous Step',exact:true})).toBeHidden();await expect(preview.getByRole('checkbox',{name:'Show Targets',exact:true})).toBeHidden();
  const field=page.getByRole('group',{name:'Baseball play field'});
+ const shortstop=field.getByRole('button',{name:'SS token',exact:true});
+ const desktopChip=await shortstop.evaluate(chip=>{
+  const rect=chip.getBoundingClientRect();
+  const outsidePaint=rect.right+(chip.offsetWidth-rect.width)/4;
+  return {scale:rect.width/chip.offsetWidth,receivesPointer:document.elementFromPoint(outsidePaint,rect.y+rect.height/2)===chip};
+ });
+ expect(desktopChip.scale).toBeCloseTo(.9);
+ expect(desktopChip.receivesPointer).toBe(true);
  const fieldBounds=await field.boundingBox(),toolsBounds=await tools.boundingBox();
  const previewBounds=await preview.boundingBox();
  expect(fieldBounds.width).toBeGreaterThan(toolsBounds.width);
@@ -21,6 +29,7 @@ test('preview stays with the field and secondary actions stay collapsed',async({
  await page.getByLabel('More actions',{exact:true}).click();await expect(page.getByRole('button',{name:'Export Board',exact:true})).toBeVisible();await page.getByRole('heading',{name:'Coach Board',exact:true}).click();await expect(page.getByRole('button',{name:'Export Board',exact:true})).toBeHidden();
  await preview.getByText('Preview options',{exact:true}).click();await expect(preview.getByRole('checkbox',{name:'Show Targets',exact:true})).toBeVisible();await preview.getByText('Preview options',{exact:true}).click();
  await page.screenshot({path:'/tmp/coach-sidebar-1280.png',fullPage:true});await page.setViewportSize({width:390,height:844});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ await expect.poll(()=>shortstop.evaluate(chip=>chip.getBoundingClientRect().width/chip.offsetWidth)).toBeCloseTo(1);
  expect((await field.boundingBox()).y).toBeLessThan((await tools.boundingBox()).y);await page.screenshot({path:'/tmp/coach-sidebar-390.png',fullPage:true});
 });
 test('Situation editing uses one primary save and Board copy becomes a separate private draft',async({page,baseURL})=>{

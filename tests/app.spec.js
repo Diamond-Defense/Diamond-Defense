@@ -648,7 +648,8 @@ test.describe('Diamond Defence regression behavior', () => {
               position,
               x: Math.abs(centerX - expectedX),
               y: Math.abs(centerY - expectedY),
-              size: tokenRect.width,
+              paintedSize: tokenRect.width,
+              targetSize: token.el.offsetWidth,
             };
           }),
         };
@@ -668,8 +669,9 @@ test.describe('Diamond Defence regression behavior', () => {
           offset.y,
           `${offset.position} vertical offset at ${viewport.width}px`,
         ).toBeLessThan(1);
-        expect(offset.size).toBeGreaterThanOrEqual(23);
-        expect(offset.size).toBeLessThanOrEqual(40);
+        expect(offset.targetSize).toBeGreaterThanOrEqual(23);
+        expect(offset.targetSize).toBeLessThanOrEqual(40);
+        expect(offset.paintedSize).toBeCloseTo(offset.targetSize * .9);
       }
     }
   });
