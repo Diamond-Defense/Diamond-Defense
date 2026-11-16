@@ -2091,6 +2091,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.clock.runFor(12000);
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
     await expect(page.locator('#wrap .relay-badge')).toHaveCount(3);
+    await expect(page.locator('#wrap .ball.is-thrown')).toHaveCSS('border-top-color','rgb(169, 87, 96)');
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeVisible();
     await expect(page.locator('body')).toHaveClass(/player-solution-state/);

@@ -1196,9 +1196,8 @@
           onpointercancel={cancelBallDrag} onlostpointercapture={cancelBallDrag}
           onclick={()=>{stop();ballEditor=true;}}></button>
       {/if}
-      <span class="ball board-ball" class:is-thrown={!!frame?.ballThrow} style:left style:top style:scale={frame?.scale||1}
+      <span class="ball board-ball" class:is-thrown={!!frame?.ballThrow} class:has-stitches={metrics.ballStitches} style:left style:top style:scale={frame?.scale||1}
         style:width={`${metrics.ball}px`} style:height={`${metrics.ball}px`}
-        style:box-shadow={`0 0 0 ${metrics.ballOutline}px var(--field-ball-edge), 0 1px ${metrics.ballShadow}px rgba(0,0,0,.35)`}
         aria-label="Baseball"></span>
     {/if}
   </div>
@@ -1559,7 +1558,7 @@
   .board-token:hover:not(:disabled),.board-token:active:not(:disabled){transform:translate(-50%,-50%)}
   .board-field .board-token{pointer-events:auto}.board-field.placing-point .board-token{pointer-events:none}.board-runner{z-index:9}.chosen{outline:2px solid white}
   .fielding-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:11;padding:5px 10px;border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);pointer-events:none}
-  .board-ball{background:var(--field-ball);border-color:var(--field-ball);position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:default;z-index:10}
+  .board-ball{pointer-events:none;cursor:default}
   .board-throws{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
   .board-message{white-space:pre-line;margin:0;min-height:24px}
   .board-tools[hidden],.board-workspace[hidden]{display:none}

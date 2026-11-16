@@ -1054,9 +1054,7 @@ function scaleMarkers(){
     const d = metrics.ball;
     ballEl.style.width  = d + 'px';
     ballEl.style.height = d + 'px';
-    const outline = metrics.ballOutline;
-    const drop = metrics.ballShadow;
-    ballEl.style.boxShadow = `0 0 0 ${outline}px #000, 0 1px ${drop}px rgba(0,0,0,.35)`;
+    ballEl.classList.toggle('has-stitches',metrics.ballStitches);
   }
 
   // Animated batter

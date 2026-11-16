@@ -8,12 +8,12 @@ const clamp = (value,min,max) => Math.max(min,Math.min(max,value));
 export function tokenMetrics(width,height) {
   const scale = Math.min(width/IMG_W,height/IMG_H);
   const chip = clamp(Math.round(Math.min(width,height)*0.052),26,44);
+  const ball = clamp(Math.round(MARKER_SIZES.ball*scale),8,26);
   return {
     width,height,chip, defender:Math.round(chip*0.9), defenderFont:clamp(Math.round(chip*0.4),11,16),
     runner:clamp(Math.round(MARKER_SIZES.runner*scale),25,62),
     runnerFont:clamp(Math.round(13*scale*1.05),11,18),
-    ball:clamp(Math.round(MARKER_SIZES.ball*scale),8,26),
-    ballOutline:clamp(Math.round(2*scale),1,3), ballShadow:clamp(Math.round(3*scale),1,4),
+    ball, ballStitches:ball>=16,
   };
 }
 
@@ -28,7 +28,7 @@ export function createOffenseNumbers() {
 export function positionThrownBall(frame, metrics) {
   const {ball,ballThrow}=frame;
   if(!ballThrow||!metrics.width||!metrics.height)return ball;
-  const clearance=(metrics.defender+metrics.ball)/2+metrics.ballOutline+8;
+  const clearance=(metrics.defender+metrics.ball)/2+9;
   const offset=clearance*Math.SQRT1_2;
   return {x:ball.x-offset*IMG_W/metrics.width,y:ball.y+offset*IMG_H/metrics.height};
 }

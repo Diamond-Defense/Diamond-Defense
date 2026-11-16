@@ -269,9 +269,22 @@
   #ballLayer svg{width:100%;height:100%;display:block}
   .ball{
     position:absolute;transform:translate(-50%,-50%);width:14px;height:14px;border-radius:50%;
-    background:#fff;box-shadow:0 0 0 2px #000, 0 1px 3px rgba(0,0,0,.35);
+    box-sizing:border-box;overflow:hidden;
+    border:1px solid #a95760;
+    background:radial-gradient(circle at 34% 28%,#fffefb 16%,#f7f2e9 63%,#d9d1c6 100%);
+    box-shadow:0 1px 3px rgb(0 0 0 / 30%);
     z-index:10; /* Above fielders and runners */
     pointer-events:auto;cursor:grab;
+  }
+  .ball::before,.ball::after{
+    content:"";position:absolute;top:-16%;width:115%;height:132%;
+    box-sizing:border-box;border-radius:50%;border:1px solid #b63243;
+    pointer-events:none;
+  }
+  .ball::before{right:66%}
+  .ball::after{left:66%}
+  .ball.has-stitches::before,.ball.has-stitches::after{
+    outline:1px dashed #a9273a;
   }
   .ball.locked{pointer-events:none;cursor:default;opacity:.95}
 
@@ -1867,14 +1880,6 @@ input:disabled,select:disabled,textarea:disabled{color:var(--text-disabled);curs
   to{filter:brightness(1.16)}
 }
 
-.ball{
-  border:1px solid #dffaff;
-  background:#fff;
-  box-shadow:
-    0 0 0 2px rgba(89,231,255,.55),
-    0 0 14px rgba(89,231,255,.82),
-    0 3px 7px rgba(0,4,15,.58)!important;
-}
 .runner,.baseRunner,.movingRunner{
   border:1px solid #eeeaff;
   background:#b493ff;
@@ -2656,7 +2661,6 @@ input[aria-invalid="true"],select[aria-invalid="true"],textarea[aria-invalid="tr
 .training-board .tgt.good .tgt-label::before{content:"✓ ";color:var(--success)}
 .training-board .tgt.bad .tgt-label::before{content:"× ";color:var(--error)}
 .training-board .tgt .tgt-label{color:var(--text-primary);border-color:var(--border-emphasis);background:var(--surface);box-shadow:none}
-.training-board .ball{border-color:var(--ball);background:var(--ball);box-shadow:0 0 0 2px var(--field-dark),var(--glow-cool)!important}
 .training-board .hitTarget{border-color:var(--runner-highlight);background:var(--runner);box-shadow:0 0 0 2px var(--field-dark),var(--glow-brass)}
 @media (max-width:1200px){
   .training-board{grid-template-columns:minmax(0,1fr) 260px;gap:10px;padding:10px}
@@ -3191,7 +3195,6 @@ body.player-experience .training-board .tgt.bad .tgt-label::before{color:var(--t
 
 /* Field and sequence colors */
 .training-board{--dd-route:var(--field-route);--dd-route-edge:var(--field-route-edge)}
-.training-board .ball{background:var(--field-ball);border-color:var(--field-ball);box-shadow:0 0 0 1px var(--field-ball-edge),0 1px 3px rgb(0 0 0 / 25%)!important}
 .training-board .seq-num{color:var(--field-sequence-text);background:var(--field-route);border-color:var(--field-sequence-edge)}
 .training-board #seqPanel:not(.hidden){border-color:var(--border-emphasis);background:var(--surface)}
 

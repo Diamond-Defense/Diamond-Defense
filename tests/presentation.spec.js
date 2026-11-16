@@ -61,6 +61,8 @@ test('actual first-and-second CF situation parks the thrown ball beside the rece
  const {readFileSync}=await import('node:fs');const {fromSituation}=await import('../src/lib/plays/board.js');const situation=JSON.parse(readFileSync(new URL('./fixtures/cf-throw-situation.json',import.meta.url)));const board=fromSituation(situation);board.title=`CF render regression ${Date.now()}`;const play=compilePlay(board,{coachBoard:true}),leg=play.throws.at(-1);
  await login(page,baseURL);await loadBoard(page,baseURL,board);await page.getByRole('button',{name:'Present',exact:true}).click();await page.clock.install();const controls=page.getByRole('region',{name:'Presentation controls'});await controls.getByRole('button',{name:'Next Step',exact:true}).click();while(await controls.getByRole('status').textContent().then(text=>!text.includes('Throw 1 started')))await controls.getByRole('button',{name:'Next Step',exact:true}).click();await controls.getByRole('button',{name:'Play',exact:true}).click();
  const ball=page.locator('.board-ball');
+ await expect(ball).toHaveCSS('border-top-color','rgb(169, 87, 96)');
+ await expect(ball).toHaveCSS('background-image',/radial-gradient/);
  const receiver=page.getByRole('button',{name:`${leg.toId} token`,exact:true});
  async function expectBallClearance(){
   const b=await ball.boundingBox(),r=await receiver.boundingBox();
