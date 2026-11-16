@@ -14,18 +14,26 @@ export async function boardAction(page,name){
  await button.click();
 }
 
+export async function selectStage(page,name){
+  if(name==='Starting situation')return selectBoardStep(page,'Starting alignment');
+  const stage=page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name,exact:true});
+  if(await stage.getAttribute('aria-current')!=='page')await stage.click();
+}
+
 export async function selectBoardStep(page, name) {
+  await selectStage(page,'Play timeline');
   await page.getByRole('region',{name:'Play steps'}).getByRole('button',{name,exact:true}).click();
 }
 
 export async function addBoardStep(page, preset='Blank step') {
+  await selectStage(page,'Play timeline');
   await page.getByRole('button',{name:'+ Add Step',exact:true}).click();
   await page.getByRole('group',{name:'Step presets',exact:true}).getByRole('button',{name:preset,exact:true}).click();
 }
 
 export async function openRunnerAdvances(page) {
   await selectBoardStep(page,'Contact');
-  const ball=page.getByRole('button',{name:'Batted ball',exact:true});
+  const ball=page.getByRole('button',{name:'Edit batted ball action',exact:true});
   if(await ball.getAttribute('aria-expanded')==='false')await ball.click();
 }
 
@@ -33,4 +41,14 @@ export async function addBoardThrow(page, from, to) {
   await page.getByRole('button',{name:'Add throw',exact:true}).click();
   if(from) await page.getByRole('button',{name:`${from} token`,exact:true}).click();
   await page.getByRole('button',{name:`${to} token`,exact:true}).click();
+}
+
+
+export async function openBattedBall(page,{outcomes=false}={}){
+  await selectStage(page,'Play timeline');
+  const step=page.getByRole('region',{name:'Play steps'}).locator('[data-hit-step="true"]');
+  if(await step.getAttribute('aria-current')!=='step')await step.click();
+  const ball=page.getByRole('button',{name:'Edit batted ball action',exact:true});
+  if(await ball.getAttribute('aria-expanded')!=='true')await ball.click();
+  if(outcomes)await page.getByText('Play outcomes',{exact:true}).click();
 }

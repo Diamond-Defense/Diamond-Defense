@@ -3,7 +3,8 @@
   import {emptyHistory,recordHistory,stepHistory} from '$lib/plays/history.js';
   import {importBoardFile,exportBoardFile,boardFileName} from '$lib/plays/board-transfer.js';
   import { TEACHING_CATEGORIES, SITUATION_DIFFICULTIES } from '$lib/domain/situation-metadata';
-  import { BALL_LOCATIONS } from '$lib/domain/situation-identity';
+  import { validateSituationOutcomes, recommendedSituationOutcomes } from '$lib/domain/situation-outcomes';
+  import { BALL_LOCATIONS, suggestSituationName, normalizeAudience } from '$lib/domain/situation-identity';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
   let libraryOpen=$state(false), libraryReturnToMain=$state(false);
@@ -36,7 +37,7 @@
   let frame=$state(null), running=$state(false), message=$state(''), busy=$state(false);
   let boardId=$state(''), revision=$state(0);
   let field, tools, layout, playback,moreMenu;
-  let movementEditor=$state(null), throwEditor=$state(null), ballEditor=$state(false);
+  let movementEditor=$state(null), throwEditor=$state(null), ballEditor=$state(false), outcomesOpen=$state(false);
   let drag=$state(null);
   let presenting=$state(false), presentationWidth=$state(800), presentationPlay=$state(null);
   let presentationOrigin=$state('board'), presentationReturn, previousOverflow='';
@@ -68,21 +69,27 @@
     savingSituation=presentationReturn?.savingSituation||false;
     if(destination==='library'){libraryReturnToMain=presentationOrigin==='library';libraryOpen=true;return;}
     if(presentationOrigin==='details'){
-      try{writeHandoff(sessionStorage,data.userId,'details',linkedSituation,situationBaseline,rationale);leaving=true;window.location.assign('/');}catch(e){message=e.message;}
+      selectEditorPanel('timeline');
+      requestAnimationFrame(()=>document.querySelector('nav[aria-label="Editor tools"] button[aria-current="page"]')?.focus());
     }else requestAnimationFrame(()=>document.getElementById('presentBoard')?.focus());
   }
   function teach(action){if(action==='toggle'){if(running)playback.pause();else playback.play();}else if(action==='previous')playback.step(-1);else if(action==='next')playback.step(1);else playback.restart();}
 
-  const trainingStages=['Details','Starting situation','Batted ball','Defense & throws','Review'];
-  let trainingStage=$state(null), trainingDetails=$state(null), targetPosition=$state('P'), placingTarget=$state(false);
-  const trainingMode=$derived(trainingStage!==null);
+  const editorPanels=[
+    {id:'details',label:'Details'},
+    {id:'timeline',label:'Play timeline'},
+    {id:'review',label:'Review'}
+  ];
+  let editorPanel=$state('timeline'), trainingDetails=$state(null), targetPosition=$state('P'), placingTarget=$state(false), scoringOpen=$state(false);
+  const trainingMode=$derived(linkedSituation!==null);
   const hasThrows=$derived(board.playSeq.length>0||board.playSeq2.length>0);
-  function selectTrainingStage(stage){
-    stop();
+  function selectEditorPanel(panel){
     placingTarget=false;
-    trainingStage=stage;
-    showSituationForm(stage===4);
-    selectStep(stage===2 ? hitStep(board) || 'contact' : stage===3 ? hitStep(board) : null);
+    scoringOpen=false;
+    editorPanel=panel;
+    savingSituation=panel==='review';
+    if(tools)tools.scrollTop=0;
+    selectStep(null);
   }
   function playerPreview(solution){
     try {
@@ -90,7 +97,7 @@
       placingTarget=false;
       const draft=draftSituation();
       const preview=fromSituation(draft);
-      if(!preview.battedBall)throw new Error('Set the landing spot in Batted ball before previewing.');
+      if(!preview.battedBall)throw new Error('Set the landing spot on the timeline before previewing.');
       if(!solution){
         preview.movements={};preview.playSeq=[];preview.playSeq2=[];
         delete preview.steps;delete preview.throwSteps;
@@ -105,7 +112,7 @@
 
   let savingSituation=$state(false), linkedSituation=$state(null), situationBaseline=$state(null), rationale=$state('');
   let cleanSnapshot=$state(''), pendingSituation=$state(false), leaving=false;
-  function editorSnapshot(){return JSON.stringify({board,result,batterResult,outsRecorded,runnerResults,taggedUp,confirmed,rationale,trainingDetails});}
+  function editorSnapshot(){return JSON.stringify({board,result,batterResult,outsRecorded,runnerResults,taggedUp,outDetails,confirmed,rationale,trainingDetails});}
   let history=$state(emptyHistory()),historyText=$state(false);
   $effect(()=>{
     if(!hasEditor||busy||drag||historyText)return;
@@ -114,7 +121,7 @@
   function restoreSnapshot(snapshot){
     renameDraft=null;
     stop();const value=JSON.parse(snapshot);board=value.board;result=value.result;batterResult=value.batterResult;
-    outsRecorded=value.outsRecorded;runnerResults=value.runnerResults;taggedUp=value.taggedUp;confirmed=value.confirmed;rationale=value.rationale;trainingDetails=value.trainingDetails??null;
+    outsRecorded=value.outsRecorded;runnerResults=value.runnerResults;taggedUp=value.taggedUp;outDetails=value.outDetails;confirmed=value.confirmed;rationale=value.rationale;trainingDetails=value.trainingDetails??null;
     ballType=board.battedBall?.type||'ground_ball';
     if(!playSteps(board).some(step=>step.id===stepId))stepId=null;
     if(movementEditor&&!board.movements[movementEditor.id]?.[movementEditor.index])movementEditor=null;
@@ -131,8 +138,117 @@
   function textEditing(event,active){if(event.target.matches('input:not([type]),input[type=text],textarea'))historyText=active;}
   const dirty=$derived(pendingSituation||!!cleanSnapshot&&editorSnapshot()!==cleanSnapshot);
   function allowReplace(){return !dirty||window.confirm('Discard unsaved edits and open another play?');}
-  function newPlay(){if(!allowReplace())return false;libraryReturnToMain=false;hasEditor=true;trainingStage=null;trainingDetails=null;linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';hydrate(newBoard());boardId='';revision=0;cleanSnapshot=editorSnapshot();message='New Board.';return true;}
-  function restoreSituation(situation){trainingStage=null;trainingDetails=null;linkedSituation=clone(situation);situationBaseline=clone(situation);pendingSituation=false;rationale='';hydrate(fromSituation(situation,{coachBoard:true}));boardId='';revision=0;cleanSnapshot=editorSnapshot();message='Situation loaded for editing. Changes save to the same Situation.';}
+  function newPlay(){
+    if(!allowReplace())return false;
+    libraryReturnToMain=false;hasEditor=true;
+    restoreBoard({board:newBoard(),id:'',revision:0});
+    message='New Board.';
+    return true;
+  }
+  function restoreSituation(situation, baseline=situation, reason='', panel='timeline'){
+    linkedSituation=clone(situation);
+    situationBaseline=clone(baseline);
+    pendingSituation=!situation.revision||JSON.stringify(situation)!==JSON.stringify(baseline);
+    rationale=reason;
+    hydrate(fromSituation(situation,{coachBoard:true}));
+    boardId='';revision=0;
+    const {desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation,audience,seqNote,suggestedDivisions}=situation;
+    trainingDetails=clone({desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation:ballLocation||'',audience:audience||{},seqNote:seqNote||'',suggestedDivisions:suggestedDivisions||[]});
+    selectEditorPanel(panel);
+    cleanSnapshot=editorSnapshot();
+    message='Situation loaded for editing.';
+  }
+  const reviewIssues=$derived.by(()=>{
+    if(!trainingMode||!savingSituation)return [];
+    const draft=draftSituation();
+    const issues=situationPlayIssues(draft).map(issue=>issue.message);
+    if(!draft.title.trim())issues.push('Add a situation name.');
+    try{normalizeAudience(draft.audience);}catch(error){issues.push(error.message);}
+    issues.push(...validateSituationOutcomes(draft,draft.playOutcome,draft.runnerOutcomes));
+    if(hasPreContactActions())issues.push('Remove pre-contact actions before publishing a training situation.');
+    return issues;
+  });
+  let relatedRecords=$state([]);
+  let relatedLoadError=$state('');
+  $effect(()=>{
+    if(!trainingMode||editorPanel!=='review')return;
+    let active=true;
+    request('/api/situations').then(records=>{
+      if(active){relatedRecords=records;relatedLoadError='';}
+    }).catch(()=>{
+      if(active)relatedLoadError='Similar situations could not be loaded.';
+    });
+    return ()=>{active=false;};
+  });
+  const relatedSituations=$derived.by(()=>{
+    if(!trainingMode||editorPanel!=='review')return [];
+    const draft=draftSituation();
+    return relatedRecords.filter(item=>item.key!==draft.key&&item.active!==false&&(draft.variationSourceKey
+      ? item.key===draft.variationSourceKey||item.variationSourceKey===draft.variationSourceKey
+      : item.hitType===draft.hitType&&item.outs===draft.outs&&['first','second','third'].every(base=>!!item.runnersOn?.[base]===!!draft.runnersOn?.[base])
+        && (item.ballLocation&&draft.ballLocation?item.ballLocation===draft.ballLocation:item.hit?.x===draft.hit?.x&&item.hit?.y===draft.hit?.y)));
+  });
+  function openRelatedSituation(item,createVariation=false){
+    if(!allowReplace())return;
+    if(createVariation){
+      const copy=copyLibraryPlay('situation',item,item.title,`variation-${crypto.randomUUID()}`);
+      copy.variationSourceKey=item.variationSourceKey||item.key;
+      copy.variationTagged=true;
+      restoreSituation(copy,null);
+    }else restoreSituation(item);
+  }
+  function applyRecommendedOutcomes(){
+    const defaults=recommendedSituationOutcomes(draftSituation(),result);
+    confirmed=false;
+    trainingDetails.category=result==='single'?'Singles':
+      ['double','triple','home_run','ground_rule_double'].includes(result)?'Extra-base hits':'General';
+    batterResult=defaults.playOutcome.batterResult;
+    outsRecorded=defaults.playOutcome.outsRecorded;
+    outDetails.batter={type:defaults.playOutcome.batterOutType,order:defaults.playOutcome.batterOutOrder};
+    for(const runner of defaults.runnerOutcomes){
+      runnerResults[runner.startingBase]=runner.result;
+      taggedUp[runner.startingBase]=runner.taggedUp;
+      outDetails[runner.startingBase]={type:runner.outType,order:runner.outOrder};
+    }
+  }
+  const relayTemplates=[
+    ['LF','SS','2B','C'],['CF','SS','3B'],['RF','1B'],['SS','2B','1B']
+  ];
+  function applyRelayTemplate(value){
+    if(!value)return;
+    const contact=hitStep(board);
+    if(!contact)return;
+    edit();
+    board.steps=[...steps];
+    board.playSeq=value.split(',');
+    board.playSeq2=[];
+    board.throwSteps=board.playSeq.slice(1).map(()=>contact);
+    selectStep(contact);
+  }
+  const canReplaceThrows=$derived(!Object.values(board.movements).flat().some(segment=>segment.start?.throwIndex));
+  const reviewWarnings=$derived.by(()=>{
+    if(!trainingDetails)return [];
+    const warnings=[];
+    for(const id of POSITIONS){
+      if(!String(trainingDetails.targets[id]?.notes||trainingDetails.targets[id]?.note||'').trim())warnings.push(`${id}: add a coaching note.`);
+    }
+    for(let i=0;i<POSITIONS.length;i++){
+      for(let j=i+1;j<POSITIONS.length;j++){
+        const a=trainingDetails.targets[POSITIONS[i]],b=trainingDetails.targets[POSITIONS[j]];
+        if(a&&b&&Math.hypot(a.x-b.x,a.y-b.y)<35)warnings.push(`${POSITIONS[i]} and ${POSITIONS[j]} scoring targets overlap. Confirm this is intentional.`);
+      }
+    }
+    return warnings;
+  });
+  function openPlayerPreview(){
+    try{
+      if(!board.battedBall)throw new Error('Set the landing spot on the timeline before previewing.');
+      const draft=draftSituation();
+      writeHandoff(sessionStorage,data.userId,'player-preview',draft,situationBaseline,rationale);
+      leaving=true;
+      window.location.assign('/');
+    }catch(error){message=error.message;}
+  }
   function draftSituation(){
     const draft={...situationDraft(board,linkedSituation),...outcomeMetadata()};
     return trainingMode ? {...draft,...trainingDetails,relatedCategories:(trainingDetails.relatedCategories||[]).filter(id=>id!==trainingDetails.primaryCategory)} : draft;
@@ -142,7 +258,8 @@
 
   let metrics=$state(tokenMetrics(800,800*IMG_H/IMG_W));
   let throwSequence=$state('playSeq'), speed=$state(1);
-  let confirmed=$state(false), result=$state('single'), batterResult=$state('first'), outsRecorded=$state(0), runnerResults=$state({}), taggedUp=$state({});
+  let confirmed=$state(false), result=$state('single'), batterResult=$state('first'), outsRecorded=$state(0), runnerResults=$state({}), taggedUp=$state({}), outDetails=$state({batter:{},first:{},second:{},third:{}});
+  const outTypes=[['force','Force'],['tag','Tag'],['catch','Catch'],['batter_first','Batter retired before first'],['other','Other']];
   const positions=$derived.by(()=>{
     if(frame)return frame.positions;
     const starts={...board.defenders,...board.runners};
@@ -219,7 +336,6 @@
   }
   function stop(){playback?.dispose();playback=null;running=false;frame=null;stepPreview=false;}
   function edit(){stop();confirmed=false;}
-  function showSituationForm(show){playback?.pause();savingSituation=show;if(tools)tools.scrollTop=0;}
   function resetActionEditors(){
     addStepOpen=false;
     recordingMovement=false;
@@ -228,6 +344,7 @@
     movementEditor=null;
     throwEditor=null;
     ballEditor=false;
+    outcomesOpen=false;
     stepBall=false;
     selectingThrow=false;
     stepThrowFrom=null;
@@ -377,25 +494,49 @@
     }
     throwEditor=null;
   }
-  function hydrate(value){stop();focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;resetActionEditors();stepId=null;board=upgradeBoard(value);board.runners.batter ||= clone(BASES_NATIVE.home);board.offenseNumbers ||= createOffenseNumbers();throwSequence='playSeq';ballType=board.battedBall?.type||'ground_ball';confirmed=false;runnerResults={};taggedUp={};result=board.running?.result==='out'?'groundout':board.running?.result||'single';batterResult=runningDestination(board,'batter');for(const id of ['first','second','third'].filter(id=>board.runners[id]))runnerResults[id]=runningDestination(board,id);outsRecorded=0;const outcome=board.situationMetadata?.playOutcome||board.sourceSituation?.playOutcome;if(outcome){confirmed=outcome.reviewStatus==='ready';result=outcome.result;batterResult=outcome.batterResult;outsRecorded=outcome.outsRecorded;}for(const r of board.situationMetadata?.runnerOutcomes||board.sourceSituation?.runnerOutcomes||[]){runnerResults[r.startingBase]=r.result;taggedUp[r.startingBase]=r.taggedUp;}history=emptyHistory();historyText=false;}
+  function hydrate(value){
+    focusPlayers=[];showTargets=false;showMovementPaths=false;savingSituation=false;
+    resetActionEditors();
+    stepId=null;
+    board=upgradeBoard(value);
+    board.runners.batter ||= clone(BASES_NATIVE.home);
+    board.offenseNumbers ||= createOffenseNumbers();
+    throwSequence='playSeq';
+    ballType=board.battedBall?.type||'ground_ball';
+    const initial=board.situationMetadata||board.sourceSituation;
+    const outcome=initial?.playOutcome;
+    confirmed=outcome?.reviewStatus==='ready';
+    result=outcome?.result||(board.running?.result==='out'?'groundout':board.running?.result||'single');
+    batterResult=outcome?.batterResult||runningDestination(board,'batter');
+    outsRecorded=outcome?.outsRecorded??0;
+    runnerResults={};taggedUp={};
+    outDetails={batter:{type:outcome?.batterOutType,order:outcome?.batterOutOrder},first:{},second:{},third:{}};
+    for(const base of ['first','second','third'].filter(base=>board.runners[base])){
+      const runner=initial?.runnerOutcomes?.find(r=>r.startingBase===base);
+      runnerResults[base]=runner?.result||runningDestination(board,base);
+      taggedUp[base]=runner?.taggedUp??false;
+      outDetails[base]={type:runner?.outType,order:runner?.outOrder};
+    }
+    history=emptyHistory();historyText=false;
+  }
   onMount(()=>{
     hasEditor=!data.startInLibrary;
     const observer=new ResizeObserver(([entry])=>metrics=tokenMetrics(entry.contentRect.width,entry.contentRect.height));
     observer.observe(field);
     const layoutObserver=new ResizeObserver(([entry])=>presentationWidth=Math.max(0,Math.min(entry.contentRect.width,entry.contentRect.height*IMG_W/IMG_H)));layoutObserver.observe(layout);
     const presentationTransfer=readHandoff(sessionStorage,data.userId,'present');
-    const trainingTransfer=readHandoff(sessionStorage,data.userId,'training');
-    const transfer=trainingTransfer||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
+    const reviewTransfer=readHandoff(sessionStorage,data.userId,'training-review');
+    const outcomeTransfer=readHandoff(sessionStorage,data.userId,'training-outcomes');
+    const transfer=reviewTransfer||outcomeTransfer||readHandoff(sessionStorage,data.userId,'training')||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
     if(transfer){
       hasEditor=true;
-      linkedSituation=clone(transfer.situation);situationBaseline=clone(transfer.baseline||transfer.situation);rationale=transfer.rationale||'';
-      hydrate(fromSituation(transfer.situation,{coachBoard:true}));pendingSituation=!transfer.situation.revision||JSON.stringify(transfer.situation)!==JSON.stringify(situationBaseline);
-      if(trainingTransfer){
-        const {desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation,audience,seqNote}=linkedSituation;
-        trainingDetails=clone({desc,primaryCategory,difficulty,relatedCategories,targets,ballLocation:ballLocation||'',audience:audience||{},seqNote:seqNote||''});
-        selectTrainingStage(0);
+      restoreSituation(transfer.situation,transfer.baseline,transfer.rationale,reviewTransfer?'review':'timeline');
+      if(outcomeTransfer&&hitStep(board)){
+        selectStep(hitStep(board));
+        ballEditor=true;
+        outcomesOpen=true;
       }
-      clearHandoff(sessionStorage);message='Situation draft restored. Changes save to the same Situation.';
+      clearHandoff(sessionStorage);
     }
     cleanSnapshot=editorSnapshot();
     if(presentationTransfer)enterPresentation('details');
@@ -422,7 +563,8 @@
   function down(event,id){
     if(busy||savingSituation||presenting)return;
     if(placingTarget){event.preventDefault();destination(event);return;}
-    if(trainingMode&&(trainingStage<1||trainingStage>3||!POSITIONS.includes(id)))return;
+    if(editorPanel!=='timeline'&&!stepBall)return;
+    if(trainingMode&&!POSITIONS.includes(id)&&!stepBall)return;
     if(editingStep&&selectingThrow&&POSITIONS.includes(id)){event.preventDefault();chooseThrowFielder(id);return;}
     if(stepBall){
       event.preventDefault();
@@ -491,16 +633,20 @@
     if(!stepBall)return;
     const existing=board.battedBall;
     if(!existing&&!RUN_RESULTS.includes(newHitResult))return;
-    if(existing)edit();
+    if(existing||trainingMode)edit();
     else changeRunningResult(newHitResult);
-    board.steps=[...steps];
+    if(!steps.some(step=>step.id===stepId)){
+      const lastPreContact=steps.reduce((last,step,index)=>step.timing==='pre_pitch'||['pre_pitch','pitch_started'].includes(step.id)||throwLegs(board).some(leg=>throwStep(board,leg.index,steps)===step.id)?index:last,-1);
+      board.steps=[...steps.slice(0,lastPreContact+1),{id:'contact',name:'Contact'},...steps.slice(lastPreContact+1)];
+      stepId='contact';
+    }else board.steps=[...steps];
     board.battedBall={...existing,type:ballType,start:clone(BASES_NATIVE.home),destination:point(event),stepId};
     ballEditor=true;
     stepBall=false;
   }
   function runner(base,enabled){edit();if(enabled)board.runners[base]=clone(BASES_NATIVE[base==='batter'?'home':base]);else{delete board.runners[base];delete board.movements[base];}runnerResults[base]=runningDestination(board,base);}
   function tokenClick(event,id){
-    if(busy||presenting||savingSituation||event.detail!==0)return;
+    if(busy||presenting||editorPanel!=='timeline'||event.detail!==0)return;
     if(editingStep&&selectingThrow&&POSITIONS.includes(id))chooseThrowFielder(id);
     else selectTokenAction(id);
   }
@@ -560,6 +706,7 @@
   const fieldingSummary=$derived.by(()=>{try{return compilePlay(board,{coachBoard:true});}catch{return null;}});
   function controls(){if(stepPreview)stop();if(!playback){const play=compilePlay(board,{coachBoard:true});playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});frame=frameAt(play,0);playback.setSpeed(Number(speed));}return playback;}
   function playbackAction(action){try{const controller=controls();controller[action]();}catch(e){message=e.message;}}
+  const boardReviewIssue=$derived(editorPanel==='review'&&!trainingMode?previewIssues():'');
   function previewIssues(){try{compilePlay(board,{coachBoard:true});return '';}catch(e){return e.message;}}
   async function save(){busy=true;try{const issues=previewIssues();if(issues)throw new Error(issues);board.situationMetadata=outcomeMetadata();const value=await request('/api/boards',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:boardId||undefined,revision,board})});boardId=value.id;revision=value.revision;if(!linkedSituation){pendingSituation=false;cleanSnapshot=editorSnapshot();}if(history.index>=0)history.entries[history.index]=editorSnapshot();message='Board saved.';}catch(e){message=e.message;}finally{busy=false;}}
   function outcomeMetadata(){
@@ -568,54 +715,73 @@
       const previous=original.runnerOutcomes?.find(r=>r.startingBase===base)||{};
       const value=runnerResults[base]||'hold';
       const outcome={...previous,startingBase:base,result:value,taggedUp:!!taggedUp[base]};
-      if(value==='out')outcome.outType=previous.outType||'other';else{delete outcome.outType;delete outcome.outOrder;}
+      delete outcome.outType;delete outcome.outOrder;
+      if(value==='out'){outcome.outType=outDetails[base].type||'other';if(outDetails[base].order)outcome.outOrder=outDetails[base].order;}
       return outcome;
     });
     const playOutcome={...original.playOutcome,result,batterResult,outsRecorded:Number(outsRecorded),reviewStatus:confirmed?'ready':'needs_review'};
-    if(batterResult==='out')playOutcome.batterOutType=original.playOutcome?.batterOutType||'other';else{delete playOutcome.batterOutType;delete playOutcome.batterOutOrder;}
+    delete playOutcome.batterOutType;delete playOutcome.batterOutOrder;
+    if(batterResult==='out'){playOutcome.batterOutType=outDetails.batter.type||'other';if(outDetails.batter.order)playOutcome.batterOutOrder=outDetails.batter.order;}
     return {playOutcome,runnerOutcomes,batterAdvance:{out:0,first:1,second:2,third:3,home:4}[batterResult]};
   }
-  async function publish(){busy=true;try{
+  function hasPreContactActions(){
     const timeline=playSteps(board);
     const contact=timeline.findIndex(step=>step.id===hitStep(board,timeline));
-    const hasPreContactActions=timeline.some(step=>step.timing==='pre_pitch'||['pre_pitch','pitch_started'].includes(step.id))
-      || Object.values(board.movements).flat().some(segment=>['pre_pitch','pitch_started'].includes(segment.start?.event))
+    return timeline.some(step=>step.timing==='pre_pitch'||['pre_pitch','pitch_started'].includes(step.id))
+      || Object.values(board.movements).some(segments=>segments.some((segment,index)=>{
+        if(['pre_pitch','pitch_started'].includes(segment.start?.event))return true;
+        if(segment.start?.event!=='step')return false;
+        const order=timeline.findIndex(step=>step.id===movementStep(segment,index,timeline));
+        return order>=0&&(contact<0||order<contact);
+      }))
       || throwLegs(board).some(leg=>{
         const index=timeline.findIndex(step=>step.id===throwStep(board,leg.index,timeline));
-        return index>=0&&index<contact;
+        return index>=0&&(contact<0||index<contact);
       });
-    if(trainingMode&&!board.battedBall) throw new Error('Set the landing spot in Batted ball before submitting.');
-    if(trainingMode&&!confirmed) throw new Error('Confirm the play and runner outcomes before submitting.');
-    if(hasPreContactActions) throw new Error('Training starts at contact. Remove any pre-contact stages or pickoffs in Board Tools before publishing.');
+  }
+  function convertBoard(){
+    try{
+      if(hasPreContactActions())throw new Error('Training starts at contact. Remove any pre-contact stages or pickoffs before converting.');
+      if(!board.battedBall)throw new Error('Add a batted ball before converting.');
+      const situation=toSituation(board,outcomeMetadata());
+      restoreSituation(situation,null);
+      message='Training draft opened. Review its scoring targets and outcomes before publishing.';
+    }catch(error){message=error.message;}
+  }
+  async function publish(){busy=true;try{
+    if(!board.battedBall) throw new Error('Set the landing spot on the timeline before submitting.');
+    if(!confirmed) throw new Error('Confirm the play and runner outcomes before submitting.');
+    if(hasPreContactActions()) throw new Error('Training starts at contact. Remove any pre-contact stages or pickoffs before publishing.');
     const issues=previewIssues();if(issues)throw new Error(issues);
-    if(linkedSituation){
-      if(linkedSituation.hit&&!board.battedBall)throw new Error('Set the batted-ball destination before publishing.');
-      const situation=draftSituation();
-      const invalid=situationPlayIssues(situation);if(invalid.length)throw new Error(invalid.map(issue=>issue.message).join('\n'));
-      let value;
-      if(data.canPublish){
-        const creating=!Number.isInteger(Number(situation.revision))||Number(situation.revision)<1;
-        if(data.role==='coach'&&!creating){
-          const usage=await request(`/api/situations/${encodeURIComponent(situation.key)}/usage`);
-          if(!window.confirm(`Publish changes to the shared Situation? Team Playbooks using it: ${(usage.teams||[]).map(t=>t.name).join(', ')||'None'}.`))return;
-        }
-        value=await request(creating?'/api/situations':`/api/situations/${encodeURIComponent(situation.key)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json',...(creating?{}:{'If-Match':String(situation.revision)})},body:JSON.stringify(situation)});
-        linkedSituation=clone(value.record);situationBaseline=clone(value.record);board.sourceSituation=clone(value.record);pendingSituation=false;cleanSnapshot=editorSnapshot();
-        history=emptyHistory();message='Situation changes saved.';
-      }else{
-        if(!rationale.trim())throw new Error('Add a short reason for the proposal.');
-        await request('/api/situation-submissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({situation,rationale})});
-        openSituationAfterSubmission();message='Proposal submitted. Players still use the published version.';
+    const situation=draftSituation();
+    if(reviewIssues.length)throw new Error(reviewIssues.join(' '));
+    let value;
+    if(data.canPublish){
+      const creating=!Number.isInteger(Number(situation.revision))||Number(situation.revision)<1;
+      if(data.role==='coach'&&!creating){
+        const usage=await request(`/api/situations/${encodeURIComponent(situation.key)}/usage`);
+        if(!window.confirm(`Publish changes to the shared Situation? Team Playbooks using it: ${(usage.teams||[]).map(t=>t.name).join(', ')||'None'}.`))return;
       }
-    }else{
-      const situation=toSituation(board,{desc:board.sourceSituation?.desc||'',category:board.sourceSituation?.category||'Coach Board',difficulty:board.sourceSituation?.difficulty||'foundational',primaryCategory:board.sourceSituation?.primaryCategory||'base-coverage',relatedCategories:board.sourceSituation?.relatedCategories||[],...outcomeMetadata()});
-      const value=await request('/api/situations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(situation)});
+      value=await request(creating?'/api/situations':`/api/situations/${encodeURIComponent(situation.key)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json',...(creating?{}:{'If-Match':String(situation.revision)})},body:JSON.stringify(situation)});
       linkedSituation=clone(value.record);situationBaseline=clone(value.record);board.sourceSituation=clone(value.record);pendingSituation=false;cleanSnapshot=editorSnapshot();
-      history=emptyHistory();message=`Situation ${value.record.displayCode || value.record.title} created.`;
+      history=emptyHistory();message=creating?'Situation created.':'Situation changes saved.';
+    }else{
+      if(!rationale.trim())throw new Error('Add a short reason for the proposal.');
+      await request('/api/situation-submissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({situation,rationale})});
+      openSituationAfterSubmission();message='Proposal submitted. Players still use the published version.';
     }
   }catch(e){message=e.message;}finally{busy=false;}}
-  function openSituationAfterSubmission(){const restored=situationBaseline||linkedSituation;hydrate(fromSituation(restored,{coachBoard:true}));linkedSituation=clone(restored);pendingSituation=false;rationale='';cleanSnapshot=editorSnapshot();}
-  function restoreBoard(item){trainingStage=null;trainingDetails=null;placingTarget=false;linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';hydrate(item.board);boardId=item.id;revision=item.revision;cleanSnapshot=editorSnapshot();message='Board loaded.';}
+  function openSituationAfterSubmission(){
+    restoreSituation(situationBaseline||linkedSituation,situationBaseline);
+    pendingSituation=false;cleanSnapshot=editorSnapshot();
+  }
+  function restoreBoard(item){
+    trainingDetails=null;linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';
+    hydrate(item.board);
+    boardId=item.id;revision=item.revision;
+    selectEditorPanel('timeline');
+    cleanSnapshot=editorSnapshot();message='Board loaded.';
+  }
   function importBoard(text){
     const imported=importBoardFile(text);if(!allowReplace())return false;
     if(presenting)exitPresentation();
@@ -627,7 +793,7 @@
   function boardCopy(){
     const name=window.prompt('Name for the new Board copy',`${board.title.slice(0,110)} copy`);if(!name?.trim())return;if(name.trim().length>120){message='Enter a Board name of 1–120 characters.';return;}
     const copy=clone(board);copy.title=name.trim();copy.sourceSituation=null;copy.situationMetadata=outcomeMetadata();
-    linkedSituation=null;situationBaseline=null;hydrate(copy);boardId='';revision=0;pendingSituation=true;cleanSnapshot=editorSnapshot();
+    restoreBoard({board:copy,id:'',revision:0});pendingSituation=true;
     message='Independent Board copy opened. Save Board when ready.';
   }
   function exportBoard(){
@@ -642,11 +808,11 @@
     if(action==='new')return newPlay();
     if(!allowReplace())return false;
     const record=await request(`/api/play-library/${item.type}/${encodeURIComponent(item.id)}`);
-    hasEditor=true;trainingStage=null;trainingDetails=null;libraryReturnToMain=action==='present';
+    hasEditor=true;libraryReturnToMain=action==='present';
     if(action==='duplicate'){
       const copy=copyLibraryPlay(item.type,item.type==='board'?record.board:record,name,`copy-${crypto.randomUUID()}`);
       if(item.type==='board'){restoreBoard({board:copy,id:'',revision:0});pendingSituation=true;}
-      else{linkedSituation=clone(copy);situationBaseline=null;rationale='';hydrate(fromSituation(copy,{coachBoard:true}));boardId='';revision=0;pendingSituation=true;cleanSnapshot=editorSnapshot();}
+      else restoreSituation(copy,null);
       message='Independent copy opened. Save or publish this draft when ready.';
       return true;
     }
@@ -686,11 +852,42 @@
 </script>
 
 <svelte:head><title>Coach Board — Diamond Defence</title></svelte:head>
+{#snippet fieldingControls()}
+                <label>How it’s fielded <select value={hitFielding(board.battedBall)} onchange={e=>{edit();board.battedBall.fielding=e.currentTarget.value;}}>
+                  <option value="caught">Caught in the air</option>
+                  <option value="ground">Fielded on the ground</option>
+                </select></label>
+                <label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Nearest fielder</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+{/snippet}
+{#snippet runningControls()}
+      <label>Hit result <select value={board.running?.result||'single'} onchange={e=>changeRunningResult(e.currentTarget.value)}>{#each RUN_RESULTS as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
+      {#each ['batter','first','second','third'].filter(id=>board.runners[id]) as id}
+        <label>{id==='batter'?'Batter destination':`Runner on ${id} destination`} <select id={`advance-${id}`} disabled={hasCustomRunning(board,id)} value={runningDestination(board,id)} onchange={e=>changeRunningDestination(id,e.currentTarget.value)}>{#each (id==='batter'?['first','second','third','home','out']:id==='first'?['hold','second','third','home','out']:id==='second'?['hold','third','home','out']:['hold','home','out']) as destination}<option value={destination}>{destination}</option>{/each}</select></label>
+        {#if hasCustomRunning(board,id)}<p>{id}: Custom route</p><button onclick={()=>{edit();useAutomaticRunning(board,id);}}>Use automatic running for {id}</button>{/if}
+      {/each}
+{/snippet}
+{#snippet outControls(actor,label)}
+  <label>{label} out type <select bind:value={outDetails[actor].type} onchange={()=>confirmed=false}>
+    <option value={undefined}>Other (default)</option>
+    {#each outTypes as [value,text]}<option {value}>{text}</option>{/each}
+  </select></label>
+  <label>{label} out order <select bind:value={outDetails[actor].order} onchange={()=>confirmed=false}>
+    <option value={undefined}>Unspecified</option>
+    {#each [1,2,3] as value}<option {value}>{value}</option>{/each}
+  </select></label>
+{/snippet}
 {#snippet outcomes()}
 <label>Play result <select bind:value={result} onchange={()=>confirmed=false}>{#each ['single','double','triple','home_run','ground_rule_double','groundout','caught_fly','caught_line','sacrifice_bunt','squeeze_bunt','sacrifice_fly','fielders_choice','double_play','error','other'] as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
     <label>Batter result <select bind:value={batterResult} onchange={()=>confirmed=false}>{#each ['out','first','second','third','home'] as value}<option value={value}>{value}</option>{/each}</select></label>
+    {#if batterResult==='out'}{@render outControls('batter','Batter')}{/if}
     <label>Outs recorded <select bind:value={outsRecorded} onchange={()=>confirmed=false}>{#each [0,1,2,3] as value}<option value={value}>{value}</option>{/each}</select></label>
-    {#each ['first','second','third'].filter(base=>board.runners[base]) as base}<label>Runner on {base}<select bind:value={runnerResults[base]} onchange={()=>confirmed=false}>{#each ['hold','second','third','home','out'] as value}<option value={value}>{value}</option>{/each}</select></label><label><input type="checkbox" bind:checked={taggedUp[base]} onchange={()=>confirmed=false} /> Runner on {base} tagged up</label>{/each}
+    {#each ['first','second','third'].filter(base=>board.runners[base]) as base}
+      <label>Runner on {base}<select bind:value={runnerResults[base]} onchange={()=>confirmed=false}>
+        {#each ['hold',...['second','third'].slice(['first','second','third'].indexOf(base)),'home','out'] as value}<option {value}>{value}</option>{/each}
+      </select></label>
+      {#if runnerResults[base]==='out'}{@render outControls(base,`Runner on ${base}`)}{/if}
+      <label><input type="checkbox" bind:checked={taggedUp[base]} onchange={()=>confirmed=false} /> Runner on {base} tagged up</label>
+    {/each}
 {/snippet}
 {#snippet teachingTools()}
   <div class="teaching-tools" role="group" aria-label="Teaching views">
@@ -703,7 +900,7 @@
   <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:trainingMode?'Training situation':'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to field</a></div>{/if}</header>
   <div class="board-layout" bind:this={layout}>
   <div class="field-workspace" inert={busy}>
-  {#if !presenting&&!savingSituation&&(!trainingMode||trainingStage===3)}
+  {#if !presenting&&!savingSituation&&editorPanel==='timeline'}
   <section class="board-controls playback-controls" aria-label="Playback controls">
     <div class="preview-main"><button onclick={()=>running&&!stepPreview?playback.pause():playbackAction('play')}>{running&&!stepPreview?'Pause':'Preview'}</button><button onclick={()=>playbackAction('restart')}>Replay</button><button id="presentBoard" onclick={()=>enterPresentation()}>Present</button></div>
     {#if editingStep&&(stepMovements.length||stepThrows.length||hitStep(board)===stepId)}
@@ -720,7 +917,7 @@
         : recordingMovement?'Drag a fielder or runner to record a move.':'Choose Add movement to record a route.'}</p>
   {/if}
   {/if}
-  <div class="board-field" style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
+  <div class="board-field" class:placing-point={stepBall||placingTarget} style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
     <img src={fieldImage} alt="Baseball field" draggable="false" />
     <button class="field-surface" aria-label={placingTarget?'Place scoring target on field':'Set batted-ball destination'} tabindex={presenting||(!placingTarget&&(!stepBall||(!board.battedBall&&!newHitResult)))?-1:0} aria-disabled={presenting||(!placingTarget&&(!stepBall||(!board.battedBall&&!newHitResult)))} onclick={destination}></button>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true" bind:this={hitOverlay}></svg>
@@ -733,7 +930,7 @@
         <path class="seq-route-head" d={route.head} />
       {/each}
     </svg>
-    {#if trainingStage===3&&!frame}
+    {#if trainingMode&&editorPanel==='timeline'&&scoringOpen&&!frame&&!presenting}
       {#each Object.entries(trainingDetails.targets) as [id,target]}
         <span class="ghost-target training-scoring-target" style:left={`${target.x/IMG_W*100}%`} style:top={`${target.y/IMG_H*100}%`} style:width={`${target.tol*2/IMG_W*100}%`} title={`${id} scoring target`}>{id}</span>
       {/each}
@@ -746,7 +943,7 @@
     {#if visibleBall}
       {@const left=`${visibleBall.x/IMG_W*100}%`}
       {@const top=`${visibleBall.y/IMG_H*100}%`}
-      {#if !presenting&&!frame&&!savingSituation&&hitStep(board)===stepId&&!selectingThrow}
+      {#if !presenting&&!frame&&!savingSituation&&editorPanel==='timeline'&&hitStep(board)===stepId&&!selectingThrow&&!stepBall}
         <button class="ball-edit-target" aria-label="Edit batted ball" style:left style:top
           style:width={`${Math.max(28,metrics.ball)}px`} style:height={`${Math.max(28,metrics.ball)}px`}
           onclick={()=>{stop();ballEditor=true;stepBall=true;selectingThrow=false;}}></button>
@@ -760,33 +957,26 @@
   </div>
     <aside inert={busy} hidden={presenting} class="card board-tools" aria-label="Coach Board tools" bind:this={tools} onfocusin={e=>textEditing(e,true)} onfocusout={e=>textEditing(e,false)}>
       <section class="board-controls board-save" aria-label="Board details">
-        <label>Board name <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
+        <label>{trainingMode?'Situation name':'Board name'} <input disabled={busy} maxlength="120" bind:value={board.title} /></label>
         <p class="save-status">{linkedSituation?`Editing ${linkedSituation.displayCode||linkedSituation.key} · `:''}{!boardId&&!linkedSituation?'New Board · Not saved':dirty?'Unsaved changes':'Saved'}</p>
-        <div class="save-actions"><button class="save-board" disabled={busy} onclick={()=>linkedSituation?(trainingMode?selectTrainingStage(4):showSituationForm(true)):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
+        <div class="save-actions"><button class="save-board" disabled={busy} onclick={()=>trainingMode?selectEditorPanel('review'):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
           <details class="board-more" bind:this={moreMenu}><summary aria-label="More actions">More ⋯</summary><div class="more-options">
             <button onclick={()=>moreAction(exportBoard)}>Export Board</button>
-            {#if linkedSituation}<button onclick={()=>moreAction(boardCopy)}>Save a Board Copy</button>{:else if data.canPublish}<button onclick={()=>moreAction(()=>showSituationForm(true))}>Save as Situation</button>{/if}
+            {#if linkedSituation}<button onclick={()=>moreAction(boardCopy)}>Save a Board Copy</button>{:else if data.canPublish&&editorPanel!=='review'}<button onclick={()=>moreAction(()=>selectEditorPanel('review'))}>Save as Situation</button>{/if}
             {#if boardId}<button onclick={()=>moreAction(deleteBoard)}>Delete Board</button>{/if}
             {#if linkedSituation?.revision&&data.role==='admin'}<button onclick={()=>moreAction(archiveSituation)}>Archive Situation</button>{/if}
           </div></details>
         </div>
       </section>
       <div class="editing-toolbar">
-        {#if savingSituation}
-          <h2>Outcomes</h2>
-        {:else}
-          <h2>Steps</h2>
-
-        {/if}
+        <h2>{editorPanels.find(panel=>panel.id===editorPanel)?.label}</h2>
         <div class="edit-history" role="group" aria-label="Edit history"><button aria-label="Undo" title="Undo (Cmd/Ctrl+Z)" disabled={busy||!!drag||history.index<=0&&(!historyText||history.entries[history.index]===editorSnapshot())} onclick={()=>undoEdit(-1)}>↶</button><button aria-label="Redo" title="Redo (Cmd/Ctrl+Shift+Z)" disabled={busy||!!drag||history.index>=history.entries.length-1||historyText&&history.entries[history.index]!==editorSnapshot()} onclick={()=>undoEdit(1)}>↷</button></div></div>
-  {#if trainingMode}
-    <nav class="training-authoring-stages" aria-label="Training situation stages">
-      {#each trainingStages as stage,index}
-        <button aria-current={trainingStage===index?'step':undefined} onclick={()=>selectTrainingStage(index)}>{stage}</button>
+    <nav class="training-authoring-stages" aria-label="Editor tools">
+      {#each editorPanels as panel (panel.id)}
+          <button aria-current={editorPanel===panel.id?'page':undefined} onclick={()=>selectEditorPanel(panel.id)}>{panel.label}</button>
       {/each}
     </nav>
-  {/if}
-  {#if trainingStage===0}
+  {#if editorPanel==='details'&&trainingMode}
     <section class="board-controls mode-controls" aria-label="Situation details">
       <label>Staff variant <input bind:value={trainingDetails.audience.staffVariant} /></label>
       <label>Player context <textarea bind:value={trainingDetails.desc}></textarea></label>
@@ -800,47 +990,54 @@
           }} />{category.label}</label>
         {/each}
       </details>
+      <details><summary>Suggested divisions</summary>
+        {#each Array.from({length:10},(_,index)=>index+9) as age}
+          <label><input type="checkbox" value={age} bind:group={trainingDetails.suggestedDivisions} />{age}U</label>
+        {/each}
+      </details>
     </section>
-  {:else if trainingStage===2}
-    <section class="board-controls mode-controls" aria-label="Batted ball">
-      <label>Batted-ball type <select bind:value={ballType} onchange={()=>{if(board.battedBall){edit();board.battedBall.type=ballType;}}}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label>
-      <label>Ball location <select bind:value={trainingDetails.ballLocation}><option value="">Choose location</option>{#each BALL_LOCATIONS as location}<option value={location}>{location}</option>{/each}</select></label>
-      <button aria-pressed={stepBall} onclick={()=>{stop();stepBall=!stepBall;newHitResult=board.running?.result||'single';}}>{stepBall?'Cancel ball placement':'Set landing spot'}</button>
-      {#if stepBall}<p>Select the landing spot on the field.</p>{/if}
-      {@render outcomes()}
-    </section>
-  {:else if savingSituation}
-  <section class="conversion" id="situation-conversion" aria-label="Save Situation options"><div class="conversion-heading"><h2>{linkedSituation?'Save Situation Changes':'Save as Situation'}</h2><button onclick={()=>trainingMode?selectTrainingStage(3):showSituationForm(false)}>{trainingMode?'Back to Defense & throws':'Back to Board Tools'}</button></div>{#if trainingMode}
-    <p>Preview the opening hit or the solution before submitting. Scoring uses the targets and throw sequences you set.</p>
-    <div class="button-row"><button onclick={()=>playerPreview(false)}>Preview opening hit</button><button onclick={()=>playerPreview(true)}>Preview solution</button><button onclick={stop}>Stop preview</button></div>
-    {:else}<p>Final defender positions become correctness targets. Movement curves remain instructional metadata.</p>{/if}
+  {:else if editorPanel==='details'}
+    <p>Private Coach Board</p>
+  {:else if editorPanel==='review'&&trainingMode}
+  <section class="conversion" id="situation-conversion" aria-label="Save Situation options"><div class="conversion-heading"><h2>Save Situation Changes</h2><button onclick={()=>selectEditorPanel('timeline')}>Back to play timeline</button></div>
+    <p>Suggested name — {suggestSituationName(draftSituation())}</p>
+    <button onclick={()=>board.title=suggestSituationName(draftSituation())}>Use suggested name</button>
+    <p>Preview as player to test the opening hit, positioning checks and Watch Solution with this unpublished draft.</p>
+    {#if reviewIssues.length}<ul aria-label="Review issues">{#each reviewIssues as issue}<li>{issue}</li>{/each}</ul>{/if}
+    {#if reviewWarnings.length}<details><summary>Coaching suggestions ({reviewWarnings.length})</summary><ul>{#each reviewWarnings as warning}<li>{warning}</li>{/each}</ul></details>{/if}
+    {#if relatedLoadError}<p role="status">{relatedLoadError}</p>{/if}
+    {#if relatedSituations.length}
+      <details><summary>{linkedSituation.variationSourceKey?'Related variations':'Similar situations'} ({relatedSituations.length})</summary>
+        <ul>{#each relatedSituations as item (item.key)}
+          <li>
+            <span>{item.displayCode||''} {item.title}</span>
+            <div class="button-row">
+              <button onclick={()=>openRelatedSituation(item)}>{data.canPublish?'Edit existing':'Propose changes'}</button>
+              {#if !linkedSituation.variationSourceKey}<button onclick={()=>openRelatedSituation(item,true)}>Create variation</button>{/if}
+            </div>
+          </li>
+        {/each}</ul>
+      </details>
+    {/if}
+    <p>Expected throw order — {[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')||'Positioning only'}</p>
+    <div class="button-row"><button onclick={openPlayerPreview}>Preview as player</button><button onclick={()=>playerPreview(false)}>Preview opening hit</button><button onclick={()=>playerPreview(true)}>Preview solution</button><button onclick={stop}>Stop preview</button></div>
     <div class="board-controls">
-    {#if !trainingMode}{@render outcomes()}{/if}
-    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if linkedSituation&&!data.canPublish}<label>Proposal reason <textarea bind:value={rationale}></textarea></label>{/if}<button disabled={busy} onclick={publish}>{linkedSituation?(data.canPublish?'Publish Situation':'Submit for Review'):'Create Situation'}</button></div>
+    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if !data.canPublish}<label>Proposal reason <textarea bind:value={rationale}></textarea></label>{/if}<button disabled={busy} onclick={publish}>{data.canPublish?'Publish Situation':'Submit for Review'}</button></div>
   </section>
+  {:else if editorPanel==='review'}
+    <section class="board-controls mode-controls" aria-label="Board review">
+      {#if boardReviewIssue}<p role="alert">{boardReviewIssue}</p>{/if}
+      <div class="button-row"><button onclick={()=>running?playback.pause():playbackAction('play')}>{running?'Pause':'Preview'}</button><button id="presentBoard" onclick={()=>enterPresentation()}>Present</button></div>
+      {#if data.canPublish}<button onclick={convertBoard}>Create training draft</button>{/if}
+    </section>
   {:else}
 
-  {#if trainingStage===3}
-    <section class="board-controls mode-controls" aria-label="Scored positioning targets">
-      {#if hasThrows}
-        <button onclick={()=>{edit();board.playSeq=[];board.playSeq2=[];delete board.throwSteps;resetActionEditors();}}>Clear throw sequences</button>
-        <p>{[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')}</p>
-      {:else}<p>This situation currently scores positioning only.</p>{/if}
-      <label>Throw sequence note <textarea bind:value={trainingDetails.seqNote}></textarea></label>
-      {#if !board.battedBall}<p>Set the batted ball before adding throws.</p>{/if}
-      <label>Scoring target <select bind:value={targetPosition}>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
-      <label>Target tolerance <input type="number" min="5" max="400" bind:value={trainingDetails.targets[targetPosition].tol} /></label>
-      <label>Position notes <textarea bind:value={trainingDetails.targets[targetPosition].notes}></textarea></label>
-      <button aria-pressed={placingTarget} onclick={()=>{stop();resetActionEditors();placingTarget=!placingTarget;}}>{placingTarget?'Cancel target placement':'Place scoring target'}</button>
-      {#if placingTarget}<p>Select the target center on the field.</p>{/if}
-    </section>
-  {/if}
-  {#if trainingStage!==1}
+  {#if editorPanel==='timeline'}
   <section class="steps-sidebar" aria-label="Play steps">
     <ol>
       <li><button aria-current={frame?.activeStep?undefined:stepId===null?'step':undefined} onclick={()=>selectStep(null)}>Starting alignment</button></li>
       {#each steps as step (step.id)}
-        <li><button aria-current={(frame?.activeStep||stepId)===step.id?'step':undefined} onclick={()=>selectStep(step.id)}>{step.name}</button></li>
+        <li><button data-hit-step={hitStep(board)===step.id?'true':undefined} aria-current={(frame?.activeStep||stepId)===step.id?'step':undefined} onclick={()=>selectStep(step.id)}>{step.name}</button></li>
       {/each}
     </ol>
     <button class="add-step" disabled={steps.length>=MAX_STEPS} aria-expanded={addStepOpen}
@@ -855,7 +1052,8 @@
   {/if}
   <section class="board-controls mode-controls" aria-label="Selected step controls">
     {#if alignment}
-      <p>Drag fielders to set their starting positions.</p><label>Outs <select bind:value={board.outs} onchange={edit}>{#each [0,1,2] as n}<option value={n}>{n}</option>{/each}</select></label>
+      <p>Drag fielders to set their starting positions.</p>
+      <button onclick={()=>{edit();board.defenders=clone(newBoard().defenders);for(const id of POSITIONS)reconcileSegments(board,id);}}>Reset starting positions</button><label>Outs <select bind:value={board.outs} onchange={edit}>{#each [0,1,2] as n}<option value={n}>{n}</option>{/each}</select></label>
       <fieldset class="starting-runners">
         <legend>Runners on base</legend>
         {#each ['first','second','third'] as base}<label><input type="checkbox" checked={!!board.runners[base]} onchange={e=>runner(base,e.currentTarget.checked)} /> {base}</label>{/each}
@@ -935,24 +1133,27 @@
               {#each actions as action (action.kind==='move'?`move:${action.id}:${action.index}`:action.kind==='throw'?`throw:${action.leg.index}`:'hit')}
                 {#if action.kind==='hit'}
           <li class:action-open={ballEditor}>
-            <button aria-expanded={ballEditor} onclick={()=>{stop();ballEditor=!ballEditor;movementEditor=null;throwEditor=null;}} aria-label="Batted ball"><span><strong>Batted ball</strong><small>{board.battedBall.type.replaceAll('_',' ')} · {(board.running?.result||'single').replaceAll('_',' ')}</small></span><span class="action-edit">{ballEditor?'Done':'Edit'}</span></button>
+            <button aria-expanded={ballEditor} onclick={()=>{stop();ballEditor=!ballEditor;movementEditor=null;throwEditor=null;}} aria-label="Edit batted ball action"><span><strong>Batted ball</strong><small>{board.battedBall.type.replaceAll('_',' ')} · {(board.running?.result||'single').replaceAll('_',' ')}</small></span><span class="action-edit">{ballEditor?'Done':'Edit'}</span></button>
             {#if ballEditor}
               <div class="board-controls inline-fields">
                 {#if !stepBall}<label>Batted-ball type <select bind:value={ballType} onchange={()=>{edit();board.battedBall.type=ballType;}}>{#each BALL_TYPES as type}<option value={type}>{type.replaceAll('_',' ')}</option>{/each}</select></label>{/if}
-                <label>How it’s fielded <select value={hitFielding(board.battedBall)} onchange={e=>{edit();board.battedBall.fielding=e.currentTarget.value;}}>
-                  <option value="caught">Caught in the air</option>
-                  <option value="ground">Fielded on the ground</option>
-                </select></label>
-                <label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Nearest fielder</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+                {@render fieldingControls()}
                 <button aria-pressed={stepBall} onclick={()=>{stop();stepBall=!stepBall;selectingThrow=false;}}>Move batted ball</button>
                 {#if fieldingSummary?.fielder}<p>{fieldingSummary.fielder} {fieldingSummary.caught?'catches':'fields'} the ball after {((fieldingSummary.fieldingTime-fieldingSummary.contactTime)/(1000*TEACHING_PLAYBACK_RATE)).toFixed(1)} seconds from contact at Normal speed.</p>{/if}
                 {#if fieldingSummary?.fieldingWarning}<p role="note">{fieldingSummary.fieldingWarning}</p>{/if}
 
-      <label>Hit result <select value={board.running?.result||'single'} onchange={e=>changeRunningResult(e.currentTarget.value)}>{#each RUN_RESULTS as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
-      {#each ['batter','first','second','third'].filter(id=>board.runners[id]) as id}
-        <label>{id==='batter'?'Batter destination':`Runner on ${id} destination`} <select id={`advance-${id}`} disabled={hasCustomRunning(board,id)} value={runningDestination(board,id)} onchange={e=>changeRunningDestination(id,e.currentTarget.value)}>{#each (id==='batter'?['first','second','third','home','out']:id==='first'?['hold','second','third','home','out']:id==='second'?['hold','third','home','out']:['hold','home','out']) as destination}<option value={destination}>{destination}</option>{/each}</select></label>
-        {#if hasCustomRunning(board,id)}<p>{id}: Custom route</p><button onclick={()=>{edit();useAutomaticRunning(board,id);}}>Use automatic running for {id}</button>{/if}
-      {/each}
+                {#if trainingMode}
+                  <label>Ball location <select bind:value={trainingDetails.ballLocation}><option value="">Choose location</option>{#each BALL_LOCATIONS as location}<option value={location}>{location}</option>{/each}</select></label>
+                  <details bind:open={outcomesOpen}>
+                    <summary>Play outcomes</summary>
+                    <div class="board-controls">
+                      {@render outcomes()}
+                      <button onclick={applyRecommendedOutcomes}>Use recommended outcomes</button>
+                    </div>
+                  </details>
+                {:else}
+                  {@render runningControls()}
+                {/if}
 
               </div>
             {/if}
@@ -1003,6 +1204,38 @@
     {/if}
   </section>
 
+  {#if trainingMode&&editorPanel==='timeline'}
+    <details class="training-scoring-tools" bind:open={scoringOpen} ontoggle={event=>{if(!event.currentTarget.open)placingTarget=false;}}>
+      <summary>Scoring targets &amp; expected throws</summary>
+      <section class="board-controls mode-controls" aria-label="Scored positioning targets">
+      <label>Relay template <select disabled={!board.battedBall||!canReplaceThrows} value="" onchange={event=>{
+        applyRelayTemplate(event.currentTarget.value);
+        event.currentTarget.value='';
+      }}>
+        <option value="">Choose a relay</option>
+        {#each relayTemplates as sequence}<option value={sequence.join(',')}>{sequence.join(' → ')}</option>{/each}
+      </select></label>
+      {#if !canReplaceThrows}<p>Change the movement timing linked to throws before replacing the sequence.</p>{/if}
+      {#if hasThrows}
+        <button disabled={!canReplaceThrows} onclick={()=>{edit();board.playSeq=[];board.playSeq2=[];delete board.throwSteps;resetActionEditors();}}>Clear throw sequences</button>
+        <p>{[board.playSeq,board.playSeq2].filter(sequence=>sequence.length).map(sequence=>sequence.join(' → ')).join(' · ')}</p>
+      {:else}<p>This situation currently scores positioning only.</p>{/if}
+      <label>Throw sequence note <textarea bind:value={trainingDetails.seqNote}></textarea></label>
+      {#if !board.battedBall}<p>Set the batted ball before adding throws.</p>{/if}
+      <label>Scoring target <select bind:value={targetPosition}>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+      <p>Scoring center — {Math.round(trainingDetails.targets[targetPosition].x)}, {Math.round(trainingDetails.targets[targetPosition].y)}. Instructional movement paths are edited separately.</p>
+      <label>Target tolerance <input type="number" min="5" max="400" bind:value={trainingDetails.targets[targetPosition].tol} /></label>
+      <label>Position notes <textarea value={trainingDetails.targets[targetPosition].notes??trainingDetails.targets[targetPosition].note??''} oninput={event=>{
+        const target=trainingDetails.targets[targetPosition];
+        target.notes=event.currentTarget.value;
+        delete target.note;
+      }}></textarea></label>
+      <button onclick={()=>{stop();trainingDetails.targets[targetPosition]={...trainingDetails.targets[targetPosition],...board.defenders[targetPosition]};}}>Reset target to starting position</button>
+      <button aria-pressed={placingTarget} onclick={()=>{stop();resetActionEditors();placingTarget=!placingTarget;}}>{placingTarget?'Cancel target placement':'Place scoring target'}</button>
+      {#if placingTarget}<p>Select the target center on the field.</p>{/if}
+      </section>
+    </details>
+  {/if}
   {/if}
   <p role="status" class="board-message">{message}</p>
     </aside>
@@ -1018,6 +1251,7 @@
 </main>
 {#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
 <style>
+  .training-scoring-tools{margin-top:12px}.training-scoring-tools>summary{cursor:pointer;font-weight:700}
   .training-authoring-stages{display:flex;flex-wrap:wrap;gap:6px}
   .training-scoring-target{aspect-ratio:1;border-color:var(--baseball-line)}
   .focus-picker{position:relative}.focus-picker summary{cursor:pointer;min-height:40px;padding:8px 12px;box-sizing:border-box;border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}.focus-options{position:absolute;bottom:100%;left:0;z-index:10;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-control);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-width:240px}.focus-options button{grid-column:1/-1}.focus-options label{min-height:36px}
@@ -1081,6 +1315,7 @@
   .steps-sidebar ol{display:grid;gap:4px;margin:0;padding-left:26px}
   .steps-sidebar li button{width:100%;text-align:left}
   .steps-sidebar button{min-height:40px}
+  .training-authoring-stages button[aria-current=page],
   .steps-sidebar button[aria-current=step]{border-color:var(--selection-border);background:var(--selection-background);color:var(--selection-text)}
   .runner-suggestions{width:100%}
   .field-instruction{margin:0;padding:8px 12px;background:var(--surface);border-radius:var(--radius-control);color:var(--text-secondary)}
@@ -1109,7 +1344,7 @@
   .board-token{position:absolute;transform:translate(-50%,-50%);padding:0;min-width:0;min-height:0;border-radius:50%;touch-action:none;z-index:6}
   .board-token.movement-ready{cursor:grab;outline:2px solid var(--accent-primary)}
   .board-token:hover:not(:disabled),.board-token:active:not(:disabled){transform:translate(-50%,-50%)}
-  .board-field .board-token{pointer-events:auto}.board-runner{z-index:9}.chosen{outline:2px solid white}
+  .board-field .board-token{pointer-events:auto}.board-field.placing-point .board-token{pointer-events:none}.board-runner{z-index:9}.chosen{outline:2px solid white}
   .fielding-label{position:absolute;top:10px;left:50%;transform:translateX(-50%);z-index:11;padding:5px 10px;border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);pointer-events:none}
   .board-ball{background:var(--field-ball);border-color:var(--field-ball);position:absolute;transform:translate(-50%,-50%);pointer-events:none;cursor:default;z-index:10}
   .board-throws .seq-route-underlay{stroke:var(--field-route-edge);stroke-width:15;fill:none;stroke-linecap:round}

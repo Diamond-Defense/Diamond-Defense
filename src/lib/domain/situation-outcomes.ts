@@ -253,3 +253,33 @@ export function normalizeSituationOutcomes(situation: Situation): NormalizedSitu
     batterAdvance: advanceFromBatterResult(playOutcome.batterResult),
   };
 }
+
+export function recommendedSituationOutcomes(situation: Pick<Situation, 'runnersOn'>, result: PlayResult): NormalizedSituationOutcomes {
+  const bases=STARTING_BASES.filter(base=>situation.runnersOn?.[base]);
+  let batterAdvance=0,outsRecorded: SituationPlayOutcome['outsRecorded']=0,batterOutType: OutType | undefined,batterOutOrder: SituationPlayOutcome['batterOutOrder'];
+  const runners=new Map<StartingBase, SituationRunnerOutcome>(bases.map(base=>[base,{startingBase:base,result:'hold',taggedUp:false}]));
+  const advanceAll=(amount: number,taggedUp=false)=>bases.forEach(base=>runners.set(base,{startingBase:base,result:destinationAfter(base,amount),taggedUp}));
+  if(result==='single'||result==='error'){batterAdvance=1;advanceAll(1);}
+  else if(result==='double'||result==='ground_rule_double'){batterAdvance=2;advanceAll(2);}
+  else if(result==='triple'){batterAdvance=3;advanceAll(3);}
+  else if(result==='home_run'){batterAdvance=4;advanceAll(4);}
+  else if(['groundout','sacrifice_bunt','squeeze_bunt'].includes(result)){
+    outsRecorded=1;batterOutType='batter_first';batterOutOrder=1;
+    if(['sacrifice_bunt','squeeze_bunt'].includes(result)) advanceAll(1);
+  }else if(['caught_fly','caught_line'].includes(result)){outsRecorded=1;batterOutType='catch';batterOutOrder=1;}
+  else if(result==='sacrifice_fly'){
+    outsRecorded=1;batterOutType='catch';batterOutOrder=1;
+    if(runners.has('third')) runners.set('third',{startingBase:'third',result:'home',taggedUp:true});
+  }else if(result==='fielders_choice'){
+    batterAdvance=1;outsRecorded=bases.length?1:0;
+    const forcedOut=bases.includes('third')&&bases.includes('second')&&bases.includes('first')?'third':bases.includes('second')&&bases.includes('first')?'second':bases.includes('first')?'first':null;
+    if(forcedOut) runners.set(forcedOut,{startingBase:forcedOut,result:'out',outType:'force',outOrder:1,taggedUp:false});
+    if(forcedOut!=='first'&&runners.has('first')) runners.set('first',{startingBase:'first',result:'second',taggedUp:false});
+    if(forcedOut==='third'&&runners.has('second')) runners.set('second',{startingBase:'second',result:'third',taggedUp:false});
+  }else if(result==='double_play'){
+    outsRecorded=bases.includes('first')?2:1;
+    if(runners.has('first')) runners.set('first',{startingBase:'first',result:'out',outType:'force',outOrder:1,taggedUp:false});
+    batterOutType='batter_first';batterOutOrder=bases.includes('first')?2:1;
+  }
+  return {batterAdvance,playOutcome:{result,batterResult:batterResultFromAdvance(batterAdvance),outsRecorded,...(batterOutType?{batterOutType}:{}),...(batterOutOrder?{batterOutOrder}:{}),reviewStatus:'ready'},runnerOutcomes:[...runners.values()]};
+}

@@ -29,12 +29,19 @@ test('touch presentation supports incomplete Boards and reduced-motion final sna
  expect(await controls.getByRole('button',{name:'Next Step',exact:true}).evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(56);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'/tmp/presentation-tablet.png',fullPage:true});await page.setViewportSize({width:390,height:844});await expect.poll(()=>page.getByRole('button',{name:'Exit Presentation',exact:true}).evaluate(el=>el.getBoundingClientRect().right<=innerWidth)).toBe(true);await controls.getByRole('button',{name:'Replay',exact:true}).tap();await controls.getByRole('button',{name:'Next Step',exact:true}).tap();await page.screenshot({path:'/tmp/presentation-phone.png',fullPage:true});await page.keyboard.press('Escape');await expect(controls).toHaveCount(0);
 });
 
-test('Situation Builder presents a legacy draft and returns to its originating details',async({page,baseURL})=>{
- await login(page,baseURL);await page.goto('/');await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');await page.evaluate(()=>window.__DIQ_READY__);
- const original=await page.evaluate(()=>{window._diqSituationEditorOpened('admin');document.querySelector('[data-admin-view="situations"]')?.classList.remove('hidden');document.querySelector('#adminCard')?.classList.remove('hidden');document.body.classList.remove('situation-library-open');document.body.classList.add('situation-editing-open');return window._diqGetCurrentSituationSnapshot();});
+test('training presentation returns to the staged editor without saving',async({page,baseURL})=>{
+ await login(page,baseURL);
+ const [original]=await (await page.request.get('/api/situations')).json();
+ await page.goto('/coach-board');
+ await openLibraryPlay(page,'situation',original.key,original.title);
+ await page.getByLabel('Situation name').fill('Unpublished presentation');
  const writes=[];page.on('request',r=>{if(['POST','PUT','DELETE'].includes(r.method()))writes.push(r.url());});
- await Promise.all([page.waitForEvent('load'),page.getByRole('button',{name:'Present',exact:true}).click()]);await expect(page.getByRole('region',{name:'Presentation controls'})).toBeVisible();await expect(page.getByRole('heading',{name:original.title,exact:true})).toBeVisible();await page.getByRole('region',{name:'Presentation controls'}).getByRole('button',{name:'Next Step',exact:true}).click();
- await Promise.all([page.waitForEvent('load'),page.getByRole('button',{name:'Exit Presentation',exact:true}).click()]);await expect(page.locator('#editInCoachBoardBtn')).toBeVisible();expect(await page.evaluate(()=>window._diqGetCurrentSituationSnapshot().key)).toBe(original.key);expect(await page.evaluate(()=>window._diqGetCurrentSituationSnapshot().boardAnimation)).toBe(original.boardAnimation);expect(writes).toEqual([]);
+ await page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name:'Play timeline',exact:true}).click();
+ await page.getByRole('button',{name:'Present',exact:true}).click();
+ await expect(page.getByRole('heading',{name:'Unpublished presentation',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Exit Presentation',exact:true}).click();
+ await expect(page.getByLabel('Situation name')).toHaveValue('Unpublished presentation');
+ expect(writes).toEqual([]);
 });
 
 test('teaching comparisons and focused targets use shared final snapshots without authoring writes',async({page,baseURL})=>{

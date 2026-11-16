@@ -1,3 +1,4 @@
+import {openBattedBall, openLibraryPlay, selectStage } from './helpers/play-library.js';
 import { test, expect, request as requestFactory } from '@playwright/test';
 
 // Color assertions follow the shared theme; behavioral assertions remain unchanged.
@@ -1388,35 +1389,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await situationLibrary.getByRole('button', { name: 'Library', exact: true }).click();
     await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('');
 
-    await page.locator('#situationLibrary').getByRole('button', { name:'Open classic editor', exact:true }).first().click();
-    await expect(page.locator('.field-card')).toBeVisible();
-    const adminFieldLayout = await page.evaluate(() => {
-      const board = document.querySelector('.field-card').getBoundingClientRect();
-      const field = document.getElementById('wrap').getBoundingClientRect();
-      const tools = document.getElementById('toolsDrawer').getBoundingClientRect();
-      return { unusedSpace:tools.left-board.right, fill:field.width/board.width };
-    });
-    expect(adminFieldLayout.unusedSpace).toBeLessThanOrEqual(24);
-    expect(adminFieldLayout.fill).toBeGreaterThan(0.95);
-    await expect(page.locator('[data-admin-view="situations"]')).toBeVisible();
-    await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
-    await page.locator('#situationRelatedDetails summary').click();
-    const categoryLabelLayout = await page.locator('#situationRelatedCategories button').evaluateAll((buttons) =>
-      buttons.map((button) => {
-        const style = getComputedStyle(button);
-        return {
-          width: button.getBoundingClientRect().width || 0,
-          height: button.getBoundingClientRect().height || 0,
-          wordBreak: style.wordBreak,
-          overflowWrap: style.overflowWrap,
-        };
-      }),
-    );
-    expect(categoryLabelLayout.every((label) => label.width >= 70)).toBe(true);
-    expect(categoryLabelLayout.every((label) => label.height <= 45)).toBe(true);
-    expect(categoryLabelLayout.every((label) => label.wordBreak === 'normal')).toBe(true);
-    expect(categoryLabelLayout.every((label) => label.overflowWrap === 'normal')).toBe(true);
-    await page.locator('#situationLibraryBack').click();
+    await expect(situationLibrary.getByRole('button',{name:'Edit situation',exact:true}).first()).toBeVisible();
+    await expect(situationLibrary.getByRole('button',{name:'Open classic editor',exact:true})).toHaveCount(0);
     await page.getByRole('button', { name:'Proposals to review', exact:true }).click();
     await page.locator('#adminProposalPreviewBtn').click();
     await expect(page.getByRole('button', { name: 'No published version', exact: true })).toBeVisible();
@@ -1426,20 +1400,24 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('[data-admin-tab="situations"]')).toHaveClass(/has-review-items/);
     await expect(page.locator('#adminOutcomeReviewQueue')).toBeVisible();
     await expect(page.locator('#adminOutcomeReviewSummary')).toContainText('must be confirmed');
-    await page.locator('#adminOutcomeReviewList button').first().click();
-    await page.locator('#situationLibraryBack').click();
     await expect(page.locator('#adminOutcomeReviewNextBtn')).toBeVisible();
     await page.locator('#adminOutcomeReviewNextBtn').click();
-    const reviewedSituationKey = await page.evaluate(() => window._diqGetCurrentSituationSnapshot().key);
-    expect(reviewedSituationKey).toBe(fieldProposal.reviewKeys[1]);
-    await expect(page.locator('#confirmOutcomeReviewBtn')).toBeVisible();
-    await page.locator('#confirmOutcomeReviewBtn').click();
-    await expect(page.locator('#confirmOutcomeReviewBtn')).toBeHidden();
-    await expect(page.locator(`#adminOutcomeReviewList button[data-situation-key="${reviewedSituationKey}"]`)).toHaveCount(0);
-    await expect(page.locator('#adminOutcomeReviewNextBtn')).toBeHidden();
-    await expect(page.locator('#situationWorkflowStatus')).toContainText('removed from the review queue');
-    await page.locator('#situationLibraryBack').click();
-    await page.getByRole('button', { name:'Proposals to review', exact:true }).click();
+    await expect(page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name:'Play timeline'})).toHaveAttribute('aria-current','page');
+    await selectStage(page,'Review');
+    await page.getByLabel('I confirm these play and runner outcomes').check();
+    const outcomeResponse=page.waitForResponse(response=>response.request().method()==='PUT'&&response.url().includes('/api/situations/'));
+    await page.getByRole('button',{name:'Publish Situation',exact:true}).click();
+    const reviewed=(await (await outcomeResponse).json()).record;
+    expect(fieldProposal.reviewKeys).toContain(reviewed.key);
+    expect(reviewed.playOutcome.reviewStatus).toBe('ready');
+    await page.goBack();
+    await page.evaluate(()=>window.__DIQ_READY__);
+    if(!await page.getByRole('button',{name:'Proposals to review',exact:true}).isVisible()){
+      await page.locator('#staffToolsBtn').click();
+      await page.getByRole('button',{name:'Situations',exact:true}).click();
+    }
+    await expect(page.locator(`#adminOutcomeReviewList button[data-situation-key="${reviewed.key}"]`)).toHaveCount(0);
+    await page.getByRole('button',{name:'Proposals to review',exact:true}).click();
     await page.locator('#adminProposalSelect').selectOption(fieldProposal.id);
     const targetComparison = page.locator('.proposal-diff-row').filter({
       has: page.locator('input[data-proposal-field="targets"]'),
@@ -1463,14 +1441,6 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminProposalSelectAllBtn').click();
     await expect(page.locator('#adminProposalPreviewBtn')).toBeEnabled();
     await page.locator('input[data-proposal-field="title"]').uncheck();
-    const unsavedEditorTitle = 'Unsaved administrator draft preserved through preview';
-    await page.getByRole('button', { name:'Library', exact:true }).click();
-    await page.getByRole('button', { name:'Open classic editor', exact:true }).first().click();
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await page.locator('#newTitleInput').fill(unsavedEditorTitle);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
-    await page.locator('#situationLibraryBack').click();
-    await page.getByRole('button', { name:'Proposals to review', exact:true }).click();
     let previewAttemptRequests = 0;
     page.on('request', (request) => {
       if (request.method() === 'POST' && request.url().endsWith('/api/attempts')) {
@@ -1516,8 +1486,6 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByRole('button', { name: 'Return to proposal review', exact: true }).click();
     await expect(page.locator('body')).not.toHaveClass(/proposal-field-preview/);
     await expect(page.locator('#adminProposalSelect')).toHaveValue(fieldProposal.id);
-    await expect(page.locator('#newTitleInput')).toHaveValue(unsavedEditorTitle);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
     await page.getByRole('button', { name: 'Recovery', exact: true }).click();
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
@@ -1573,34 +1541,22 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminPwOk').click();
     await page.locator('#staffToolsBtn').click();
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
-    await page.getByRole('button', { name:'Open classic editor', exact:true }).first().click();
-    const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    const original=(await (await page.request.get('/api/situations')).json())[0];
     await isolatePublishedSituation(original);
-    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
-    const ball = page.locator('#wrap .ball:visible');
-    await expect(ball).toHaveCount(1);
-    await ball.scrollIntoViewIfNeeded();
-    const box = await ball.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
-    await page.mouse.up();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
-    const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
-    expect(moved.hit).not.toEqual(original.hit);
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await expect(page.locator('#publishSituationBtn')).toBeEnabled();
-    const savedResponse = page.waitForResponse(response =>
-      response.url().endsWith(`/api/situations/${original.key}`) && response.request().method() === 'PUT');
-    await page.locator('#publishSituationBtn').click();
-    const saved = await (await savedResponse).json();
-    expect(saved.record.hit).toEqual(moved.hit);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
-    await page.locator('#adminCardCloseBtn').click();
-    await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot().hit)).toEqual(moved.hit);
-    await page.reload();
-    await page.evaluate(() => window.__DIQ_READY__);
-    expect(await page.evaluate(key => window._diqGetPublishedSituationSnapshot(key).hit, original.key)).toEqual(moved.hit);
+    await page.goto('/coach-board');
+    await openLibraryPlay(page,'situation',original.key,original.title);
+    await openBattedBall(page,{outcomes:true});
+    await page.getByRole('button',{name:'Move batted ball',exact:true}).click();
+    await page.getByRole('button',{name:'Set batted-ball destination',exact:true}).click({position:{x:180,y:180}});
+    await selectStage(page,'Review');
+    await page.getByLabel('I confirm these play and runner outcomes').check();
+    const savedResponse=page.waitForResponse(response=>response.url().endsWith(`/api/situations/${original.key}`)&&response.request().method()==='PUT');
+    await page.getByRole('button',{name:'Publish Situation',exact:true}).click();
+    const {record}=await (await savedResponse).json();
+    expect(record.hit).not.toEqual(original.hit);
+    const reloaded=(await (await page.request.get('/api/situations')).json()).find(item=>item.key===original.key);
+    expect(reloaded.hit).toEqual(record.hit);
+
   });
 
   publishingTest('admin publishes all situation fields and reloads them without losing draft edits', async ({ page, isolatePublishedSituation }) => {
@@ -1611,96 +1567,42 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminPwOk').click();
     await page.locator('#staffToolsBtn').click();
     await page.getByRole('button', { name: 'Situations', exact: true }).click();
-    await page.getByRole('button', { name:'Open classic editor', exact:true }).first().click();
-    const original = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
+    const original=(await (await page.request.get('/api/situations')).json())[0];
     await isolatePublishedSituation(original);
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await page.locator('#newTitleInput').fill('Published field coverage');
-    await page.locator('[data-editor-step="sbDetailsSection"]').click();
-    await page.locator('#newDescInput').fill('All editor changes persist');
-    await page.locator('#situationStaffVariant').fill('Staff-only fixture');
-    await page.locator('#situationStaffVariant').blur();
-    await page.locator('#situationDifficultySelect').selectOption('advanced');
-    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
-    await expect(page.locator('#situationCategoryInput')).toBeHidden();
-    await expect(page.locator('#situationEditorSteps')).toHaveCSS('position', 'static');
-    await page.locator('[data-editor-step="sbDetailsSection"]').click();
-    await page.locator('#situationPrimaryCategorySelect').selectOption({ index: 2 });
-    await page.locator('#situationRelatedDetails summary').click();
-    await page.locator('#situationRelatedCategories button').first().click();
-    await page.locator('[data-editor-step="sbRunnersSubsec"]').click();
-    await page.locator('#outsSelSituation').selectOption('1');
-    await page.locator('#run1B').check();
-    await page.locator('#run2B').uncheck();
-    await page.locator('#run3B').uncheck();
-    // Exercise the same pointer handlers as field dragging without overlapping
-    // markers intercepting a target's center.
-    const dragMarker = async (selector) => {
-      const marker = page.locator(selector);
-      await marker.dispatchEvent('pointerdown', { pointerId: 1, clientX: 100, clientY: 100 });
-      await page.evaluate(() => {
-        window.dispatchEvent(new PointerEvent('pointermove', { pointerId: 1, clientX: 125, clientY: 115 }));
-        window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, clientX: 125, clientY: 115 }));
-      });
-    };
-    // Native pointer capture needs an active pointer before dispatched movement.
-    await page.mouse.move(10, 10);
-    await page.mouse.down();
-    await dragMarker('#wrap .chip[data-fielding-number="1"]');
-    await page.mouse.up();
-    await page.locator('[data-editor-step="sbTargetsSubsec"]').click();
-    await page.mouse.down();
-    await dragMarker('#wrap .tgt[data-id="P"]');
-    await page.mouse.up();
-    await page.locator('#tolTargetSel').selectOption('P');
-    await page.locator('#tolNum').fill('125');
-    await page.locator('#tolNotes').fill('Published pitcher coaching note');
-    const sequenceSwitch = page.locator('#sequenceChallengeEnabled');
-    const sequenceSwitchLabel = page.locator('label.sequence-challenge-toggle');
-    if (await sequenceSwitch.isChecked()) await sequenceSwitchLabel.click();
-    await expect(sequenceSwitch).not.toBeChecked();
-    await sequenceSwitchLabel.click();
-    await expect(sequenceSwitch).toBeChecked();
-    await page.locator('#seqPosGrid button').filter({ hasText: /^CF$/ }).click();
-    await page.locator('#seqPosGrid button').filter({ hasText: /^SS$/ }).click();
-    await page.locator('#seqNoteInput').fill('Published throw sequence note');
-    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
-    await page.locator('#hitTypeSel').selectOption('grounder');
-    await page.locator('#situationBallLocation').selectOption('LF');
-    await page.locator('#playResultSel').selectOption('double');
-    await expect(page.locator('#situationCategoryInput')).toHaveValue('Extra-base hits');
-    await page.locator('.runner-outcome-card[data-starting-base="first"] select').first().selectOption('third');
-    const ball = page.locator('#wrap .ball:visible');
-    await expect(ball).toHaveCount(1);
-    await ball.scrollIntoViewIfNeeded();
-    const box = await ball.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 + 20, { steps: 5 });
-    await page.mouse.up();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
-    const moved = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
-    expect(moved.hit).not.toEqual(original.hit);
-    expect(moved.starts.P).not.toEqual(original.starts.P);
-    expect(moved.targets.P).toMatchObject({ tol: 125, notes: 'Published pitcher coaching note' });
-    expect(moved.playSeq).toEqual(['CF', 'SS']);
-    const fields = ['title','desc','audience','ballLocation','category','difficulty','primaryCategory','relatedCategories',
-      'outs','runnersOn','starts','targets','hit','hitType','batterAdvance','playOutcome',
-      'runnerOutcomes','playSeq','seqNote'];
-    const expected = Object.fromEntries(fields.map(field => [field, moved[field]]));
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await expect(page.locator('#publishSituationBtn')).toBeEnabled();
-    const savedResponse = page.waitForResponse(response =>
-      response.url().endsWith(`/api/situations/${original.key}`) && response.request().method() === 'PUT');
-    await page.locator('#publishSituationBtn').click();
-    const saved = await (await savedResponse).json();
-    expect(saved.record).toMatchObject(expected);
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
-    await page.locator('#adminCardCloseBtn').click();
-    await expect.poll(() => page.evaluate(() => window._diqGetCurrentSituationSnapshot())).toMatchObject(expected);
-    await page.reload();
-    await page.evaluate(() => window.__DIQ_READY__);
-    expect(await page.evaluate(key => window._diqGetPublishedSituationSnapshot(key), original.key)).toMatchObject(expected);
+    await page.goto('/coach-board');
+    await openLibraryPlay(page,'situation',original.key,original.title);
+    await page.getByLabel('Situation name').fill('Published field coverage');
+    await selectStage(page,'Details');
+    await page.getByLabel('Player context').fill('All editor changes persist');
+    await page.getByLabel('Staff variant').fill('Staff-only fixture');
+    await page.getByLabel('Difficulty').selectOption('advanced');
+    await selectStage(page,'Starting situation');
+    await page.getByRole('combobox',{name:'Outs',exact:true}).selectOption('1');
+    await page.getByRole('checkbox',{name:'first',exact:true}).check();
+    await openBattedBall(page,{outcomes:true});
+    await page.getByLabel('Batted-ball type').selectOption('ground_ball');
+    await page.getByLabel('Ball location').selectOption('LF');
+    await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption('double');
+    await page.getByRole('button',{name:'Use recommended outcomes'}).click();
+    await expect(page.getByLabel('Batter result')).toHaveValue('second');
+    await selectStage(page,'Play timeline');
+    await page.getByText('Scoring targets & expected throws',{exact:true}).click();
+    await page.getByLabel('Target tolerance').fill('125');
+    await page.getByLabel('Position notes').fill('Published pitcher coaching note');
+    await page.getByLabel('Relay template').selectOption('CF,SS,3B');
+    await page.getByLabel('Throw sequence note').fill('Published throw sequence note');
+    await selectStage(page,'Review');
+    await page.getByLabel('I confirm these play and runner outcomes').check();
+    await page.getByRole('button',{name:'Publish Situation',exact:true}).click();
+    await expect(page.getByRole('status',{name:''}).filter({hasText:'Situation changes saved.'})).toBeVisible();
+    const record=(await (await page.request.get('/api/situations')).json()).find(item=>item.key===original.key);
+    expect(record).toMatchObject({
+      title:'Published field coverage',desc:'All editor changes persist',audience:{staffVariant:'Staff-only fixture'},difficulty:'advanced',
+      ballLocation:'LF',outs:1,runnersOn:{first:true},hitType:'grounder',batterAdvance:2,
+      playOutcome:{result:'double',batterResult:'second'},playSeq:['CF','SS','3B'],
+      seqNote:'Published throw sequence note',targets:{P:{tol:125,notes:'Published pitcher coaching note'}}
+    });
+
   });
 
   test('admin team edits use record-level APIs and preserve stable IDs', async ({ page }) => {
@@ -2117,65 +2019,20 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(proposalLibraryBounds.left).toBeGreaterThanOrEqual(0);
     expect(proposalLibraryBounds.right).toBeLessThanOrEqual(proposalLibraryBounds.viewport + 1);
     expect(proposalLibraryBounds.width).toBeGreaterThan(proposalLibraryBounds.viewport / 2);
-    await page.locator('#situationLibrary').getByRole('button', { name:'Open classic editor', exact:true }).first().click();
-    await expect(page.locator('#situationWorkflowRole')).toHaveText('Coach draft');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
-    await expect(page.locator('#situationCategoryInput')).not.toHaveValue('');
-    await expect(page.locator('#situationDifficultySelect')).toHaveValue(/^(foundational|intermediate|advanced)$/);
-    await expect(page.locator('#situationPrimaryCategorySelect')).not.toHaveValue('');
-    await expect(page.locator('#situationRelatedCategories button')).toHaveCount(11);
-    await page.locator('#situationRelatedDetails summary').click();
-    const relatedCategory = page.locator('#situationRelatedCategories button').first();
-    const wasSelected = await relatedCategory.getAttribute('aria-pressed');
-    await relatedCategory.click();
-    await expect(relatedCategory).toHaveAttribute('aria-pressed', wasSelected === 'true' ? 'false' : 'true');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
-    await expect(page.locator('[data-editor-step]')).toHaveCount(5);
-    await expect(page.locator('[data-editor-step="sbBallHitSubsec"]')).toHaveText('3. The play');
-    await expect(page.locator('[data-editor-step="sbRunnersSubsec"]')).toHaveText('2. Starting situation');
-    await page.locator('[data-editor-step="sbBallHitSubsec"]').click();
-    await expect(page.locator('#playResultSel')).toHaveValue(/^(single|double|triple|home_run|ground_rule_double|groundout|caught_fly|caught_line|sacrifice_bunt|squeeze_bunt|sacrifice_fly|fielders_choice|double_play|error|other)$/);
-    await expect(page.locator('#applyOutcomeDefaultsBtn')).toBeVisible();
-    await expect(page.locator('#situationForceSummary')).not.toBeEmpty();
-
-    await expect(page.locator('#runnerOutcomeRows')).toBeVisible();
-    await expect(page.locator('#situationOutcomeReview')).not.toBeEmpty();
-    await expect(page.locator('.situation-editor-actions #previewSituationBtn')).toHaveCount(0);
-    await expect(page.locator('.situation-editor-actions #submitSituationBtn')).toHaveCount(0);
-    await expect(page.locator('#situationReviewSection #situationValidationPanel')).toHaveCount(1);
-    await expect(page.locator('#situationReviewSection #coachProposalRationale')).toHaveCount(1);
-    await expect(page.locator('#situationReviewSection #previewSituationBtn')).toHaveCount(1);
-    await expect(page.locator('#situationReviewSection #submitSituationBtn')).toHaveCount(1);
-    await expect(page.locator('#downloadCurrentBtn')).toHaveCount(0);
-    await expect(page.locator('.position-check')).toHaveCount(9);
-    await expect(page.locator('#seqPosGrid .pos-btn', { hasText: /^LF$/ })).toBeDisabled();
-    await page.locator('[data-editor-step="sbTargetsSubsec"]').click();
-    await page.locator('.position-check', { hasText: /^RF/ }).click();
-    await expect(page.locator('#tolTargetSel')).toHaveValue('RF');
-    await page.locator('[data-editor-step="sbDetailsSection"]').click();
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await page.locator('#newTitleInput').fill('Coach draft title');
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Unpublished changes');
-    await expect(page.locator('#submitSituationBtn')).toBeDisabled();
-    await page.locator('[data-editor-step="situationReviewSection"]').click();
-    await page.locator('#coachProposalRationale').fill('Clarifies the player-facing coaching objective.');
-    await page.locator('#previewSituationBtn').click();
+    await page.locator('#situationLibrary').getByRole('button',{name:'Propose changes',exact:true}).first().click();
+    await expect(page.getByRole('navigation',{name:'Editor tools'}).getByRole('button')).toHaveCount(3);
+    await page.getByLabel('Situation name').fill('Coach draft title');
+    await selectStage(page,'Review');
+    await page.getByLabel('Proposal reason').fill('Clarifies the player-facing coaching objective.');
+    await page.getByRole('button',{name:'Preview as player',exact:true}).click();
     await expect(page.locator('body')).toHaveClass(/situation-player-preview/);
-    await expect(page.locator('.field-card')).toBeVisible();
     await expect(page.locator('#chooseNextSituationBtn')).toBeHidden();
     await expect(page.locator('#playbookBrowserToggle')).toBeHidden();
     await expect(page.locator('#randomSitBtn')).toBeHidden();
-    const previewKey = await page.evaluate(() => currentSituation.key);
-    await page.evaluate(() => { pickRandomSituation(); openPlaybookBrowser(); });
-    await expect.poll(() => page.evaluate(() => currentSituation.key)).toBe(previewKey);
-    await expect(page.locator('#playbookBrowserOverlay')).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Return to editor' })).toBeVisible();
-    await page.getByRole('button', { name: 'Return to editor' }).click();
-    await expect(page.locator('body')).not.toHaveClass(/situation-player-preview/);
-    await expect(page.locator('#playbookBrowserToggle')).toBeVisible();
-    await expect(page.locator('#randomSitBtn')).toBeVisible();
-    await page.locator('#saveSituationBtn').click();
-    await expect(page.locator('#situationDirtyBadge')).toHaveText('Saved');
+    await page.getByRole('button',{name:'Return to editor',exact:true}).click();
+    await expect(page.getByLabel('Situation name')).toHaveValue('Coach draft title');
+    await expect(page.getByLabel('Proposal reason')).toHaveValue('Clarifies the player-facing coaching objective.');
+
   });
 
   test('a correct phase-one placement proceeds through the phase-two sequence', async ({ page }) => {
@@ -2471,14 +2328,14 @@ test('creating a variation through training stages preserves its source and assi
   const source = records.find(record => sourceTitle.includes(record.title));
   expect(source).toBeDefined();
   await library.getByRole('button', { name: 'Create variation', exact: true }).first().click();
-  const stages = page.getByRole('navigation', { name: 'Training situation stages' });
+  const stages = page.getByRole('navigation', { name: 'Editor tools' });
   await expect(stages).toBeVisible();
   const title = `Training variation ${Date.now()}`;
-  await page.getByLabel('Board name').fill(title);
+  await page.getByLabel('Situation name').fill(title);
   await stages.getByRole('button', { name: 'Review', exact: true }).click();
   await page.getByLabel('I confirm these play and runner outcomes').check();
   await page.getByRole('button', { name: 'Publish Situation', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Situation changes saved.');
+  await expect(page.getByRole('status')).toHaveText('Situation created.');
   const published = await (await page.request.get('/api/situations')).json();
   const variation = published.find(record => record.title === title);
   expect(variation).toMatchObject({

@@ -54,7 +54,7 @@ export function compilePlay(input, options={}) {
   const ballDuration=hitFlightDuration(board.battedBall?.type,options.coachBoard);
   const nodes=new Map(),tracks=[],legs=throwLegs(board);
   const coachBoard=!!options.coachBoard;
-  const authoredSteps=coachBoard && board.steps ? playSteps(board) : undefined;
+  const authoredSteps=board.steps ? playSteps(board) : undefined;
   const order=new Map((authoredSteps || []).map((step,index)=>[step.id,index]));
   const hitOrder=order.get(hitStep(board));
   const movementOrder=(segment,index)=>order.get(movementStep(segment,index,authoredSteps || []));

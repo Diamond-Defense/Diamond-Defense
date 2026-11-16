@@ -1,4 +1,4 @@
-import {selectBoardStep,openRunnerAdvances} from './helpers/play-library.js';
+import {openBattedBall,selectBoardStep,openRunnerAdvances} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
 import {openLibraryPlay,boardAction} from './helpers/play-library.js';
 import {newBoard,clone} from '../src/lib/plays/board.js';
@@ -14,7 +14,7 @@ test('custom timing saves, reloads, delays fielding and supports undo and redo',
  await expect(undo).toBeDisabled();await timing.selectOption('custom');await duration.fill('20');await duration.press('Tab');await expect(duration).toHaveValue('20');await undo.click();await expect(duration).toHaveValue('2');await redo.click();await expect(duration).toHaveValue('20');
  await page.getByRole('button',{name:'Save Board',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Board saved.');const stored=(await (await page.request.get('/api/boards')).json()).find(item=>item.id===saved.id);expect(stored.board.movements.SS[0].durationMs).toBe(5000);
  await page.reload();await openLibraryPlay(page,'board',saved.id,board.title);await movement(page);await expect(duration).toHaveValue('20');await expect(undo).toBeDisabled();
- await selectBoardStep(page,'Contact');await page.getByRole('button',{name:'Batted ball',exact:true}).click();await expect(page.getByRole('note')).toHaveCount(0);await expect(page.getByText('SS fields the ball after 20.0 seconds from contact at Normal speed.',{exact:true})).toBeVisible();
+ await selectBoardStep(page,'Contact');await page.getByRole('button',{name:'Edit batted ball action',exact:true}).click();await expect(page.getByRole('note')).toHaveCount(0);await expect(page.getByText('SS fields the ball after 20.0 seconds from contact at Normal speed.',{exact:true})).toBeVisible();
  await page.getByRole('button',{name:'Present',exact:true}).click();const controls=page.getByRole('region',{name:'Presentation controls'}),play=compilePlay(stored.board,{coachBoard:true});
  for(let i=1;i<play.steps.length;i++){await controls.getByRole('button',{name:'Next Step',exact:true}).click();if(play.steps[i]===play.contactTime+5000){await expect(controls.getByRole('status')).toContainText('Ball fielded');break;}}
  await expect(page.getByRole('group',{name:'Edit history'})).toBeHidden();
@@ -33,5 +33,5 @@ test('title edits, running destinations, runner occupancy and outcome fields sha
  await page.getByRole('textbox',{name:'Board name',exact:true}).fill('Changed title');await expect(undo).toBeEnabled();await undo.click();await expect(page.getByRole('textbox',{name:'Board name',exact:true})).toHaveValue(board.title);await redo.click();await expect(page.getByRole('textbox',{name:'Board name',exact:true})).toHaveValue('Changed title');
  await openRunnerAdvances(page);await page.getByRole('combobox',{name:'Hit result',exact:true}).selectOption('double');await undo.click();await expect(page.getByRole('combobox',{name:'Hit result',exact:true})).toHaveValue('single');await redo.click();await expect(page.getByRole('combobox',{name:'Batter destination',exact:true})).toHaveValue('second');
  await page.getByRole('button',{name:'Starting alignment',exact:true}).click();await page.getByRole('checkbox',{name:'first',exact:true}).check();await undo.click();await expect(page.getByRole('checkbox',{name:'first',exact:true})).not.toBeChecked();await redo.click();await expect(page.getByRole('checkbox',{name:'first',exact:true})).toBeChecked();
- await boardAction(page,'Save as Situation');await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption('triple');await undo.click();await expect(page.getByRole('combobox',{name:'Play result',exact:true})).toHaveValue('double');await redo.click();await expect(page.getByRole('combobox',{name:'Play result',exact:true})).toHaveValue('triple');
+ await boardAction(page,'Save as Situation');await page.getByRole('button',{name:'Create training draft',exact:true}).click();await openBattedBall(page,{outcomes:true});await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption('triple');await undo.click();await expect(page.getByRole('combobox',{name:'Play result',exact:true})).toHaveValue('double');await redo.click();await expect(page.getByRole('combobox',{name:'Play result',exact:true})).toHaveValue('triple');
 });

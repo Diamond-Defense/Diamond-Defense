@@ -1108,11 +1108,7 @@
     outcomeReviewList.replaceChildren();
     const openForReview = (situation) => {
       if (!situation) return;
-      populateSituations(situation.key);
-      if (situation.hit && typeof setHitSaved === 'function') setHitSaved(situation.key, situation.hit);
-      setSituation(situation.key, clone(situation));
-      openSituationEditorPane();
-      focusEditorSection('sbBallHitSubsec');
+      transferToBoard('training-outcomes',situation,situation,'');
     };
     records.forEach((situation) => {
       const item = document.createElement('div');
@@ -2615,7 +2611,7 @@
     const selected=new Set();
     const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;transferToBoard('training',makeSituationDraft(),null);});create.className='btn btn-brand situation-library-create';toolbar.append(create);
     if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
-    if(editorDirty) toolbar.append(button('Continue local draft',openSituationEditorPane));
+    if(editorDirty) toolbar.append(button('Continue local draft',()=>transferToBoard('training',currentSnapshot(),editorBaseline,coachRationale?.value)));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
     const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
     const exportActions=document.createElement('div');exportActions.className='situation-transfer-controls';library.append(exportActions);
@@ -2700,11 +2696,7 @@
           const edit=button(isAdmin||window.__DIQ_AUTH_USER__?.canPublishSituations?'Edit situation':'Propose changes',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;transferToBoard('training',item,item);});const variation=button('Create variation',async()=>{
           if(editorDirty && !await requestConfirmation({title:'Replace local changes?',message:'Creating a variation replaces your unsubmitted draft.',confirmLabel:'Create variation'}))return;
           transferToBoard('training',makeSituationDraft(item),null);
-        });const legacyEdit=button('Open classic editor',async()=>{
-          if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Opening another situation replaces your unsubmitted changes.',confirmLabel:'Discard and open'}))return;
-          setSituation(item.key,clone(item));
-          openSituationEditorPane();
-        });row.append(title,edit,variation,legacyEdit);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
+        });row.append(title,edit,variation);if(isAdmin){const remove=button('Delete permanently',()=>permanentlyDeleteSituation(item.key));remove.className='btn btn-danger';row.append(remove);}
         }list.append(row);
       }
       if(!list.children.length)list.textContent=loading?'Loading published situations…':'No situations match this search.';
@@ -3117,7 +3109,7 @@
     }
   };
 
-  function setPlayerPreview(active) {
+  function setPlayerPreview(active, onReturn = () => setPlayerPreview(false)) {
     playerPreviewActive = Boolean(active);
     document.body.classList.toggle('situation-player-preview', playerPreviewActive);
     window._diqRefreshPlayerPresentation?.();
@@ -3131,7 +3123,7 @@
       close.type = 'button';
       close.className = 'btn btn-brand btn-small';
       close.textContent = 'Return to editor';
-      close.addEventListener('click', () => setPlayerPreview(false));
+      close.addEventListener('click', onReturn);
       bar.append(label, close);
       document.body.appendChild(bar);
       window._diqSetEditorMode?.(null);
@@ -3279,15 +3271,15 @@
   byId('saveSituationBtn')?.addEventListener('click', () => setTimeout(() => markEditorClean(currentSnapshot()), 0));
 
   let authoringTransfer = false;
-  function transferToBoard(destination,snapshot=currentSnapshot(),baseline=editorBaseline){
+  function transferToBoard(destination,snapshot=currentSnapshot(),baseline=editorBaseline,rationale=destination==='training'?'':coachRationale?.value||''){
     try {
       const draft=window._diqSituationAuthoring.syncSituationAnimation(snapshot);
-      window._diqSituationAuthoring.writeHandoff(sessionStorage,window.__DIQ_AUTH_USER__?.id,destination,draft,baseline,destination==='training'?'':coachRationale?.value||'');
+      window._diqSituationAuthoring.writeHandoff(sessionStorage,window.__DIQ_AUTH_USER__?.id,destination,draft,baseline,rationale);
       authoringTransfer=true;
       window.location.assign('/coach-board');
     } catch(error) { setWorkflowStatus(error.message,'error'); }
   }
-  byId('editInCoachBoardBtn')?.addEventListener('click',()=>transferToBoard('board'));
+  byId('editInCoachBoardBtn')?.addEventListener('click',()=>transferToBoard('training',currentSnapshot(),editorBaseline,coachRationale?.value));
   byId('presentSituationBtn')?.addEventListener('click',()=>transferToBoard('present'));
   window.addEventListener('beforeunload',event=>{
     if(editorRole&&editorDirty&&!authoringTransfer){event.preventDefault();event.returnValue='';}
@@ -3295,20 +3287,21 @@
   window._diqRestoreAuthoringDraft = () => {
     const user=window.__DIQ_AUTH_USER__;
     if(!user||!['coach','admin'].includes(user.role))return;
+    const authoring=window._diqSituationAuthoring;
+    const preview=authoring.readHandoff(sessionStorage,user.id,'player-preview');
+    if(preview){
+      const snapshot=clone(preview.situation);
+      if(snapshot.hit) setHitSaved(snapshot.key,snapshot.hit);
+      setPlayerPreview(true,()=>{
+        authoring.writeHandoff(sessionStorage,user.id,'training-review',preview.situation,preview.baseline,preview.rationale);
+        window.location.assign('/coach-board');
+      });
+      setSituation(snapshot.key,snapshot);
+      return;
+    }
     const transfer=window._diqSituationAuthoring.readHandoff(sessionStorage,user.id,'details');
     if(!transfer)return;
-    if(user.role==='coach'){
-      window._diqSetEditorMode?.('coach');
-      window._diqSetCoachWorkspaceMode?.('proposals');
-    }else window._diqSituationEditorOpened?.('admin');
-    setSituation(transfer.situation.key,clone(transfer.situation));
-    editorBaseline=clone(transfer.baseline||transfer.situation);
-    editorDirty=!transfer.situation.revision||!sameValue(transfer.situation,editorBaseline);
-    if(coachRationale)coachRationale.value=transfer.rationale||'';
-    renderEditorState(currentSnapshot());
-    openSituationEditorPane();
-    window._diqSituationAuthoring.clearHandoff(sessionStorage);
-    setWorkflowStatus('Situation draft restored. Switching editors did not publish changes.','success');
+    transferToBoard('training',transfer.situation,transfer.baseline,transfer.rationale);
   };
 
   window._diqMarkSituationDirty = (snapshot, role) => {

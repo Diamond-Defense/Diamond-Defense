@@ -1,5 +1,5 @@
 import {test,expect} from '@playwright/test';
-import {openLibraryPlay,boardAction,addBoardStep} from './helpers/play-library.js';
+import {openLibraryPlay,boardAction,addBoardStep,selectStage} from './helpers/play-library.js';
 async function login(page,baseURL){await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{role:'admin',password:'password'}});}
 test('preview stays with the field and secondary actions stay collapsed',async({page,baseURL})=>{
  await login(page,baseURL);await page.setViewportSize({width:1280,height:900});await page.goto('/coach-board?edit=1');
@@ -11,7 +11,8 @@ test('preview stays with the field and secondary actions stay collapsed',async({
  const previewBounds=await preview.boundingBox();
  expect(fieldBounds.width).toBeGreaterThan(toolsBounds.width);
  expect(previewBounds.y).toBeLessThan(fieldBounds.y);
- await expect(tools.getByRole('heading',{name:'Steps',exact:true})).toBeVisible();
+ await expect(tools.getByRole('heading',{name:'Play timeline',exact:true})).toBeVisible();
+ await selectStage(page,'Play timeline');
  const stepList=tools.getByRole('region',{name:'Play steps'});
  await expect(stepList).toBeVisible();
  await expect(tools.getByRole('button',{name:'Tools',exact:true})).toHaveCount(0);
@@ -61,7 +62,7 @@ test('author adds numbered steps, carries all defenders forward, and saves a rel
  await expect(destination).toBeEnabled();
  await page.getByRole('combobox',{name:'Batted-ball type',exact:true}).selectOption('fly_ball');
  await field.getByRole('button',{name:'Set batted-ball destination',exact:true}).click({position:{x:80,y:80}});
- await page.getByRole('button',{name:'Batted ball',exact:true}).click();
+ await page.getByRole('button',{name:'Edit batted ball action',exact:true}).click();
  await page.getByRole('button',{name:'Add movement',exact:true}).click();
  for(const id of ['RF','SS']){
   const fieldBefore=await field.boundingBox();
@@ -77,7 +78,7 @@ test('author adds numbered steps, carries all defenders forward, and saves a rel
  }
  await page.getByRole('button',{name:'Done moving',exact:true}).click();
  const contact=page.getByRole('region',{name:'At contact',exact:true});
- await expect(contact.getByRole('button',{name:'Batted ball',exact:true})).toBeVisible();
+ await expect(contact.getByRole('button',{name:'Edit batted ball action',exact:true})).toBeVisible();
  await expect(contact.getByRole('button',{name:'RF · Movement 1',exact:true})).toBeVisible();
  await shortstop.click();
  await expect(contact.getByRole('button',{name:'SS · Movement 1',exact:true})).toHaveAttribute('aria-expanded','true');
@@ -101,7 +102,7 @@ test('author adds numbered steps, carries all defenders forward, and saves a rel
  await page.getByRole('combobox',{name:'Receiver',exact:true}).selectOption('2B');
  await expect(sidebar).toBeVisible();
  await sidebar.getByRole('button',{name:'Contact and coverage',exact:true}).click();
- await page.getByRole('button',{name:'Batted ball',exact:true}).click();
+ await page.getByRole('button',{name:'Edit batted ball action',exact:true}).click();
  await expect(page.getByRole('button',{name:'Add throw',exact:true})).toHaveCount(0);
  const fielding=page.getByRole('combobox',{name:'How it’s fielded',exact:true});
  await expect(fielding).toHaveValue('caught');
@@ -125,10 +126,10 @@ test('author adds numbered steps, carries all defenders forward, and saves a rel
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.getByRole('region',{name:'Playback controls'}).getByRole('button',{name:'Preview this step',exact:true}).click();
  await expect(sidebar.getByRole('button',{name:'Relay',exact:true})).toHaveAttribute('aria-current','step');
- await expect(field.locator('[marker-end]')).toHaveCount(1);
+ await expect(field.locator('.seq-route-head')).toHaveCount(1);
  await page.getByRole('button',{name:'Preview',exact:true}).click();
  await expect(sidebar.getByRole('button',{name:'Relay',exact:true})).toHaveAttribute('aria-current','step');
- await expect(field.locator('[marker-end]')).toHaveCount(1);
+ await expect(field.locator('.seq-route-head')).toHaveCount(1);
  expect(await defenderCount()).toBe(9);
  const name=`Authored relay ${Date.now()}`;
  await page.getByRole('textbox',{name:'Board name',exact:true}).fill(name);
@@ -144,6 +145,7 @@ test('author adds numbered steps, carries all defenders forward, and saves a rel
  expect(board.throwSteps).toEqual([board.steps[1].id]);
  await page.reload();
  await openLibraryPlay(page,'board',id,name);
+ await selectStage(page,'Play timeline');
  await expect(sidebar.getByRole('button',{name:'Contact and coverage',exact:true})).toBeVisible();
  await sidebar.getByRole('button',{name:'Relay',exact:true}).click();
  expect(await position(shortstop)).toEqual(endpoint);
@@ -170,6 +172,10 @@ test('a runner on base exposes a pitcher pickoff in step actions before a hit',a
  await page.emulateMedia({reducedMotion:'reduce'});
  await page.getByRole('button',{name:'Preview',exact:true}).click();
  await expect(page.locator('.board-throws .seq-route-active')).toHaveCount(1);
+ await page.getByLabel('More actions',{exact:true}).click();
+ await page.getByRole('button',{name:'Save as Situation',exact:true}).click();await page.getByRole('button',{name:'Create training draft',exact:true}).click();
+ await expect(page.getByRole('status')).toContainText('pre-contact stages or pickoffs');
+ await expect(page.getByRole('button',{name:'Save Board',exact:true})).toBeVisible();
 });
 
 test('pre-pitch preset locks routes until movement mode and records early movement',async({page,baseURL})=>{

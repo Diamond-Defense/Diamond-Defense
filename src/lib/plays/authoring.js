@@ -8,7 +8,7 @@ export function situationDraft(board, source = board.sourceSituation) {
   draft.title=board.title;draft.outs=Number(board.outs);draft.starts=clone(board.defenders);
   draft.runnersOn=Object.fromEntries(['first','second','third'].map(base=>[base,!!board.runners[base]]));
   draft.targets=Object.fromEntries(POSITIONS.map(id=>{
-    const end=board.movements[id]?.at(-1)?.path.at(-1) || source.targets?.[id] || board.defenders[id];
+    const end=source.targets?.[id] || board.defenders[id];
     return [id,{...clone(source.targets?.[id]||{}),x:end.x,y:end.y}];
   }));
   draft.playSeq=clone(board.playSeq);draft.playSeq2=clone(board.playSeq2);

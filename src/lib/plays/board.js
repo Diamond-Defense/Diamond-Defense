@@ -73,7 +73,8 @@ export function fromSituation(situation, {coachBoard = false} = {}) {
   b.runners.batter = clone(BASES_NATIVE.home);
   for (const id of POSITIONS) {
     const end = situation.targets?.[id];
-    if (end) b.movements[id] = [{ path: [b.defenders[id], { x: end.x, y: end.y }] }];
+    const start = b.defenders[id];
+    if (end && distance(start,end)>0.01) b.movements[id] = [{ path: [start, { x: end.x, y: end.y }] }];
   }
   const bases = ['home','first','second','third','home'];
   const batterDestination = situation.playOutcome?.batterResult || ['out','first','second','third','home'][situation.batterAdvance||0];
@@ -113,8 +114,6 @@ export function fromSituation(situation, {coachBoard = false} = {}) {
   for(const id of Object.keys(b.movements)) {
     if(!b.defenders[id]&&!b.runners[id]){delete b.movements[id];continue;}
     reconcileSegments(b,id);
-    const target=situation.targets?.[id];
-    if(target)b.movements[id].at(-1).path[b.movements[id].at(-1).path.length-1]={x:target.x,y:target.y};
   }
   return upgradeBoard(b);
 }
@@ -132,8 +131,6 @@ export function boardAnimation(board) {
 export function toSituation(board, metadata) {
   const issues = validateBoard(board);
   if (!board.battedBall) issues.push('Set the batted-ball destination before saving as a Situation.');
-  if (board.playSeq.length < 2) issues.push('Define a defensive throw sequence with at least two positions.');
-  if (!metadata?.playOutcome || metadata.playOutcome.reviewStatus !== 'ready') issues.push('Confirm the play and runner outcomes before publishing.');
   if (issues.length) throw new Error(issues.join('\n'));
   const targets = Object.fromEntries(POSITIONS.map(id => {
     const path = board.movements[id]?.at(-1)?.path;

@@ -804,35 +804,6 @@ function ensureSituationOutcomeModel(situation){
   situation.batterAdvance=outcomeAdvanceFromBatter(situation.playOutcome.batterResult);
   return situation;
 }
-function recommendedSituationOutcomes(situation,result){
-  const bases=presentOutcomeBases(situation);
-  let batterAdvance=0,outsRecorded=0,batterOutType,batterOutOrder;
-  const runners=new Map(bases.map(base=>[base,{startingBase:base,result:'hold',taggedUp:false}]));
-  const advanceAll=(amount,taggedUp=false)=>bases.forEach(base=>runners.set(base,{startingBase:base,result:outcomeDestination(base,amount),taggedUp}));
-  if(result==='single'||result==='error'){batterAdvance=1;advanceAll(1);}
-  else if(result==='double'||result==='ground_rule_double'){batterAdvance=2;advanceAll(2);}
-  else if(result==='triple'){batterAdvance=3;advanceAll(3);}
-  else if(result==='home_run'){batterAdvance=4;advanceAll(4);}
-  else if(['groundout','sacrifice_bunt','squeeze_bunt'].includes(result)){
-    outsRecorded=1;batterOutType='batter_first';batterOutOrder=1;
-    if(['sacrifice_bunt','squeeze_bunt'].includes(result)) advanceAll(1);
-  }else if(['caught_fly','caught_line'].includes(result)){outsRecorded=1;batterOutType='catch';batterOutOrder=1;}
-  else if(result==='sacrifice_fly'){
-    outsRecorded=1;batterOutType='catch';batterOutOrder=1;
-    if(runners.has('third')) runners.set('third',{startingBase:'third',result:'home',taggedUp:true});
-  }else if(result==='fielders_choice'){
-    batterAdvance=1;outsRecorded=bases.length?1:0;
-    const forcedOut=bases.includes('third')&&bases.includes('second')&&bases.includes('first')?'third':bases.includes('second')&&bases.includes('first')?'second':bases.includes('first')?'first':null;
-    if(forcedOut) runners.set(forcedOut,{startingBase:forcedOut,result:'out',outType:'force',outOrder:1,taggedUp:false});
-    if(forcedOut!=='first'&&runners.has('first')) runners.set('first',defaultRunnerOutcome('first',1));
-    if(forcedOut==='third'&&runners.has('second')) runners.set('second',defaultRunnerOutcome('second',1));
-  }else if(result==='double_play'){
-    outsRecorded=bases.includes('first')?2:1;
-    if(runners.has('first')) runners.set('first',{startingBase:'first',result:'out',outType:'force',outOrder:1,taggedUp:false});
-    batterOutType='batter_first';batterOutOrder=outsRecorded;
-  }
-  return {batterAdvance,playOutcome:{result,batterResult:outcomeBatterFromAdvance(batterAdvance),outsRecorded,...(batterOutType?{batterOutType}:{}),...(batterOutOrder?{batterOutOrder}:{}),reviewStatus:'ready'},runnerOutcomes:[...runners.values()]};
-}
 function validateClientSituationOutcomes(situation){
   ensureSituationOutcomeModel(situation);
   const play=situation?.playOutcome||{},runners=Array.isArray(situation?.runnerOutcomes)?situation.runnerOutcomes:[],issues=[];
@@ -947,7 +918,7 @@ window._diqSyncSituationOutcomeEditor=syncSituationOutcomeEditor;
 function applyRecommendedSituationOutcomes(){
   if(!currentSituation)return;
   const result=playResultSel?.value||currentSituation.playOutcome?.result||inferClientPlayResult(currentSituation);
-  Object.assign(currentSituation,recommendedSituationOutcomes(currentSituation,result));
+  Object.assign(currentSituation,window._diqRecommendedSituationOutcomes(currentSituation,result));
   currentSituation.category = result === 'single' ? 'Singles'
     : ['double','triple','home_run','ground_rule_double'].includes(result) ? 'Extra-base hits' : 'General';
   if(situationCategoryInput) situationCategoryInput.value = currentSituation.category;
