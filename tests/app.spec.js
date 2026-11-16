@@ -2088,10 +2088,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
     await page.clock.install();
     await page.getByRole('button', { name: 'Watch Solution' }).click();
-    await page.clock.runFor(12000);
+    for(let i=0;i<48&&(await page.locator('#wrap').getAttribute('data-solution-state'))!=='ready';i++){
+      await page.clock.runFor(250);
+    }
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
-    await expect(page.locator('#wrap .relay-badge')).toHaveCount(3);
-    await expect(page.locator('#wrap .ball.is-thrown')).toHaveCSS('border-top-color','rgb(169, 87, 96)');
+    await expect(page.locator('#wrap .relay-badge')).toHaveCount(0);
+    await expect(page.locator('#wrap .ball.is-thrown')).toHaveCount(0);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeVisible();
     await expect(page.locator('body')).toHaveClass(/player-solution-state/);
@@ -2163,6 +2165,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#seqBody')).toContainText('Correct sequence!');
     await expect(page.locator('#wrap .seq-locked .seq-badge')).toHaveCount(3);
     await expect(badges.first()).toHaveCSS('background-color', await semanticColor(page, '--success'));
+    await page.clock.runFor(500);
+    await expect(page.locator('#wrap .ball.is-thrown')).toHaveCSS('border-top-color','rgb(169, 87, 96)');
     await page.locator('#playbookToggle').click();
     await expect(page.locator('#howToCard .howto-body')).toContainText('Situation complete');
     await expect(page.locator('#howToCard .howto-body')).not.toContainText('Verify Sequence');

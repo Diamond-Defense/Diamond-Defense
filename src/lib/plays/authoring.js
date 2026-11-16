@@ -1,7 +1,7 @@
 import { boardAnimation, clone, fromSituation, POSITIONS, validateBoard } from './board.js';
 import { compilePlay } from './animation.js';
-import { throwLegs } from './segments.js';
-import { playSteps, hitStep, movementStep } from './steps.js';
+import { startCondition, throwLegs } from './segments.js';
+import { playSteps, hitStep, movementStep, throwStep } from './steps.js';
 
 // Pack generated throw-only steps into one relay when opening a training situation.
 export function consolidateSituationRelay(board) {
@@ -23,6 +23,24 @@ export function consolidateSituationRelay(board) {
   const id=relaySteps[0].id;
   return {...board,steps:[...steps.slice(0,first),{id,name:'Relay'},...steps.slice(first+legs.length)],
     throwSteps:legs.map(()=>id)};
+}
+
+export function positioningSolutionBoard(board) {
+  const steps=playSteps(board);
+  const hitOrder=steps.findIndex(step=>step.id===hitStep(board,steps));
+  const relayOrder=steps.findIndex(step=>step.id===throwStep(board,1,steps));
+  const movements={};
+  for(const [id,segments] of Object.entries(board.movements)){
+    const firstRelayMovement=segments.findIndex((segment,index)=>{
+      const event=startCondition(segment,index).event;
+      if(event==='throw_started'||event==='throw_received')return true;
+      const order=steps.findIndex(step=>step.id===movementStep(segment,index,steps));
+      return relayOrder>hitOrder&&order>=relayOrder;
+    });
+    const retained=firstRelayMovement<0?segments:segments.slice(0,firstRelayMovement);
+    if(retained.length)movements[id]=retained;
+  }
+  return {...board,movements,playSeq:[],playSeq2:[],throwSteps:undefined};
 }
 
 // Situation owns identity, correctness, outcomes and details. Board is its spatial projection.

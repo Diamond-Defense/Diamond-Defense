@@ -3733,6 +3733,7 @@ function watchSolution(){
     playBoard.runners[base]=runnerLeadPoint(base);
     if(playBoard.movements[base])playBoard.movements[base][0].path[0]={...playBoard.runners[base]};
   }
+  if(_solutionReview.hasSeq)playBoard=window._diqSituationAuthoring.positioningSolutionBoard(playBoard);
   let play;
   try{play=window._diqPlayAnimation.compilePlay(playBoard,{showHitFlight:true});}
   catch(error){

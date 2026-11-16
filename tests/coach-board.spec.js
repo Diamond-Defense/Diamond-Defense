@@ -116,11 +116,11 @@ test('normal solution review consumes segmented metadata and reduced motion pres
   coachUnlocked=false;_roundHasStarted=true;phase2Active=false;_phase2Ended=false;_allTargetsCorrect=true;gameActive=false;
   const board=window._diqFromSituation(currentSituation),start=board.defenders.SS,target=currentSituation.targets.SS;
   const middle={x:start.x+100,y:start.y-100};
-  board.movements.SS=[{path:[start,middle],start:{event:'contact'}},{path:[middle,{x:middle.x+80,y:middle.y-100},{x:target.x,y:target.y}],start:{event:'ball_fielded'}}];
+  board.movements.SS=[{path:[start,middle],start:{event:'contact'}},{path:[middle,{x:middle.x+80,y:middle.y-100},{x:target.x,y:target.y}],start:{event:'ball_fielded'}},{path:[{x:target.x,y:target.y},{x:target.x+90,y:target.y}],start:{event:'throw_received',throwIndex:1}}];
   currentSituation.boardAnimation={version:2,movements:board.movements,battedBall:board.battedBall};
   currentSituation.playSeq=['SS','2B','1B'];currentSituation.playSeq2=[];
   _solutionReview={situationKey:currentSituation.key,submittedPositions:getOnscreenStarts(),incorrectIds:[],hasSeq:true,animating:false,watched:false};
-  const before=JSON.stringify(currentSituation),play=window._diqPlayAnimation.compilePlay(window._diqFromSituation(currentSituation),{showHitFlight:true});
+  const before=JSON.stringify(currentSituation),play=window._diqPlayAnimation.compilePlay(window._diqSituationAuthoring.positioningSolutionBoard(window._diqFromSituation(currentSituation)),{showHitFlight:true});
   const track=play.tracks.find(track=>track.id==='SS'&&track.index===1),time=track.start+track.duration/2;
   const clocks={now:playNow,request:requestPlayFrame,cancel:cancelPlayFrame};let now=0,next;playNow=()=>now;requestPlayFrame=fn=>(next=fn,1);cancelPlayFrame=()=>next=null;
   window._diqWatchSolution();now=1000;next(now);const hitVisible=!!ballSvg.querySelector('.board-hit-path'),ballVisible=ballEl.isConnected&&getComputedStyle(ballEl).display!=='none',ballPosition={x:parseFloat(ballEl.style.left),y:parseFloat(ballEl.style.top)},expectedBall=nativeToCssPoint(window._diqPlayAnimation.frameAt(play,250).ball);const slowPosition={...tokens.get('SS').pos},slowExpected=window._diqPlayAnimation.frameAt(play,250).positions.SS;_sharedSolutionPlayback.seek(time);playNow=clocks.now;requestPlayFrame=clocks.request;cancelPlayFrame=clocks.cancel;
@@ -132,16 +132,14 @@ test('normal solution review consumes segmented metadata and reduced motion pres
  await page.evaluate(()=>{_solutionReview.animating=false;window._diqWatchSolution();});
  await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state','ready');
  expect(await page.evaluate(()=>POS_IDS.every(id=>Math.hypot(tokens.get(id).pos.x-currentSituation.targets[id].x,tokens.get(id).pos.y-currentSituation.targets[id].y)<0.01))).toBe(true);
- await expect(page.locator('#wrap .relay-badge')).toHaveCount(3);
- for(const [index,id] of ['SS','2B','1B'].entries()){
-  expect(await page.evaluate(id=>tokens.get(id).el.querySelector('.relay-badge')?.textContent,id)).toBe(String(index+1));
- }
- await expect(page.locator('#wrap .throwTrail')).toHaveCount(0);
- const gap=await page.evaluate(()=>{
-  const receiver=tokens.get('1B').el.getBoundingClientRect(),ball=ballEl.getBoundingClientRect();
-  return Math.hypot(receiver.x+(receiver.width-ball.width)/2-ball.x,receiver.y+(receiver.height-ball.height)/2-ball.y)-(receiver.width+ball.width)/2;
+ await expect(page.locator('#wrap .relay-badge')).toHaveCount(0);
+ await expect(page.locator('#wrap .ball.is-thrown')).toHaveCount(0);
+ await expect(page.locator('#continueBtn')).toBeVisible();
+ const ballAtHit=await page.evaluate(()=>{
+  const hit=nativeToCssPoint(currentSituation.hit);
+  return Math.hypot(parseFloat(ballEl.style.left)-hit.x,parseFloat(ballEl.style.top)-hit.y)<0.01;
  });
- expect(gap).toBeGreaterThan(4);
+ expect(ballAtHit).toBe(true);
  expect(await page.evaluate(()=>JSON.stringify(currentSituation))).toBe(expected.before);
 });
 
