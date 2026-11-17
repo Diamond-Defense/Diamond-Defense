@@ -18,7 +18,7 @@
     }
     playback?.pause();libraryReturnToMain=false;libraryOpen=true;
   }
-  import brandLogo from '$lib/assets/diamond-defence-classic.png';
+  import { asset } from '$app/paths';
   import { paintHitVisuals } from '$lib/plays/hit-visuals.js';
   import fieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, positionThrownBall } from '$lib/plays/token-presentation.js';
@@ -81,6 +81,8 @@
     }else requestAnimationFrame(()=>document.getElementById('presentBoard')?.focus());
   }
   function teach(action){if(action==='toggle'){if(running)playback.pause();else playback.play();}else if(action==='previous')playback.step(-1);else if(action==='next')playback.step(1);else playback.restart();}
+
+  const brandLogo = asset('/diamond-defence-classic.png');
 
   const editorPanels=[
     {id:'details',label:'Details'},

@@ -1687,7 +1687,7 @@ input:disabled,select:disabled,textarea:disabled{color:var(--text-disabled);curs
     0 24px 70px rgba(0,3,14,.54),
     inset 0 1px 0 rgba(255,255,255,.04);
 }
-.game-login-gate{position:absolute;inset:50% auto auto 50%;z-index:55;display:grid;width:min(360px,calc(100% - 32px));box-sizing:border-box;gap:9px;justify-items:center;transform:translate(-50%,-50%);padding:20px;border:1px solid var(--border);border-radius:16px;color:var(--dd-text);text-align:center;background:var(--surface-raised);box-shadow:var(--shadow-raised);backdrop-filter:none}.game-login-gate strong{font-size:20px}.game-login-gate span{color:var(--text-secondary);line-height:1.45}.game-login-gate .btn-green{margin-top:3px}.field-card.is-login-required #wrap{pointer-events:none;filter:saturate(.65) brightness(.66)}
+.field-card.is-login-required #wrap{pointer-events:none}
 #fieldImg{
   background:transparent;
   filter:

@@ -86,8 +86,10 @@ test.describe('Diamond Defence regression behavior', () => {
       try{
         const page=await context.newPage();
         await openCleanApp(page,{legacySignIn:false});
-        await page.locator('#playerBtn').click();
         const dialog=page.getByRole('dialog',{name:'Login'});
+        await expect(dialog).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeVisible();
         await expect(dialog.getByRole('tab')).toHaveCount(0);
         await expect(dialog.getByLabel('Username')).toBeFocused();
         await dialog.getByLabel('Username').fill(username);
@@ -95,6 +97,10 @@ test.describe('Diamond Defence regression behavior', () => {
         await dialog.locator('#usernameSignInForm').getByLabel('Password').press('Enter');
         await expect(dialog).toBeHidden();
         await expect.poll(()=>page.evaluate(()=>window.__DIQ_AUTH_USER__?.role)).toBe(role);
+        await page.reload();
+        await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
+        await page.evaluate(()=>window.__DIQ_READY__);
+        await expect(dialog).toBeHidden();
       }finally{await context.close();}
     }
   });
@@ -596,8 +602,19 @@ test.describe('Diamond Defence regression behavior', () => {
       height: image.getBoundingClientRect().height,
     }));
     expect(logo.src).toContain('diamond-defence-classic');
-    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /diamond-defence-classic-favicon/);
-    await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('sizes', '180x180');
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /diamond-defence-favicon\.png/);
+    const directWorkspace = await page.request.get('/workspace/design');
+    expect(directWorkspace.ok()).toBeTruthy();
+    const workspaceHtml = await directWorkspace.text();
+    const iconPath = workspaceHtml.match(/<link rel="icon"[^>]+href="([^"]+)"/)?.[1];
+    expect(iconPath).toContain('diamond-defence-favicon.png');
+    const favicon = await page.request.get(new URL(iconPath, directWorkspace.url()).href);
+    expect(favicon.ok()).toBeTruthy();
+    expect(favicon.headers()['content-type']).toContain('image/png');
+    expect((await favicon.body())[25]).toBe(6); // PNG color type 6 is RGBA.
+    const touchIconPath = workspaceHtml.match(/<link rel="apple-touch-icon"[^>]+href="([^"]+)"/)?.[1];
+    expect(touchIconPath).toBe(iconPath);
+    await expect(page.locator('link[rel="apple-touch-icon"]')).toHaveAttribute('href', /diamond-defence-favicon\.png/);
     expect(logo.naturalWidth).toBe(logo.naturalHeight);
     expect(logo.width).toBeGreaterThanOrEqual(44);
     expect(logo.width).toBeLessThanOrEqual(48);
@@ -1387,7 +1404,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#startBtn')).toBeDisabled();
     await expect(page.locator('#startBtn')).toBeHidden();
     await expect(page.locator('#randomSitBtn')).toBeDisabled();
-    await expect(page.locator('#gameLoginGate')).toBeVisible();
+    await expect(page.locator('#gameLoginGate')).toHaveCount(0);
 
     await page.locator('#playerBtn').click();
     const playerModal = page.locator('#playerModalOverlay');
@@ -1418,7 +1435,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#playerIdText')).toHaveText('13u-black-bob-smith-11');
     await expect(page.getByRole('button', { name:'Start Situation' })).toBeEnabled();
     await expect(page.locator('#randomSitBtn')).toBeEnabled();
-    await expect(page.locator('#gameLoginGate')).toBeHidden();
+    await expect(page.locator('#gameLoginGate')).toHaveCount(0);
     await page.reload();
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
     await page.evaluate(() => window.__DIQ_READY__);
@@ -1467,7 +1484,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#accountMenu')).toBeHidden();
     await expect(page.locator('#startBtn')).toBeDisabled();
     await expect(page.locator('#startBtn')).toBeHidden();
-    await expect(page.locator('#gameLoginGate')).toBeVisible();
+    await expect(page.locator('#gameLoginGate')).toHaveCount(0);
   });
 
   test('coach and admin tools enforce their current password gates', async ({ page }) => {

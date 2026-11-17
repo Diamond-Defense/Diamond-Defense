@@ -74,7 +74,6 @@ test('a new Situation draft creates its first record only when published from Co
 test('Admin library opens the shared training stages and publishes a new situation', async ({ page }) => {
   await page.goto('/');
   await page.evaluate(() => window.__DIQ_READY__);
-  await page.locator('#playerBtn').click();
   await page.locator('#signInUsername').fill('admin');
   await page.locator('#signInPassword').fill('password');
   await page.locator('#signInPassword').press('Enter');

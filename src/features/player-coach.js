@@ -2785,6 +2785,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
   const signInStatus = document.getElementById('signInStatus');
   usernameSignInForm?.classList.toggle('hidden', useLegacySignIn);
   document.getElementById('legacySignInControls')?.classList.toggle('hidden', !useLegacySignIn);
+  playerModalCloseX?.classList.toggle('hidden', !useLegacySignIn);
 
   const accountSecurityOverlay = document.getElementById('accountSecurityOverlay');
   const accountSecurityClose = document.getElementById('accountSecurityClose');
@@ -2994,7 +2995,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       });
     });
     playerModalOverlay.addEventListener("click", event=>{
-      if(event.target === playerModalOverlay) closePlayerModal();
+      if(useLegacySignIn && event.target === playerModalOverlay) closePlayerModal();
     });
     document.addEventListener("keydown", event=>{
       if(event.key === 'Tab' && !playerModalOverlay.classList.contains('hidden')){
@@ -3006,7 +3007,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
           (event.shiftKey ? last : first).focus();
         }
       }
-      if(event.key === "Escape" && !playerModalOverlay.classList.contains("hidden")){
+      if(useLegacySignIn && event.key === "Escape" && !playerModalOverlay.classList.contains("hidden")){
         closePlayerModal();
       }
     });
@@ -3026,7 +3027,7 @@ function updatePlayerHeaderButton(){
   }
 
   function openPlayerModal(role='player'){
-    if(!playerModalOverlay) return;
+    if (!playerModalOverlay || (!useLegacySignIn && !playerModalOverlay.classList.contains('hidden'))) return;
     window._diqClosePlaybookBrowser?.();
     refreshPlayerLoginUI();
     if(useLegacySignIn)setAuthRole(role);
@@ -4723,7 +4724,6 @@ function wireOnce(){
       playbookBrowserToggle?.focus();
     }
   });
-  if (gameLoginGateBtn) gameLoginGateBtn.addEventListener('click', ()=>window._diqOpenAuthModal?.('player'));
 
   if (resetBtn)  resetBtn.addEventListener('click', ()=>resetPlayers('reset'));
   if (checkBtn)  checkBtn.addEventListener('click', checkPositions);

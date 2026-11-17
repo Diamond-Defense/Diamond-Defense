@@ -13,7 +13,6 @@ async function openCleanApp(page) {
 }
 
 async function loginAsPlayer(page) {
-  await page.locator('#playerBtn').click();
   await page.locator('#signInUsername').fill('bob.smith');
   await page.locator('#signInPassword').fill('password');
   await page.locator('#signInPassword').press('Enter');
@@ -21,7 +20,6 @@ async function loginAsPlayer(page) {
 }
 
 async function loginAsCoach(page) {
-  await page.locator('#playerBtn').click();
   await page.locator('#signInUsername').fill('jamie.rivera');
   await page.locator('#signInPassword').fill('password');
   await page.locator('#signInPassword').press('Enter');
@@ -103,6 +101,7 @@ test.describe('release readiness', () => {
     await page.locator('#playerBtn').click();
     await Promise.all([page.waitForEvent('load'),page.locator('#accountLogoutBtn').click()]);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
+    await expect(page.getByRole('dialog',{name:'Login'}).getByLabel('Username')).toBeFocused();
     expect((await page.request.get('/api/results/me')).status()).toBe(401);
   });
 

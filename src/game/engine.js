@@ -169,8 +169,6 @@ const seqCountHud    = document.getElementById('seqCountHud');
 
 const timerBadge = document.getElementById('timerBadge');
 const timerVal   = document.getElementById('timerVal');
-const gameLoginGate = document.getElementById('gameLoginGate');
-const gameLoginGateBtn = document.getElementById('gameLoginGateBtn');
 
 const coachBtn=document.getElementById('coachBtn');
 
@@ -209,7 +207,6 @@ function applyGameAccess(){
   const fieldCard = document.querySelector('.field-card');
   fieldCard?.classList.toggle('is-login-required', !allowed);
   wrap?.setAttribute('aria-disabled', String(!allowed));
-  gameLoginGate?.classList.toggle('hidden', allowed);
   if(randomSitBtn) randomSitBtn.disabled = !allowed || playerHasPendingPractice() || !SITUATIONS.length;
   if(playbookBrowserToggle) playbookBrowserToggle.disabled = !allowed || playerHasPendingPractice();
   if(!allowed){
@@ -4060,13 +4057,16 @@ async function init(){
       // The player controls are mounted into their popup by player-coach.js.
     setHowToPhase('p1');
     const entryUrl=new URL(window.location.href);
-    if(entryUrl.searchParams.get('login')==='1'){
+    const loginRequested = entryUrl.searchParams.get('login') === '1';
+    if (loginRequested) {
       entryUrl.searchParams.delete('login');
       history.replaceState(null,'',entryUrl.toString());
-      if(!window.__DIQ_AUTH_USER__)window._diqOpenAuthModal?.('player');
     }
     const account = window.__DIQ_AUTH_USER__;
-    if (!account?.mustChangePassword) {
+    if (!account && (entryUrl.searchParams.get('signin') !== 'legacy' || loginRequested)) {
+      window._diqOpenAuthModal?.('player');
+    }
+    if (account && !account.mustChangePassword) {
       const workspace = entryUrl.searchParams.get('workspace');
       if (workspace === 'playbook') document.getElementById('playbookBrowserToggle')?.click();
       else if (workspace === 'random') randomSitBtn?.click();

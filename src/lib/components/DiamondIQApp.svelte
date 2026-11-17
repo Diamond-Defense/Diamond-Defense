@@ -3,10 +3,12 @@
   import { pushState, replaceState } from '$app/navigation';
   import type { Situation } from '$lib/domain/models';
   import DesignWorkspace from '../../routes/design/DesignWorkspace.svelte';
-  import brandLogo from '$lib/assets/diamond-defence-classic.png';
+  import { asset } from '$app/paths';
   import softFieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import legacyDocument from '../../../index.html?raw';
   import { loadLegacyRuntime } from '$lib/legacy/loadRuntime';
+
+  const brandLogo = asset('/diamond-defence-classic.png');
 
   const body = legacyDocument.match(/<body>([\s\S]*)<\/body>/i)?.[1] ?? '';
   const markup = body.replaceAll('data-diamond-defense-logo', `data-diamond-defense-logo src="${brandLogo}"`).replace(
