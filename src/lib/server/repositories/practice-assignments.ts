@@ -567,11 +567,12 @@ export class SqlitePracticeAssignmentRepository {
       throw new RecordValidationError('Every assignment recipient must be an active player on this team.');
     }
     const validSituations = await this.database.all<{ key: string; revision: number }>(
-      `SELECT key, revision FROM situations WHERE active = 1`,
+      `SELECT situation_key AS key, revision FROM team_assignable_situations WHERE team_id=?1`,
+      [teamId],
     );
     const situationRevisions = new Map(validSituations.map((row) => [row.key, Number(row.revision)]));
     if (normalized.situations.some((item) => !situationRevisions.has(item.situationKey))) {
-      throw new RecordValidationError('Every assigned situation must be active.');
+      throw new RecordValidationError('Every assigned situation must be available to this team.');
     }
     const commands = [
       ...normalized.situations.flatMap((item) => ([
@@ -744,11 +745,12 @@ export class SqlitePracticeAssignmentRepository {
         throw new RecordValidationError('Every assignment recipient must be an active player on this team.');
       }
       const situations = await this.database.all<{ key: string; revision: number }>(
-        'SELECT key, revision FROM situations WHERE active = 1',
+        `SELECT situation_key AS key, revision FROM team_assignable_situations WHERE team_id=?1`,
+        [teamId],
       );
       const revisions = new Map(situations.map((situation) => [situation.key, Number(situation.revision)]));
       if (normalized.situations.some((situation) => !revisions.has(situation.situationKey))) {
-        throw new RecordValidationError('Every assigned situation must be active.');
+        throw new RecordValidationError('Every assigned situation must be available to this team.');
       }
       await this.database.batch([
         ...normalized.situations.flatMap((item) => ([

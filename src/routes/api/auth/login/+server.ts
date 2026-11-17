@@ -11,6 +11,7 @@ export const prerender = false;
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const body = (await event.request.json()) as Record<string, unknown>;
+  const username = typeof body.username === 'string' ? body.username.trim() : '';
   const role = String(body.role || 'player');
   const password = String(body.password || '');
   if (!password) return json({ error: 'Password is required.' }, { status: 400 });
@@ -18,8 +19,9 @@ export const POST: RequestHandler = async (event) => {
   try {
     const database = databaseFor(event);
     const repository = new SqliteAuthRepository(database);
-    const authentication =
-      role === 'player'
+    const authentication = Object.hasOwn(body, 'username')
+      ? username ? await repository.authenticateUsername(username, password) : null
+      : role === 'player'
         ? await repository.authenticatePlayer(
             String(body.teamId || ''),
             String(body.playerId || ''),
@@ -37,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
 
     if (!authentication || authentication.status === 'invalid') {
       return json(
-        { code: 'INVALID_LOGIN', error: 'The selected account or password is incorrect.' },
+        { code: 'INVALID_LOGIN', error: Object.hasOwn(body, 'username') ? 'The username or password is incorrect.' : 'The selected account or password is incorrect.' },
         { status: 401 },
       );
     }
@@ -60,9 +62,11 @@ export const POST: RequestHandler = async (event) => {
     const permissions = await currentUser(database, event.cookies);
     return json({
       user: {
-        managedTeamIds: permissions?.managedTeamIds,
+        coachedTeamIds: permissions?.coachedTeamIds,
+        directorScopes: permissions?.directorScopes,
         canPublishSituations: permissions?.canPublishSituations,
         id: user.id,
+        username: user.username,
         displayName: user.displayName,
         role: user.role,
         teamId: user.teamId,

@@ -8,6 +8,7 @@ import {repositoryErrorResponse} from '$lib/server/repositories/http-errors';
 export const GET:RequestHandler=async event=>{
  const user=await requireUser(event,['coach','admin']);const db=databaseFor(event);
  if(event.params.type==='situation'){
+  if(!await db.one("SELECT key FROM situations WHERE key=?1 AND library_scope='global' AND active=1",[event.params.id])) throw error(404,'Situation is unavailable.');
   const record=await new SqliteSituationRepository(db).get(event.params.id);if(!record)throw error(404,'Situation is unavailable.');
   return json(record,{headers:{'Cache-Control':'private, no-store'}});
  }

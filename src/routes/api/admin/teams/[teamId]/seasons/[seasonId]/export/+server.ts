@@ -2,7 +2,7 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 import { SqliteSeasonRepository } from '$lib/server/repositories/seasons';
-import { requireUser } from '$lib/server/security/authorization';
+import { requireDirectorTeamManager } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -13,7 +13,7 @@ function cell(value: unknown): string {
 }
 
 export const GET: RequestHandler = async (event) => {
-  await requireUser(event, ['admin']);
+  await requireDirectorTeamManager(event, event.params.teamId);
   try {
     const exported = await new SqliteSeasonRepository(databaseFor(event)).exportSeason(
       event.params.teamId,

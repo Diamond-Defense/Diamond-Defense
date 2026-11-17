@@ -8,7 +8,7 @@ import {
   type PracticeAssignmentInput,
 } from '$lib/server/repositories/practice-assignments';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
-import { assertSameOrigin, requireTrainingManager, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requirePracticeAssignmentManager, requireTrainingManager, requireUser } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -62,7 +62,7 @@ export const POST: RequestHandler = async (event) => {
   const body = (await event.request.json()) as PracticeAssignmentInput & { teamId?: string };
   const teamId = String(body.teamId || user.teamId || '');
   if (!teamId) return json({ error: 'A team is required.' }, { status: 400 });
-  await requireTrainingManager(event, teamId);
+  await requirePracticeAssignmentManager(event, teamId);
   try {
     const assignment = await new SqlitePracticeAssignmentRepository(databaseFor(event))
       .create(teamId, user.id, body);

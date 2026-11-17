@@ -9,7 +9,15 @@
   import { copyLibraryPlay } from '$lib/plays/library.js';
   let libraryOpen=$state(false), libraryReturnToMain=$state(false);
   function closeLibrary(){libraryOpen=false;if(!presenting&&(!hasEditor||libraryReturnToMain)){leaving=true;window.location.assign('/');return;}requestAnimationFrame(()=>document.getElementById(presenting?(presentationOrigin==='library'?'backToLibrary':'exitPresentation'):'browseLibrary')?.focus());}
-  function browseLibrary(){playback?.pause();libraryReturnToMain=false;libraryOpen=true;}
+  function browseLibrary(){
+    if (data.designScope) {
+      if (!allowReplace()) return;
+      leaving = true;
+      window.location.assign('/workspace/design?' + new URLSearchParams({ type: data.designScope.type, id: data.designScope.id }));
+      return;
+    }
+    playback?.pause();libraryReturnToMain=false;libraryOpen=true;
+  }
   import brandLogo from '$lib/assets/diamond-defence-classic.png';
   import { paintHitVisuals } from '$lib/plays/hit-visuals.js';
   import fieldImage from '$lib/assets/diamond-defense-soft-field.png';
@@ -172,7 +180,11 @@
   $effect(()=>{
     if(!trainingMode||editorPanel!=='review')return;
     let active=true;
-    request('/api/situations').then(records=>{
+    const scope = data.designScope;
+    const related = scope
+      ? request('/api/design?' + new URLSearchParams({ type: scope.type, id: scope.id })).then(result => result.entries.filter(entry => result.ownKeys.includes(entry.key)))
+      : request('/api/situations');
+    related.then(records=>{
       if(active){relatedRecords=records;relatedLoadError='';}
     }).catch(()=>{
       if(active)relatedLoadError='Similar situations could not be loaded.';
@@ -640,7 +652,19 @@
     const reviewTransfer=readHandoff(sessionStorage,data.userId,'training-review');
     const outcomeTransfer=readHandoff(sessionStorage,data.userId,'training-outcomes');
     const newTransfer=readHandoff(sessionStorage,data.userId,'training-new');
-    const transfer=reviewTransfer||outcomeTransfer||newTransfer||readHandoff(sessionStorage,data.userId,'training')||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
+    const transfer=data.designDraft ? null : reviewTransfer||outcomeTransfer||newTransfer||readHandoff(sessionStorage,data.userId,'training')||presentationTransfer||readHandoff(sessionStorage,data.userId,'board');
+    if (data.designScope && !transfer) {
+      const starts = newBoard().defenders;
+      const scopedDraft = data.initialSituation || {
+        key: `situation-${crypto.randomUUID()}`, title: 'New situation', desc: '', category: 'Singles',
+        difficulty: 'foundational', primaryCategory: 'base-coverage', relatedCategories: [],
+        starts, targets: Object.fromEntries(POSITIONS.map(id => [id, { ...starts[id], tol: 68 }])),
+        outs: 0, runnersOn: {}, hit: { x: 1600, y: 700 }, hitType: 'line', playSeq: [], playSeq2: [],
+        batterAdvance: 1, playOutcome: { result: 'single', batterResult: 'first', outsRecorded: 0, reviewStatus: 'needs_review' },
+        runnerOutcomes: [],
+      };
+      restoreSituation(scopedDraft, data.initialSituation);
+    }
     if(transfer){
       hasEditor=true;
       restoreSituation(transfer.situation,transfer.baseline,transfer.rationale,reviewTransfer?'review':'timeline');
@@ -903,20 +927,33 @@
     const issues=previewIssues();if(issues)throw new Error(issues);
     const situation=draftSituation();
     if(reviewIssues.length)throw new Error(reviewIssues.join(' '));
+    if (data.designDraft) {
+      const {intent,key,revision:sourceRevision} = data.designDraft;
+      await request('/api/design', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+        action:intent === 'propose' ? 'change_proposal' : 'create_variation',
+        type:data.designScope.type,id:data.designScope.id,sourceKey:key,sourceRevision,situation,
+      })});
+      pendingSituation=false;
+      cleanSnapshot=editorSnapshot();
+      window.location.assign('/workspace/design?' + new URLSearchParams({type:data.designScope.type,id:data.designScope.id,
+        ...(intent === 'propose' ? {view:'submissions'} : {})}));
+      return;
+    }
     let value;
     if(data.canPublish){
       const creating=!Number.isInteger(Number(situation.revision))||Number(situation.revision)<1;
-      if(data.role==='coach'&&!creating){
+      if(!data.designScope&&data.role==='coach'&&!creating){
         const usage=await request(`/api/situations/${encodeURIComponent(situation.key)}/usage`);
         if(!window.confirm(`Publish changes to the shared Situation? Team Playbooks using it: ${(usage.teams||[]).map(t=>t.name).join(', ')||'None'}.`))return;
       }
-      value=await request(creating?'/api/situations':`/api/situations/${encodeURIComponent(situation.key)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json',...(creating?{}:{'If-Match':String(situation.revision)})},body:JSON.stringify(situation)});
+      if (data.designScope) {
+        value = await request('/api/design', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'publish', type: data.designScope.type, id: data.designScope.id, revision: situation.revision, situation }) });
+      } else {
+        value=await request(creating?'/api/situations':`/api/situations/${encodeURIComponent(situation.key)}`,{method:creating?'POST':'PUT',headers:{'Content-Type':'application/json',...(creating?{}:{'If-Match':String(situation.revision)})},body:JSON.stringify(situation)});
+      }
       linkedSituation=clone(value.record);situationBaseline=clone(value.record);board.sourceSituation=clone(value.record);pendingSituation=false;cleanSnapshot=editorSnapshot();
       history=emptyHistory();message=creating?'Situation created.':'Situation changes saved.';
-    }else{
-      if(!rationale.trim())throw new Error('Add a short reason for the proposal.');
-      await request('/api/situation-submissions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({situation,rationale})});
-      openSituationAfterSubmission();message='Proposal submitted. Players still use the published version.';
     }
   }catch(e){message=e.message;}finally{busy=false;}}
   function openSituationAfterSubmission(){
@@ -1301,7 +1338,7 @@
     </details>
     <div class="button-row"><button onclick={openPlayerPreview}>Preview as player</button><button onclick={()=>playerPreview(false)}>Preview opening hit</button><button onclick={()=>playerPreview(true)}>Preview solution</button><button onclick={stop}>Stop preview</button></div>
     <div class="board-controls">
-    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if !data.canPublish}<label>Proposal reason <textarea bind:value={rationale}></textarea></label>{/if}<button disabled={busy} onclick={publish}>{data.canPublish?'Publish Situation':'Submit for Review'}</button></div>
+    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if data.canPublish}<button disabled={busy} onclick={publish}>{data.designDraft?.intent === 'propose' ? 'Submit proposed update' : data.designDraft?.intent === 'variation' ? 'Publish variation' : 'Publish Situation'}</button>{:else}<a data-sveltekit-reload href="/workspace/design">Open Design workspace</a>{/if}</div>
   </section>
   {:else if editorPanel==='review'}
     <section class="board-controls mode-controls" aria-label="Board review">

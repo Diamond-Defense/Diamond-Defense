@@ -23,7 +23,7 @@ export const PUT: RequestHandler = async event => {
   const token = crypto.randomUUID();
   const [result] = await db.batch([
     {sql:'UPDATE situation_library_state SET revision = revision + 1, token = ?1 WHERE id = 1 AND revision = ?2',params:[token,revision]},
-    {sql:`UPDATE situations SET library_order = (SELECT CAST(j.key AS INTEGER) FROM json_each(?1) j WHERE j.value = situations.key) WHERE active = 1 AND EXISTS(SELECT 1 FROM situation_library_state WHERE id = 1 AND token = ?2)`,params:[JSON.stringify(keys),token]},
+    {sql:`UPDATE situations SET library_order = (SELECT CAST(j.key AS INTEGER) FROM json_each(?1) j WHERE j.value = situations.key) WHERE active = 1 AND library_scope = 'global' AND EXISTS(SELECT 1 FROM situation_library_state WHERE id = 1 AND token = ?2)`,params:[JSON.stringify(keys),token]},
   ]);
   if (!result.changes) return json({error:'The library order changed. Reload before saving.'},{status:409});
   await writeAudit(db,user.id,'reorder','situation-library','shared',before.map(item=>item.key),keys);

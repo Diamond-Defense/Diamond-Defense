@@ -547,20 +547,46 @@ const ensureHeaderGrouping = () => {
   }
   [document.getElementById('coachBtn'), document.getElementById('adminBtn')]
     .forEach(el => { if (el) legacyRoleActions.appendChild(el); });
+  let orgWorkspaceButton = document.getElementById('orgWorkspaceBtn');
+  if (!orgWorkspaceButton) {
+    orgWorkspaceButton = document.createElement('button');
+    orgWorkspaceButton.id = 'orgWorkspaceBtn';
+    orgWorkspaceButton.type = 'button';
+    orgWorkspaceButton.className = 'btn-slate hidden';
+    orgWorkspaceButton.textContent = 'Org workspace';
+    orgWorkspaceButton.setAttribute('aria-controls', 'adminWorkspace');
+    orgWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('org'));
+  }
+  let designWorkspaceButton = document.getElementById('designWorkspaceBtn');
+  if (!designWorkspaceButton) {
+    designWorkspaceButton = document.createElement('button');
+    designWorkspaceButton.id = 'designWorkspaceBtn';
+    designWorkspaceButton.type = 'button';
+    designWorkspaceButton.className = 'btn-slate hidden';
+    designWorkspaceButton.textContent = 'Design workspace';
+    designWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('design'));
+  }
+  let trainingWorkspaceButton = document.getElementById('trainingWorkspaceBtn');
+  if (!trainingWorkspaceButton) {
+    trainingWorkspaceButton = document.createElement('button');
+    trainingWorkspaceButton.id = 'trainingWorkspaceBtn';
+    trainingWorkspaceButton.type = 'button';
+    trainingWorkspaceButton.className = 'btn-slate hidden';
+    trainingWorkspaceButton.textContent = 'Training workspace';
+    trainingWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('training'));
+  }
   if (staffToolsButton.dataset.wired !== '1') {
     staffToolsButton.dataset.wired = '1';
     staffToolsButton.addEventListener('click', () => {
-      window._diqCloseAccountMenu?.();
-      window._diqCloseAccountSecurity?.();
-      closePlaybookBrowser();
-      const role = window.__DIQ_AUTH_USER__?.role;
-      if (role === 'coach') document.getElementById('coachBtn')?.click();
-      else if (role === 'admin') document.getElementById('adminBtn')?.click();
+      window._diqNavigateWorkspace?.(window.__DIQ_AUTH_USER__?.role === 'admin' ? 'org' : 'training');
     });
   }
   if (practiceToggle) utilityActions.appendChild(practiceToggle);
   if (playbookToggle) utilityActions.appendChild(playbookToggle);
   if (staffToolsButton) utilityActions.appendChild(staffToolsButton);
+  utilityActions.appendChild(orgWorkspaceButton);
+  utilityActions.appendChild(trainingWorkspaceButton);
+  utilityActions.appendChild(designWorkspaceButton);
   if (playerButton) accountActions.appendChild(playerButton);
   if (accountMenu) accountActions.appendChild(accountMenu);
   if (!document.getElementById('coachBoardLink')) {
@@ -2177,6 +2203,7 @@ function setCoachMode(enabled, options={}){
   wipePhase2StateUI();
   clearSolutionReview();
   if (continueBtn) continueBtn.classList.add('hidden');
+  window._diqUpdateWorkspaceNavigation?.();
 
 }
 window._diqSetEditorMode = (role)=>setCoachMode(Boolean(role), { role:role || 'coach' });
@@ -2404,9 +2431,14 @@ function normalizeTargets(obj){
 function normalizeHit(obj){ if (!obj || typeof obj !== 'object') return {}; const p=normPoint(obj); return p ? {x:p.x,y:p.y} : {}; }
 function mapHitType(v){ const t=String(v||'').toLowerCase(); return (t==='line'||t==='popup'||t==='grounder')?t:'line'; }
 
-async function loadSituationsFromDatabase(){
-  const arr = await diqApiRequest('situations', { cache:'no-store' });
+async function loadSituationsFromDatabase(teamId, isCurrent = () => true, playbook = false){
+  const params = new URLSearchParams();
+  if (teamId) params.set('teamId',teamId);
+  if (playbook) params.set('catalog','playbook');
+  const path = params.size ? 'situations?' + params : 'situations';
+  const arr = await diqApiRequest(path, { cache:'no-store' });
   if(!Array.isArray(arr)) throw new Error('Situation API did not return an array.');
+  if (!isCurrent()) return;
 
   SITUATIONS = arr.map((raw,i)=> normalizeSituation(raw,i));
   console.info('[Database] Loaded', SITUATIONS.length, 'situations.');
@@ -2923,18 +2955,30 @@ function renderPlaybookBrowser(){
   if(extraLabel) extraLabel.textContent = extraCount ? `· ${extraCount} active` : '';
   if(playbookClearFilters) playbookClearFilters.disabled = ![playbookSearch, playbookCategory, playbookDifficulty, playbookHitOutcome, playbookRunners].some(control=>control?.value);
   if (playbookResultCount) playbookResultCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'situation' : 'situations'}`;
-  if(playbookBrowserEmpty)playbookBrowserEmpty.textContent=!SITUATIONS.length?'Your team Playbook is empty. Ask your coach to select situations, or open your assigned practice.':'No situations match these filters.';
+  if(playbookBrowserEmpty)playbookBrowserEmpty.textContent=!SITUATIONS.length?'Your team Playbook is empty. Ask your coach about availability, or open your assigned practice.':'No situations match these filters.';
   playbookBrowserEmpty?.classList.toggle('hidden', filtered.length > 0);
   if (playbookRandomFiltered) playbookRandomFiltered.disabled = filtered.length === 0;
 }
 
-function openPlaybookBrowser(){
+let playbookOpenRequest = 0;
+async function openPlaybookBrowser(eventOrTeam){
   if(document.body.classList.contains('situation-player-preview')) return;
   if (!playbookBrowserOverlay) return;
   if(!requireFreePlayAccess()) return;
   window._diqCloseAccountMenu?.();
   window._diqCloseAccountSecurity?.();
   closeGuideRail();
+  const user = window.__DIQ_AUTH_USER__;
+  const teamId = typeof eventOrTeam === 'string' ? eventOrTeam : undefined;
+  const request = ++playbookOpenRequest;
+  const isCurrent = () => request === playbookOpenRequest && window.__DIQ_AUTH_USER__?.id === user?.id;
+  try {
+    await loadSituationsFromDatabase(teamId,isCurrent,true);
+  } catch (error) {
+    if (isCurrent()) toast(error.message || 'Unable to load the Team Playbook.');
+    return;
+  }
+  if (!isCurrent() || !requireFreePlayAccess()) return;
   renderPlaybookBrowser();
   playbookBrowserOverlay.classList.remove('hidden');
   document.body.classList.add('playbook-browser-open');
@@ -2943,6 +2987,7 @@ function openPlaybookBrowser(){
 }
 
 function closePlaybookBrowser(){
+  playbookOpenRequest++;
   playbookBrowserOverlay?.classList.add('hidden');
   document.body.classList.remove('playbook-browser-open');
   playbookBrowserToggle?.setAttribute('aria-expanded', 'false');
@@ -2965,6 +3010,29 @@ function populateSituations(selectedKey){
 
 
 
+
+window._diqPlayTestSituation = snapshot => {
+  const previous = currentSituation && Fcopy(currentSituation);
+  const key = snapshot.key;
+  const savedHit = hitsMap[key];
+  const savedStart = startsMap[key];
+  try {
+    setSituation(key, Fcopy(snapshot));
+  } catch (error) {
+    restore();
+    throw error;
+  }
+  return restore;
+
+  function restore() {
+    if (savedHit) hitsMap[key] = savedHit;
+    else delete hitsMap[key];
+    if (savedStart) startsMap[key] = savedStart;
+    else delete startsMap[key];
+    if (previous) setSituation(previous.key, previous);
+    else clearCurrentSituation();
+  }
+};
 
 function setSituation(key, situationSnapshot=null){
   if(playerHasPendingPractice() && !situationSnapshot && currentSituation){
@@ -3996,6 +4064,14 @@ async function init(){
       entryUrl.searchParams.delete('login');
       history.replaceState(null,'',entryUrl.toString());
       if(!window.__DIQ_AUTH_USER__)window._diqOpenAuthModal?.('player');
+    }
+    const account = window.__DIQ_AUTH_USER__;
+    if (!account?.mustChangePassword) {
+      const workspace = entryUrl.searchParams.get('workspace');
+      if (workspace === 'playbook') document.getElementById('playbookBrowserToggle')?.click();
+      else if (workspace === 'random') randomSitBtn?.click();
+      else if (workspace === 'guide') document.getElementById('playbookToggle')?.click();
+      else if (workspace === 'account') window._diqOpenAccountMenu?.();
     }
 
   } catch (err){

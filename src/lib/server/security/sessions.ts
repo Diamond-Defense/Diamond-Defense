@@ -6,6 +6,12 @@ export const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
 export const SESSION_IDLE_TIMEOUT_SECONDS = 12 * 60 * 60;
 const SESSION_TOUCH_INTERVAL_SECONDS = 5 * 60;
 
+export interface DirectorScope {
+  role: 'organization_director' | 'regional_director';
+  organizationId: string | null;
+  regionId: string | null;
+}
+
 export interface AuthenticatedUser {
   id: string;
   username: string;
@@ -15,7 +21,8 @@ export interface AuthenticatedUser {
   teamName: string | null;
   jerseyNumber: string | null;
   mustChangePassword: boolean;
-  managedTeamIds?: string[];
+  coachedTeamIds?: string[];
+  directorScopes?: DirectorScope[];
   canPublishSituations?: boolean;
 }
 
@@ -114,6 +121,12 @@ export async function currentUser(
        FROM sessions s
        JOIN users u ON u.id = s.user_id
        LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
+         AND tm.team_role = u.role AND EXISTS (
+           SELECT 1 FROM team_seasons active_season
+           JOIN teams active_team ON active_team.id = active_season.team_id AND active_team.active = 1
+           WHERE active_season.id = tm.season_id AND active_season.status = 'active'
+             AND active_team.id = tm.team_id
+         )
        LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
        LEFT JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
       WHERE s.token_hash = ?1 AND s.expires_at > ?2 AND s.last_seen_at > ?3
@@ -134,11 +147,26 @@ export async function currentUser(
       now.toISOString(),
     ]);
   }
-  const access = row.role === 'coach' ? await database.all<{team_id:string}>('SELECT a.team_id FROM coach_team_access a JOIN teams t ON t.id=a.team_id AND t.active=1 WHERE a.user_id=?1',[row.id]) : [];
-  const publishing = row.role === 'coach' ? await database.one<{publish_situations:number}>('SELECT publish_situations FROM coach_permissions WHERE user_id=?1',[row.id]) : null;
+  const memberships = row.role === 'coach' ? await database.all<{team_id:string}>(
+    `SELECT m.team_id
+       FROM team_memberships m
+       JOIN teams t ON t.id=m.team_id AND t.active=1
+       JOIN team_seasons ts ON ts.id=m.season_id AND ts.team_id=t.id AND ts.status='active'
+      WHERE m.user_id=?1 AND m.active=1 AND m.team_role='coach'
+      ORDER BY m.team_id`,
+    [row.id],
+  ) : [];
+  const coachedTeamIds = memberships.map(membership => membership.team_id);
+  const directorScopes = row.role === 'coach' ? await database.all<DirectorScope>(
+    `SELECT role, organization_id AS organizationId, region_id AS regionId
+       FROM workspace_assignments WHERE user_id = ?1
+        AND role IN ('organization_director', 'regional_director') ORDER BY role, organization_id, region_id`,
+    [row.id],
+  ) : [];
   return {
-    managedTeamIds: [...new Set([row.team_id, ...access.map(item=>item.team_id)].filter((id): id is string=>Boolean(id)))],
-    canPublishSituations: row.role === 'admin' || Boolean(publishing?.publish_situations),
+    directorScopes,
+    coachedTeamIds,
+    canPublishSituations: row.role === 'admin',
     id: row.id,
     username: row.username,
     displayName: row.display_name,

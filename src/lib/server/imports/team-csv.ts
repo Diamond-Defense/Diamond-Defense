@@ -76,7 +76,7 @@ interface ImportPlan {
   operations: ImportOperation[];
 }
 
-const REQUIRED_HEADERS = ['record_type', 'action', 'team_id'];
+const REQUIRED_HEADERS = ['record_type', 'team_id'];
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{1,79}$/;
 const MAX_RECORDS = 100;
 
@@ -90,6 +90,19 @@ export function teamCsvTemplate(): string {
     'member,upsert,13u-black,,,,player,Jordan Lee,12,Temp-4821',
     'member,upsert,13u-black,,,,coach,Coach Rivera,,change-me',
   ].join('\r\n');
+}
+
+export function teamRosterCsv(team: TeamOption, download: 'template' | 'export'): string {
+  const headers = ['team_id', 'role', 'name', 'first_name', 'last_name', 'number', 'password'];
+  const rows = download === 'template'
+    ? [headers, [team.id, '', '', '', '', '', '']]
+    : [
+        [...headers, 'account_id', 'username'],
+        ...team.roster.filter(member => member.active !== false).map(member => [
+          team.id, member.role, member.name, '', '', member.number, '', member.playerId, member.username || '',
+        ]),
+      ];
+  return rows.map(row => row.map(value => `"${value.replaceAll('"', '""')}"`).join(',')).join('\r\n');
 }
 
 function normalizeHeader(value: string): string {
@@ -213,7 +226,7 @@ function addIssue(issues: TeamCsvIssue[], row: number, message: string, severity
   issues.push({ row, severity, message });
 }
 
-async function fingerprint(csv: string, operations: ImportOperation[]): Promise<string> {
+async function fingerprint(csv: string, operations: ImportOperation[], scope?: TeamOption): Promise<string> {
   const state = operations.map((operation) => ({
     row: operation.row, kind: operation.kind, action: operation.action,
     teamId: operation.teamId,
@@ -221,20 +234,24 @@ async function fingerprint(csv: string, operations: ImportOperation[]): Promise<
     revision: operation.before?.revision ?? 0,
     userRevision: operation.kind === 'member' ? operation.before?.userRevision ?? 0 : undefined,
   }));
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${csv}\n${JSON.stringify(state)}`));
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${csv}\n${JSON.stringify([scope?.id, scope?.revision, scope?.activeSeasonId, state])}`));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: string): Promise<ImportPlan> {
+export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: string, scopeId?: string, playersOnly = false): Promise<ImportPlan> {
   const existingTeams = await new SqliteTeamRepository(database).listForAdministration(true);
   const modern = parseDelimited(csv);
   const legacy = legacyRecords(csv, existingTeams);
   const format = legacy ? 'legacy' : 'modern';
   const records = legacy || modern.records;
   const issues: TeamCsvIssue[] = [];
+  const scope = scopeId ? existingTeams.find(team => team.id === scopeId && team.active) : undefined;
+  if (scopeId && !scope) addIssue(issues, 1, 'Select an active team before importing.');
+  if (scopeId && legacy) addIssue(issues, 1, 'Use the roster template for the selected team.');
   if (modern.issue && !legacy) addIssue(issues, 1, modern.issue);
   if (!legacy) {
-    REQUIRED_HEADERS.filter((header) => !modern.headers.includes(header)).forEach((header) =>
+    const required = scopeId ? ['role'] : REQUIRED_HEADERS;
+    required.filter((header) => !modern.headers.includes(header)).forEach((header) =>
       addIssue(issues, 1, `Missing required column: ${header}.`));
   } else {
     addIssue(issues, 1, 'Legacy block CSV detected. Review the generated stable IDs before importing.', 'warning');
@@ -260,6 +277,7 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     .filter((member) => member.active && member.role === 'player' && member.number)
     .map((member) => [`${team.id}\u0000${member.number}`, member.playerId] as const)));
   const seen = new Set<string>();
+  const identityCounts = new Map<string, number>();
 
   const orderedRecords = records.slice(0, MAX_RECORDS).sort((left, right) => {
     const leftTeam = left.values.record_type?.trim().toLowerCase() === 'team' ? 0 : 1;
@@ -268,15 +286,25 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
   });
   for (const record of orderedRecords) {
     const values = record.values;
-    const kind = values.record_type?.trim().toLowerCase();
+    const kind = values.record_type?.trim().toLowerCase() || (scopeId ? 'member' : '');
     const requestedAction = values.action?.trim().toLowerCase() || 'upsert';
-    const teamId = values.team_id?.trim().toLowerCase();
+    const suppliedTeam = values.team_id?.trim().toLowerCase();
+    const teamId = suppliedTeam || scopeId || '';
+    if (scopeId && (teamId !== scopeId || kind !== 'member' || requestedAction !== 'upsert')) {
+      addIssue(issues, record.row, 'This roster accepts only member additions or updates for the selected team.');
+      continue;
+    }
     if (kind !== 'team' && kind !== 'member') { addIssue(issues, record.row, 'record_type must be team or member.'); continue; }
     if (!['upsert', 'archive'].includes(requestedAction)) { addIssue(issues, record.row, 'action must be upsert or archive.'); continue; }
     if (!ID_PATTERN.test(teamId)) { addIssue(issues, record.row, 'team_id must use 2–80 lowercase letters, numbers, or hyphens.'); continue; }
-    const suppliedUserId = values.user_id?.trim().toLowerCase() || '';
+    const suppliedUserId = (values.account_id || values.user_id || values.user_uid || '').trim().toLowerCase();
+    const name = values.name?.trim() || [values.first_name || values.firstname, values.last_name || values.lastname]
+      .map(part => part?.trim()).filter(Boolean).join(' ');
+    const identity = JSON.stringify([teamId, values.role?.trim().toLowerCase(), name.toLowerCase(), values.number?.trim() || '']);
+    const ordinal = (identityCounts.get(identity) || 0) + 1;
+    if (scopeId && !suppliedUserId) identityCounts.set(identity, ordinal);
     // Stable across preview and commit; never derive identifiers from passwords.
-    const newMemberIdentity = JSON.stringify([teamId, values.role?.trim().toLowerCase(), values.name?.trim().toLowerCase(), values.number?.trim() || '']);
+    const newMemberIdentity = scopeId && ordinal > 1 ? JSON.stringify([identity, ordinal]) : identity;
     const duplicateKey = kind === 'team' ? `team:${teamId}`
       : suppliedUserId ? `member:${suppliedUserId}` : `new-member:${newMemberIdentity}`;
     if (seen.has(duplicateKey)) { addIssue(issues, record.row, 'This record appears more than once in the file.'); continue; }
@@ -335,10 +363,14 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     const existingMembership = memberships.get(`${teamId}\u0000${userId}`);
     const activeMembership = activeMemberships.get(userId);
     const before = existingMembership?.member;
-    if (!suppliedUserId && (existingUser || [...memberships.values()].some(entry =>
+    if (!suppliedUserId && (existingUser || (!scopeId && [...memberships.values()].some(entry =>
       entry.team.id === teamId && entry.member.role === values.role?.trim().toLowerCase()
-      && entry.member.name.trim().toLowerCase() === values.name?.trim().toLowerCase()))) {
-      addIssue(issues, record.row, 'This account may already exist. Supply user_id from Download selected team to update or restore it. Blank IDs only create new accounts.');
+      && entry.member.name.trim().toLowerCase() === name.toLowerCase())))) {
+      addIssue(issues, record.row, 'This account may already exist. Download the team roster and keep its account ID to update it. Blank IDs only create new accounts.');
+      continue;
+    }
+    if (scopeId && suppliedUserId && !existingUser) {
+      addIssue(issues, record.row, 'Account ID was not found. Leave it blank to add a new member.');
       continue;
     }
     if (existingUser && !before) {
@@ -351,7 +383,7 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
       );
       continue;
     }
-    if (before && activeMembership && activeMembership.team.id !== teamId) {
+    if (before && activeMembership && activeMembership.team.id !== teamId && !(scopeId && before.active)) {
       addIssue(issues, record.row, `Account ${userId} already belongs to ${activeMembership.team.name}. Use Transfer player in Admin Tools.`);
       continue;
     }
@@ -362,7 +394,6 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
       continue;
     }
     const role = values.role?.trim().toLowerCase();
-    const name = values.name?.trim();
     const number = role === 'player' ? values.number?.trim() || '' : '';
     const password = values.password || '';
     if (role !== 'player' && role !== 'coach') { addIssue(issues, record.row, 'role must be player or coach.'); continue; }
@@ -385,6 +416,10 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
     }
     const action: ImportAction = !before ? 'create' : !before.active ? 'restore'
       : before.name !== name || before.number !== number || Boolean(password) ? 'update' : 'unchanged';
+    if (playersOnly && role !== 'player' && action !== 'unchanged') {
+      addIssue(issues, record.row, 'Only Platform Admin can change coach accounts through CSV.');
+      continue;
+    }
     const operation: MemberOperation = { row: record.row, kind, action, label: `${name}${role === 'player' ? ` #${number}` : ''}`, teamId, userId, role, name, number, password, before };
     operations.push(operation);
     const plannedMember: TeamOption['roster'][number] = before
@@ -410,7 +445,7 @@ export async function planTeamCsvImport(database: SqliteDatabaseAdapter, csv: st
   const changes = operations.filter((operation) => operation.action !== 'unchanged').length;
   const preview: TeamCsvPreview = {
     valid: errors === 0,
-    fingerprint: await fingerprint(csv, operations),
+    fingerprint: await fingerprint(csv, operations, scope),
     format,
     summary: {
       rows: records.length, changes,
@@ -443,8 +478,10 @@ export async function commitTeamCsvImport(
   csv: string,
   expectedFingerprint: string,
   actorUserId: string,
+  scopeId?: string,
+  playersOnly = false,
 ): Promise<TeamCsvPreview> {
-  const plan = await planTeamCsvImport(database, csv);
+  const plan = await planTeamCsvImport(database, csv, scopeId, playersOnly);
   if (!plan.preview.valid) throw new TeamCsvValidationError('The CSV contains validation errors. Preview it again and correct the file.');
   if (!expectedFingerprint || expectedFingerprint !== plan.preview.fingerprint) {
     throw new TeamCsvStalePreviewError('The database changed after this preview. Preview the CSV again before importing.');
@@ -514,7 +551,9 @@ export async function commitTeamCsvImport(
         WHERE team_id = ?1 AND user_id = ?2 AND revision = ?5`, params: [operation.teamId, operation.userId, now, actorUserId, operation.before!.revision] });
       commands.push({ sql: `UPDATE users SET active = 0, archived_at = ?2, archived_by = ?3,
         revision = revision + 1, updated_at = ?2 WHERE id = ?1
-          AND NOT EXISTS (SELECT 1 FROM team_memberships WHERE user_id = ?1 AND active = 1)`,
+          AND NOT EXISTS (SELECT 1 FROM team_memberships WHERE user_id = ?1 AND active = 1)
+          AND NOT EXISTS (SELECT 1 FROM workspace_assignments WHERE user_id = ?1
+            AND role IN ('organization_director', 'regional_director'))`,
         params: [operation.userId, now, actorUserId] });
       commands.push({ sql: `UPDATE season_memberships SET status = 'removed', removed_at = ?3,
         removed_by = ?4 WHERE season_id = ?1 AND user_id = ?2`,

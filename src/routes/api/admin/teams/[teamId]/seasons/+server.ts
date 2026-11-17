@@ -3,12 +3,12 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 import { SqliteSeasonRepository, type SeasonInput } from '$lib/server/repositories/seasons';
-import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireDirectorTeamManager } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
 export const GET: RequestHandler = async (event) => {
-  await requireUser(event, ['admin']);
+  await requireDirectorTeamManager(event, event.params.teamId);
   const repository = new SqliteSeasonRepository(databaseFor(event));
   return json({
     seasons: await repository.list(event.params.teamId),
@@ -18,7 +18,7 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['admin']);
+  const user = await requireDirectorTeamManager(event, event.params.teamId);
   try {
     const season = await new SqliteSeasonRepository(databaseFor(event)).create(
       event.params.teamId,

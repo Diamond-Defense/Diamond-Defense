@@ -24,7 +24,7 @@ const _diqDirtyTeams = new Set();
 const _diqDirtyMembers = new Map();
 
 function diqApiUrl(path){
-  return `./api/${String(path || '').replace(/^\/+/, '')}`;
+  return `/api/${String(path || '').replace(/^\/+/, '')}`;
 }
 
 async function diqApiRequest(path, options={}){
@@ -1154,7 +1154,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     document.getElementById('practiceQueueCount').textContent = `${practiceQueue.length} situations selected · Players complete these in the order below.`;
     const locked = practiceEditingAssignment?.status === 'active';
     document.getElementById('practiceSelectedQueue').innerHTML = practiceQueue.map((key,index)=>{
-      const situation = SITUATIONS.find(item=>item.key === key);
+      const situation = trainingCatalog.find(item=>item.key === key) || SITUATIONS.find(item=>item.key === key);
       return `<li><span>${escapeHtml(situation ? practiceSituationLabel(situation) : key)}</span>${locked ? '' : `<button type="button" class="btn btn-ghost" data-queue-move="${index}" data-direction="-1" aria-label="Move ${escapeHtml(key)} up" ${index===0?'disabled':''}>↑</button><button type="button" class="btn btn-ghost" data-queue-move="${index}" data-direction="1" aria-label="Move ${escapeHtml(key)} down" ${index===practiceQueue.length-1?'disabled':''}>↓</button>`}</li>`;
     }).join('');
   }
@@ -1284,7 +1284,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(practiceSituationCategory && practiceSituationCategory.options.length <= 1){
         window.DIQ_TEACHING_CATEGORIES.forEach(category=>practiceSituationCategory.appendChild(new Option(category.label, category.id)));
       }
-      practiceSituationChoices.innerHTML = (Array.isArray(SITUATIONS) ? SITUATIONS : []).map(situation=>`
+      practiceSituationChoices.innerHTML = (trainingCatalogTeam === staffTeamId() ? trainingCatalog : []).map(situation=>`
         <label class="practice-situation-choice" data-search="${escapeHtml(`${practiceSituationLabel(situation)} ${situation.displayCode || ''} ${situation.desc || ''} ${window._diqAudienceLabel?.(situation)||''}`.toLowerCase())}" data-categories="${escapeHtml([situation.primaryCategory, ...(situation.relatedCategories || [])].join('|'))}" data-difficulty="${escapeHtml(situation.difficulty || 'intermediate')}">
           <input type="checkbox" value="${escapeHtml(situation.key)}" ${assignedSituations.has(situation.key) ? 'checked' : ''} ${activeEdit ? 'disabled' : ''}>
           <span><strong>${escapeHtml(practiceSituationLabel(situation))}</strong><small>${escapeHtml(window._diqAudienceLabel?.(situation)||'')}</small><small>${escapeHtml(window._diqTeachingCategoryLabel?.(situation.primaryCategory) || 'Uncategorized')} · ${escapeHtml(window._diqDifficultyLabel?.(situation.difficulty) || situation.difficulty || 'Intermediate')} · ${escapeHtml(situation.category || 'General')}</small></span>
@@ -2159,37 +2159,106 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   let trainingTeamId = '';
   let trainingUserId = '';
+  let trainingScopeTeams = [];
+  let trainingReadOnly = false;
+  let trainingCatalog = [];
+  let trainingCatalogTeam = '';
+  function canWriteTraining(user, team) {
+    return user?.role === 'admin' || user?.coachedTeamIds?.includes(team?.id) ||
+      user?.directorScopes?.some(scope => scope.role === 'regional_director' && scope.regionId === team?.parent?.id);
+  }
+  async function loadTrainingCatalog(teamId) {
+    if (!teamId) return;
+    const result = await diqApiRequest(`teams/${encodeURIComponent(teamId)}/playbook?includeSituations=true`, { cache: 'no-store' });
+    if (staffTeamId() !== teamId) return;
+    trainingCatalog = result.situations || [];
+    trainingCatalogTeam = teamId;
+    renderPracticeFormChoices();
+  }
   function staffTeamId(){
     const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
-    if(trainingUserId!==user?.id){trainingUserId=user?.id;trainingTeamId='';}
-    return trainingTeamId || user?.teamId || (TEAMS.teams||[])[0]?.id || '';
+    if(trainingUserId!==user?.id){trainingUserId=user?.id;trainingTeamId='';trainingScopeTeams=[];trainingCatalog=[];trainingCatalogTeam='';}
+    const allowed=trainingScopeTeams.length ? trainingScopeTeams.map(team => team.id)
+      : user?.role==='admin' ? (TEAMS.teams||[]).map(team => team.id) : user?.coachedTeamIds || [];
+    return allowed.includes(trainingTeamId)?trainingTeamId:allowed.includes(user?.teamId)?user.teamId:allowed[0]||'';
   }
   window._diqStaffTeamId=staffTeamId;
   function refreshTrainingTeamSelector(){
     const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     let label=document.getElementById('trainingTeamField');
-    if(!label){label=document.createElement('label');label.id='trainingTeamField';label.className='field';label.append('Managing team');const select=document.createElement('select');select.id='trainingTeamSelect';select.setAttribute('aria-label','Managing team');label.append(select);document.querySelector('#coachCard .coach-tabs')?.before(label);
+    if(!label){label=document.createElement('label');label.id='trainingTeamField';label.className='field';label.append('Workspace');const select=document.createElement('select');select.id='trainingTeamSelect';select.setAttribute('aria-label','Workspace');label.append(select);document.querySelector('#coachCard .tools-panel-actions')?.before(label);
       select.onchange=()=>{if(!window.confirm('Switch teams? Any unsaved assignment form will be cleared.')){select.value=staffTeamId();return;}trainingTeamId=select.value;resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';setCoachWorkspaceMode('reviews');};
     }
-    const select=label.querySelector('select');const available=(TEAMS.teams||[]).filter(team=>user?.role==='admin'||(user?.managedTeamIds||[user?.teamId]).includes(team.id));
-    const previous=staffTeamId();select.replaceChildren(...available.map(team=>new Option(team.name,team.id)));trainingTeamId=available.some(team=>team.id===previous)?previous:available[0]?.id||'';select.value=trainingTeamId;
+    const previous=staffTeamId();
+    const select=label.querySelector('select');
+    const available=trainingScopeTeams.length ? trainingScopeTeams : (TEAMS.teams||[]).filter(team => (user?.coachedTeamIds || []).includes(team.id));
+    select.replaceChildren(...available.map(team => new Option(team.name, team.id)));
+    trainingTeamId=available.some(team=>team.id===previous)?previous:available[0]?.id||'';select.value=trainingTeamId;
     label.hidden=available.length<=1;
-    const identity=document.getElementById('coachIdentity');if(identity && available.length>1)identity.textContent=available.find(team=>team.id===trainingTeamId)?.name||'';
+    const identity=document.getElementById('coachIdentity');
+    if(identity) identity.textContent = user?.role === 'coach' && available.length <= 1
+      ? user.teamName || '' : available.find(team => team.id === trainingTeamId)?.name || '';
   }
-  window._diqOpenTrainingWorkspace=()=>{
-    window._diqSetAdminMode?.(false);
-    document.getElementById('adminCard')?.classList.add('hidden');document.getElementById('adminWorkspace')?.classList.add('hidden');
-    setCoachMode(true,{role:'coach'});setCoachWorkspaceMode('reviews');
-  };
+  const trainingOverviewRegion = document.getElementById('trainingOverviewRegion');
+  const trainingOverviewStatus = document.getElementById('trainingOverviewStatus');
+  const trainingOverviewRows = document.getElementById('trainingOverviewTeams');
+  let trainingOverviewRequest = 0;
+  const hasTrainingOverview = user => user?.role === 'admin' || Boolean(user?.directorScopes?.length);
+
+  async function loadTrainingOverview() {
+    const request = ++trainingOverviewRequest;
+    const userId = window.__DIQ_AUTH_USER__?.id;
+    const region = trainingOverviewRegion.value;
+    trainingOverviewRows.replaceChildren();
+    trainingOverviewStatus.textContent = 'Loading team progress…';
+    try {
+      const result = await diqApiRequest(region
+        ? `training/overview?region=${encodeURIComponent(region)}` : 'training/overview', { cache: 'no-store' });
+      if (request !== trainingOverviewRequest || userId !== window.__DIQ_AUTH_USER__?.id) return;
+      const regions = new Map(result.regions.map(item => [item.id,
+        item.organizationName ? `${item.organizationName} / ${item.name}` : item.name]));
+      trainingOverviewRegion.replaceChildren(new Option('All regions', ''),
+        ...[...regions].map(([id, name]) => new Option(name, id)));
+      trainingOverviewRegion.value = region;
+      document.getElementById('trainingOverviewRegionField').hidden = regions.size < 2;
+      for (const team of result.teams) {
+        const row = trainingOverviewRows.insertRow();
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'btn btn-ghost';
+        button.textContent = team.name;
+        button.addEventListener('click', () => {
+          trainingTeamId = team.id;
+          resetPracticeForm();
+          coachResultsOptionsTeamId = '';
+          setCoachWorkspaceMode('reviews');
+          document.querySelector('[data-coach-tab="reviews"]')?.focus();
+        });
+        row.insertCell().append(button);
+        for (const value of [regions.get(team.regionId) || 'Unassigned', team.activeAssignments,
+          `${team.completed} / ${team.assigned}`, team.overdue]) row.insertCell().textContent = value;
+      }
+      trainingOverviewStatus.textContent = result.teams.length ? '' : 'No teams in this scope.';
+    } catch (error) {
+      if (request === trainingOverviewRequest && userId === window.__DIQ_AUTH_USER__?.id) {
+        trainingOverviewStatus.textContent = error.message || 'Unable to load team progress.';
+      }
+    }
+  }
+  trainingOverviewRegion?.addEventListener('change', () => void loadTrainingOverview());
+
   function setCoachWorkspaceMode(mode){
     refreshTrainingTeamSelector();
-    const adminTraining=window.__DIQ_AUTH_USER__?.role==='admin';
-    const heading=document.querySelector('#coachCard .tools-panel-header strong');
-    if(heading)heading.textContent=adminTraining?'Team training':'Coach workspace';
-    const back=document.getElementById('coachCardCloseBtn');
-    if(back)back.textContent=adminTraining?'Back to admin workspace':'Field';
-    document.querySelector('[data-coach-tab="proposals"]')?.classList.toggle('hidden',adminTraining);
-    if(adminTraining && mode==='proposals')mode='reviews';
+    const teamId = staffTeamId();
+    const user = window.__DIQ_AUTH_USER__;
+    const team = trainingScopeTeams.find(item => item.id === teamId) || { id: teamId };
+    trainingReadOnly = !canWriteTraining(user, team);
+    document.querySelector('[data-coach-tab="assignments"]')?.classList.toggle('hidden', trainingReadOnly);
+    if (trainingReadOnly && mode === 'assignments') mode = 'reviews';
+    if (mode === 'assignments') void loadTrainingCatalog(teamId).catch(error => reportDatabaseWriteError('Unable to load the Team Playbook.', error));
+    const overviewActive = mode === 'overview' && hasTrainingOverview(user);
+    document.querySelector('[data-coach-tab="overview"]')?.classList.toggle('hidden', !hasTrainingOverview(user));
+    document.querySelector('[data-coach-view="overview"]')?.classList.toggle('hidden', !overviewActive);
     const reviewsActive = mode === 'reviews';
     const assignmentsActive = mode === 'assignments';
     const proposalsActive = mode === 'proposals';
@@ -2205,10 +2274,12 @@ function computeRosterPlayerId(teamObj, playerObj){
     document.querySelector('[data-coach-view="reviews"]')?.classList.toggle('hidden', !reviewsActive);
     document.querySelector('[data-coach-view="assignments"]')?.classList.toggle('hidden', !assignmentsActive);
     document.getElementById('coachSituationEditorMount')?.classList.toggle('hidden', !proposalsActive);
-    document.querySelector('.field-card')?.classList.toggle('hidden', reviewsActive || assignmentsActive || playbookActive);
+    document.querySelector('.field-card')?.classList.toggle('hidden', overviewActive || reviewsActive || assignmentsActive || playbookActive);
     coachResultsWorkspace?.classList.toggle('hidden', !reviewsActive);
     practiceWorkspace?.classList.toggle('hidden', !assignmentsActive);
-    if(reviewsActive){
+    if(overviewActive){
+      void loadTrainingOverview();
+    }else if(reviewsActive){
       coachResultsPage = 1;
       void loadCoachDatabaseReport();
     }else if(playbookActive){
@@ -2221,6 +2292,27 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
   }
   window._diqSetCoachWorkspaceMode = setCoachWorkspaceMode;
+  window._diqOpenTrainingFromHeader = async (isCurrent = () => true) => {
+    const user = window.__DIQ_AUTH_USER__;
+    if (user?.mustChangePassword || !['coach','admin'].includes(user?.role)) return;
+    try {
+      staffTeamId();
+      const result = await diqApiRequest('design', { cache: 'no-store' });
+      if (!isCurrent() || window.__DIQ_AUTH_USER__?.id !== user.id) return;
+      trainingScopeTeams = result.workspaces.filter(scope => scope.type === 'team');
+      if (!trainingScopeTeams.length && !hasTrainingOverview(user)) {
+        if (typeof toast === 'function') toast('No teams are available in your training scope.');
+        return;
+      }
+      document.querySelector('#coachCard .tools-panel-header strong').textContent = 'Training workspace';
+      setCoachMode(true, { role:'coach' });
+      trainingOverviewRegion.value = '';
+      setCoachWorkspaceMode(hasTrainingOverview(user) ? 'overview' : 'reviews');
+    } catch (error) {
+      reportDatabaseWriteError('Unable to open Training workspace.', error);
+    }
+  };
+
 
   document.querySelectorAll('[data-coach-tab]').forEach(button=>{
     button.addEventListener('click', ()=>setCoachWorkspaceMode(button.getAttribute('data-coach-tab')));
@@ -2686,6 +2778,14 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
   const authRoleTabs = Array.from(document.querySelectorAll('[data-auth-role]'));
   const authRoleViews = Array.from(document.querySelectorAll('[data-auth-view]'));
   const authPlayerView = document.getElementById('authPlayerView');
+  const useLegacySignIn = new URLSearchParams(window.location.search).get('signin') === 'legacy';
+  const usernameSignInForm = document.getElementById('usernameSignInForm');
+  const signInUsername = document.getElementById('signInUsername');
+  const signInPassword = document.getElementById('signInPassword');
+  const signInStatus = document.getElementById('signInStatus');
+  usernameSignInForm?.classList.toggle('hidden', useLegacySignIn);
+  document.getElementById('legacySignInControls')?.classList.toggle('hidden', !useLegacySignIn);
+
   const accountSecurityOverlay = document.getElementById('accountSecurityOverlay');
   const accountSecurityClose = document.getElementById('accountSecurityClose');
   const accountSecurityIdentity = document.getElementById('accountSecurityIdentity');
@@ -2929,13 +3029,15 @@ function updatePlayerHeaderButton(){
     if(!playerModalOverlay) return;
     window._diqClosePlaybookBrowser?.();
     refreshPlayerLoginUI();
-    setAuthRole(role);
+    if(useLegacySignIn)setAuthRole(role);
+    else signInStatus.textContent='';
     playerModalLastFocus = document.activeElement;
     playerModalOverlay.classList.remove("hidden");
     playerModalOverlay.style.display = "flex";
     playerModalOverlay.setAttribute("aria-hidden", "false");
     document.body.classList.add("player-modal-open");
     queueMicrotask(()=>{
+      if(!useLegacySignIn){signInUsername.focus();return;}
       const activeView = document.querySelector(`[data-auth-view="${role}"]`);
       const focusTarget = activeView?.querySelector('select:not(:disabled), input:not(:disabled), button:not(:disabled)');
       focusTarget?.focus?.();
@@ -2948,6 +3050,7 @@ function updatePlayerHeaderButton(){
     playerModalOverlay.style.display = "none";
     playerModalOverlay.setAttribute("aria-hidden", "true");
     document.body.classList.remove("player-modal-open");
+    if(signInPassword)signInPassword.value='';
     if(playerModalLastFocus && typeof playerModalLastFocus.focus === "function"){
       playerModalLastFocus.focus();
     }
@@ -3005,6 +3108,25 @@ function updatePlayerHeaderButton(){
     else closeAccountMenu();
   }
 
+  function updateWorkspaceNavigation() {
+    const primary = document.getElementById('staffToolsBtn');
+    const org = document.getElementById('orgWorkspaceBtn');
+    const training = document.getElementById('trainingWorkspaceBtn');
+    const platformAdmin = window.__DIQ_AUTH_USER__?.role === 'admin';
+    const coachOpen = document.querySelector('#coachCard:not(.hidden)') !== null;
+    const adminPanel = document.querySelector('#adminCard:not(.hidden)');
+    const designOpen = document.body.classList.contains('design-workspace-open') || adminPanel?.dataset.workspace === 'global-tools';
+    const orgOpen = Boolean(adminPanel) && !designOpen;
+    const design = document.getElementById('designWorkspaceBtn');
+    for (const [button, active] of [[primary, platformAdmin ? orgOpen : coachOpen && !orgOpen],
+      [org, orgOpen], [training, coachOpen && !orgOpen], [design, designOpen]]) {
+      button?.classList.toggle('workspace-active', active);
+      if (active) button?.setAttribute('aria-current', 'true');
+      else button?.removeAttribute('aria-current');
+    }
+  }
+  window._diqUpdateWorkspaceNavigation = updateWorkspaceNavigation;
+
   function updateAuthNavigation(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
     const btn = document.getElementById('playerBtn');
@@ -3015,7 +3137,18 @@ function updatePlayerHeaderButton(){
     const tools = document.getElementById('staffToolsBtn');
     const practice = document.getElementById('practiceToggle');
     const account = document.getElementById('accountSecurityBtn');
-    const staff = !user?.mustChangePassword && (user?.role === 'coach' || user?.role === 'admin');
+    const staff = !user?.mustChangePassword && (user?.role === 'admin' ||
+      (user?.role === 'coach' && Boolean(user.coachedTeamIds?.length || user.teamId)));
+    const org = document.getElementById('orgWorkspaceBtn');
+    const design = document.getElementById('designWorkspaceBtn');
+    design?.classList.toggle('hidden', Boolean(user?.mustChangePassword || !['coach', 'admin'].includes(user?.role)));
+    const training = document.getElementById('trainingWorkspaceBtn');
+    const extraTraining = !user?.mustChangePassword && (user?.role === 'admin' ||
+      (user?.directorScopes?.length && !user?.coachedTeamIds?.length));
+    training?.classList.toggle('hidden', !extraTraining);
+    const showOrg = !user?.mustChangePassword && Boolean(user?.directorScopes?.length);
+    org?.classList.toggle('hidden', !showOrg);
+    org?.setAttribute('aria-hidden', String(!showOrg));
     if(btn){
       if(btnLabel) btnLabel.textContent = authButtonLabel(user);
       else btn.textContent = authButtonLabel(user);
@@ -3040,7 +3173,7 @@ function updatePlayerHeaderButton(){
     }
     if(roleLabel){
       roleLabel.classList.toggle('hidden', !user);
-      roleLabel.textContent = user ? (user.role === 'admin' ? 'Admin' : user.role === 'coach' ? 'Coach' : 'Player') : '';
+      roleLabel.textContent = user ? (user.role === 'admin' ? 'Admin' : user.role === 'coach' ? (user.directorScopes?.length && !user.coachedTeamIds?.length ? 'Director' : 'Coach') : 'Player') : '';
     }
     if(menuName) menuName.textContent = user?.displayName || '';
     if(menuMeta) menuMeta.textContent = authMenuMeta(user);
@@ -3048,7 +3181,7 @@ function updatePlayerHeaderButton(){
     if(tools){
       const fullLabel = tools.querySelector('.staff-tools-label-full');
       const shortLabel = tools.querySelector('.staff-tools-label-short');
-      const fullText = user?.role === 'coach' ? 'Coach workspace' : user?.role === 'admin' ? 'Admin workspace' : 'Workspace';
+      const fullText = user?.role === 'coach' ? 'Training workspace' : user?.role === 'admin' ? 'Org workspace' : 'Workspace';
       const shortText = user?.role === 'coach' ? 'Coach' : user?.role === 'admin' ? 'Admin' : 'Tools';
       if(fullLabel) fullLabel.textContent = fullText;
       if(shortLabel) shortLabel.textContent = shortText;
@@ -3063,7 +3196,7 @@ function updatePlayerHeaderButton(){
     if(tools){
       tools.classList.toggle('hidden', !staff);
       tools.setAttribute('aria-hidden', String(!staff));
-      tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Admin Tools' : '';
+      tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Org workspace' : '';
     }
     if(account){
       account.classList.toggle('hidden', !user);
@@ -3071,9 +3204,11 @@ function updatePlayerHeaderButton(){
       account.classList.toggle('account-action-required', Boolean(user?.mustChangePassword));
       account.textContent = user?.mustChangePassword ? 'Change password' : 'Account';
     }
+    updateWorkspaceNavigation();
     window._diqApplyGameAccess?.();
     updatePracticeNavigation();
     window._diqRefreshPlayerPresentation?.();
+    window._diqStaffSessionChanged?.(user);
   }
 
   function setAccountSecurityStatus(message='', state=''){
@@ -3091,6 +3226,7 @@ function updatePlayerHeaderButton(){
   function openAccountSecurity(options={}){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
     if(!user || !accountSecurityOverlay) return;
+    if (document.body.classList.contains('design-workspace-open')) window._diqNavigateWorkspace?.('field');
     const required = options.required === true || user.mustChangePassword === true;
     if(accountSecurityIdentity){
       const role = String(user.role || 'account');
@@ -3190,7 +3326,12 @@ function updatePlayerHeaderButton(){
       clearAccountPasswordFields();
       updateAuthNavigation();
       setAccountSecurityStatus(result?.message || 'Password changed. Other signed-in devices were logged out.', 'success');
-      if(completingRequiredReset)closeAccountSecurity();
+      if(completingRequiredReset) {
+        closeAccountSecurity();
+        if (!window.location.pathname.startsWith('/workspace/') && DIQ_AUTH_USER?.directorScopes?.length && !DIQ_AUTH_USER.coachedTeamIds?.length) {
+          window._diqNavigateWorkspace?.('org');
+        }
+      }
       if(DIQ_AUTH_USER?.role === 'player'){
         try{
           await loadCurrentPlayerResults();
@@ -3309,6 +3450,9 @@ function updatePlayerHeaderButton(){
     updatePlayerHeaderButton();
     closePlayerModal();
     if(DIQ_AUTH_USER?.mustChangePassword) queueMicrotask(()=>openAccountSecurity({ required:true }));
+    else if (interactive && DIQ_AUTH_USER?.directorScopes?.length && !DIQ_AUTH_USER.coachedTeamIds?.length) {
+      queueMicrotask(() => { if (!window.location.pathname.startsWith('/workspace/')) window._diqNavigateWorkspace?.('org'); });
+    }
   
   // Ensure dropdowns are populated once the sidebar is mounted
   try{ refreshTeamsUIAll(); }catch(_e){}
@@ -3321,6 +3465,31 @@ function updatePlayerHeaderButton(){
   if(playerLoginBtn) playerLoginBtn.addEventListener("click", doPlayerLogin);
   if(playerPassInput) playerPassInput.addEventListener("keydown", event=>{
     if(event.key === "Enter") void doPlayerLogin();
+  });
+
+  usernameSignInForm?.addEventListener('submit', async event=>{
+    event.preventDefault();
+    const submit=usernameSignInForm.querySelector('button[type=submit]');
+    if(submit.disabled)return;
+    submit.disabled=true;
+    signInStatus.textContent='';
+    try{
+      const {user}=await diqApiRequest('auth/login',{
+        method:'POST',
+        body:JSON.stringify({username:signInUsername.value.trim(),password:signInPassword.value})
+      });
+      closePlayerModal();
+      DIQ_LAST_AUTH_ERROR='';
+      try{
+        await loadDatabaseSession(user);
+      }catch(error){
+        reportDatabaseWriteError('Signed in, but workspace data could not be loaded. Reload to try again.',error);
+      }
+    }catch(error){
+      signInStatus.textContent=rememberAuthenticationError('Sign-in failed',error);
+    }finally{
+      submit.disabled=false;
+    }
   });
 
   mountPlayerModal();
@@ -3343,9 +3512,10 @@ function updatePlayerHeaderButton(){
     };
   }
 
-  async function loadDatabaseSession(){
-    const session = await diqApiRequest('auth/session', { cache:'no-store' });
-    DIQ_AUTH_USER = session && session.user ? session.user : null;
+  async function loadDatabaseSession(user){
+    const interactive = user !== undefined;
+    if(user===undefined)user=(await diqApiRequest('auth/session',{cache:'no-store'}))?.user;
+    DIQ_AUTH_USER = user || null;
     window.__DIQ_AUTH_USER__ = DIQ_AUTH_USER;
     await window._diqRefreshSituationAccess?.();
     if(DIQ_AUTH_USER && DIQ_AUTH_USER.role === 'player'){
@@ -3355,8 +3525,10 @@ function updatePlayerHeaderButton(){
         PLAYER_BASE_ID = player.playerId;
         PLAYER_META = { team:team.name, name:player.name, number:player.number };
       }
-      await loadCurrentPlayerResults();
-      await refreshPlayerPracticeState({ notify:true });
+      if(!DIQ_AUTH_USER.mustChangePassword){
+        await loadCurrentPlayerResults();
+        await refreshPlayerPracticeState({ notify:true });
+      }
     }else{
       PLAYER_BASE_ID = 'anonymous';
       PLAYER_META = { team:"", name:"", number:"" };
@@ -4859,7 +5031,8 @@ wireSeqBuilderOnce();
       syncBallToHit();
     } else if(window.__DIQ_AUTH_USER__?.role === 'coach'){
       setCoachMode(true, { role:'coach' });
-      setCoachWorkspaceMode('reviews');
+      trainingOverviewRegion.value = '';
+      setCoachWorkspaceMode(hasTrainingOverview(user) ? 'overview' : 'reviews');
     } else {
       openPwModal();
     }
@@ -4869,7 +5042,6 @@ wireSeqBuilderOnce();
   // Close button on Coach Tools card (does not reset situation)
   const coachCardCloseBtn = document.getElementById('coachCardCloseBtn');
   if (coachCardCloseBtn) coachCardCloseBtn.addEventListener('click', ()=>{
-    const returnToAdmin=window.__DIQ_AUTH_USER__?.role==='admin';
     if (coachUnlocked){
       window._diqSituationEditorClosed?.('coach');
       document.querySelector('.field-card')?.classList.remove('hidden');
@@ -4883,7 +5055,7 @@ wireSeqBuilderOnce();
     } else {
       if (coachCard) coachCard.classList.add('hidden');
     }
-    if(returnToAdmin)window._diqSetAdminMode?.(true);
+    window._diqWorkspaceClosed?.('training');
   });
 
   const coachLogoutBtn = document.getElementById('coachLogoutBtn');
@@ -4920,16 +5092,21 @@ wireSeqBuilderOnce();
   function closeAdminPwModal(){
     window._diqCloseAuthModal?.();
   }
-  function setAdminMode(on){
+  function setAdminMode(on, entry = 'org'){
     adminUnlocked = !!on;
     if (adminUnlocked){
       closeGuideRail?.();
       if (typeof setCoachMode === 'function' && coachUnlocked) setCoachMode(false);
     }
-    if (adminCard) adminCard.classList.toggle('hidden', !adminUnlocked);
+    if (adminCard) {
+      adminCard.dataset.workspace = adminUnlocked && window.__DIQ_AUTH_USER__?.role === 'admin' && entry === 'global-tools'
+        ? 'global-tools' : 'org';
+      adminCard.classList.toggle('hidden', !adminUnlocked);
+    }
     if (adminStatus) adminStatus.textContent = adminUnlocked ? 'unlocked' : 'locked';
-    if(adminUnlocked) void window._diqAdminPanelOpened?.();
+    if(adminUnlocked) void window._diqAdminPanelOpened?.(entry);
     else window._diqAdminPanelClosed?.();
+    updateWorkspaceNavigation();
   }
   window._diqSetAdminMode = setAdminMode;
   async function tryUnlockAdmin(){
@@ -4953,10 +5130,12 @@ wireSeqBuilderOnce();
 
   if (adminBtn) adminBtn.addEventListener('click', ()=>{
     closeGuideRail?.();
-    if (adminUnlocked){
+    if (adminUnlocked && adminCard?.dataset.workspace === 'global-tools') {
+      setAdminMode(true);
+    } else if (adminUnlocked){
       setAdminMode(false);
       if (adminCard) adminCard.classList.add('hidden');
-    } else if(window.__DIQ_AUTH_USER__?.role === 'admin'){
+    } else if(window.__DIQ_AUTH_USER__?.role === 'admin' || window.__DIQ_AUTH_USER__?.directorScopes?.length){
       setAdminMode(true);
     } else {
       openAdminPwModal();
@@ -4972,6 +5151,7 @@ wireSeqBuilderOnce();
     } else {
       if (adminCard) adminCard.classList.add('hidden');
     }
+    window._diqWorkspaceClosed?.('org');
   });
 
 

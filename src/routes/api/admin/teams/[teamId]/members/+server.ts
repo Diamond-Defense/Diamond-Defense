@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 import { SqliteTeamRepository, type MemberInput } from '$lib/server/repositories/teams';
-import { assertSameOrigin, requireTeamManager } from '$lib/server/security/authorization';
+import { assertSameOrigin, directsTeam, requireTeamManager } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -11,9 +11,9 @@ export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
   const input = (await event.request.json()) as MemberInput;
   const user = await requireTeamManager(event, event.params.teamId);
-  if (input.role === 'coach' && user.role !== 'admin') {
+  if (input.role === 'coach' && user.role !== 'admin' && !await directsTeam(event, user, event.params.teamId)) {
     return json(
-      { error: 'Only an administrator can create coach accounts.' },
+      { error: 'Only Platform Admin or a director for this team can create coach accounts.' },
       { status: 403 },
     );
   }

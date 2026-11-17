@@ -45,6 +45,45 @@ export type AuthenticationResult =
 export class SqliteAuthRepository {
   constructor(private readonly database: SqliteDatabaseAdapter) {}
 
+  async authenticateUsername(username: string, password: string): Promise<AuthenticationResult> {
+    const account = await this.database.one<{
+      id: string;
+      role: LoginRow['role'];
+      team_id: string | null;
+    }>(
+      `SELECT u.id, u.role, tm.team_id
+         FROM users u
+         LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
+           AND tm.team_role = u.role AND EXISTS (
+             SELECT 1 FROM team_seasons ts
+             JOIN teams t ON t.id = ts.team_id AND t.active = 1
+             WHERE ts.id = tm.season_id AND ts.status = 'active'
+           )
+        WHERE u.username = ?1 COLLATE NOCASE AND u.active = 1
+        ORDER BY tm.team_id
+        LIMIT 1`,
+      [username],
+    );
+    if (!account) return { status: 'invalid' };
+    if (account.role === 'admin') return this.authenticateAdministrator(account.id, password);
+    if (!account.team_id) {
+      if (account.role !== 'coach') return { status: 'invalid' };
+      const row = await this.database.one<LoginRow>(
+        `SELECT u.id, u.username, u.display_name, u.role, u.password_hash, u.password_salt,
+                u.password_iterations, u.must_change_password, u.failed_login_attempts, u.locked_until,
+                NULL AS team_id, NULL AS team_name, NULL AS season_name, NULL AS jersey_number
+           FROM users u WHERE u.id = ?1 AND u.active = 1 AND u.role = 'coach'
+            AND EXISTS (SELECT 1 FROM workspace_assignments w WHERE w.user_id = u.id
+                        AND w.role IN ('organization_director', 'regional_director'))`,
+        [account.id],
+      );
+      return this.verify(row, password);
+    }
+    return account.role === 'player'
+      ? this.authenticatePlayer(account.team_id, account.id, password)
+      : this.authenticateCoach(account.team_id, account.id, password);
+  }
+
   async authenticatePlayer(
     teamId: string,
     playerId: string,
@@ -93,6 +132,14 @@ export class SqliteAuthRepository {
     role: 'admin',
     password: string,
   ): Promise<AuthenticationResult> {
+    const account = await this.database.one<{id:string}>(
+      "SELECT id FROM users WHERE username = ?1 COLLATE NOCASE AND role = 'admin' AND active = 1",
+      [role],
+    );
+    return account ? this.authenticateAdministrator(account.id,password) : { status: 'invalid' };
+  }
+
+  private async authenticateAdministrator(id: string, password: string): Promise<AuthenticationResult> {
     const row = await this.database.one<LoginRow>(
       `SELECT u.id, u.username, u.display_name, u.role,
               u.password_hash, u.password_salt, u.password_iterations,
@@ -103,10 +150,10 @@ export class SqliteAuthRepository {
          LEFT JOIN team_memberships tm ON tm.user_id = u.id AND tm.active = 1
          LEFT JOIN teams t ON t.id = tm.team_id AND t.active = 1
          LEFT JOIN team_seasons ts ON ts.id = tm.season_id AND ts.status = 'active'
-        WHERE u.username = ?1 AND u.role = ?1 AND u.active = 1
+        WHERE u.id = ?1 AND u.role = 'admin' AND u.active = 1
         ORDER BY t.id
         LIMIT 1`,
-      [role],
+      [id],
     );
     return this.verify(row, password);
   }

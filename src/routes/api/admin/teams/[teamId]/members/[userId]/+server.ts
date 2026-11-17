@@ -16,9 +16,10 @@ export const PUT: RequestHandler = async (event) => {
     const existing = await repository.getMember(
       event.params.teamId,
       event.params.userId,
-      true,
+      user.role === 'admin',
     );
-    if (existing?.role === 'coach' && user.role !== 'admin') {
+    if (!existing) return json({ error: 'Active team member not found.' }, { status: 404 });
+    if (existing.role === 'coach' && user.role !== 'admin') {
       return json(
         { error: 'Only an administrator can update coach accounts.' },
         { status: 403 },

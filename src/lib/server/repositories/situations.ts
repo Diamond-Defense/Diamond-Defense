@@ -8,7 +8,8 @@ import {
   normalizeTeachingCategories,
 } from '$lib/domain/situation-metadata';
 import { normalizeSituationOutcomes } from '$lib/domain/situation-outcomes';
-import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
+import type { SqlCommand, SqliteDatabaseAdapter } from '$lib/server/database/adapter';
+import type { LibraryScope } from '$lib/server/security/design-scopes';
 import { writeAudit } from './audit';
 import {
   RecordNotFoundError,
@@ -59,6 +60,16 @@ export type SituationRecord = Situation & {
   active?: boolean;
   archivedAt?: string | null;
 };
+
+interface LibraryPublication {
+  scope: LibraryScope;
+  lineage?: string;
+  source?: { key: string; revision: number };
+  promotionId?: string;
+  changeProposalId?: string;
+  variationSource?: { key: string; revision: number };
+  completion?: (key: string, revision: number) => SqlCommand[];
+}
 
 export function validateSituation(situation: Situation): Situation {
   let suggestedDivisions;
@@ -269,16 +280,57 @@ export class SqliteSituationRepository {
     ];
   }
 
-  async list(includeArchived = false): Promise<SituationRecord[]> {
+  async list(includeArchived = false, scope: LibraryScope = { type: 'global', id: '' }): Promise<SituationRecord[]> {
     const rows = await this.database.all<SituationRow>(
       `SELECT key, display_code, category, difficulty, difficulty_level, payload_json, revision, active, archived_at
-         FROM situations ${includeArchived ? '' : 'WHERE active = 1'}
+         FROM situations WHERE library_scope=?1 AND library_id=?2 ${includeArchived ? '' : 'AND active = 1'}
         ORDER BY library_order, CAST(substr(display_code, 2) AS INTEGER), display_code, key`,
+      [scope.type, scope.id],
     );
     const [categories, playOutcomes, runnerOutcomes] = await Promise.all([
       this.categories(), this.playOutcomes(), this.runnerOutcomes(),
     ]);
     return this.withTags(rows.map((row) => mapRow(row, categories, playOutcomes, runnerOutcomes)));
+  }
+
+  async listOwnedCatalog(scope: LibraryScope): Promise<SituationRecord[]> {
+    const entries = await this.list(false,scope);
+    if (scope.type === 'global') return entries;
+    const rows = await this.database.all<{key:string}>(
+      'SELECT key FROM library_owned_catalog WHERE library_scope=?1 AND library_id=?2', [scope.type,scope.id],
+    );
+    const visible = new Set(rows.map(row => row.key));
+    return entries.filter(entry => visible.has(entry.key));
+  }
+
+  async listInherited(scope: LibraryScope) {
+    const [rows, categories, playOutcomes, runnerOutcomes] = await Promise.all([
+      this.database.all<SituationRow & { hidden_scope: string | null; filtered: number; source_type: string; source_name: string | null }>(
+        `SELECT s.key,s.display_code,s.category,s.difficulty,s.difficulty_level,s.payload_json,s.revision,s.active,s.archived_at,
+          i.hidden_scope,i.filtered,i.source_type,COALESCE(o.name,r.name) AS source_name
+          FROM library_inheritance i JOIN situations s ON s.key=i.situation_key
+          LEFT JOIN organizations o ON i.source_type='organization' AND o.id=i.source_id
+          LEFT JOIN regions r ON i.source_type='region' AND r.id=i.source_id
+          WHERE i.scope_type=?1 AND i.scope_id=?2
+          ORDER BY s.library_order,s.display_code,s.key`, [scope.type,scope.id]),
+      this.categories(), this.playOutcomes(), this.runnerOutcomes(),
+    ]);
+    const entries = await this.withTags(rows.map(row => mapRow(row,categories,playOutcomes,runnerOutcomes)));
+    return entries.map((entry,index) => ({
+      ...entry, hiddenScope:rows[index].hidden_scope, difficultyFiltered:Boolean(rows[index].filtered),
+      sourceType:rows[index].source_type, sourceName:rows[index].source_name,
+    }));
+  }
+
+  async listTeamPlaybook(teamId: string): Promise<SituationRecord[]> {
+    const [rows, categories, playOutcomes, runnerOutcomes] = await Promise.all([
+      this.database.all<SituationRow>(
+        `SELECT s.key,s.display_code,s.category,s.difficulty,s.difficulty_level,s.payload_json,s.revision,s.active,s.archived_at
+          FROM situations s JOIN effective_team_playbook p ON p.situation_key=s.key
+          WHERE p.team_id=?1 ORDER BY s.library_order,s.display_code,s.key`, [teamId]),
+      this.categories(), this.playOutcomes(), this.runnerOutcomes(),
+    ]);
+    return this.withTags(rows.map(row => mapRow(row,categories,playOutcomes,runnerOutcomes)));
   }
 
   async get(key: string, includeArchived = false): Promise<SituationRecord | null> {
@@ -328,7 +380,7 @@ export class SqliteSituationRepository {
     });
   }
 
-  async create(situationInput: Situation, userId: string): Promise<SituationRecord> {
+  async create(situationInput: Situation, userId: string, publication?: LibraryPublication): Promise<SituationRecord> {
     const situation = validateSituation(situationInput);
     if (await this.get(situation.key, true)) {
       throw new RecordValidationError('A situation with that key already exists.');
@@ -340,9 +392,19 @@ export class SqliteSituationRepository {
     const [result] = await this.database.batch([
       {
         sql: `INSERT INTO situations
-          (key, title, description, category, difficulty, difficulty_level, payload_json, revision, active, created_by, created_at, updated_at, identity_key)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?9, ?9, ?10)`,
-        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, payload, userId, now, situationIdentity(situation)],
+          (key, title, description, category, difficulty, difficulty_level, payload_json, revision, active, created_by, created_at, updated_at, identity_key,
+           library_scope, library_id, lineage_key, source_situation_key, source_situation_revision, promotion_revision)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?9, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                CASE WHEN ?14 IS NULL THEN NULL ELSE 1 END
+          WHERE (?14 IS NULL OR EXISTS (
+            SELECT 1 FROM situations s WHERE s.key=?14 AND s.active=1 AND
+            ((?17=0 AND s.revision=?15) OR (?17=1 AND EXISTS (
+              SELECT 1 FROM situation_versions WHERE situation_key=?14 AND revision=?15)))
+          ))
+            AND (?16 IS NULL OR EXISTS (SELECT 1 FROM situation_promotions WHERE id=?16 AND status='pending'))`,
+        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, payload, userId, now, situationIdentity(situation),
+          publication?.scope.type || 'global', publication?.scope.id || '', publication?.lineage || null,
+          publication?.source?.key || publication?.variationSource?.key || null, publication?.source?.revision || publication?.variationSource?.revision || null, publication?.promotionId || null, Number(Boolean(publication?.variationSource))],
       },
       {
         sql: `INSERT OR IGNORE INTO situation_versions
@@ -353,14 +415,25 @@ export class SqliteSituationRepository {
       },
       ...this.categoryCommands(situation, 1, payload),
       ...this.outcomeCommands(situation, 1, payload),
+      ...(publication?.scope.type === 'team' ? [{
+        sql: `INSERT INTO team_playbook_situations(team_id,situation_key)
+              SELECT ?1, key FROM situations WHERE key=?2 AND library_scope='team' AND library_id=?1
+              ON CONFLICT DO NOTHING`,
+        params: [publication.scope.id, situation.key],
+      }, {
+        sql: `UPDATE team_playbook_state SET revision=revision+1
+              WHERE team_id=?1 AND EXISTS (SELECT 1 FROM situations WHERE key=?2 AND library_scope='team' AND library_id=?1)`,
+        params: [publication.scope.id, situation.key],
+      }] : []),
+      ...(publication?.completion?.(situation.key, 1) || []),
     ]);
-    if (!result.changes) throw new RecordValidationError('A situation with that key already exists.');
+    if (!result.changes) throw new RevisionConflictError();
     const created = await this.get(situation.key, true);
     await writeAudit(this.database, userId, 'create', 'situation', situation.key, null, created);
     return created!;
   }
 
-  async update(situationInput: Situation, expectedRevision: number, userId: string): Promise<SituationRecord> {
+  async update(situationInput: Situation, expectedRevision: number, userId: string, publication?: LibraryPublication): Promise<SituationRecord> {
     const situation = validateSituation(situationInput);
     const before = await this.get(situation.key, true);
     if (!before) throw new RecordNotFoundError('Situation not found.');
@@ -379,10 +452,19 @@ export class SqliteSituationRepository {
       {
         sql: `UPDATE situations SET title = ?2, description = ?3, category = ?4, difficulty = ?5,
                                difficulty_level = ?6, payload_json = ?7, revision = revision + 1,
-                               active = 1, updated_at = ?8, identity_key = ?10
-          WHERE key = ?1 AND revision = ?9`,
-        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, situationIdentity(situation)],
+                               active = 1, updated_at = ?8, identity_key = ?10,
+                               source_situation_key = COALESCE(?11, source_situation_key),
+                               source_situation_revision = COALESCE(?12, source_situation_revision),
+                               promotion_revision = CASE WHEN ?11 IS NULL THEN promotion_revision ELSE ?9 + 1 END
+          WHERE key = ?1 AND revision = ?9
+            AND (?11 IS NULL OR EXISTS (SELECT 1 FROM situations WHERE key=?11 AND revision=?12 AND active=1))
+            AND (?13 IS NULL OR EXISTS (SELECT 1 FROM situation_promotions WHERE id=?13 AND status='pending'))
+            AND (?14 IS NULL OR EXISTS (SELECT 1 FROM situation_change_proposals WHERE id=?14 AND status='pending' AND source_key=?1 AND source_revision=?9))
+            AND (?14 IS NULL OR active=1)`,
+        params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, situationIdentity(situation),
+          publication?.source?.key || null, publication?.source?.revision || null, publication?.promotionId || null, publication?.changeProposalId || null],
       },
+      ...(publication?.changeProposalId ? publication.completion?.(situation.key, expectedRevision + 1) || [] : []),
       {
         sql: `INSERT OR IGNORE INTO situation_versions
           (situation_key, revision, title, category, difficulty, payload_json, created_at)
@@ -392,6 +474,7 @@ export class SqliteSituationRepository {
       },
       ...this.categoryCommands(situation, expectedRevision + 1, JSON.stringify(situation), true),
       ...this.outcomeCommands(situation, expectedRevision + 1, JSON.stringify(situation), true),
+      ...(!publication?.changeProposalId ? publication?.completion?.(situation.key, expectedRevision + 1) || [] : []),
     ]);
     if (!result.changes) throw new RevisionConflictError();
     const updated = await this.get(situation.key, true);

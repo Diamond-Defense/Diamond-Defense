@@ -38,7 +38,7 @@ export const GET:RequestHandler=async event=>{
  CASE json_extract(payload_json,'$.hitType') WHEN 'grounder' THEN 'ground_ball' WHEN 'line' THEN 'line_drive' WHEN 'popup' THEN 'air_ball' ELSE '' END,
  coalesce(json_extract(payload_json,'$.ballLocation'),''),coalesce((SELECT category_id FROM situation_teaching_categories WHERE situation_key=situations.key AND is_primary=1),''),
  (SELECT json_group_array(category_id) FROM situation_teaching_categories WHERE situation_key=situations.key AND is_primary=0)
- FROM situations WHERE active=1
+ FROM situations WHERE active=1 AND library_scope='global'
  )`;
  const where=filters.length?` WHERE ${filters.join(' AND ')}`:'';
  const order={updated:'julianday(updatedAt) DESC',created:'julianday(createdAt) DESC',title:'lower(title) ASC'}[sort];

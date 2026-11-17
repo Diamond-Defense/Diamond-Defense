@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { databaseFor } from '$lib/server/database/context';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 import { SqliteSeasonRepository } from '$lib/server/repositories/seasons';
-import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requireDirectorTeamManager, requireUser } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -31,7 +31,7 @@ export const DELETE: RequestHandler = async (event) => {
 
 export const PATCH: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['admin']);
+  const user = await requireDirectorTeamManager(event, event.params.teamId);
   const body = await event.request.json() as { action?: string };
   const repository = new SqliteSeasonRepository(databaseFor(event));
   try {

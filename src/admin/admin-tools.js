@@ -7,12 +7,13 @@
   const fieldCard = document.querySelector('.field-card');
   const adminViews = Array.from(document.querySelectorAll('[data-admin-view]'));
   const mainWorkspaceViews = adminViews.filter(
-    (view) => view.dataset.adminView === 'teams' || view.dataset.adminView === 'recovery',
+    (view) => view.dataset.adminView !== 'situations',
   );
   mainWorkspaceViews.forEach((view) => adminWorkspace?.appendChild(view));
 
   const statusEl = byId('adminOperationStatus');
   const teamSelect = byId('adminTeamSelect');
+  const newTeamButton = byId('adminNewTeamBtn');
   const teamName = byId('adminTeamName');
   const teamHeaderFields = byId('adminTeamHeaderFields');
   const initialSeasonName = byId('adminInitialSeasonName');
@@ -85,7 +86,6 @@
   }
 
   let teams = [];
-  const trainingButton=document.createElement('button');trainingButton.type='button';trainingButton.className='btn btn-ghost';trainingButton.textContent='Team training';trainingButton.onclick=()=>window._diqOpenTrainingWorkspace?.();byId('adminCard')?.querySelector('.admin-tabs')?.append(trainingButton);
 
   let archivedSituations = [];
   let publishedSituations = [];
@@ -489,28 +489,49 @@
       : `${crypto.randomUUID().replaceAll('-', '').slice(0, 12)}A7`;
   }
 
+  function showAddMemberChoices(visible) {
+    setVisible(byId('adminAddMemberChoices'), visible);
+    byId('adminAddMember')?.setAttribute('aria-expanded', String(visible));
+  }
+
   function closeMemberEditor(){
-    document.querySelector('[data-admin-team-view="roster"]')?.removeAttribute('data-member-editor');
+    const view = document.querySelector('[data-admin-team-view="roster"]');
+    if (view?.dataset.memberEditor === 'csv') clearCsvPreview();
+    view?.removeAttribute('data-member-editor');
+    showAddMemberChoices(false);
     for(const id of ['adminPlayerPass','adminCoachPass']){const input=byId(id);if(input) input.value='';}
   }
   function openMemberEditor(role, id='', resetPassword=false){
     const view=document.querySelector('[data-admin-team-view="roster"]');
-    byId('adminCoachPermissions')?.remove();
     view.dataset.memberEditor=role;
     view.dataset.memberSection=resetPassword?'password':'details';
     byId('adminMemberSections')?.remove();
     byId(role==='coach'?'adminCoachUpdateBtn':role==='existing'?'adminAddExistingPlayerBtn':'adminPlayerUpdateBtn')?.after(byId('adminMemberCancel'));
-    byId('adminMemberType').value=role;
-    byId('adminMemberType').closest('label').hidden=Boolean(id);
-    byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':role==='existing'?'Add existing player':'Create account';
-    if(role==='existing') { byId('adminUnassignedPlayerSelect').focus(); return; }
+    showAddMemberChoices(false);
+    byId('adminMemberDestination').textContent = teamLabel(selectedTeam());
+    const csvPanel = byId('adminCsvImportPanel');
+    setVisible(csvPanel, role === 'csv');
+    if (role === 'csv') {
+      byId('adminMemberEditorTitle').textContent = 'Import roster CSV';
+      setVisible(byId('adminCsvPlayerScope'), !isPlatformAdmin());
+      byId('adminMemberEditorHeader').insertBefore(byId('adminMemberCancel'), csvPanel);
+      byId('adminTeamsCsvChooseBtn').focus();
+      return;
+    }
+    if (role === 'existing') {
+      byId('adminMemberEditorTitle').textContent = 'Add existing player';
+      byId('adminExistingPlayerSearch').value = '';
+      renderPlayerMovement();
+      byId('adminExistingPlayerSearch').focus();
+      return;
+    }
     const select=role==='coach'?coachSelect:playerSelect;
     select.value=id;
     select.dispatchEvent(new Event('change',{bubbles:true}));
     const password=byId(role==='coach'?'adminCoachPass':'adminPlayerPass');
     password.value='';
     password.closest('label').classList.toggle('member-password-hidden',Boolean(id)&&!resetPassword);
-    byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':'Create account';
+    byId('adminMemberEditorTitle').textContent=resetPassword?'Reset password':id?'Edit member':`Create ${role} account`;
     const card=select.closest('.admin-record-card');
     card.querySelector('.sectionTitle').textContent=id?selectedMember(role)?.name||'Member':role==='coach'?'New coach':'New player';
     const save=byId(role==='coach'?'adminCoachUpdateBtn':'adminPlayerUpdateBtn');
@@ -518,21 +539,20 @@
     if(id){
       const nav=document.createElement('div');nav.id='adminMemberSections';nav.className='admin-actions';
       const member=selectedMember(role);
-      for(const [key,label] of [['details','Details'],['password','Password'],['membership','Team membership'],...(role==='coach'?[['permissions','Coach permissions']]:[])]){
+      for(const [key,label] of [['details','Details'],['password','Password'],['membership','Team membership']]){
         const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;
         button.setAttribute('aria-pressed',String(view.dataset.memberSection===key));
         button.onclick=()=>{
           openMemberEditor(role,id,key==='password');
           view.dataset.memberSection=key;
-          if(key==='membership'||key==='permissions')byId('adminMemberEditorHeader').append(byId('adminMemberCancel'));
+          if(key==='membership')byId('adminMemberEditorHeader').append(byId('adminMemberCancel'));
           byId('adminMemberSections').querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.textContent===label)));
-          if(key==='permissions')void editCoachPermissions(member);
         };nav.append(button);
       }
       byId('adminMemberEditorHeader').append(nav);
       if(!card.querySelector('[data-member-membership]')){
         const membership=document.createElement('section');membership.dataset.memberMembership='';
-        const copy=document.createElement('p');copy.textContent=role==='coach'?'Remove this coach from the current team. Additional team access is managed under Coach permissions.':'Transfer this player to another team, or remove their current membership. Historical results are preserved.';
+        const copy=document.createElement('p');copy.textContent=role==='coach'?'Remove this coach from the current team.':'Transfer this player to another team, or remove their current membership. Historical results are preserved.';
         membership.append(copy);
         if(role==='player')membership.append(transferPlayerWorkflow);
         membership.append(byId(role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn'));
@@ -541,45 +561,18 @@
     }
     (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
   }
-  async function editCoachPermissions(member){
-    const currentTeam=selectedTeam();
-    const existing=byId('adminCoachPermissions');
-    if(existing?.dataset.memberId===member.playerId){existing.scrollIntoView({block:'nearest'});return;}
-    existing?.remove();
-    const panel=document.createElement('section');panel.id='adminCoachPermissions';panel.dataset.memberId=member.playerId;panel.className='card';panel.setAttribute('aria-label','Coach permissions');
-    const heading=document.createElement('h3');heading.textContent=`Permissions for ${member.name}`;panel.append(heading);
-    const message=document.createElement('p');message.textContent='Choose additional teams for assignments, reviews, and team Playbooks. Account administration remains restricted. Publishing permission applies to the shared situation library across all teams.';panel.append(message);
-    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);coachSelect.closest('.admin-record-card').append(panel);
-    try{
-      const state=await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`);
-      if(!panel.isConnected)return;
-      const included=document.createElement('p');
-      included.textContent=`Current team: ${currentTeam?.name || 'Unassigned'} — access included`;
-      panel.append(included);
-      const additionalTeams=teams.filter(team=>team.active!==false && team.id!==currentTeam?.id);
-      if(!additionalTeams.length){
-        const empty=document.createElement('p');empty.className='muted';empty.textContent='No additional teams available.';panel.append(empty);
-      }
-      const boxes=[];for(const team of additionalTeams){
-        const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const input=document.createElement('input');input.type='checkbox';input.style.width='20px';input.value=team.id;input.checked=state.teamIds.includes(team.id);label.append(input,team.name);panel.append(label);boxes.push(input);
-      }
-      const label=document.createElement('label');label.style.cssText='display:flex;gap:10px;align-items:center';const publish=document.createElement('input');publish.type='checkbox';publish.style.width='20px';publish.checked=state.canPublishSituations;label.append(publish,'Edit and publish situations without approval (shared library)');panel.append(label);
-      const save=document.createElement('button');save.type='button';save.className='btn btn-brand';save.textContent='Save permissions';save.onclick=async()=>{save.disabled=true;try{await diqApiRequest(`admin/users/${encodeURIComponent(member.playerId)}/permissions`,{method:'PUT',body:JSON.stringify({teamIds:boxes.filter(input=>input.checked).map(input=>input.value),canPublishSituations:publish.checked})});status.textContent='Permissions saved. The coach should reload to refresh their workspace.';}catch(error){status.textContent=error.message;}finally{save.disabled=false;}};panel.append(save);
-    }catch(error){status.textContent=error.message;}
-    const close=document.createElement('button');close.type='button';close.className='btn btn-ghost';close.textContent='Close permissions';close.onclick=()=>panel.remove();panel.append(close);
-  }
   function renderUnassignedAccounts(){
     let panel=byId('adminUnassignedAccounts');
-    if(!panel){panel=document.createElement('section');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="teams"]').append(panel);}
+    if(!panel){panel=document.createElement('details');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="recovery"]').append(panel);}
     panel.replaceChildren();
-    const title=document.createElement('h3');title.textContent='Unassigned accounts';panel.append(title);
-    const help=document.createElement('p');help.textContent='Select player or coach accounts to reassign or delete. Only accounts need a number. Deleting a coach removes their proposals and permissions; coaches who own assignments must resolve those first.';panel.append(help);
+    const title=document.createElement('summary');title.textContent=`Accounts without a team (${unassignedPlayers.length})`;panel.append(title);
+    const help=document.createElement('p');help.textContent='Assign a player or coach to a team, or delete their account. Jersey numbers are required for players. Deleting a coach also removes their proposals and permissions. Resolve any training assignments they own first.';panel.append(help);
     if(!unassignedPlayers.length){panel.append('No unassigned accounts.');return;}
     const selected=new Set(), numbers=new Map();let busy=false;
     const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned accounts';search.setAttribute('aria-label','Search unassigned accounts');panel.append(search);
     const controls=document.createElement('div');controls.className='admin-actions';panel.append(controls);
     const button=(label,action)=>{const el=document.createElement('button');el.type='button';el.className='btn btn-ghost';el.textContent=label;el.onclick=action;controls.append(el);return el;};
-    const matching=()=>unassignedPlayers.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()));
+    const matching=()=>unassignedPlayers.filter(item=>[item.name,item.username].some(value=>String(value||'').toLowerCase().includes(search.value.toLowerCase())));
     button('Select matching',()=>{matching().forEach(item=>selected.add(item.userId));draw();});
     button('Clear selection',()=>{selected.clear();draw();});
     const destination=document.createElement('select');destination.className='select';destination.setAttribute('aria-label','Destination team for selected players');destination.append(option('','Select destination team'));
@@ -631,7 +624,7 @@
         const row=document.createElement('section');row.className='card';
         const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px';
         const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.disabled=busy;check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
-        const name=document.createElement('span');name.textContent=`${player.name} · ${player.role==='coach'?'Coach':'Player'} · ${player.userId}`;label.append(check,name);
+        const name=document.createElement('span');name.textContent=`${player.name} · ${player.role==='coach'?'Coach':'Player'} · ${player.username || player.userId}`;label.append(check,name);
         const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.disabled=busy;number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label);if(player.role!=='coach')row.append(number);list.append(row);
       }
       if(!list.children.length)list.textContent='No matching unassigned accounts.';
@@ -639,42 +632,148 @@
     }
     search.oninput=draw;destination.onchange=update;draw();
   }
+  const selectedRosterIds = new Set();
+  let rosterSelectionTeam = '';
+
+  function updateRosterSelection() {
+    const button = byId('adminRemoveSelectedMembers');
+    if (!button) return;
+    const count = selectedRosterIds.size;
+    button.textContent = count ? `Remove selected (${count})` : 'Remove selected';
+    setVisible(button, count > 0);
+  }
+
   function renderRosterBrowser(){
     const team=selectedTeam();
-    const permissions=byId('adminCoachPermissions');
-    if(permissions && !(team?.roster||[]).some(member=>member.playerId===permissions.dataset.memberId))permissions.remove();
     const root=byId('adminRosterBrowser');if(!root)return;
     document.querySelector('[data-admin-view="teams"]')?.classList.toggle('no-team-selected',!team);
     const members=(team?.roster||[]).filter(member=>member.active!==false);
+    if (rosterSelectionTeam !== team?.id) {
+      rosterSelectionTeam = team?.id;
+      selectedRosterIds.clear();
+    }
+    const activeIds = new Set(members.map(member => member.playerId));
+    for (const id of selectedRosterIds) if (!activeIds.has(id)) selectedRosterIds.delete(id);
+    updateRosterSelection();
     byId('adminRosterCounts').textContent=team?`${members.filter(m=>m.role==='player').length} players · ${members.filter(m=>m.role==='coach').length} coaches`:'';
     const query=byId('adminRosterSearch').value.toLowerCase(), role=byId('adminRosterRole').value;
     const body=byId('adminRosterRows');body.replaceChildren();
-    members.filter(member=>(!role||member.role===role)&&String(member.name).toLowerCase().includes(query)).forEach(member=>{
+    members.filter(member=>(!role||member.role===role)&&[member.name,member.username].some(value=>String(value||'').toLowerCase().includes(query))).forEach(member=>{
       const row=document.createElement('tr');row.dataset.memberId=member.playerId;row.dataset.memberRole=member.role;
-      [member.name,member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
-      const actions=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Manage member';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
+      const selection = document.createElement('td');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.setAttribute('aria-label', `Select ${member.name}`);
+      checkbox.checked = selectedRosterIds.has(member.playerId);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedRosterIds.add(member.playerId);
+        else selectedRosterIds.delete(member.playerId);
+        updateRosterSelection();
+      });
+      selection.append(checkbox);
+      row.append(selection);
+      [member.name,member.username||'—',member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
+      const actions=document.createElement('td');
+      if (member.role === 'coach' && !isPlatformAdmin()) {
+        checkbox.disabled = true;
+        row.append(actions);
+        body.append(row);
+        return;
+      }
+      const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Manage member';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
+      if (member.role === 'coach') {
+        const person = directory.people.find(item => item.id === member.playerId);
+        if (person) actions.append(directoryButton('View access', () => openDirectoryPerson(person)));
+      }
       row.appendChild(actions);body.appendChild(row);
     });
-    if(!body.children.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=4;cell.textContent=members.length?'No members match these filters.':'No members yet. Select Add member to build the roster.';row.appendChild(cell);body.appendChild(row);}
+    if(!body.children.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=6;cell.textContent=members.length?'No members match these filters.':'No members yet. Select Add member to build the roster.';row.appendChild(cell);body.appendChild(row);}
   }
   const rosterView=document.querySelector('[data-admin-team-view="roster"]');
   if(rosterView){
     rosterView.querySelector('.admin-section-heading')?.remove();
-    const browser=document.createElement('section');browser.id='adminRosterBrowser';browser.innerHTML=`<div class="admin-roster-toolbar"><strong id="adminRosterCounts"></strong><button type="button" class="btn btn-brand" id="adminAddMember">Add member</button></div><div class="admin-roster-filters"><label class="field"><span>Search members</span><input id="adminRosterSearch" type="search" placeholder="Search by name"></label><label class="field"><span>Role</span><select id="adminRosterRole"><option value="">All members</option><option value="player">Players</option><option value="coach">Coaches</option></select></label></div><table class="admin-roster-table"><thead><tr><th>Name</th><th>Number</th><th>Role</th><th>Actions</th></tr></thead><tbody id="adminRosterRows"></tbody></table>`;
+    const browser=document.createElement('section');browser.id='adminRosterBrowser';browser.innerHTML=`<div class="admin-roster-toolbar"><strong id="adminRosterCounts"></strong><button id="adminRemoveSelectedMembers" class="btn btn-danger hidden" type="button">Remove selected</button><div class="admin-add-member-dropdown"><button type="button" class="btn btn-brand" id="adminAddMember" aria-haspopup="menu" aria-expanded="false" aria-controls="adminAddMemberChoices">Add member <span class="admin-add-member-chevron" aria-hidden="true"></span></button><div id="adminAddMemberChoices" class="hidden" aria-labelledby="adminAddMember" role="menu"></div></div></div><div class="admin-roster-filters"><label class="field"><span>Search members</span><input id="adminRosterSearch" type="search" placeholder="Search by name or username"></label><label class="field"><span>Role</span><select id="adminRosterRole"><option value="">All members</option><option value="player">Players</option><option value="coach">Coaches</option></select></label></div><table class="admin-roster-table"><thead><tr><th scope="col"><span class="sr-only">Select member</span></th><th>Name</th><th>Username</th><th>Number</th><th>Role</th><th>Actions</th></tr></thead><tbody id="adminRosterRows"></tbody></table>`;
     rosterView.prepend(browser);
-    const editorHeader=document.createElement('div');editorHeader.id='adminMemberEditorHeader';editorHeader.innerHTML=`<strong id="adminMemberEditorTitle">Add member</strong><button type="button" class="btn btn-ghost" id="adminMemberCancel">Cancel</button><label class="field"><span>Account type</span><select id="adminMemberType"><option value="player">Create player account</option><option value="coach">Create coach account</option><option value="existing">Add existing unassigned player</option></select></label>`;browser.after(editorHeader);
+    const editorHeader=document.createElement('div');
+    editorHeader.id='adminMemberEditorHeader';
+    editorHeader.innerHTML=`<div><strong id="adminMemberEditorTitle"></strong><p id="adminMemberDestination" class="muted"></p></div><button type="button" class="btn btn-ghost" id="adminMemberCancel">Cancel</button>`;
+    browser.after(editorHeader);
     playerSelect.closest('.admin-record-card').dataset.memberForm='player';coachSelect.closest('.admin-record-card').dataset.memberForm='coach';
     playerSelect.closest('label').hidden=true;coachSelect.closest('label').hidden=true;
-    byId('adminAddMember').onclick=()=>{byId('adminMemberType').value='player';openMemberEditor('player');};
-    byId('adminMemberCancel').onclick=closeMemberEditor;
-    byId('adminMemberType').onchange=event=>openMemberEditor(event.target.value);
+    const addMember = byId('adminAddMember');
+    const choices = byId('adminAddMemberChoices');
+    const dropdown = addMember.parentElement;
+    const menuItems = [
+      ['player', 'Create player account'],
+      ['coach', 'Create coach account'],
+      ['existing', 'Add existing player'],
+      ['csv', 'Import roster CSV'],
+    ].map(([role, label]) => {
+      const item = directoryButton(label, () => openMemberEditor(role));
+      item.setAttribute('role', 'menuitem');
+      if (role === 'existing') item.dataset.platformRosterAction = '';
+      item.tabIndex = -1;
+      return item;
+    });
+    choices.append(...menuItems);
+
+    const menuIsOpen = () => addMember.getAttribute('aria-expanded') === 'true';
+    const availableItems = () => menuItems.filter(item => !item.classList.contains('hidden'));
+    const openMenu = (last = false) => {
+      showAddMemberChoices(true);
+      const items = availableItems();
+      items[last ? items.length - 1 : 0].focus();
+    };
+    addMember.onclick = () => {
+      if (menuIsOpen()) showAddMemberChoices(false);
+      else openMenu();
+    };
+    dropdown.addEventListener('keydown', event => {
+      if (event.target === addMember && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+        event.preventDefault();
+        openMenu(event.key === 'ArrowUp');
+        return;
+      }
+      if (!menuIsOpen()) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        showAddMemberChoices(false);
+        addMember.focus();
+        return;
+      }
+      const items = availableItems();
+      const current = items.indexOf(event.target);
+      if (current < 0) return;
+      const next = {
+        ArrowDown: (current + 1) % items.length,
+        ArrowUp: (current + items.length - 1) % items.length,
+        Home: 0,
+        End: items.length - 1,
+      }[event.key];
+      if (next === undefined) return;
+      event.preventDefault();
+      items[next].focus();
+    });
+    dropdown.addEventListener('focusout', event => {
+      if (!dropdown.contains(event.relatedTarget)) showAddMemberChoices(false);
+    });
+    document.addEventListener('pointerdown', event => {
+      if (menuIsOpen() && !dropdown.contains(event.target)) showAddMemberChoices(false);
+    });
+    byId('adminMemberCancel').onclick = () => {
+      closeMemberEditor();
+      addMember.focus();
+    };
+    byId('adminExistingPlayerSearch').oninput = renderPlayerMovement;
     byId('adminRosterSearch').oninput=renderRosterBrowser;byId('adminRosterRole').onchange=renderRosterBrowser;
-    const teamSettings=document.createElement('details');teamSettings.id='adminTeamSettings';
-    const settingsSummary=document.createElement('summary');settingsSummary.textContent='Team settings';teamSettings.appendChild(settingsSummary);
-    const context=document.querySelector('.admin-team-context');context.appendChild(teamSettings);
+    const teamSettings=document.createElement('section');teamSettings.id='adminTeamSettings';
+    const settingsHeading=document.createElement('h4');settingsHeading.textContent='Team settings';teamSettings.appendChild(settingsHeading);
+    editorHeader.append(byId('adminCsvImportPanel'));
+    byId('adminRemoveSelectedMembers').onclick = () => void removeSelectedRosterMembers();
+    byId('adminTeamContext').prepend(teamSettings);
     teamSettings.appendChild(teamHeaderFields);
     const settingsActions=document.createElement('div');settingsActions.className='admin-actions';
-    for(const id of ['adminTeamUpdateBtn','adminTeamRemoveBtn'])settingsActions.appendChild(byId(id));
+    for(const id of ['adminTeamUpdateBtn','adminTeamsResetBtn','adminTeamRemoveBtn'])settingsActions.appendChild(byId(id));
     teamSettings.appendChild(settingsActions);
 
   }
@@ -779,17 +878,20 @@
   function renderPlayerMovement() {
     const team = selectedTeam();
     const previousUnassigned = String(unassignedPlayerSelect?.value || '');
-    unassignedPlayerSelect?.replaceChildren(option('', unassignedPlayers.length
+    const query = byId('adminExistingPlayerSearch')?.value.trim().toLowerCase() || '';
+    const candidates = unassignedPlayers.filter(player => player.role !== 'coach'
+      && [player.name, player.username].some(value => value?.toLowerCase().includes(query)));
+    unassignedPlayerSelect?.replaceChildren(option('', candidates.length
       ? '— Select unassigned player —'
-      : '— No unassigned players —'));
-    unassignedPlayers.filter(player=>player.role!=='coach').forEach((player) => {
+      : query ? '— No matching players —' : '— No unassigned players —'));
+    candidates.forEach((player) => {
       const history = player.previousTeams?.length
         ? ` · formerly ${player.previousTeams.join(', ')}`
         : '';
       unassignedPlayerSelect?.appendChild(option(player.userId, `${player.name}${history}`));
     });
     if (unassignedPlayerSelect) {
-      unassignedPlayerSelect.value = unassignedPlayers.some(
+      unassignedPlayerSelect.value = candidates.some(
         (player) => player.userId === previousUnassigned,
       ) ? previousUnassigned : '';
     }
@@ -818,7 +920,7 @@
     if (transferPlayerGuidance && selectedPlayer) {
       transferPlayerGuidance.textContent = `Move #${selectedPlayer.number} ${selectedPlayer.name} to another active team while preserving their historical results.`;
     }
-    setEnabled([unassignedPlayerSelect], Boolean(team && unassignedPlayers.length));
+    setEnabled([unassignedPlayerSelect], Boolean(team && candidates.length));
     setEnabled([existingPlayerNumber], Boolean(team && unassignedSelected));
     setEnabled([byId('adminAddExistingPlayerBtn')], Boolean(
       team && unassignedSelected && String(existingPlayerNumber?.value || '').trim(),
@@ -963,9 +1065,8 @@
     closeMemberEditor();
     renderRosterBrowser();
     const team = selectedTeam();
-    const newTeamButton = byId('adminNewTeamBtn');
     const settings=byId('adminTeamSettings');
-    if(settings){settings.hidden=!team&&!creatingTeam;settings.open=creatingTeam;settings.querySelector('summary').textContent=creatingTeam?'New team details':'Team settings';}
+    if(settings){settings.hidden=!team&&!creatingTeam;settings.querySelector('h4').textContent=creatingTeam?'New team details':'Team settings';}
     [teamName, initialSeasonName, playerName, playerNumber, playerPassword, coachName, coachPassword]
       .forEach(clearFieldError);
     if (teamName) teamName.value = team?.name || '';
@@ -976,8 +1077,6 @@
       [byId('adminTeamUpdateBtn'), byId('adminTeamRemoveBtn')],
       Boolean(team),
     );
-    setVisible(byId('adminNewTeamBtn'), !creatingTeam);
-    if (newTeamButton) newTeamButton.textContent = team ? 'Create another team' : 'New team';
     setVisible(byId('adminTeamAddBtn'), creatingTeam);
     setVisible(byId('adminTeamCancelCreateBtn'), creatingTeam);
     setVisible(byId('adminTeamUpdateBtn'), Boolean(team));
@@ -1148,15 +1247,779 @@
     if (typeof refreshTeamsUIAll === 'function') refreshTeamsUIAll();
   }
 
+  const directoryStatus = byId('adminDirectoryStatus');
+  const directoryForm = byId('adminDirectoryForm');
+  const peopleSearch = byId('adminPeopleSearch');
+  let directory = { organizations: [], regions: [], teams: [], people: [], assignments: [] };
+  let directoryScope = null;
+  let directoryAccountId = '';
+  const isPlatformAdmin = () => window.__DIQ_AUTH_USER__?.role === 'admin';
+  const directsOrganization = id => window.__DIQ_AUTH_USER__?.directorScopes?.some(
+    scope => scope.role === 'organization_director' && scope.organizationId === id);
+
+  const peopleOrganization = byId('adminPeopleOrganization');
+  const canManagePeople = () => isPlatformAdmin() || window.__DIQ_AUTH_USER__?.directorScopes?.some(
+    scope => scope.role === 'organization_director');
+  const canDelegateDesigner = organizationId => isPlatformAdmin()
+    || directory.designerOrganizationIds?.includes(organizationId);
+  peopleOrganization?.addEventListener('change', () => {
+    selectedPersonId = '';
+    renderPeopleDirectory();
+  });
+
+  const directoryQueries = new Map();
+  let unassignedTeamsOpen = false;
+  let selectedPersonId = '';
+
+  function directoryElement(tag, content, className = '') {
+    const element = document.createElement(tag);
+    element.className = className;
+    element.textContent = content;
+    return element;
+  }
+
+  function directoryButton(label, action, className = 'btn btn-ghost') {
+    const button = directoryElement('button', label, className);
+    button.type = 'button';
+    button.addEventListener('click', action);
+    return button;
+  }
+
+  function regionPath(id) {
+    const region = directory.regions.find(item => item.id === id);
+    if (!region) return 'Unassigned teams';
+    const organization = directory.organizations.find(item => item.id === region.organizationId);
+    return [organization?.name, region.name].filter(Boolean).join(' / ');
+  }
+
+  function openDirectoryPerson(person) {
+    selectedPersonId = person.id;
+    peopleSearch.value = person.username;
+    renderPeopleDirectory();
+    switchTab('people');
+    byId('adminPersonTitle')?.focus();
+  }
+
+  function browseDirectory(scope, teamId = '') {
+    directoryScope = scope;
+    directoryStatus.textContent = '';
+    teamSelect.value = teamId;
+    teamSelect.dispatchEvent(new Event('change'));
+    byId('adminDirectoryTitle').focus();
+  }
+
+  function directoryList(container, title, records, describe, open, empty, selectedId) {
+    const section = directoryElement('section', '', 'admin-directory-group');
+    if (title) section.append(directoryElement('h4', title));
+    if (!records.length) section.append(directoryElement('p', empty, 'muted'));
+    else {
+      const list = directoryElement('ul', '', 'admin-directory-list');
+      records.forEach(record => {
+        const row = directoryElement('li', '');
+        const button = directoryButton(record.name, () => open(record));
+        if (record.id === selectedId) button.setAttribute('aria-current', 'true');
+        const subtitle = describe(record);
+        if (subtitle) button.append(directoryElement('small', subtitle));
+        row.append(button);
+        list.append(row);
+      });
+      section.append(list);
+    }
+    container.append(section);
+  }
+
+  const accessRoles = {
+    coach: 'Coach',
+    organization_director: 'Organization Director',
+    regional_director: 'Regional Director',
+  };
+
+  function accessScope(assignment) {
+    if (assignment.teamId) {
+      const team = directory.teams.find(item => item.id === assignment.teamId);
+      return team ? (team.regionId ? `${regionPath(team.regionId)} / ${team.name}` : `${team.name} · Unassigned`) : '';
+    }
+    if (assignment.regionId) return regionPath(assignment.regionId);
+    return directory.organizations.find(item => item.id === assignment.organizationId)?.name || 'Platform';
+  }
+
+  function openTeamFromAccess(teamId) {
+    browseDirectory(null, teamId);
+    switchTab('teams');
+  }
+
+  async function removeCoachMembership(person, assignment) {
+    if (!await requestConfirmation({
+      title: 'Remove Coach assignment',
+      message: `Remove ${person.name} from ${accessScope(assignment)}?`,
+      confirmLabel: 'Remove assignment',
+    })) return;
+    try {
+      await diqApiRequest('admin/workspace-directory', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'remove_coach', userId: person.id, scopeId: assignment.teamId }),
+      });
+      await loadWorkspaceDirectory();
+      setStatus('Coach assignment removed.', 'success');
+    } catch (error) {
+      setStatus(error.message, 'error');
+    }
+  }
+
+  async function removeDirectorAppointment(person, assignment) {
+    if (!await requestConfirmation({
+      title: 'Remove director appointment',
+      message: `Remove ${person.name} as ${accessRoles[assignment.role]} for ${accessScope(assignment)}?`,
+      confirmLabel: 'Remove appointment',
+    })) return;
+    try {
+      await diqApiRequest('admin/workspace-directory', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'remove_staged_director', assignmentId: assignment.stagedDirectorId }),
+      });
+      await loadWorkspaceDirectory();
+      setStatus('Director appointment removed.', 'success');
+      byId('adminPersonTitle')?.focus();
+    } catch (error) {
+      setStatus(error.message, 'error');
+    }
+  }
+
+  function designerSwitch(label) {
+    const pill = directoryElement('span', '', 'admin-designer-switch');
+    const input = directoryElement('input', '');
+    input.type = 'checkbox';
+    input.setAttribute('role', 'switch');
+    input.setAttribute('aria-label', label);
+    const states = directoryElement('span', '', 'admin-designer-switch-states');
+    states.setAttribute('aria-hidden', 'true');
+    states.append(directoryElement('span', 'Off'), directoryElement('span', 'On'));
+    pill.append(input, states);
+    return { input, pill };
+  }
+
+  function renderDesignerSetting(person, assignment) {
+    const label = directoryElement('label', '', 'admin-designer-setting');
+    const { input, pill } = designerSwitch(`Designer for ${accessRoles[assignment.role]} · ${accessScope(assignment)}`);
+    input.checked = Boolean(assignment.canDesign);
+    label.append(pill);
+    input.addEventListener('change', async () => {
+      const canDesign = input.checked;
+      input.disabled = true;
+      try {
+        await diqApiRequest('admin/workspace-directory', {
+          method: 'POST',
+          body: JSON.stringify({
+            action: 'stage_access',
+            userId: person.id,
+            role: assignment.role,
+            scopeId: assignment.teamId || assignment.regionId || assignment.organizationId,
+            assignmentId: assignment.stagedDirectorId || undefined,
+            canDesign,
+          }),
+        });
+        assignment.canDesign = canDesign;
+          setStatus('Designer setting saved.', 'success');
+      } catch (error) {
+        input.checked = Boolean(assignment.canDesign);
+        setStatus(error.message, 'error');
+      } finally {
+        const restoreFocus = document.activeElement === document.body;
+        input.disabled = false;
+        if (restoreFocus && input.isConnected) input.focus();
+      }
+    });
+    return label;
+  }
+
+  function renderPeopleDirectory() {
+    const list = byId('adminPeopleList');
+    const details = byId('adminPersonAccess');
+    const query = peopleSearch.value.trim().toLowerCase();
+    const organizations = directory.organizations.filter(org => isPlatformAdmin() || directsOrganization(org.id));
+    const previousOrganization = peopleOrganization.value;
+    peopleOrganization.replaceChildren(
+      ...(isPlatformAdmin() ? [option('', 'All organizations')] : []),
+      ...organizations.map(org => option(org.id, org.name)),
+    );
+    if (organizations.some(org => org.id === previousOrganization)) peopleOrganization.value = previousOrganization;
+    byId('adminPeopleOrganizationField').hidden = organizations.length < (isPlatformAdmin() ? 1 : 2);
+    const organizationId = peopleOrganization.value;
+    const assignmentsInView = directory.assignments.filter(item => !organizationId || item.staffOrganizationId === organizationId);
+    const assignedStaff = new Set(assignmentsInView.map(item => item.userId));
+    const matches = directory.people.filter(person => (!organizationId || assignedStaff.has(person.id))
+      && [person.name, person.username].some(value => value?.toLowerCase().includes(query)));
+    list.replaceChildren();
+    const results = directoryElement('ul', '', 'admin-directory-list');
+    matches.slice(0, 20).forEach(person => {
+      const button = directoryButton(person.name, () => {
+        selectedPersonId = person.id;
+        renderPeopleDirectory();
+        byId('adminPersonTitle')?.focus();
+      });
+      button.setAttribute('aria-pressed', String(selectedPersonId === person.id));
+      button.append(directoryElement('small', person.username));
+      const item = directoryElement('li', '');
+      item.append(button);
+      results.append(item);
+    });
+    if (matches.length) list.append(results);
+    else list.append(directoryElement('p', 'No matching staff.'));
+    if (matches.length > 20) list.append(directoryElement('p', `Showing 20 of ${matches.length} staff. Refine your search to see other matches.`, 'muted'));
+
+    const person = matches.find(item => item.id === selectedPersonId);
+    details.replaceChildren();
+    setVisible(details, Boolean(person));
+    if (!person) return;
+
+    const heading = directoryElement('div', '', 'admin-section-heading');
+    const identity = directoryElement('div', '');
+    const title = directoryElement('h4', person.name);
+    title.id = 'adminPersonTitle';
+    title.tabIndex = -1;
+    identity.append(title, directoryElement('p', person.username, 'muted'));
+    heading.append(identity);
+    details.append(heading);
+
+    const assignments = assignmentsInView.filter(item => item.userId === person.id)
+      .sort((a, b) => accessScope(a).localeCompare(accessScope(b)));
+    const formMount = directoryElement('div', '', 'admin-access-form-mount');
+    const openForm = () => {
+      formMount.replaceChildren(renderStaffAccessForm(person, () => {
+        formMount.replaceChildren();
+        byId('adminPersonTitle')?.focus();
+      }));
+      formMount.querySelector('select:not(:disabled), input')?.focus();
+    };
+    if (person.role === 'coach') {
+      heading.append(directoryButton('Add assignment', () => openForm(), 'btn btn-brand'));
+    }
+    if (person.legacyPublishing) details.append(directoryElement('p', 'This account previously had shared library publishing access.', 'muted'));
+    if (person.role === 'coach' && assignments.some(item => item.role === 'coach' || item.stagedDirectorId)) {
+      details.append(directoryElement('p', 'Designer access authorizes publishing in the assigned library.', 'muted'));
+    }
+    if (!assignments.length) details.append(directoryElement('p', 'No workspace assignments.'));
+    else {
+      const wrapper = directoryElement('div', '', 'admin-access-table-wrap');
+      const table = directoryElement('table', '', 'admin-access-table');
+      table.setAttribute('aria-label', 'Current workspace assignments');
+      const header = table.createTHead().insertRow();
+      for (const label of ['Applies to', 'Role', 'Designer', 'Actions']) {
+        const column = directoryElement('th', label);
+        column.scope = 'col';
+        header.append(column);
+      }
+      const body = table.createTBody();
+      for (const assignment of assignments) {
+        const row = body.insertRow();
+        row.insertCell().textContent = accessScope(assignment);
+        const roleCell = row.insertCell();
+        roleCell.textContent = accessRoles[assignment.role];
+        const region = directory.regions.find(item => item.id === assignment.regionId);
+        if (region && assignments.some(item => item.role === 'organization_director' && item.organizationId === region.organizationId)) {
+          roleCell.append(directoryElement('small', 'Also covered by the organization appointment', 'muted admin-access-overlap'));
+        }
+        const designer = row.insertCell();
+        const canManage = isPlatformAdmin() || (assignment.role !== 'organization_director'
+          && directsOrganization(assignment.staffOrganizationId));
+        if (canManage && canDelegateDesigner(assignment.staffOrganizationId)) designer.append(renderDesignerSetting(person, assignment));
+        else designer.textContent = assignment.canDesign ? 'On' : 'Off';
+        const actions = directoryElement('div', '', 'admin-actions');
+        if (assignment.teamId) actions.append(directoryButton('View team', () => openTeamFromAccess(assignment.teamId)));
+        if (assignment.teamId && canManage) {
+          actions.append(directoryButton('Remove', () => void removeCoachMembership(person, assignment)));
+        }
+        if (assignment.stagedDirectorId && canManage) {
+          actions.append(directoryButton('Remove', () => void removeDirectorAppointment(person, assignment)));
+        }
+        row.insertCell().append(actions);
+      }
+      wrapper.append(table);
+      details.append(wrapper);
+    }
+    details.append(formMount);
+  }
+
+  function renderStaffAccessForm(person, cancel) {
+    const creating = !person;
+    const heading = creating ? 'Add staff' : 'Add assignment';
+    const panel = directoryElement('section', '', 'admin-staff-form-panel');
+    panel.append(directoryElement('h4', heading));
+    const form = directoryElement('form', '', 'admin-record-grid admin-staff-form');
+    const name = directoryElement('input', '', 'input');
+    const password = directoryElement('input', '', 'input');
+    if (creating) {
+      name.required = true;
+      name.maxLength = 100;
+      password.type = 'password';
+      password.required = true;
+      password.minLength = 8;
+      password.autocomplete = 'new-password';
+      password.maxLength = 1024;
+      const nameField = directoryElement('label', 'Full name', 'field');
+      const passwordField = directoryElement('label', 'Temporary password', 'field');
+      nameField.append(name);
+      passwordField.append(password);
+      form.append(nameField, passwordField);
+      panel.append(directoryElement('p', 'We generate the username from the name. Staff change their temporary password at first sign-in.', 'muted'));
+    }
+    const role = directoryElement('select', '', 'select');
+    role.required = true;
+    role.append(option('', 'Choose role'), ...(isPlatformAdmin() ? ['organization_director', 'regional_director', 'coach'] : ['regional_director', 'coach']).map(key => option(key, accessRoles[key])));
+    const roleField = directoryElement('label', 'Role', 'field');
+    roleField.append(role);
+    const scope = directoryElement('select', '', 'select');
+    scope.required = true;
+    const scopeField = directoryElement('label', '', 'field');
+    const scopeLabel = directoryElement('span', 'Applies to');
+    scopeField.append(scopeLabel, scope);
+    const { input: design, pill } = designerSwitch('Enable Situation Designer');
+    const designField = directoryElement('label', '', 'admin-designer-setting');
+    designField.append(pill, 'Enable Situation Designer');
+    const save = directoryElement('button', creating ? 'Create staff account' : 'Save assignment', 'btn btn-brand');
+    const status = directoryElement('p', '', 'operation-status');
+    status.setAttribute('role', 'status');
+    const actions = directoryElement('div', '', 'admin-actions');
+    actions.append(save, directoryButton('Cancel', cancel));
+
+    const overlap = directoryElement('p', '', 'muted admin-access-overlap');
+    overlap.setAttribute('aria-live', 'polite');
+    function updateOverlap() {
+      if (role.value === 'coach') { overlap.textContent = ''; return; }
+      const region = directory.regions.find(item => item.id === scope.value);
+      const organizationId = role.value === 'regional_director' ? region?.organizationId : scope.value;
+      const otherAssignments = directory.assignments.filter(item => item.userId === person?.id);
+      const coversSameOrganization = organizationId && (role.value === 'regional_director'
+        ? otherAssignments.some(item => item.role === 'organization_director' && item.organizationId === organizationId)
+        : otherAssignments.some(item => item.regionId && directory.regions.some(region =>
+            region.id === item.regionId && region.organizationId === organizationId)));
+      overlap.textContent = coversSameOrganization
+        ? 'This director appointment overlaps an existing appointment in the same organization. Both appointments can be kept.'
+        : '';
+    }
+
+    function targetOrganization() {
+      if (role.value === 'organization_director') return scope.value;
+      const regionId = role.value === 'coach'
+        ? directory.teams.find(team => team.id === scope.value)?.regionId : scope.value;
+      return directory.regions.find(region => region.id === regionId)?.organizationId;
+    }
+
+    function updateDesigner() {
+      const existing = directory.assignments.find(item => item.userId === person?.id && item.role === role.value
+        && (item.teamId || item.regionId || item.organizationId) === scope.value);
+      design.disabled = !scope.value || !canDelegateDesigner(targetOrganization());
+      design.checked = existing ? Boolean(existing.canDesign)
+        : !design.disabled && role.value !== 'coach';
+      save.disabled = !scope.value || Boolean(existing?.canDesign && design.disabled);
+    }
+
+    function updateScopes() {
+      const fits = id => (!peopleOrganization.value || peopleOrganization.value === id)
+        && (isPlatformAdmin() || directsOrganization(id));
+      const regions = directory.regions.filter(item => fits(item.organizationId));
+      const options = role.value === 'organization_director'
+        ? directory.organizations.filter(item => fits(item.id)).map(item => option(item.id, item.name))
+        : role.value === 'regional_director' ? regions.map(item => option(item.id, regionPath(item.id)))
+          : role.value === 'coach' ? directory.teams
+            .filter(team => regions.some(region => region.id === team.regionId)
+              || (isPlatformAdmin() && !peopleOrganization.value && !team.regionId))
+            .map(team => option(team.id, accessScope({ teamId: team.id }))) : [];
+      const scopeType = role.value === 'organization_director' ? 'Organization' : role.value === 'coach' ? 'Team' : 'Region';
+      scopeLabel.textContent = role.value ? scopeType : 'Applies to';
+      scope.replaceChildren(option('', role.value ? `Choose ${scopeType.toLowerCase()}` : 'Choose role first'), ...options);
+      scope.disabled = !options.length;
+      updateDesigner();
+      status.textContent = '';
+    }
+    updateScopes();
+    role.addEventListener('change', () => {
+      updateScopes();
+      updateOverlap();
+    });
+    scope.addEventListener('change', () => {
+      updateDesigner();
+      status.textContent = '';
+      updateOverlap();
+    });
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!scope.value || save.disabled) return;
+      const choice = { role: role.value, scopeId: scope.value, canDesign: design.checked };
+      if (overlap.textContent && !await requestConfirmation({
+        title: 'Keep both director appointments?',
+        message: overlap.textContent,
+        confirmLabel: 'Add appointment',
+      })) return;
+      const payload = creating ? { action: 'create_staff', name: name.value, password: password.value, ...choice }
+        : { action: 'stage_access', userId: person.id, ...choice };
+      save.disabled = true;
+      try {
+        const result = await diqApiRequest('admin/workspace-directory', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        if (creating) {
+          password.value = '';
+          cancel();
+          selectedPersonId = result.userId;
+          peopleSearch.value = result.username;
+        }
+        await loadWorkspaceDirectory();
+        setStatus(creating ? `Staff account created. Username is ${result.username}.` : 'Workspace access saved.', 'success');
+        byId('adminPersonTitle')?.focus();
+      } catch (error) {
+        status.textContent = error.message;
+      } finally {
+        save.disabled = !scope.value;
+      }
+    });
+    form.append(roleField, scopeField, overlap, designField, actions);
+    panel.append(form, status);
+    return panel;
+  }
+
+  const addStaff = byId('adminAddStaff');
+  const staffCreate = byId('adminStaffCreate');
+  const peopleLayout = byId('adminPeopleLayout');
+  addStaff?.addEventListener('click', () => {
+    staffCreate.replaceChildren(renderStaffAccessForm(null, () => {
+      staffCreate.replaceChildren();
+      setVisible(staffCreate, false);
+      setVisible(peopleLayout, true);
+      addStaff.focus();
+    }));
+    setVisible(staffCreate, true);
+    setVisible(peopleLayout, false);
+    staffCreate.querySelector('input').focus();
+  });
+
+  function showDirectoryForm(action, scope) {
+    directoryStatus.textContent = '';
+    directoryForm.replaceChildren();
+    directoryForm.dataset.action = action;
+    const field = directoryElement('label', '', 'field');
+    const submit = directoryElement('button', '', 'btn btn-brand');
+    submit.type = 'submit';
+
+    if (['create_organization', 'create_region', 'rename_organization', 'rename_region'].includes(action)) {
+      const organization = action.endsWith('_organization');
+      const renaming = action.startsWith('rename_');
+      const input = directoryElement('input', '', 'input');
+      input.name = 'name';
+      input.required = true;
+      input.maxLength = 120;
+      field.append(directoryElement('span', organization ? 'Organization name' : 'Region name'), input);
+      if (renaming) input.value = scope.name;
+      submit.textContent = renaming ? 'Save name' : organization ? 'Create organization' : 'Create region';
+    } else {
+      const adding = action === 'add_team';
+      const select = directoryElement('select', '', 'select');
+      select.name = adding ? 'teamId' : 'regionId';
+      select.required = adding;
+      if (adding) {
+        select.append(option('', 'Choose team'), ...directory.teams.filter(team => !team.regionId)
+          .map(team => option(team.id, team.name)));
+      } else {
+        const currentRegion = directory.regions.find(region => region.id === scope.regionId);
+        const destinations = isPlatformAdmin() ? directory.regions
+          : directory.regions.filter(region => region.organizationId === currentRegion?.organizationId);
+        if (isPlatformAdmin()) select.append(option('', 'Unassigned teams'));
+        select.append(...destinations.map(region => option(region.id, regionPath(region.id))));
+        select.value = scope.regionId || '';
+      }
+      field.append(directoryElement('span', adding ? 'Existing team' : 'Destination region'), select);
+      submit.textContent = adding ? 'Add team' : 'Review move';
+    }
+    directoryForm.append(field, submit, directoryButton('Cancel', () => renderWorkspaceDirectory()));
+    setVisible(directoryForm, true);
+    field.querySelector('input, select')?.focus();
+  }
+
+  function appendDirectoryManagement(actions, kind, record) {
+    const remove = directoryButton(`Delete ${kind}`, async () => {
+      if (!await requestConfirmation({
+        title: `Delete ${kind}`,
+        message: `Permanently delete ${record.name}?`,
+        confirmLabel: `Delete ${kind}`,
+      })) return;
+      remove.disabled = true;
+      try {
+        await diqApiRequest('admin/workspace-directory', {
+          method: 'POST',
+          body: JSON.stringify({ action: `delete_${kind}`, id: record.id }),
+        });
+        if (directoryScope?.[`${kind}Id`] === record.id) {
+          directoryScope = kind === 'region' ? { organizationId: record.organizationId } : null;
+        }
+        await loadWorkspaceDirectory();
+        directoryStatus.textContent = kind === 'region' ? 'Region deleted.' : 'Organization deleted.';
+      } catch (error) {
+        directoryStatus.textContent = error.message;
+      } finally {
+        remove.disabled = false;
+      }
+    }, 'btn btn-danger');
+    actions.append(directoryButton(`Rename ${kind}`, () => showDirectoryForm(`rename_${kind}`, record)), remove);
+  }
+
+  function renderSearchableDirectory(items, { key, label, records, describe, open, empty, selectedId }) {
+    const list = directoryElement('div', '', 'admin-searchable-directory');
+    const field = directoryElement('label', `Search ${label}`, 'field admin-directory-search');
+    const search = directoryElement('input', '', 'input');
+    search.type = 'search';
+    search.value = directoryQueries.get(key) || '';
+    field.append(search);
+    const results = directoryElement('div', '', 'admin-directory-results');
+    const sorted = [...records].sort((a, b) => a.name.localeCompare(b.name));
+
+    function filterRecords() {
+      directoryQueries.set(key, search.value);
+      const query = search.value.trim().toLowerCase();
+      const matches = sorted.filter(record => record.name.toLowerCase().includes(query));
+      results.replaceChildren();
+      directoryList(results, '', matches, describe, open, query ? `No matching ${label}.` : empty, selectedId);
+    }
+
+    search.addEventListener('input', filterRecords);
+    filterRecords();
+    list.append(field, results);
+    items.append(list);
+  }
+
+  function renderUnassignedTeams(items) {
+    const teams = directory.teams.filter(item => !item.regionId);
+    const unassigned = directoryElement('details', '', 'admin-unassigned-teams');
+    unassigned.open = unassignedTeamsOpen || creatingTeam;
+    unassigned.addEventListener('toggle', () => {
+      if (unassigned.isConnected) unassignedTeamsOpen = unassigned.open;
+    });
+    unassigned.append(directoryElement('summary', `Unassigned teams (${teams.length})`));
+    const content = directoryElement('div', '', 'admin-directory-group');
+    directoryList(content, '', teams, () => '', item => browseDirectory(null, item.id), 'All teams belong to a region.');
+    const actions = directoryElement('div', '', 'admin-actions');
+    actions.append(newTeamButton);
+    content.append(actions);
+    unassigned.append(content);
+    items.append(unassigned);
+  }
+
+  function renderWorkspaceDirectory() {
+    const team = directory.teams.find(item => item.id === selectedTeam()?.id);
+    const region = directory.regions.find(item => item.id === (team ? team.regionId : directoryScope?.regionId));
+    const organization = directory.organizations.find(item => item.id === (region?.organizationId || (!team && directoryScope?.organizationId)));
+    const path = byId('adminDirectoryPath');
+    const actions = byId('adminDirectoryActions');
+    const items = byId('adminDirectoryItems');
+    const platformAdmin = isPlatformAdmin();
+    const organizationDirector = organization && directsOrganization(organization.id);
+    const managedOrganizations = directory.organizations.filter(item => platformAdmin || directsOrganization(item.id));
+    const standaloneRegions = directory.regions.filter(item => !directsOrganization(item.organizationId));
+    const overview = platformAdmin || managedOrganizations.length ? 'Organizations' : 'Regions';
+    const organizationList = byId('adminOrganizationList');
+    organizationList.closest('.admin-organization-layout').classList.toggle('has-detail', Boolean(team || region || organization || creatingTeam));
+    organizationList.replaceChildren();
+    if (platformAdmin || managedOrganizations.length) {
+      renderSearchableDirectory(organizationList, {
+        key: 'organizations', label: 'organizations', records: managedOrganizations,
+        describe: item => {
+          const count = directory.regions.filter(region => region.organizationId === item.id).length;
+          return `${count} ${count === 1 ? 'region' : 'regions'}`;
+        },
+        open: item => browseDirectory({ organizationId: item.id }), empty: 'No organizations yet.',
+        selectedId: organization?.id,
+      });
+    }
+    if (!platformAdmin && standaloneRegions.length) renderSearchableDirectory(organizationList, {
+      key: 'directed-regions', label: 'regions', records: standaloneRegions,
+      describe: item => directory.organizations.find(org => org.id === item.organizationId)?.name || '',
+      open: item => browseDirectory({ regionId: item.id }), empty: 'No regions assigned.',
+      selectedId: region?.id,
+    });
+    const additionalStaff = byId('adminAdditionalStaff');
+    additionalStaff.replaceChildren();
+    path.replaceChildren();
+    actions.replaceChildren();
+    const unassigned = items.querySelector('.admin-unassigned-teams');
+    if (unassigned) unassignedTeamsOpen = unassigned.open;
+    items.replaceChildren();
+    setVisible(directoryForm, false);
+    const title = byId('adminDirectoryTitle');
+    title.textContent = team?.name || region?.name || organization?.name || overview;
+    if (team || region || organization) path.append(directoryButton(overview, () => browseDirectory(null)));
+    if (organization && (team || region)) {
+      path.append(platformAdmin || organizationDirector
+        ? directoryButton(organization.name, () => browseDirectory({ organizationId: organization.id }))
+        : directoryElement('span', organization.name, 'admin-directory-ancestor'));
+    }
+    if (team && region) path.append(directoryButton(region.name, () => browseDirectory({ regionId: region.id })));
+    if (team || region || organization) {
+      const current = directoryElement('span', title.textContent, 'admin-directory-ancestor');
+      current.setAttribute('aria-current', 'page');
+      path.append(current);
+    }
+    if (!team && !region && !organization) {
+      if (platformAdmin) {
+        actions.append(directoryButton('Add organization', () => showDirectoryForm('create_organization'), 'btn btn-brand'));
+        renderUnassignedTeams(items);
+      }
+      if (organizationList.childElementCount && !creatingTeam) {
+        items.prepend(directoryElement('p', `Select ${overview === 'Organizations' ? 'an organization' : 'a region'} to view its details.`, 'muted'));
+      }
+    } else if (team) {
+      if (platformAdmin || organizationDirector) actions.append(directoryButton('Move team', () => showDirectoryForm('move_team', team)));
+      if (!region) items.append(directoryElement('p', 'Unassigned team', 'muted'));
+      const staff = directory.assignments.filter(item => (
+        (region && item.regionId === region.id)
+        || (organization && item.organizationId === organization.id)));
+      if (staff.length) directoryList(additionalStaff, 'Additional staff access', staff.flatMap(assignment => {
+        const person = directory.people.find(item => item.id === assignment.userId);
+        return person ? [{ ...person, assignment }] : [];
+      }), person => {
+        const assignment = person.assignment;
+        const source = assignment.teamId ? assignment.source : `Through ${accessScope(assignment)}`;
+        return `${person.username} · ${accessRoles[assignment.role]} · ${source}`;
+      }, openDirectoryPerson, 'No staff assignments for this team.');
+    } else if (region) {
+      const add = directoryButton('Add existing team', () => showDirectoryForm('add_team'));
+      add.disabled = !directory.teams.some(item => !item.regionId);
+      if (platformAdmin) actions.append(add);
+      if (platformAdmin || organizationDirector) appendDirectoryManagement(actions, 'region', region);
+      renderSearchableDirectory(items, {
+        key: `region:${region.id}`,
+        label: 'teams',
+        records: directory.teams.filter(item => item.regionId === region.id),
+        describe: () => '',
+        open: item => browseDirectory(null, item.id),
+        empty: 'No teams in this region.',
+      });
+    } else {
+      actions.append(directoryButton('Add region', () => showDirectoryForm('create_region'), 'btn btn-brand'));
+      if (platformAdmin) appendDirectoryManagement(actions, 'organization', organization);
+      renderSearchableDirectory(items, {
+        key: `organization:${organization.id}`,
+        label: 'regions',
+        records: directory.regions.filter(item => item.organizationId === organization.id),
+        describe: item => {
+          const count = directory.teams.filter(team => team.regionId === item.id).length;
+          return `${count} ${count === 1 ? 'team' : 'teams'}`;
+        },
+        open: item => browseDirectory({ regionId: item.id }),
+        empty: 'No regions in this organization.',
+      });
+    }
+
+    if (platformAdmin && !team && (region || organization)) {
+      const directors = directory.assignments.filter(item =>
+        region ? item.regionId === region.id || item.organizationId === organization?.id : item.organizationId === organization.id);
+      directoryList(items, 'Director appointments', directors.flatMap(assignment => {
+        const person = directory.people.find(item => item.id === assignment.userId);
+        return person ? [{ ...person, assignment }] : [];
+      }), person => `${accessRoles[person.assignment.role]} · ${accessScope(person.assignment)}`, openDirectoryPerson, 'No director appointments here.');
+    }
+    const allowCreation = !team && (Boolean(region) || (platformAdmin && !organization));
+    setVisible(newTeamButton, allowCreation && !creatingTeam);
+    newTeamButton.classList.toggle('btn-brand', Boolean(team || region));
+    newTeamButton.classList.toggle('btn-ghost', !team && !region);
+    newTeamButton.textContent = region ? 'Create team in this region' : 'Create unassigned team';
+    if (team || region || organization) actions.append(newTeamButton);
+    const hasSelectedTeam = Boolean(selectedTeam()) && !creatingTeam;
+    setVisible(byId('adminTeamContext'), hasSelectedTeam || creatingTeam);
+    setVisible(teamContextSummary, hasSelectedTeam);
+    setVisible(byId('adminTeamsResetBtn'), hasSelectedTeam);
+    setVisible(byId('adminTeamRecords'), hasSelectedTeam);
+  }
+
+  async function loadWorkspaceDirectory() {
+    try {
+      directory = await diqApiRequest('admin/workspace-directory', { cache: 'no-store' });
+      const accountId = window.__DIQ_AUTH_USER__?.id;
+      if (directoryAccountId !== accountId) {
+        directoryAccountId = accountId;
+        const scopes = window.__DIQ_AUTH_USER__?.directorScopes || [];
+        if (!isPlatformAdmin() && scopes.length === 1) {
+          const scope = scopes[0];
+          directoryScope = scope.organizationId ? { organizationId: scope.organizationId } : { regionId: scope.regionId };
+        }
+      }
+      renderWorkspaceDirectory();
+      renderRosterBrowser();
+      renderPeopleDirectory();
+    } catch (error) {
+      directoryStatus.textContent = error.message;
+      byId('adminPeopleList').textContent = error.message;
+    }
+  }
+
+  peopleSearch?.addEventListener('input', renderPeopleDirectory);
+  directoryForm?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const action = directoryForm.dataset.action;
+    const fields = Object.fromEntries(new FormData(directoryForm));
+    const submit = directoryForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    try {
+      let payload = { action, ...fields };
+      if (action === 'create_region') payload.organizationId = directoryScope.organizationId;
+      if (action === 'rename_organization') payload.id = directoryScope.organizationId;
+      if (action === 'rename_region') payload.id = directoryScope.regionId;
+      if (action === 'add_team' || action === 'move_team') {
+        const teamId = action === 'add_team' ? fields.teamId : selectedTeam()?.id;
+        const team = directory.teams.find(item => item.id === teamId);
+        const regionId = (action === 'add_team' ? directoryScope.regionId : fields.regionId) || null;
+        if (!team || team.regionId === regionId) {
+          directoryStatus.textContent = 'Choose a different destination.';
+          return;
+        }
+        const directorIds = id => {
+          const region = directory.regions.find(item => item.id === id);
+          if (!region) return new Set();
+          return new Set(directory.assignments.filter(item =>
+            item.regionId === region.id || item.organizationId === region.organizationId).map(item => item.userId));
+        };
+        const previous = directorIds(team.regionId);
+        const next = directorIds(regionId);
+        const added = directory.people.filter(person => next.has(person.id) && !previous.has(person.id));
+        const removed = directory.people.filter(person => previous.has(person.id) && !next.has(person.id));
+        const impact = [
+          added.length ? `Director access added for ${added.map(item => item.name).join(', ')}.` : '',
+          removed.length ? `Director access removed for ${removed.map(item => item.name).join(', ')}.` : '',
+        ].filter(Boolean).join(' ');
+        if (!await requestConfirmation({
+          title: 'Change team region',
+          message: `Move ${team.name} from ${regionPath(team.regionId)} to ${regionPath(regionId)}? ${impact}`.trim(),
+          confirmLabel: 'Confirm team move',
+        })) return;
+        payload = { action: 'place_team', teamId, regionId, previousRegionId: team.regionId };
+      }
+      const result = await diqApiRequest('admin/workspace-directory', { method: 'POST', body: JSON.stringify(payload) });
+      if (action === 'create_organization') directoryScope = { organizationId: result.id };
+      if (action === 'create_region') directoryScope = { regionId: result.id };
+      if (payload.action === 'place_team') await loadAdminData(payload.teamId);
+      else await loadWorkspaceDirectory();
+      const messages = {
+        place_team: 'Team region saved.',
+        create_region: 'Region added.',
+        create_organization: 'Organization added.',
+        rename_region: 'Region renamed.',
+        rename_organization: 'Organization renamed.',
+      };
+      directoryStatus.textContent = messages[payload.action];
+    } catch (error) {
+      directoryStatus.textContent = error.message;
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
   async function loadAdminData(preferredTeamId = '') {
     setStatus('Loading the latest database records…', 'pending');
+    const platformAdmin = isPlatformAdmin();
     const [teamResult, situationResult, proposalResult, unassignedResult] = await Promise.all([
       diqApiRequest('admin/teams?includeArchived=true', { cache: 'no-store' }),
-      diqApiRequest('admin/situations', { cache: 'no-store' }),
-      diqApiRequest('situation-submissions?status=pending', {
-        cache: 'no-store',
-      }),
-      diqApiRequest('admin/players/unassigned?includeCoaches=true', { cache: 'no-store' }),
+      platformAdmin ? diqApiRequest('admin/situations', { cache: 'no-store' }) : null,
+      platformAdmin ? diqApiRequest('situation-submissions?status=pending', { cache: 'no-store' }) : null,
+      platformAdmin ? diqApiRequest('admin/players/unassigned?includeCoaches=true', { cache: 'no-store' }) : null,
     ]);
     teams = Array.isArray(teamResult?.teams) ? teamResult.teams : [];
     publishedSituations = (situationResult?.situations || []).filter(
@@ -1177,10 +2040,13 @@
     seasonMembers = [];
     renderSelectedTeam();
     await loadSeasonData(selectedTeam()?.id || '');
-    populateRecovery();
-    renderUnassignedAccounts();
-    renderProposals();
-    renderOutcomeReviewQueue();
+    await loadWorkspaceDirectory();
+    if (platformAdmin) {
+      populateRecovery();
+      renderUnassignedAccounts();
+      renderProposals();
+      renderOutcomeReviewQueue();
+    }
     setStatus('Up to date', 'idle');
   }
 
@@ -1284,6 +2150,42 @@
     );
   }
 
+  function removeTeamMembership(team, member) {
+    return diqApiRequest(
+      `admin/teams/${encodeURIComponent(team.id)}/members/${encodeURIComponent(member.playerId)}`,
+      { method: 'DELETE', headers: { 'If-Match': String(member.revision) } },
+    );
+  }
+
+  async function removeSelectedRosterMembers() {
+    const team = selectedTeam();
+    const members = team?.roster.filter(member => member.active !== false && selectedRosterIds.has(member.playerId));
+    if (!members?.length || operationInProgress) return;
+    const confirmed = await requestConfirmation({
+      title: 'Remove selected members',
+      message: `Remove ${members.length} selected ${members.length === 1 ? 'member' : 'members'} from ${team.name}? Historical results will be preserved.`,
+      confirmLabel: 'Remove from team',
+    });
+    if (!confirmed) return;
+
+    const failures = [];
+    let removed = 0;
+    const refreshed = await perform('Removing selected members…', async () => {
+      for (const member of members) {
+        try {
+          await removeTeamMembership(team, member);
+          removed += 1;
+        } catch (error) {
+          failures.push(`${member.name} (${error.message})`);
+        }
+      }
+    }, '', team.id);
+    if (!refreshed) return;
+    const summary = `Removed ${removed} of ${members.length} selected members from ${team.name}.`;
+    setStatus(failures.length ? `${summary} Could not remove ${failures.join(', ')}.` : summary,
+      failures.length ? 'error' : 'success');
+  }
+
   async function removeMember(role) {
     const team = selectedTeam();
     const member = selectedMember(role);
@@ -1296,14 +2198,7 @@
     if (!confirmed) return;
     await perform(
       `Removing ${role} from team…`,
-      () =>
-        diqApiRequest(
-          `admin/teams/${encodeURIComponent(team.id)}/members/${encodeURIComponent(member.playerId)}`,
-          {
-            method: 'DELETE',
-            headers: { 'If-Match': String(member.revision) },
-          },
-        ),
+      () => removeTeamMembership(team, member),
       `${role === 'coach' ? 'Coach' : 'Player'} removed from the team. Historical results were preserved.`,
       team.id,
     );
@@ -1331,7 +2226,7 @@
     adminViews.forEach((view) =>
       view.classList.toggle('hidden', view.dataset.adminView !== tab),
     );
-    const usesMainWorkspace = tab === 'teams' || tab === 'recovery';
+    const usesMainWorkspace = tab !== 'situations';
     adminWorkspace?.classList.toggle('hidden', !usesMainWorkspace);
     fieldCard?.classList.toggle('hidden', usesMainWorkspace);
     if (tab === 'teams') switchTeamView(activeTeamView);
@@ -1352,6 +2247,7 @@
     seasons = [];
     seasonMembers = [];
     renderSelectedTeam();
+    renderWorkspaceDirectory();
     void loadSeasonData(selectedTeam()?.id || '').catch((error) =>
       setStatus(error?.message || 'Unable to load season data.', 'error'),
     );
@@ -1395,6 +2291,7 @@
     creatingTeam = true;
     if (teamSelect) teamSelect.value = '';
     renderSelectedTeam();
+    renderWorkspaceDirectory();
     void loadSeasonData('');
     teamName?.focus();
   });
@@ -1403,8 +2300,9 @@
     creatingTeam = false;
     if (teamSelect) teamSelect.value = '';
     renderSelectedTeam();
+    renderWorkspaceDirectory();
     void loadSeasonData('');
-    teamSelect?.focus();
+    byId('adminNewTeamBtn')?.focus();
   });
 
   byId('adminTeamAddBtn')?.addEventListener('click', () => {
@@ -1421,6 +2319,7 @@
           body: JSON.stringify({
             name,
             seasonName: String(initialSeasonName?.value || '').trim(),
+            regionId: directoryScope?.regionId,
           }),
         });
         id = result?.record?.id || '';
@@ -1932,12 +2831,12 @@
   let csvSource = '';
   let csvPreview = null;
 
-  function csvEscape(value) {
-    const text = String(value ?? '');
-    return `"${text.replaceAll('"', '""')}"`;
-  }
+  let csvTeamId = '';
+  let csvRequest = 0;
 
   function clearCsvPreview() {
+    csvRequest += 1;
+    csvTeamId = '';
     csvSource = '';
     csvPreview = null;
     if (csvFile) csvFile.value = '';
@@ -2006,7 +2905,10 @@
   }
 
   async function previewCsvFile(file) {
-    if (!file) return;
+    const team = selectedTeam();
+    if (!file || !team) return;
+    const request = ++csvRequest;
+    csvTeamId = '';
     csvPreview = null;
     csvPreviewPanel?.classList.add('hidden');
     if (csvCommit) csvCommit.disabled = true;
@@ -2016,14 +2918,19 @@
     }
     try {
       setStatus('Validating the CSV without changing the database…', 'pending');
-      csvSource = await file.text();
+      const csv = await file.text();
+      if (request !== csvRequest || selectedTeam()?.id !== team.id) return;
       if (csvFileName) csvFileName.textContent = `${file.name} · ${(file.size / 1024).toFixed(1)} KB`;
       const preview = await diqApiRequest('admin/team-import', {
         method: 'POST',
-        body: JSON.stringify({ mode: 'preview', csv: csvSource }),
+        body: JSON.stringify({ mode: 'preview', csv, teamId: team.id }),
       });
+      if (request !== csvRequest || selectedTeam()?.id !== team.id) return;
+      csvSource = csv;
+      csvTeamId = team.id;
       renderCsvPreview(preview);
     } catch (error) {
+      if (request !== csvRequest || selectedTeam()?.id !== team.id) return;
       setStatus(error?.message || 'Unable to preview this CSV.', 'error');
       csvPreviewPanel?.classList.add('hidden');
     }
@@ -2031,6 +2938,9 @@
 
   byId('adminTeamsCsvChooseBtn')?.addEventListener('click', () => csvFile?.click());
   csvFile?.addEventListener('change', () => void previewCsvFile(csvFile.files?.[0]));
+  teamSelect?.addEventListener('change', () => {
+    clearCsvPreview();
+  });
   csvDropzone?.addEventListener('dragover', (event) => {
     event.preventDefault();
     csvDropzone.classList.add('is-dragging');
@@ -2045,13 +2955,13 @@
   csvArchiveConfirm?.addEventListener('change', updateCsvCommitState);
   byId('adminCsvCancelBtn')?.addEventListener('click', clearCsvPreview);
   csvCommit?.addEventListener('click', async () => {
-    if (!csvPreview?.valid || !csvSource) return;
+    if (!csvPreview?.valid || !csvSource || csvTeamId !== selectedTeam()?.id) return;
     try {
       csvCommit.disabled = true;
       setStatus('Applying the reviewed CSV changes…', 'pending');
       const result = await diqApiRequest('admin/team-import', {
         method: 'POST',
-        body: JSON.stringify({ mode: 'commit', csv: csvSource, fingerprint: csvPreview.fingerprint }),
+        body: JSON.stringify({ mode: 'commit', csv: csvSource, teamId: csvTeamId, fingerprint: csvPreview.fingerprint }),
       });
       const preferredTeam = teamSelect?.value || '';
       clearCsvPreview();
@@ -2063,31 +2973,20 @@
       updateCsvCommitState();
     }
   });
-  byId('adminTeamsCsvTemplateBtn')?.addEventListener('click', async () => {
-    try {
-      const response = await fetch(diqApiUrl('admin/team-import'), { credentials: 'same-origin' });
-      if (!response.ok) throw new Error(`Template download failed (${response.status}).`);
-      downloadText('diamond-defense-team-import-template.csv', await response.text(), 'text/csv;charset=utf-8');
-    } catch (error) {
-      setStatus(error?.message || 'Unable to download the CSV template.', 'error');
-    }
-  });
-  byId('adminTeamsCsvSelectedBtn')?.addEventListener('click', () => {
+  async function downloadRosterCsv(download) {
     const team = selectedTeam();
     if (!team) return setStatus('Select a team first.', 'error');
-    const rows = [
-      ['record_type', 'action', 'team_id', 'team_name', 'season_name', 'user_id', 'role', 'name', 'number', 'password'],
-      ['team', 'upsert', team.id, team.name, team.activeSeasonName || '', '', '', '', '', ''],
-      ...(team.roster || []).filter((member) => member.active !== false).map((member) =>
-        ['member', 'upsert', team.id, '', '', member.playerId, member.role, member.name, member.number || '', '']),
-    ];
-    const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\r\n');
-    downloadText(
-      `diamond-defense-${slugifyLoose(team.name)}-import.csv`,
-      csv,
-      'text/csv;charset=utf-8',
-    );
-  });
+    try {
+      const query = new URLSearchParams({ teamId: team.id, download });
+      const response = await fetch(diqApiUrl(`admin/team-import?${query}`), { credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`Roster download failed (${response.status}).`);
+      downloadText(`diamond-defense-${slugifyLoose(team.name)}-roster-${download}.csv`, await response.text(), 'text/csv;charset=utf-8');
+    } catch (error) {
+      setStatus(error?.message || 'Unable to download the roster CSV.', 'error');
+    }
+  }
+  byId('adminTeamsCsvTemplateBtn')?.addEventListener('click', () => void downloadRosterCsv('template'));
+  byId('adminTeamsCsvSelectedBtn')?.addEventListener('click', () => void downloadRosterCsv('export'));
 
   // One situation editor is physically shared by the coach and admin panels.
   const POSITION_IDS = ['P', 'C', '1B', '2B', 'SS', '3B', 'LF', 'CF', 'RF'];
@@ -2526,50 +3425,18 @@
     return panel;
   }
 
-  async function openTeamPlaybook(library){
+  function openTeamPlaybook(library) {
     library.replaceChildren();
-    const heading=document.createElement('h2');heading.textContent='Team Playbook';library.append(heading);
-    const intro=document.createElement('p');intro.textContent='Choose what players can browse and receive through Random. Assignments can include other published situations without adding them here.';library.append(intro);
-    const back=document.createElement('button');back.type='button';back.className='btn btn-ghost';back.textContent='Back to library';back.onclick=showSituationLibrary;if(library.id!=='coachTeamPlaybook')library.append(back);
-    const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
-    try{
-      const options=await diqApiRequest('teams/options',{cache:'no-store'});
-      const user=window.__DIQ_AUTH_USER__;
-      const available=(options.teams||[]).filter(team=>user.role==='admin'||(user.managedTeamIds||[user.teamId]).includes(team.id));
-      const teamSelect=document.createElement('select');teamSelect.setAttribute('aria-label','Team Playbook team');available.forEach(team=>teamSelect.append(new Option(team.name,team.id)));if(available.length>1)library.append(teamSelect);if(available.some(team=>team.id===window._diqStaffTeamId?.()))teamSelect.value=window._diqStaffTeamId();
-      const filters=document.createElement('div');filters.className='team-playbook-filters';
-      const search=document.createElement('input');search.type='search';search.placeholder='Search names, context, or staff labels';search.setAttribute('aria-label','Search team Playbook situations');
-      const division=document.createElement('select');division.setAttribute('aria-label','Suggested division');division.append(new Option('All divisions',''));for(let age=9;age<=18;age++)division.append(new Option(`${age}U`,String(age)));
-      const difficulty=document.createElement('select');difficulty.setAttribute('aria-label','Difficulty');difficulty.append(new Option('All difficulties',''));for(const value of ['foundational','intermediate','advanced'])difficulty.append(new Option(value,value));
-      const category=document.createElement('select');category.setAttribute('aria-label','Teaching category');category.append(new Option('All categories',''));[...new Set(SITUATIONS.map(item=>item.primaryCategory))].forEach(id=>category.append(new Option(teachingCategoryLabel(id),id)));
-      filters.append(search,division,difficulty,category);library.append(filters);
-      const bulk=document.createElement('div');bulk.className='team-playbook-bulk';library.append(bulk);
-      const selectMatching=document.createElement('button');selectMatching.type='button';selectMatching.className='btn btn-ghost';selectMatching.textContent='Select all matching';
-      const deselectMatching=document.createElement('button');deselectMatching.type='button';deselectMatching.className='btn btn-ghost';deselectMatching.textContent='Deselect matching';
-      bulk.append(selectMatching,deselectMatching);
-      const list=document.createElement('div');list.className='team-playbook-list';library.append(list);
-      const save=document.createElement('button');save.type='button';save.className='btn btn-brand';save.textContent='Save team Playbook';library.append(save);
-      let selected=new Set(),revision=0,generation=0,ready=false;
-      const matchingRecords=()=>SITUATIONS.filter(item=>Number(item.revision)>0 && (!division.value||(item.suggestedDivisions||[]).includes(Number(division.value)))&&(!difficulty.value||item.difficulty===difficulty.value)&&(!category.value||item.primaryCategory===category.value)&&`${item.title} ${item.desc||''} ${window._diqAudienceLabel?.(item)||''}`.toLowerCase().includes(search.value.toLowerCase()));
-      selectMatching.onclick=()=>{matchingRecords().forEach(item=>selected.add(item.key));draw();};
-      deselectMatching.onclick=()=>{matchingRecords().forEach(item=>selected.delete(item.key));draw();};
-      function draw(){
-        list.replaceChildren();
-        const records=ready?matchingRecords():[];
-        selectMatching.disabled=!ready||!records.some(item=>!selected.has(item.key));
-        deselectMatching.disabled=!ready||!records.some(item=>selected.has(item.key));
-        records.forEach(item=>{
-          const row=document.createElement('label');row.className='team-playbook-choice';const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(item.key);check.onchange=()=>{if(check.checked)selected.add(item.key);else selected.delete(item.key);draw();};
-          const text=document.createElement('span');text.textContent=[situationDisplayLabel(item),window._diqAudienceLabel?.(item),...(item.suggestedDivisions||[]).map(age=>`${age}U`)].filter(Boolean).join(' · ');row.append(check,text);list.append(row);
-        });
-        const visible=new Map();let identical=false;SITUATIONS.filter(item=>selected.has(item.key)).forEach(item=>{const signature=JSON.stringify([playbookCardTitle(item),item.runnersOn,item.outs,item.difficulty,item.primaryCategory,item.desc||'']);if(visible.has(signature))identical=true;visible.set(signature,true);});
-        status.textContent=`${selected.size} selected · ${records.length} matching.${identical?' Some selected cards look identical to players. Add a spoiler-free name or Player context to distinguish them.':''}`;
-      }
-      async function load(){const request=++generation;ready=false;save.disabled=true;selectMatching.disabled=true;deselectMatching.disabled=true;list.replaceChildren();try{const result=await diqApiRequest(`teams/${encodeURIComponent(teamSelect.value)}/playbook`,{cache:'no-store'});if(request!==generation)return;selected=new Set(result.keys.filter(key=>SITUATIONS.some(item=>item.key===key)));revision=result.revision;ready=true;draw();save.disabled=false;}catch(error){status.textContent=error.message;}}
-      teamSelect.onchange=load;for(const filter of [search,division,difficulty,category])filter.oninput=draw;
-      save.onclick=async()=>{save.disabled=true;teamSelect.disabled=true;try{const result=await diqApiRequest(`teams/${encodeURIComponent(teamSelect.value)}/playbook`,{method:'PUT',body:JSON.stringify({keys:[...selected],revision})});revision=result.revision;status.textContent='Team Playbook saved. Players receive this selection when they next load their Playbook. Assignments are unchanged.';}catch(error){status.textContent=error.message;}finally{save.disabled=false;teamSelect.disabled=false;}};
-      if(available.length)await load();else{save.disabled=true;selectMatching.disabled=true;deselectMatching.disabled=true;status.textContent='No team is available to manage.';}
-    }catch(error){status.textContent=error.message;}
+    const heading = document.createElement('h2');
+    heading.textContent = 'Team Playbook';
+    const guidance = document.createElement('p');
+    guidance.textContent = 'Manage inherited situations and difficulty in Design.';
+    const link = document.createElement('a');
+    link.className = 'btn btn-ghost';
+    link.textContent = 'Open Team Library';
+    const teamId = window._diqStaffTeamId?.();
+    link.href = teamId ? '/workspace/design?' + new URLSearchParams({type:'team',id:teamId}) : '/workspace/design';
+    library.append(heading,guidance,link);
   }
 
   function assignmentBlockerLabel(item){
@@ -2610,7 +3477,6 @@
     let mode='library', bundle=null, loading=false, order=null, draggedKey=null;
     const selected=new Set();
     const create=button('New situation',async()=>{if(editorDirty && !await requestConfirmation({title:'Discard local changes?',message:'Starting a new situation replaces your unsubmitted changes.',confirmLabel:'Discard and create'}))return;transferToBoard('training-new',makeSituationDraft(),null,'');});create.className='btn btn-brand situation-library-create';toolbar.append(create);
-    if(isAdmin)toolbar.append(button('Team Playbook',()=>openTeamPlaybook(library)));
     if(editorDirty) toolbar.append(button('Continue local draft',()=>transferToBoard('training',currentSnapshot(),editorBaseline,coachRationale?.value)));
     const search=document.createElement('input');search.type='search';search.placeholder='Search situations';search.setAttribute('aria-label','Search situations');library.append(search);
     const status=document.createElement('p');status.setAttribute('role','status');library.append(status);
@@ -3361,8 +4227,39 @@
     void reloadPublishedSituation(key);
   };
 
-  window._diqAdminPanelOpened = async () => {
-    switchTab(activeTab);
+  window._diqAdminPanelOpened = async (entry = 'org') => {
+    const platformAdmin = isPlatformAdmin();
+    const currentAccountId = window.__DIQ_AUTH_USER__?.id;
+    if (directoryAccountId !== currentAccountId) {
+      directoryScope = null;
+      teamSelect.value = '';
+      activeTab = 'teams';
+      selectedPersonId = '';
+      peopleOrganization.value = '';
+      peopleSearch.value = '';
+      setVisible(byId('adminTeamContext'), false);
+      setVisible(byId('adminTeamRecords'), false);
+      byId('adminOrganizationList').replaceChildren();
+      byId('adminDirectoryItems').replaceChildren();
+      byId('adminDirectoryPath').replaceChildren();
+      byId('adminDirectoryActions').replaceChildren();
+      byId('adminDirectoryTitle').textContent = 'Organizations';
+    }
+    const globalTools = platformAdmin && entry === 'global-tools';
+    adminCard.querySelector('.tools-panel-header strong').textContent = globalTools ? 'Design workspace' : 'Org workspace';
+    adminCard.querySelector('.tools-panel-header .muted').textContent = globalTools
+      ? 'Global library tools' : 'Manage your organizations, regions, and teams';
+    setVisible(adminCard.querySelector('.admin-tabs'), !globalTools);
+    setVisible(byId('globalToolsBackLink'), globalTools);
+    setVisible(byId('adminCardCloseBtn'), !globalTools);
+    adminCard.querySelectorAll('[data-admin-tab]').forEach(button => {
+      setVisible(button, platformAdmin || button.dataset.adminTab === 'teams'
+        || (button.dataset.adminTab === 'people' && canManagePeople()));
+    });
+    document.querySelectorAll('[data-platform-roster-action], [data-admin-team-tab="data"], #adminAdvanceRosterPanel')
+      .forEach(element => setVisible(element, platformAdmin));
+    if (!platformAdmin && activeTeamView === 'data') activeTeamView = 'roster';
+    switchTab(globalTools ? 'situations' : activeTab === 'situations' ? 'teams' : activeTab);
     try {
       await loadAdminData(teamSelect?.value || '');
     } catch (error) {

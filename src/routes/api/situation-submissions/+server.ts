@@ -1,8 +1,6 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import type { Situation } from '$lib/domain/models';
 import { databaseFor } from '$lib/server/database/context';
-import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 import { SqliteSituationSubmissionRepository } from '$lib/server/repositories/situation-submissions';
 import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
 
@@ -29,21 +27,6 @@ export const GET: RequestHandler = async (event) => {
 
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
-  const user = await requireUser(event, ['coach']);
-  try {
-    const body = (await event.request.json()) as
-      | Situation
-      | { situation?: Situation; rationale?: unknown };
-    const wrapped = 'situation' in body && body.situation;
-    const record = await new SqliteSituationSubmissionRepository(
-      databaseFor(event),
-    ).submit(
-      (wrapped ? body.situation : body) as Situation,
-      user.id,
-      wrapped ? String(body.rationale || '') : 'Situation update submitted for review.',
-    );
-    return json({ ok: true, record }, { status: 201 });
-  } catch (error) {
-    return repositoryErrorResponse(error);
-  }
+  await requireUser(event, ['coach']);
+  return json({ error: 'Submit a published revision to its parent library in Design workspace.' }, { status: 410 });
 };

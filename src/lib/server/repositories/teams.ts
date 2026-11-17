@@ -25,6 +25,7 @@ interface MemberRow {
   team_id: string;
   user_id: string;
   display_name: string;
+  username: string;
   role: 'player' | 'coach';
   jersey_number: string;
   membership_revision: number;
@@ -35,6 +36,7 @@ interface MemberRow {
 
 export interface TeamMemberRecord {
   playerId: string;
+  username?: string;
   name: string;
   number: string;
   role: 'player' | 'coach';
@@ -60,6 +62,7 @@ export interface TeamInput {
   id?: string;
   name: string;
   seasonName?: string;
+  regionId?: string;
 }
 
 export interface MemberInput {
@@ -73,6 +76,7 @@ export interface MemberInput {
 export interface UnassignedPlayerRecord {
   role: string;
   userId: string;
+  username: string;
   name: string;
   userRevision: number;
   previousTeams: string[];
@@ -157,7 +161,7 @@ function validateDate(value: unknown, label: string): string | null {
   return date;
 }
 
-function mapTeam(team: TeamRow, members: MemberRow[]): TeamOption {
+function mapTeam(team: TeamRow, members: MemberRow[], includeUsernames = false): TeamOption {
   const seasonName = String(team.active_season_name || '').trim();
   const alreadyCombined = seasonName.toLocaleLowerCase().startsWith(
     `${team.name.trim().toLocaleLowerCase()} —`,
@@ -177,6 +181,7 @@ function mapTeam(team: TeamRow, members: MemberRow[]): TeamOption {
       .filter((member) => member.team_id === team.id)
       .map((member) => ({
         playerId: member.user_id,
+        ...(includeUsernames && { username: member.username }),
         name: member.display_name,
         number: member.jersey_number,
         role: member.role,
@@ -203,7 +208,7 @@ export class SqliteTeamRepository {
         ORDER BY t.name, active_season.starts_on DESC`,
     );
     const members = await this.database.all<MemberRow>(
-      `SELECT tm.team_id, tm.user_id, u.display_name, u.role,
+      `SELECT tm.team_id, tm.user_id, u.display_name, u.username, u.role,
               tm.jersey_number, tm.revision AS membership_revision,
               u.revision AS user_revision,
               tm.season_id,
@@ -240,26 +245,30 @@ export class SqliteTeamRepository {
 
   async listForAdministration(includeArchived = false): Promise<TeamOption[]> {
     const { teams, members } = await this.rows(includeArchived);
-    return teams.map((team) => mapTeam(team, members));
+    return teams.map((team) => mapTeam(team, members, true));
   }
 
   async get(id: string, includeArchived = false): Promise<TeamOption | null> {
     const { teams, members } = await this.rows(includeArchived);
     const team = teams.find((item) => item.id === id);
-    return team ? mapTeam(team, members) : null;
+    return team ? mapTeam(team, members, true) : null;
   }
 
   async create(input: TeamInput, actorUserId: string): Promise<TeamOption> {
     const id = input.id ? validateId(input.id, 'Team ID') : `team-${crypto.randomUUID()}`;
     const name = validateName(input.name, 'Team name');
     const seasonName = validateSeasonName(input.seasonName);
+    const regionId = input.regionId == null ? null : validateId(input.regionId, 'Region ID');
+    if (regionId && !await this.database.one('SELECT id FROM regions WHERE id = ?1', [regionId])) {
+      throw new RecordValidationError('Select an existing region.');
+    }
     await this.ensureTeamNameAvailable(name);
     const now = new Date().toISOString();
     const result = await this.database.execute(
       `INSERT OR IGNORE INTO teams
-        (id, name, revision, active, created_at, updated_at)
-       VALUES (?1, ?2, 1, 1, ?3, ?3)`,
-      [id, name, now],
+        (id, name, revision, active, created_at, updated_at${regionId ? ', region_id' : ''})
+       VALUES (?1, ?2, 1, 1, ?3, ?3${regionId ? ', ?4' : ''})`,
+      regionId ? [id, name, now, regionId] : [id, name, now],
     );
     if (!result.changes) throw new RecordValidationError('A team with that ID already exists.');
     await new SqliteSeasonRepository(this.database).create(
@@ -442,7 +451,7 @@ export class SqliteTeamRepository {
     return counts;
   }
 
-  async createMember(teamId: string, input: MemberInput, actorUserId: string): Promise<TeamMemberRecord> {
+  async createMember(teamId: string, input: MemberInput, actorUserId: string, canDesign = false): Promise<TeamMemberRecord> {
     if (!(await this.get(teamId, true))) throw new RecordNotFoundError('Team not found.');
     const userId = input.userId
       ? validateId(input.userId, 'User ID')
@@ -458,27 +467,30 @@ export class SqliteTeamRepository {
     const season = await new SqliteSeasonRepository(this.database).active(teamId);
     if (!season) throw new RecordValidationError('Create an active season before adding team members.');
     if (role === 'player') await this.ensureNumberAvailable(teamId, number, userId);
-    await this.database.execute(
-      `INSERT INTO users
+    await this.database.batch([
+      { sql: `INSERT INTO users
         (id, username, display_name, role, password_hash, password_salt,
          password_iterations, active, revision, created_at, updated_at,
          must_change_password, password_changed_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, 1, ?8, ?8, 1, ?8)`,
-      [userId, userId, name, role, credentials.hash, credentials.salt, credentials.iterations, now],
-    );
-    await this.database.execute(
-      `INSERT INTO team_memberships
+        params: [userId, userId, name, role, credentials.hash, credentials.salt, credentials.iterations, now],
+      },
+      { sql: `INSERT INTO team_memberships
         (team_id, user_id, team_role, jersey_number, revision, active, created_at, updated_at, season_id)
        VALUES (?1, ?2, ?3, ?4, 1, 1, ?5, ?5, ?6)`,
-      [teamId, userId, role, number, now, season.id],
-    );
-    await this.database.execute(
-      `INSERT INTO season_memberships
+        params: [teamId, userId, role, number, now, season.id],
+      },
+      { sql: `INSERT INTO season_memberships
         (season_id, team_id, user_id, team_role, display_name_snapshot,
          jersey_number_snapshot, status, joined_at)
        VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', ?7)`,
-      [season.id, teamId, userId, role, name, number, now],
-    );
+        params: [season.id, teamId, userId, role, name, number, now],
+      },
+      ...(role === 'coach' && canDesign ? [{
+        sql: "INSERT INTO workspace_assignments (id,user_id,role,team_id,can_design) VALUES (?1,?2,'coach',?3,1)",
+        params: [crypto.randomUUID(), userId, teamId],
+      }] : []),
+    ]);
     const member = await this.getMember(teamId, userId, true);
     await writeAudit(this.database, actorUserId, 'create', 'membership', `${teamId}:${userId}`, null, member);
     return member!;
@@ -489,10 +501,11 @@ export class SqliteTeamRepository {
       id: string;
       role: string;
       display_name: string;
+      username: string;
       revision: number;
       previous_teams: string | null;
     }>(
-      `SELECT u.id, u.role, u.display_name, u.revision,
+      `SELECT u.id, u.role, u.display_name, u.username, u.revision,
               GROUP_CONCAT(DISTINCT t.name) AS previous_teams
          FROM users u
          LEFT JOIN team_memberships history ON history.user_id = u.id
@@ -511,6 +524,7 @@ export class SqliteTeamRepository {
       userId: row.id,
       role: row.role,
       name: row.display_name,
+      username: row.username,
       userRevision: Number(row.revision),
       previousTeams: String(row.previous_teams || '').split(',').filter(Boolean),
     }));
@@ -825,7 +839,7 @@ export class SqliteTeamRepository {
 
   async getMember(teamId: string, userId: string, includeArchived = false): Promise<TeamMemberRecord | null> {
     const row = await this.database.one<MemberRow>(
-      `SELECT tm.team_id, tm.user_id, u.display_name, u.role,
+      `SELECT tm.team_id, tm.user_id, u.display_name, u.username, u.role,
               tm.jersey_number, tm.revision AS membership_revision,
               u.revision AS user_revision,
               tm.season_id,
@@ -838,7 +852,7 @@ export class SqliteTeamRepository {
     return row ? mapTeam({
       id: teamId, name: '', revision: 1, active: 1, archived_at: null,
       active_season_id: null, active_season_name: null,
-    }, [row]).roster[0] : null;
+    }, [row], true).roster[0] : null;
   }
 
   async updateMember(teamId: string, userId: string, input: Partial<MemberInput>, expectedRevision: number, actorUserId: string): Promise<TeamMemberRecord> {
@@ -951,6 +965,9 @@ export class SqliteTeamRepository {
           WHERE id = ?1 AND NOT EXISTS (
             SELECT 1 FROM team_memberships
              WHERE user_id = ?1 AND active = 1
+          ) AND NOT EXISTS (
+            SELECT 1 FROM workspace_assignments WHERE user_id = ?1
+             AND role IN ('organization_director', 'regional_director')
           )`,
         [userId, now, actorUserId],
       );

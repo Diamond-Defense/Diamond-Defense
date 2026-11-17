@@ -14,20 +14,17 @@ async function openCleanApp(page) {
 
 async function loginAsPlayer(page) {
   await page.locator('#playerBtn').click();
-  await page.locator('#playerTeamSelect').selectOption('13u-black');
-  await page.locator('#playerNameSelect').selectOption('13u-black-bob-smith-11');
-  await page.locator('#playerPass').fill('password');
-  await page.locator('#playerLoginBtn').click();
+  await page.locator('#signInUsername').fill('bob.smith');
+  await page.locator('#signInPassword').fill('password');
+  await page.locator('#signInPassword').press('Enter');
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('#11 Bob Smith');
 }
 
 async function loginAsCoach(page) {
   await page.locator('#playerBtn').click();
-  await page.locator('#authCoachTab').click();
-  await page.locator('#coachLoginTeamSelect').selectOption('13u-black');
-  await page.locator('#coachLoginNameSelect').selectOption('staff-coach');
-  await page.locator('#pwInput').fill('password');
-  await page.locator('#pwOk').click();
+  await page.locator('#signInUsername').fill('jamie.rivera');
+  await page.locator('#signInPassword').fill('password');
+  await page.locator('#signInPassword').press('Enter');
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Jamie Rivera');
 }
 
@@ -52,7 +49,8 @@ test.describe('release readiness', () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('role', 'dialog');
     await expect(dialog).toHaveAttribute('aria-modal', 'true');
-    await expect(page.locator('#authPlayerTab')).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByRole('tab')).toHaveCount(0);
+    await expect(dialog.getByLabel('Username')).toBeFocused();
 
     const modalAudit = await dialog.evaluate((overlay) => {
       const visibleControls = [...overlay.querySelectorAll('button, input, select, textarea')]

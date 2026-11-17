@@ -5,6 +5,7 @@ import type { Situation } from '$lib/domain/models';
 import { databaseFor } from '$lib/server/database/context';
 import { SqliteSituationRepository } from '$lib/server/repositories/situations';
 import { assertSameOrigin, requireUser, requireSituationPublisher } from '$lib/server/security/authorization';
+import { designWorkspaces } from '$lib/server/security/design-scopes';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
 
 export const prerender = false;
@@ -12,11 +13,21 @@ export const prerender = false;
 export const GET: RequestHandler = async (event) => {
   const db=databaseFor(event);
   const user=await currentUser(db,event.cookies);
-  let situations = await new SqliteSituationRepository(db).list();
-  if(user?.role==='player'){
-    const selected=await db.all<{situation_key:string}>('SELECT situation_key FROM team_playbook_situations WHERE team_id=?1',[user.teamId]);
-    situations=situations.filter(item=>selected.some(row=>row.situation_key===item.key));
+  const repository = new SqliteSituationRepository(db);
+  const teamId = event.url.searchParams.get('teamId');
+  if (teamId && user?.role !== 'player') {
+    if (!user || user.mustChangePassword ||
+      !(await designWorkspaces(db,user)).some(scope => scope.type === 'team' && scope.id === teamId)) {
+      return json({error:'Choose a team you manage.'}, {status:403});
+    }
   }
+  const coachTeam = user?.role === 'coach' && event.url.searchParams.get('catalog') === 'playbook'
+    ? user.coachedTeamIds?.find(id => id === user.teamId) || user.coachedTeamIds?.[0]
+    : undefined;
+  const catalogTeam = user?.role === 'player' ? user.teamId || '' : teamId || coachTeam;
+  const situations = user?.role === 'player' || catalogTeam
+    ? await repository.listTeamPlaybook(catalogTeam || '')
+    : await repository.list();
   return json(situations,{headers:{'Cache-Control':'private, no-store'}});
 };
 

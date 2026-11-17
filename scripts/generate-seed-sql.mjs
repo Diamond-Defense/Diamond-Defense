@@ -48,7 +48,7 @@ function passwordFields(password) {
 
 function userSql({ id, username, displayName, role, password }) {
   const { salt, hash } = passwordFields(password);
-  return `INSERT INTO users (id, username, display_name, role, password_hash, password_salt, password_iterations, active, created_at, updated_at) VALUES (${quote(id)}, ${quote(username)}, ${quote(displayName)}, ${quote(role)}, ${quote(hash)}, ${quote(salt)}, ${iterations}, 1, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET username=excluded.username, display_name=excluded.display_name, role=excluded.role, password_hash=excluded.password_hash, password_salt=excluded.password_salt, password_iterations=excluded.password_iterations, active=1, updated_at=excluded.updated_at;`;
+  return `INSERT INTO users (id, username, display_name, role, password_hash, password_salt, password_iterations, active, created_at, updated_at) VALUES (${quote(id)}, ${quote(username)}, ${quote(displayName)}, ${quote(role)}, ${quote(hash)}, ${quote(salt)}, ${iterations}, 1, ${quote(createdAt)}, ${quote(createdAt)}) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, role=excluded.role, password_hash=excluded.password_hash, password_salt=excluded.password_salt, password_iterations=excluded.password_iterations, active=1, updated_at=excluded.updated_at;`;
 }
 
 const statements = ['PRAGMA foreign_keys = ON;'];
@@ -96,7 +96,18 @@ for (const rawSituation of situations) {
   });
 }
 
-statements.push(`INSERT OR IGNORE INTO team_playbook_situations(team_id,situation_key) SELECT teams.id,situations.key FROM teams CROSS JOIN situations WHERE situations.active=1;`);
+// Test fixtures use the same pinned sharing and adoption model as the app.
+const fixtureTeamIds = teams.map(team => quote(team.id)).join(', ');
+const fixtureSituationKeys = situations.map(situation => quote(situation.key)).join(', ');
+const fixtureGlobalSituations = `library_scope='global' AND situations.active=1 AND situations.key IN (${fixtureSituationKeys})`;
+statements.push(`INSERT OR IGNORE INTO situation_versions(situation_key,revision,title,category,difficulty,payload_json,created_at)
+ SELECT key,revision,title,category,difficulty_level,payload_json,updated_at FROM situations WHERE ${fixtureGlobalSituations};`);
+statements.push(`INSERT OR IGNORE INTO situation_distributions(source_key,source_revision,destination_scope,destination_id,distributed_at)
+ SELECT situations.key,situations.revision,'team',teams.id,situations.updated_at FROM teams CROSS JOIN situations
+ WHERE teams.id IN (${fixtureTeamIds}) AND ${fixtureGlobalSituations};`);
+statements.push(`INSERT OR IGNORE INTO team_playbook_situations(team_id,situation_key,adopted_revision)
+ SELECT teams.id,situations.key,situations.revision FROM teams CROSS JOIN situations
+ WHERE teams.id IN (${fixtureTeamIds}) AND ${fixtureGlobalSituations};`);
 
 const output = resolve(root, 'database/seed.sql');
 await mkdir(dirname(output), { recursive: true });

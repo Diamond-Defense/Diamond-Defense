@@ -18,6 +18,8 @@ const cleanupSql = [
   'DELETE FROM sessions;', 'DELETE FROM audit_log;', 'DELETE FROM deletion_audit;',
   'DELETE FROM situation_submissions;', 'DELETE FROM assignment_progress;', 'DELETE FROM attempts;',
   'DELETE FROM assignment_situations;', 'DELETE FROM assignment_recipients;', 'DELETE FROM practice_assignments;',
+  'DELETE FROM situation_change_proposals;', 'DELETE FROM situation_library_links;',
+  'DELETE FROM situation_promotions;', 'DELETE FROM situation_distributions;',
   'DELETE FROM situation_versions;', 'DELETE FROM season_memberships;', 'DELETE FROM team_memberships;',
   'DELETE FROM team_seasons;', 'DELETE FROM situations;', 'DELETE FROM users;', 'DELETE FROM teams;',
   'PRAGMA defer_foreign_keys=FALSE;',

@@ -6,7 +6,7 @@ import {
   type PracticeAssignmentUpdateInput,
 } from '$lib/server/repositories/practice-assignments';
 import { repositoryErrorResponse } from '$lib/server/repositories/http-errors';
-import { assertSameOrigin, requireTrainingManager, requireUser } from '$lib/server/security/authorization';
+import { assertSameOrigin, requirePracticeAssignmentManager, requireTrainingManager, requireUser } from '$lib/server/security/authorization';
 
 export const prerender = false;
 
@@ -35,7 +35,7 @@ export const PATCH: RequestHandler = async (event) => {
   const repository = new SqlitePracticeAssignmentRepository(databaseFor(event));
   const existing = await repository.get(event.params.id);
   if (!existing) return json({ error: 'Assignment not found.' }, { status: 404 });
-  await requireTrainingManager(event, existing.teamId);
+  await requirePracticeAssignmentManager(event, existing.teamId);
   const body = (await event.request.json()) as { action?: string };
   try {
     let assignment = null;
@@ -60,7 +60,7 @@ export const PUT: RequestHandler = async (event) => {
   const repository = new SqlitePracticeAssignmentRepository(databaseFor(event));
   const existing = await repository.get(event.params.id);
   if (!existing) return json({ error: 'Assignment not found.' }, { status: 404 });
-  await requireTrainingManager(event, existing.teamId);
+  await requirePracticeAssignmentManager(event, existing.teamId);
   try {
     const body = (await event.request.json()) as PracticeAssignmentUpdateInput;
     const assignment = await repository.update(existing.id, existing.teamId, user.id, body);
@@ -76,7 +76,7 @@ export const DELETE: RequestHandler = async (event) => {
   const repository = new SqlitePracticeAssignmentRepository(databaseFor(event));
   const existing = await repository.get(event.params.id);
   if (!existing) return json({ error: 'Assignment not found.' }, { status: 404 });
-  await requireTrainingManager(event, existing.teamId);
+  await requirePracticeAssignmentManager(event, existing.teamId);
   try {
     await repository.deleteUnusedDraft(existing.id, existing.teamId, user.id);
     return json({ ok: true });

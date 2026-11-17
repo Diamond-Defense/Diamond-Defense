@@ -30,6 +30,41 @@ test.describe('portable SQLite API', () => {
     });
   });
 
+  test('resolves usernames case-insensitively across account roles', async ({ request, baseURL }) => {
+    const headers = { Origin: new URL(baseURL).origin };
+    for (const [username, role] of [['BOB.SMITH', 'player'], ['jamie.rivera', 'coach'], ['ADMIN', 'admin']]) {
+      const login = await request.post('/api/auth/login', { headers, data: { username, password: 'password' } });
+      expect(login.status()).toBe(200);
+      const {user} = await login.json();
+      expect(user).toMatchObject({username:username.toLowerCase(),role});
+      expect((await (await request.get('/api/auth/session')).json()).user.id).toBe(user.id);
+    }
+    const staffRosters = (await (await request.get('/api/admin/teams')).json()).teams;
+    expect(staffRosters.flatMap(team=>team.roster)).toContainEqual(expect.objectContaining({
+      name: 'Bob Smith', username: 'bob.smith'
+    }));
+    const publicRosters = (await (await request.get('/api/teams/options')).json()).teams;
+    expect(publicRosters.flatMap(team=>team.roster).every(member=>!('username' in member))).toBe(true);
+
+    const player = await request.post('/api/admin/teams/13u-black/members', {
+      headers, data: { role: 'player', name: 'Jamie Rivera', number: '97', password: 'password' },
+    });
+    expect(player.status()).toBe(201);
+    const createdPlayer=(await player.json()).record;
+    expect(createdPlayer.username).toBe('jamie.rivera2');
+    const coach = await request.post('/api/admin/teams/13u-orange/members', {
+      headers, data: { role: 'coach', name: 'Jamie Rivera', password: 'password' },
+    });
+    expect(coach.status()).toBe(201);
+    expect((await coach.json()).record.username).toBe('jamie.rivera3');
+    const renamed=await request.put(`/api/admin/teams/13u-black/members/${createdPlayer.playerId}`,{
+      headers:{...headers,'If-Match':String(createdPlayer.revision)},
+      data:{name:'Jamie Renamed',number:'98'}
+    });
+    expect(renamed.status()).toBe(200);
+    expect((await renamed.json()).record.username).toBe('jamie.rivera2');
+  });
+
   test('authenticates a player and persists a result', async ({ request, baseURL }) => {
     const origin = new URL(baseURL).origin;
     const rejected = await request.post('/api/auth/login', {
@@ -1019,17 +1054,11 @@ test.describe('portable SQLite API', () => {
       });
       expect(teamResponse.status()).toBe(201);
 
-      // New teams start empty; enable the free-play situations used in both seasons.
+      // New teams inherit the Global Library immediately.
       const playbookResponse = await admin.get(`/api/teams/${teamId}/playbook`);
       expect(playbookResponse.ok()).toBeTruthy();
       const playbook = await playbookResponse.json();
-      expect(playbook.keys).toEqual([]);
-      const savedPlaybook = await admin.put(`/api/teams/${teamId}/playbook`, {
-        headers: { Origin: origin },
-        data: { keys: ['BD-01', 'BD-02'], revision: playbook.revision },
-      });
-      expect(savedPlaybook.ok()).toBeTruthy();
-
+      expect(playbook.keys).toEqual(expect.arrayContaining(['BD-01', 'BD-02']));
 
       const initialSeasonsResponse = await admin.get(`/api/admin/teams/${teamId}/seasons`);
       const initialSeasonData = await initialSeasonsResponse.json();
