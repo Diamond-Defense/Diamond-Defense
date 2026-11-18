@@ -460,9 +460,10 @@ export class SqliteSituationRepository {
             AND (?11 IS NULL OR EXISTS (SELECT 1 FROM situations WHERE key=?11 AND revision=?12 AND active=1))
             AND (?13 IS NULL OR EXISTS (SELECT 1 FROM situation_promotions WHERE id=?13 AND status='pending'))
             AND (?14 IS NULL OR EXISTS (SELECT 1 FROM situation_change_proposals WHERE id=?14 AND status='pending' AND source_key=?1 AND source_revision=?9))
-            AND (?14 IS NULL OR active=1)`,
+            AND (?14 IS NULL OR active=1)
+            AND (?15 IS NULL OR (library_scope=?15 AND library_id=?16))`,
         params: [situation.key, situation.title, situation.desc || '', situation.category, legacyDifficulty, situation.difficulty, JSON.stringify(situation), now, expectedRevision, situationIdentity(situation),
-          publication?.source?.key || null, publication?.source?.revision || null, publication?.promotionId || null, publication?.changeProposalId || null],
+          publication?.source?.key || null, publication?.source?.revision || null, publication?.promotionId || null, publication?.changeProposalId || null, publication?.scope.type || null, publication?.scope.id ?? null],
       },
       ...(publication?.changeProposalId ? publication.completion?.(situation.key, expectedRevision + 1) || [] : []),
       {

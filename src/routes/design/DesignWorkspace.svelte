@@ -246,6 +246,7 @@
         const requested = entryUrl.searchParams.get('view');
         if (requested === 'submissions') view = 'submissions';
         if (requested === 'manage' && isAdmin && preferred.type === 'global') view = 'manage';
+        if (requested === 'import' && isAdmin && ['organization','region'].includes(preferred.type)) view = 'import';
         if (requested === 'reviews' || requested === 'cherry-pick') view = requested;
         await loadLibrary();
         if (!cancelled && view === 'reviews' && !listing?.canReview
@@ -316,6 +317,8 @@
       {#if library.parent || listing?.changeReviews.length}<button aria-pressed={view === 'submissions'} onclick={() => selectSection('submissions')}>Submissions</button>{/if}
       {#if isAdmin && library.type === 'global'}
         <button aria-expanded={view === 'manage'} aria-pressed={view === 'manage'} onclick={() => selectSection('manage')}>Manage library</button>
+      {:else if isAdmin && ['organization','region'].includes(library.type)}
+        <button aria-pressed={view === 'import'} onclick={() => selectSection('import')}>Import situations</button>
       {/if}
         </nav>
       </div>
@@ -326,7 +329,9 @@
           <button aria-pressed={manageMode === key} onclick={() => selectSection('manage',key)}>{label}</button>
         {/each}
       </nav>
-      {#key manageMode}<GlobalLibraryTools {request} refresh={loadLibrary} mode={manageMode} />{/key}
+      {#key manageMode}<GlobalLibraryTools {request} refresh={loadLibrary} mode={manageMode} destination={library} />{/key}
+    {:else if view === 'import' && isAdmin && ['organization','region'].includes(library.type)}
+      <GlobalLibraryTools {request} refresh={loadLibrary} mode="import" destination={library} />
     {:else if !listing}
       {#if !status}<p>Loading library…</p>{/if}
     {:else if view === 'library'}

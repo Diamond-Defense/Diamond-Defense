@@ -362,6 +362,62 @@ test('Global Library management runs inside Design workspace', async ({ page, ba
   await expect(tools.getByRole('status')).toHaveText('Permanently deleted 1 situations.');
 });
 
+test('Platform Admin can import a scoped copy without changing the Global Library', async ({page, baseURL}) => {
+  const headers = {Origin:new URL(baseURL).origin};
+  const post = async (url,data) => {
+    const response = await page.request.post(url,{headers,data});
+    expect(response.ok(),await response.text()).toBe(true);
+    return response.json();
+  };
+  await post('/api/auth/login',{username:'admin',password:'password'});
+  const suffix = crypto.randomUUID();
+  const directory = '/api/admin/workspace-directory';
+  const org = await post(directory,{action:'create_organization',name:'Import Org ' + suffix});
+  const region = await post(directory,{action:'create_region',name:'Import Region',organizationId:org.id});
+  const path = '/api/admin/situations/transfer';
+  const exported = await (await page.request.get(path)).json();
+  const source = exported.situations.find(item => item.playOutcome?.reviewStatus === 'ready');
+  const bundle = {...exported,situations:[source]};
+  const scope = new URLSearchParams({type:'region',id:region.id});
+  const scopedPath = path + '?' + scope;
+  await page.goto('/workspace/design?' + scope);
+  await page.getByRole('button',{name:'Import situations'}).click();
+  const importer = page.getByRole('region',{name:'Import situations'});
+  await importer.getByLabel('Situation JSON file').setInputFiles({
+    name:'situations.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle)),
+  });
+  await importer.getByRole('button',{name:'Review import'}).click();
+  await expect(importer).toContainText('creates an independent copy');
+  await expect(importer).toContainText(region.name);
+  await importer.getByRole('button',{name:'Select all publishable'}).click();
+  page.once('dialog',dialog => dialog.accept());
+  await importer.getByRole('button',{name:'Publish selected (1)'}).click();
+  await expect(importer.getByRole('status')).toHaveText('Published 1 situations.');
+  const regionResult = await (await page.request.get('/api/design?' + scope)).json();
+  const copy = regionResult.entries.find(item => item.title === source.title);
+  expect(copy.key).not.toBe(source.key);
+  const orgResult = await (await page.request.get('/api/design?type=organization&id=' + org.id)).json();
+  expect(orgResult.entries).toHaveLength(0);
+  const modified = {...bundle,situations:[{...source,desc:'Scoped edit'}]};
+  const preview = await post(scopedPath,modified);
+  expect(preview.rows[0]).toMatchObject({key:copy.key,status:'changed',revision:copy.revision});
+  expect((await page.request.put(scopedPath,{headers:{...headers,'If-Match':String(copy.revision)},
+    data:preview.rows[0].situation})).ok()).toBe(true);
+  const global = await (await page.request.get(path)).json();
+  expect(global.situations.find(item => item.key === source.key).desc).toBe(source.desc);
+  const orgPath = path + '?type=organization&id=' + org.id;
+  const orgPreview = await post(orgPath,bundle);
+  expect((await page.request.put(orgPath,{headers,data:orgPreview.rows[0].situation})).status()).toBe(201);
+  const inherited = await (await page.request.get('/api/design?' + scope)).json();
+  expect(inherited.inherited).toEqual(expect.arrayContaining([expect.objectContaining({key:orgPreview.rows[0].key})]));
+  const coach = await requests.newContext({baseURL});
+  try {
+    expect((await coach.post('/api/auth/login',{headers,data:{username:'jamie.rivera',password:'password'}})).ok()).toBe(true);
+    expect((await coach.post(scopedPath,{headers,data:bundle})).status()).toBe(403);
+    expect((await coach.put(scopedPath,{headers,data:source})).status()).toBe(403);
+  } finally { await coach.dispose(); }
+});
+
 test('staff workspaces share horizontal tabs and full-width panes', async ({page,baseURL}) => {
   await page.setViewportSize({width:1440,height:900});
   expect((await page.request.post('/api/auth/login', {headers:{Origin:new URL(baseURL).origin},

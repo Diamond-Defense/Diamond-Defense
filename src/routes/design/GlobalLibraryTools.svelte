@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  let { request, refresh, mode } = $props();
+  let { request, refresh, mode, destination } = $props();
   let file = $state(null);
   let review = $state(null);
   let order = $state(null);
@@ -44,24 +44,26 @@
       status = `Exported ${situations.length} situations.`;
     });
   }
+  const importUrl = $derived('/api/admin/situations/transfer?' + new URLSearchParams({type:destination.type,id:destination.id}));
   function reviewImport() {
     return run(async () => {
       review = null;
       if (!file || file.size > 5_000_000) throw new Error('Choose a situation JSON file smaller than 5 MB.');
-      review = await request('/api/admin/situations/transfer', {method:'POST',body:await file.text()});
+      review = await request(importUrl, {method:'POST',body:await file.text()});
       selected = [];
     });
   }
   function publishImport() {
     return run(async () => {
+      const targetUrl = importUrl;
       const items = review.rows.filter(item => selected.includes(item.key) && ['new','changed'].includes(item.status));
-      if (!items.length || !window.confirm(`Publish ${items.length} situations to ${review.destination}?`)) return;
+      if (!items.length || !window.confirm(`Publish ${items.length} situations to ${review.destinationLibrary} on ${review.destination}?`)) return;
       let count = 0;
       try {
         for (const item of items) {
-          const options = json(item.status === 'new' ? 'POST' : 'PUT', item.situation);
+          const options = json('PUT', item.situation);
           if (item.revision) options.headers['If-Match'] = String(item.revision);
-          await request(item.status === 'new' ? '/api/situations' : `/api/situations/${encodeURIComponent(item.key)}`,options);
+          await request(targetUrl,options);
           count++;
         }
         review = null; selected = [];
@@ -127,15 +129,16 @@
   }
 </script>
 
-<section class="card global-tools" aria-label="Manage Global Library">
+<section class="card global-tools" aria-label={destination.type === 'global' ? 'Manage Global Library' : 'Import situations'}>
   <h2>{mode === 'transfer' ? 'Export situations' : mode === 'import' ? 'Import situations' : mode === 'reorder' ? 'Library order' : 'Delete situations'}</h2>
   {#if status}<p role="status">{status}</p>{/if}
   {#if mode === 'import'}
+    <p>Destination {destination.name}</p>
     <label class="field">Situation JSON file <input type="file" accept=".json,application/json" disabled={busy}
       onchange={event => {file = event.currentTarget.files?.[0]; review = null;}}></label>
     <button class="btn btn-ghost" disabled={!file || busy} onclick={reviewImport}>Review import</button>
     {#if review}
-      <p>Import from {review.source} into {review.destination}.</p>
+      <p>Import from {review.source} into {review.destinationLibrary} on {review.destination}.</p>
       <div class="admin-actions">
         <button class="btn btn-ghost" disabled={busy} onclick={() => selected = review.rows.filter(item => ['new','changed'].includes(item.status)).map(item => item.key)}>Select all publishable</button>
         <button class="btn btn-brand" disabled={busy || !selected.length} onclick={publishImport}>Publish selected ({selected.length})</button>
@@ -145,6 +148,7 @@
           <label><input type="checkbox" value={item.key} bind:group={selected} disabled={busy || !['new','changed'].includes(item.status)}>
             {item.title || item.key} · {item.status}</label>
           {#if item.error}<p>{item.error}</p>{/if}
+          {#if item.warning}<p>{item.warning}</p>{/if}
           {#if item.changes?.length}
             <details><summary>Review changed fields</summary>
               {#each item.changes as change}<pre>{change.field}{'\n'}Current: {JSON.stringify(change.before,null,2)}{'\n'}Incoming: {JSON.stringify(change.after,null,2)}</pre>{/each}
