@@ -1,0 +1,120 @@
+/* Design shares Training's workspace vocabulary; editor behavior remains intact. */
+body.design-workspace-open #workspaceSituationToolbar {display:none!important;}
+body.design-workspace-open #designWorkspace {display:grid;grid-template-columns:230px minmax(0,1fr);gap:0;align-items:start;margin:0;padding:0;max-width:none;background:var(--app-background);}
+#designWorkspace>.design-sidebar {grid-column:1;grid-row:1/5;position:sticky;top:var(--app-header-height,64px);box-sizing:border-box;min-height:calc(100dvh - var(--app-header-height,64px));padding:24px 16px;border-right:1px solid var(--border);background:var(--surface);}
+#designWorkspace>.design-sidebar h2 {font-size:18px;margin:0 8px 24px;}
+#designWorkspace>.design-sidebar .field {margin-bottom:16px;font-size:12px;color:var(--text-secondary);}
+#designWorkspace>.design-sidebar :is(input,select) {box-sizing:border-box;width:100%;min-width:0;height:40px;padding:8px;font-size:13px;}
+#designWorkspace>.design-sidebar p {font-size:12px;line-height:1.5;}
+#designWorkspace>.dd-page-header,#designWorkspace>.workspace-frame,#designWorkspace>.dd-feedback {grid-column:2;min-width:0;box-sizing:border-box;}
+#designWorkspace>.dd-page-header {margin:0!important;padding:24px 32px 20px;background:transparent;border:0;border-radius:0;box-shadow:none;}
+#designWorkspace .dd-page-header h1 {font-size:28px;line-height:1.3;margin:0 0 6px;}
+#designWorkspace .dd-page-header p {font-size:14px;color:var(--text-secondary);}
+#designWorkspace .dd-page-header-actions {align-items:center;gap:12px;}
+#designWorkspace .dd-page-header-actions>button {display:grid;place-items:center;width:36px;height:36px;min-height:36px;padding:0;}
+#designWorkspace>.workspace-frame {margin:0 32px 24px;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;}
+#designWorkspace .workspace-sections {padding:0;background:transparent;border:0;}
+#designWorkspace .workspace-content {padding:0;min-width:0;}
+#designWorkspace .dd-section-navigation {display:flex;flex-wrap:wrap;gap:16px;padding:0;margin:0 0 20px;border-bottom:1px solid var(--border);background:transparent;}
+#designWorkspace .dd-section-navigation>button {padding:10px 4px;min-height:40px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;box-shadow:none;color:var(--text-secondary);font-size:14px;font-weight:500;}
+#designWorkspace .dd-section-navigation>button[aria-pressed="true"] {border-bottom-color:var(--selection-border);color:var(--text-primary);font-weight:600;background:transparent;}
+#designWorkspace .dd-section-navigation>button::after {display:none;}
+#designWorkspace .workspace-content>section {padding:16px;margin:16px 0;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+#designWorkspace .workspace-content>section.card {padding:0;border:0;background:transparent;}
+#designWorkspace .toolbar.workspace-toolbar {gap:12px;align-items:end;margin:0 0 20px;}
+#designWorkspace .filters {width:100%;gap:12px;}
+#designWorkspace .filters>.field {flex:1 1 160px;max-width:280px;}
+#designWorkspace .filters>.field:first-child {flex:1.5 1 240px;max-width:420px;width:auto;}
+#designWorkspace :is(input:not([type="checkbox"]),select) {box-sizing:border-box;min-height:40px;padding:8px 12px;font-size:14px;font-weight:400;}
+#designWorkspace :is(button,a.dd-button) {box-sizing:border-box;min-height:36px;box-shadow:none;}
+#designWorkspace .design-filter-button {display:inline-flex;align-items:center;gap:6px;}
+#designWorkspace .design-extra-filters {display:flex;flex:1 0 100%;flex-wrap:wrap;gap:16px;box-sizing:border-box;padding:16px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+#designWorkspace .design-extra-filters[hidden] {display:none!important;}
+#designWorkspace .design-extra-filters>.field {flex:1 1 240px;max-width:400px;}
+#designWorkspace .selection-toolbar {flex-basis:100%;}
+#designWorkspace .admin-access-table-wrap {position:relative;max-width:100%;overflow:auto;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+#designWorkspace table {width:100%;border-collapse:collapse;}
+#designWorkspace table thead th {background:#29485f;color:#fff;padding:12px;font-size:12px;font-weight:600;white-space:normal;}
+#designWorkspace table tbody :is(td,th) {padding:12px;border-bottom:1px solid var(--border);vertical-align:middle;}
+#designWorkspace table tbody tr:hover,#designWorkspace table tbody tr:has(:focus-visible) {background:var(--surface-hover);}
+#designWorkspace .situation-title {font-size:14px;font-weight:600;min-height:0;}
+#designWorkspace .row-actions {gap:6px;}
+#designWorkspace .row-actions :is(button,a) {font-size:12px;}
+#designWorkspace .workspace-content :is(h2,h3) {margin:12px 0;font-size:18px;}
+#designWorkspace .library-table h3 {margin:0;}
+#designWorkspace .design-status {display:inline-block;padding:3px 8px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);font-size:12px;font-weight:600;}
+#designWorkspace .design-status[data-status="pending"] {color:#a86000;background:#fff5e3;}
+#designWorkspace .design-status[data-status="approved"] {color:#007f83;background:#e6f5f5;}
+#designWorkspace .design-status[data-status="rejected"] {color:var(--error);background:var(--error-muted);}
+@media(max-width:1000px){body.design-workspace-open #designWorkspace{grid-template-columns:1fr;}#designWorkspace>.design-sidebar{grid-column:1;grid-row:auto;position:static;min-height:0;border-right:0;border-bottom:1px solid var(--border);}#designWorkspace>.dd-page-header,#designWorkspace>.workspace-frame,#designWorkspace>.dd-feedback{grid-column:1;}#designWorkspace>.workspace-frame{margin-inline:16px;}#designWorkspace>.dd-page-header{padding-inline:16px;}}
+
+#designWorkspace .design-pagination {display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:16px;font-size:12px;}
+#designWorkspace .design-pagination>span {margin-right:auto;}
+#designWorkspace .workspace-content .primary {background:var(--accent-primary)!important;color:var(--surface)!important;}
+
+/* Main Design destinations follow Training's vertical navigation pattern. */
+#designWorkspace .design-sidebar-nav {display:grid;gap:6px;margin-top:24px;}
+#designWorkspace .design-sidebar-nav>button {display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;min-height:44px;padding:12px;border:0;border-left:3px solid transparent;border-radius:4px;background:transparent;box-shadow:none;color:var(--text-secondary);font-size:14px;font-weight:500;text-align:left;}
+#designWorkspace .design-sidebar-nav>button:hover {background:var(--surface-hover);}
+#designWorkspace .design-sidebar-nav>button[aria-current="page"] {border-left-color:var(--selection-border);background:var(--selection-background);color:var(--accent-text);font-weight:600;}
+#designWorkspace .design-nav-count {font-size:12px;}
+#designWorkspace .dd-page-header-actions>a {font-weight:600;}
+
+/* Match Training's top section: compact switcher and unboxed filter toolbar. */
+#designWorkspace .workspace-content>section.design-library-content {background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important;margin:0;}
+#designWorkspace .design-library-content>.toolbar {background:transparent!important;border:0;border-radius:0;padding:0;margin:16px 0 20px;}
+#designWorkspace .selection-toolbar {padding-top:12px;border-top:1px solid var(--border);gap:10px;}
+#designWorkspace .design-result-count {margin-right:6px;font-size:12px;color:var(--text-secondary);}
+#designWorkspace .design-library-switcher {position:relative;margin:0 0 24px;padding:0;border:0;background:transparent;}
+#designWorkspace .design-library-switcher>summary {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);list-style:none;cursor:pointer;}
+#designWorkspace .design-library-switcher>summary::-webkit-details-marker {display:none;}
+#designWorkspace .design-library-switcher strong {display:block;font-size:14px;}
+#designWorkspace .design-library-switcher small {display:block;margin-top:4px;font-size:11px;color:var(--text-secondary);}
+#designWorkspace>.design-sidebar:has(.design-library-switcher[open]) {z-index:90;overflow:visible;}
+#designWorkspace .design-library-options {position:absolute;top:calc(100% + 6px);left:0;width:320px;max-width:calc(100vw - 48px);box-sizing:border-box;padding:12px;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-panel);box-shadow:0 8px 24px #0b293326;z-index:200;}
+#designWorkspace .design-library-results {max-height:300px;overflow:auto;}
+#designWorkspace .design-library-results>button {width:100%;text-align:left;border:0;background:transparent;padding:10px 8px;}
+#designWorkspace .design-library-results>button:hover,#designWorkspace .design-library-results>button[aria-current] {background:var(--surface-hover);}
+
+/* Headers and values share the same alignment and cell gutters in every table. */
+#designWorkspace table :is(th,td) {text-align:left;vertical-align:middle;padding:12px;box-sizing:border-box;}
+#designWorkspace .library-table :is(th,td) {white-space:normal;}
+#designWorkspace .library-table .difficulty-column {width:8rem;}
+#designWorkspace .library-table .actions-column {width:12rem;}
+#designWorkspace .library-table .source-column {width:18%;}
+#designWorkspace .library-table .select-column {width:44px;}
+#designWorkspace .library-table td:has(>input[type="checkbox"]),#designWorkspace .library-table th:has(>input[type="checkbox"]) {text-align:center;}
+#designWorkspace .library-table input[type="checkbox"] {width:18px;height:18px;margin:0;vertical-align:middle;accent-color:var(--selection-border);cursor:pointer;}
+#designWorkspace .library-table .selectable-row {cursor:pointer;}
+#designWorkspace .library-table .selected-row>td {background:var(--selection-background);}
+#designWorkspace .library-table tr:focus-visible {outline:2px solid var(--focus-ring);outline-offset:-2px;}
+#designWorkspace .library-table h3,#designWorkspace .library-table .situation-title {margin:0;line-height:1.4;}
+#designWorkspace section[aria-label="Submissions"]>h2 {display:none;}
+#designWorkspace section[aria-label="Submissions"] .candidate-search {margin:0 0 16px;max-width:280px;}
+#designWorkspace table[aria-label="Sent submissions"] {table-layout:fixed;min-width:640px;}
+#designWorkspace table[aria-label="Sent submissions"] :is(th,td):first-child {width:44%;}
+#designWorkspace table[aria-label="Sent submissions"] :is(th,td):nth-child(2) {width:20%;}
+#designWorkspace table[aria-label="Sent submissions"] :is(th,td):nth-child(3) {width:9%;text-align:right;}
+#designWorkspace table[aria-label="Sent submissions"] :is(th,td):nth-child(4) {width:15%;}
+#designWorkspace table[aria-label="Sent submissions"] :is(th,td):nth-child(5) {width:12%;}
+
+/* Outline navigation icons match Training and inherit active-state color. */
+#designWorkspace .design-sidebar-nav>button {justify-content:flex-start;gap:12px;}
+#designWorkspace .design-nav-icon {width:20px;height:20px;flex:0 0 20px;}
+#designWorkspace .design-nav-label {flex:1;min-width:0;}
+#designWorkspace .library-table .revision-column {width:6rem;white-space:nowrap;overflow-wrap:normal;}
+
+/* Keep selection actions adjacent to their result count. */
+#designWorkspace .selection-toolbar {justify-content:flex-start;gap:12px;}
+#designWorkspace .selection-toolbar .design-result-count {flex:0 0 auto;margin-right:6px;}
+
+#designWorkspace .workspace-content>section.design-candidates {background:transparent;border:0;padding:0;margin:0;}
+#designWorkspace .design-destination {margin:0 0 20px;font-size:13px;color:var(--text-secondary);}
+#designWorkspace .design-candidates>.filters {align-items:end;justify-content:flex-start;gap:12px;margin-bottom:20px;}
+#designWorkspace .design-candidates>.filters>.field {flex:1 1 180px;max-width:320px;}
+#designWorkspace .design-candidate-table {table-layout:fixed;min-width:800px;}
+#designWorkspace .design-candidate-table :is(th,td):first-child {width:32%;}
+#designWorkspace .design-candidate-table :is(th,td):nth-child(2) {width:28%;overflow-wrap:anywhere;}
+#designWorkspace .design-candidate-table :is(th,td):nth-child(3) {width:12%;}
+#designWorkspace .design-candidate-table :is(th,td):nth-child(4) {width:8%;text-align:right;white-space:nowrap;}
+#designWorkspace .design-candidate-table :is(th,td):nth-child(5) {width:20%;}

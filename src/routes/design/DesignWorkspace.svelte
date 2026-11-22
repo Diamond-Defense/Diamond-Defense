@@ -15,12 +15,19 @@
   let view = $state('library');
   let manageMode = $state('transfer');
   let candidateQuery = $state('');
+  let candidateSource = $state('');
+  let candidateDifficulty = $state('');
   const libraryTools = [['transfer','Export'],['import','Import'],['reorder','Reorder'],['delete','Delete situations']];
   function selectSection(next, mode = manageMode) {
     manageMode = mode;
     changeView(next);
     syncLocation();
   }
+  let libraryPage = $state(1);
+  $effect(() => {query; difficulty; category; sourceLibrary; selected; libraryPage=1;});
+  let filtersOpen = $state(false);
+  let scopeQuery = $state('');
+  let submissionStatus = $state('');
   let query = $state('');
   let difficulty = $state('');
   let category = $state('');
@@ -78,11 +85,19 @@
   const scopeKey = scope => JSON.stringify([scope.type, scope.id]);
   const scopeLabel = {global:'Global Library',organization:'Organization Library',region:'Regional Library',team:'Team Library'};
   const library = $derived(workspaces.find(scope => scopeKey(scope) === selected));
+  const sectionIcons = {
+    library:'M8 3h12v14H8z M4 7v14h12',
+    submissions:'m3 3 18 9-18 9 4-9-4-9 M7 12h14',
+    reviews:'M9 4H5v17h14V4h-4 M9 3h6v4H9z m-1 11 3 3 5-6',
+    'cherry-pick':'M14 3H5v18h14V8z M14 3v5h5 M8 14h8 M12 10v8',
+    manage:'M4 7h16 M4 17h16 M9 4v6 M15 14v6',
+    import:'M12 16V3 m-5 5 5-5 5 5 M4 15v6h16v-6',
+  };
   const sections = $derived(library ? [
-    {value:'library',label:scopeLabel[library.type]},
+    {value:'library',label:'Situations'},
     ...(listing?.canReview || listing?.changeReviews.some(item => item.canReview && item.status === 'pending')
       ? [{value:'reviews',label:'Publication reviews',count:listing.incoming.length}] : []),
-    ...(listing?.canCherryPick ? [{value:'cherry-pick',label:'Cherry-pick'}] : []),
+    ...(listing?.canCherryPick ? [{value:'cherry-pick',label:'Add from libraries'}] : []),
     ...(library.parent || listing?.changeReviews.length ? [{value:'submissions',label:'Submissions'}] : []),
     ...(isAdmin && library.type === 'global' ? [{value:'manage',label:'Manage library'}] : []),
     ...(isAdmin && ['organization','region'].includes(library.type) ? [{value:'import',label:'Import situations'}] : []),
@@ -129,7 +144,7 @@
   }
   function changeView(next) {
     closeDetails();
-    view = next; candidateQuery = ''; query = ''; difficulty = ''; category = ''; sourceLibrary = ''; marked = [];
+    view = next; candidateSource=''; candidateDifficulty=''; candidateQuery = ''; query = ''; difficulty = ''; category = ''; sourceLibrary = ''; marked = [];
     changeReview = null; review = null; historicalReview = null;
   }
 
@@ -309,28 +324,43 @@
   {/if}
 {/snippet}
 
+<svelte:window onkeydown={event=>{
+  if(event.key!=='Escape')return;
+  const picker=document.querySelector('#designWorkspace .design-library-switcher[open]');
+  if(picker && picker.contains(document.activeElement)){picker.open=false;picker.querySelector('summary')?.focus();}
+}} />
+
 <main class="design-dashboard" id="designWorkspace">
-  <PageHeader title="Design workspace"
-    context={library ? (library.name === 'Global Library' ? library.name : library.name + ' · ' + scopeLabel[library.type]) : ''}>
+  <aside class="design-sidebar"><h2>Design</h2>
+    <details class="design-library-switcher">
+      <summary><span><strong>{library?.name || 'Choose library'}</strong>{#if library && library.name!==scopeLabel[library.type]}<small>{scopeLabel[library.type]}</small>{/if}</span><span aria-hidden="true">⌄</span></summary>
+      <div class="design-library-options">
+        <label class="field">Find a library<input type="search" placeholder="Team, region or library" bind:value={scopeQuery}></label>
+        <div class="design-library-results">
+          {#each workspaces.filter(scope=>(scope.name+' '+scopeLabel[scope.type]).toLowerCase().includes(scopeQuery.toLowerCase())) as scope}
+            <button type="button" disabled={busy} aria-current={scopeKey(scope)===selected?'true':undefined} onclick={event=>{switchLibrary({currentTarget:{value:scopeKey(scope)}});event.currentTarget.closest('details').open=false;}}><strong>{scope.name}</strong><small>{scopeLabel[scope.type]}</small></button>
+          {:else}<p>No matching libraries.</p>{/each}
+        </div>
+      </div>
+    </details>
+    {#if library}
+      <nav id="design-sections" class="design-sidebar-nav" aria-label="Design sections">
+        {#each sections as section (section.value)}
+          <button type="button" aria-current={view===section.value?'page':undefined} onclick={() => selectSection(section.value)}><svg class="design-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={sectionIcons[section.value] || sectionIcons.library}/></svg><span class="design-nav-label">{section.label}</span>{#if section.count}<span class="design-nav-count">{section.count}</span>{/if}</button>
+        {/each}
+      </nav>
+    {/if}
+  </aside>
+  <PageHeader title={sections.find(section=>section.value===view)?.label || 'Design workspace'}
+    context={view==='library'?'Create and organize situations for this library.':view==='submissions'?'Track situations and updates submitted for review.':view==='reviews'?'Review proposed situations and publication updates.':view==='manage'?'Manage library content and transfers.':view==='cherry-pick'?'Choose situations to publish into this library.':'Import situations into this library.'}>
     {#snippet actions()}
-      {#if workspaces.length > 1}
-        <Field label="Library" controlId="design-library-scope">
-          <select id="design-library-scope" class="dd-control" disabled={busy} value={selected} onchange={switchLibrary}>
-            {#each workspaces as scope}<option value={scopeKey(scope)}>{scope.name} {scope.type === 'global' ? '' : '· ' + scopeLabel[scope.type]}</option>{/each}
-          </select>
-        </Field>
-      {/if}
-      {#if library?.canDesign && view === 'library'}<a class="dd-button" data-variant="primary" data-sveltekit-reload href={editLink()}>New situation</a>{/if}
-      <Button variant="ghost" onclick={onField}>Back to field</Button>
+      {#if library?.canDesign && view === 'library'}<a class="dd-button" data-variant="primary" data-sveltekit-reload href={editLink()}>+ New situation</a>{/if}
+      <Button variant="secondary" disabled={busy || loading} onclick={() => loadLibrary()} aria-label="Refresh design workspace"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></Button>
     {/snippet}
   </PageHeader>
   <Feedback message={status} tone={statusTone} />
   {#if library}
     <Panel class="workspace-frame" padded={false}>
-      <div class="workspace-sections">
-        <SectionNavigation id="design-sections" label="Design sections" items={sections}
-          value={view} onchange={next => selectSection(next)} />
-      </div>
       <div class="workspace-content">
     {#if view === 'manage' && isAdmin && library.type === 'global'}
       <SectionNavigation label="Global Library tools" secondary
@@ -342,7 +372,7 @@
     {:else if !listing}
       {#if !status}<p>Loading library…</p>{/if}
     {:else if view === 'library'}
-      <section class="card" aria-label={scopeLabel[library.type]}>
+      <section class="card design-library-content" aria-label={scopeLabel[library.type]}>
         <div class="toolbar workspace-toolbar">
           <div class="filters">
             <label class="field">Search situations <input class="input" type="search" bind:value={query}></label>
@@ -354,11 +384,15 @@
               <option value="">All categories</option>
               {#each categoryOptions as value}<option {value}>{displayLabel(value)}</option>{/each}
             </select></label>
+            <button class="design-filter-button" aria-expanded={filtersOpen} aria-controls="design-extra-filters" onclick={() => filtersOpen=!filtersOpen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg>Filters{sourceLibrary ? ' · 1 active' : ''}</button>
+            <button disabled={!query && !difficulty && !category && !sourceLibrary} onclick={() => {query='';difficulty='';category='';sourceLibrary='';}}>Clear filters</button>
+          </div>
+          <div class="design-extra-filters" id="design-extra-filters" hidden={!filtersOpen}>
             <label class="field">Source library <select class="select" bind:value={sourceLibrary}>
               <option value="">All sources</option>
               {#each sourceOptions as value}<option {value}>{value}</option>{/each}
             </select></label>
-          </div>
+
           {#if library.type === 'team' && view === 'library'}
             <label class="field">Inherited difficulty
               <select class="select" value={listing.maximumDifficulty} disabled={busy} onchange={event => action({
@@ -370,8 +404,9 @@
               </select>
             </label>
           {/if}
+          </div>
           {#if matchingIds.length || marked.length}
-            <div class="selection-toolbar" role="group" aria-label="Situation selection">
+            <div class="selection-toolbar" role="group" aria-label="Situation selection"><span class="design-result-count">{visible.length + visibleInherited.length} situations</span>
               {#if matchingIds.length}
                 <button disabled={busy || matchingSelection.length === matchingIds.length}
                   onclick={() => marked = matchingIds}>Select matching ({matchingIds.length})</button>
@@ -390,26 +425,29 @@
           {label:'',entries:visible},
           ...(library.type !== 'global' ? [{label:'Inherited situations',entries:visibleInherited}] : []),
         ] as group}
+          {@const pageEntries = group.entries.slice((libraryPage-1)*15,libraryPage*15)}
+          {@const selectableIds = pageEntries.map(entryId).filter(id=>matchingIds.includes(id))}
           {@const selectRows = group.entries.some(entry => matchingIds.includes(entryId(entry)))}
           {#if group.label}<h2>{group.label}</h2>{/if}
           {#if group.entries.length}
             <div class="admin-access-table-wrap">
               <table class="admin-access-table library-table" aria-label={group.label || scopeLabel[library.type]}>
                 <thead><tr>
-                  {#if selectRows}<th scope="col" class="select-column" aria-label="Select"></th>{/if}
-                  <th scope="col">Situation</th><th scope="col" class="source-column">Source</th><th scope="col" class="revision-column">Revision</th><th scope="col" class="availability-column">Availability</th><th scope="col" class="actions-column">Actions</th>
+                  {#if selectRows}<th scope="col" class="select-column"><input type="checkbox" aria-label="Select current page" disabled={busy || !selectableIds.length} checked={selectableIds.length>0 && selectableIds.every(id=>marked.includes(id))} indeterminate={selectableIds.some(id=>marked.includes(id)) && !selectableIds.every(id=>marked.includes(id))} onchange={event=>{marked=event.currentTarget.checked?[...new Set([...marked,...selectableIds])]:marked.filter(id=>!selectableIds.includes(id));}}></th>{/if}
+                  <th scope="col">Situation</th><th scope="col" class="difficulty-column">Difficulty</th><th scope="col" class="source-column">Source</th><th scope="col" class="revision-column">Revision</th><th scope="col" class="availability-column">Availability</th><th scope="col" class="actions-column">Actions</th>
                 </tr></thead>
                 <tbody>
-                  {#each group.entries as entry}
-                    <tr data-situation-key={entry.key} class:selected-row={marked.includes(entryId(entry))}>
+                  {#each pageEntries as entry}
+                    <tr data-situation-key={entry.key} class:selected-row={marked.includes(entryId(entry))} class:selectable-row={matchingIds.includes(entryId(entry))} tabindex={matchingIds.includes(entryId(entry))?0:undefined}
+                      onclick={event=>{if(busy || event.target.closest('button,a,input,select,details') || !matchingIds.includes(entryId(entry)))return;marked=marked.includes(entryId(entry))?marked.filter(id=>id!==entryId(entry)):[...marked,entryId(entry)];}}
+                      onkeydown={event=>{if(event.target!==event.currentTarget || ![' ','Enter'].includes(event.key) || busy || !matchingIds.includes(entryId(entry)))return;event.preventDefault();marked=marked.includes(entryId(entry))?marked.filter(id=>id!==entryId(entry)):[...marked,entryId(entry)];}}>
                       {#if selectRows}<td>
                         {#if matchingIds.includes(entryId(entry))}
                           <input type="checkbox" bind:group={marked} value={entryId(entry)} disabled={busy} aria-label={'Select ' + entry.title}>
                         {/if}
                       </td>{/if}
                       <td><h3><button class="situation-title" aria-haspopup="dialog" onclick={() => openDetails(entry)}>{entry.title}</button></h3>
-                        {#if entry.difficulty}<span class="difficulty-label">{displayLabel(entry.difficulty)}</span>{/if}
-                      </td>
+                      </td><td>{entry.difficulty?displayLabel(entry.difficulty):'—'}</td>
                       <td>{sourceName(entry)}</td><td>{entry.revision}</td>
                       <td>{entry.sourceType ? (entry.hiddenScope ? (entry.hiddenScope === library.type ? 'Hidden here' : 'Hidden by ' + (entry.hiddenScope === 'organization' ? 'organization' : 'region')) : entry.difficultyFiltered ? 'Outside team difficulty' : 'Inherited')
                         : library.type === 'team' ? 'In free play' : 'Published here'}
@@ -424,6 +462,7 @@
             </div>
           {:else if group.label || library.type === 'global' || !visibleInherited.length}<p>{query || difficulty || category || sourceLibrary ? 'No matching situations.' : 'No situations in this list.'}</p>{/if}
         {/each}
+        <div class="design-pagination"><span>{visible.length + visibleInherited.length} situations · Page {libraryPage} of {Math.max(1,Math.ceil(Math.max(visible.length,visibleInherited.length)/15))}</span><button disabled={libraryPage===1} onclick={() => libraryPage-=1}>← Previous</button><button disabled={libraryPage*15>=Math.max(visible.length,visibleInherited.length)} onclick={() => libraryPage+=1}>Next →</button></div>
       </section>
     {:else if view === 'reviews'}
       <section aria-label="Publication reviews">
@@ -446,48 +485,38 @@
         {:else}<p>No pending submissions.</p>{/each}
       </section>
     {:else if view === 'cherry-pick'}
-      <section aria-label="Cherry-pick situations">
-        <h2>Publish into {library.type === 'global' ? scopeLabel.global : library.name + ' · ' + scopeLabel[library.type]}</h2>
-        <label class="field candidate-search">Search eligible situations <input class="input" type="search" bind:value={candidateQuery}></label>
-        {#each listing.sourceEntries.map(group => ({
-          ...group, entries:group.entries.filter(entry => searchText(entry.title).includes(searchText(candidateQuery))),
-        })).filter(group => group.entries.length) as group (scopeKey(group.scope))}
-          <div role="group" aria-label={group.path + ' · ' + scopeLabel[group.scope.type]}>
-            <h2>{group.path} · {scopeLabel[group.scope.type]}</h2>
-            {#each group.entries as entry (entry.key)}
-              <article><div><h3>{entry.title}</h3><p>Revision {entry.revision}</p></div>
-                <div class="actions">
-                  <button disabled={busy} onclick={() => playTestCandidate(entry)}>Play-test</button>
-                  <button disabled={busy} onclick={() => cherryPick(entry)}>Cherry-pick into {scopeLabel[library.type]}</button>
-                </div>
-              </article>
-            {/each}
-          </div>
-        {:else}<p>No eligible situations match.</p>{/each}
+      <section class="design-candidates" aria-label="Add from libraries">
+        <p class="design-destination">Destination: <strong>{library.type==='global'?scopeLabel.global:library.name+' · '+scopeLabel[library.type]}</strong></p>
+        <div class="filters toolbar workspace-toolbar">
+          <label class="field">Search situations<input type="search" placeholder="Situation name" bind:value={candidateQuery}></label>
+          <label class="field">Source library<select bind:value={candidateSource}><option value="">All source libraries</option>{#each listing.sourceEntries as group}<option value={scopeKey(group.scope)}>{group.path} · {scopeLabel[group.scope.type]}</option>{/each}</select></label>
+          <label class="field">Difficulty<select bind:value={candidateDifficulty}><option value="">All difficulties</option>{#each [...new Set(listing.sourceEntries.flatMap(group=>group.entries.map(entry=>entry.difficulty)).filter(Boolean))].sort() as level}<option value={level}>{displayLabel(level)}</option>{/each}</select></label>
+          <button disabled={!candidateQuery && !candidateSource && !candidateDifficulty} onclick={()=>{candidateQuery='';candidateSource='';candidateDifficulty='';}}>Clear filters</button>
+        </div>
+        <div class="admin-access-table-wrap"><table class="design-candidate-table" aria-label="Eligible situations"><thead><tr><th scope="col">Situation</th><th scope="col">Source library</th><th scope="col">Difficulty</th><th scope="col">Revision</th><th scope="col">Actions</th></tr></thead><tbody>
+          {#each listing.sourceEntries.filter(group=>!candidateSource || scopeKey(group.scope)===candidateSource).flatMap(group=>group.entries.filter(entry=>searchText(entry.title).includes(searchText(candidateQuery)) && (!candidateDifficulty || entry.difficulty===candidateDifficulty)).map(entry=>({entry,group}))) as candidate}
+            <tr><td><button class="situation-title" disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>{candidate.entry.title}</button></td><td>{candidate.group.path} · {scopeLabel[candidate.group.scope.type]}</td><td>{candidate.entry.difficulty?displayLabel(candidate.entry.difficulty):'—'}</td><td>{candidate.entry.revision}</td><td><div class="actions row-actions"><button disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>Preview</button><button class="dd-button" data-variant="primary" disabled={busy} onclick={()=>cherryPick(candidate.entry)}>Add to library</button></div></td></tr>
+          {:else}<tr><td colspan="5">No eligible situations match these filters.</td></tr>{/each}
+        </tbody></table></div>
       </section>
     {:else if view === 'submissions'}
       <section aria-label="Submissions">
-        <h2>Sent for review</h2>
+        <h2>Submissions</h2><label class="field candidate-search">Status<select bind:value={submissionStatus}><option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="withdrawn">Withdrawn</option></select></label>
         {#if listing.canReview}
           <button onclick={() => selectSection('reviews')}>View incoming reviews{listing.incoming.length ? ' (' + listing.incoming.length + ')' : ''}</button>
         {/if}
-        {#each listing.changeReviews as item}
-          <article><h3>{item.original.title}</h3><p>Proposed update · {item.status}</p></article>
+        {#each listing.changeReviews.filter(item=>!submissionStatus || item.status===submissionStatus) as item}
+          <article><h3>{item.original.title}</h3><p>Proposed update · <span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></p></article>
         {/each}
-        {#each listing.outgoing as item}
-          <article>
-            <div><h2>{item.source_title}</h2>
-              <p>To {item.destination_name} · Revision {item.source_revision} · {item.status}</p>
-            </div>
-            {#if item.canWithdraw}
-              <button disabled={busy} onclick={() => {
-                if (window.confirm('Withdraw this submission? You can submit this revision again.')) {
-                  void action({action:'withdraw_submission',promotionId:item.id},'Submission withdrawn.');
-                }
-              }}>Withdraw submission</button>
-            {/if}
-          </article>
-        {:else}<p>No submissions.</p>{/each}
+        <div class="admin-access-table-wrap"><table aria-label="Sent submissions"><thead><tr><th scope="col">Situation</th><th scope="col">Destination</th><th scope="col">Revision</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead><tbody>
+        {#each listing.outgoing.filter(item=>!submissionStatus || item.status===submissionStatus) as item}
+          <tr><td>{item.source_title}</td><td>{item.destination_name}</td><td>{item.source_revision}</td><td><span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></td><td>
+            {#if item.canWithdraw}<button disabled={busy} onclick={() => {
+              if(window.confirm('Withdraw this submission? You can submit this revision again.'))void action({action:'withdraw_submission',promotionId:item.id},'Submission withdrawn.');
+            }}>Withdraw submission</button>{:else}—{/if}
+          </td></tr>
+        {:else}<tr><td colspan="5">No submissions match this view.</td></tr>{/each}
+        </tbody></table></div>
       </section>
     {/if}
     {#if historicalReview}
@@ -610,8 +639,6 @@
   .situation-title {min-height:0;padding:0;border:0;background:none;text-align:start;font-weight:700;
     text-decoration:underline;text-decoration-color:var(--border-emphasis);text-underline-offset:.18em;}
   .situation-title:hover:not(:disabled) {text-decoration-color:currentColor;transform:none;box-shadow:none;}
-  .difficulty-label {display:inline-block;margin-top:.2rem;padding:.05rem .4rem;border-radius:1rem;
-    background:var(--surface-hover);color:var(--text-secondary);font-size:.8rem;}
   .situation-detail {box-sizing:border-box;position:fixed;inset:0 0 0 auto;margin:0;width:min(100%,var(--detail-panel-width));
     max-width:none;height:100%;max-height:100%;padding:1.25rem;overflow:auto;color:inherit;background:var(--surface);
     border:0;border-inline-start:1px solid var(--border);}

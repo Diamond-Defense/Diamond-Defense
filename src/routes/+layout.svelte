@@ -6,6 +6,7 @@
   import '../styles/login.css';
   import '../styles/practice.css';
   import '../styles/training.css';
+  import '../styles/design.css';
 
   let { children } = $props();
 </script>
