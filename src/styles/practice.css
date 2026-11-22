@@ -1,0 +1,50 @@
+/* Only the player practice page adopts the shared workspace shell. */
+body.player-experience #appWorkspace:has(>#practiceWorkspace:not(.hidden)>#playerPracticeView:not(.hidden)) {padding:0;}
+#appWorkspace>#practiceWorkspace:has(#playerPracticeView:not(.hidden)) {
+ box-sizing:border-box;width:100%;max-width:none;margin:0;padding:0;
+ background:transparent;border:0;box-shadow:none;align-self:start;
+}
+#practiceWorkspace:has(#playerPracticeView:not(.hidden))>.practice-workspace-header {display:none;}
+#playerPracticeView .dd-workspace-content {max-width:1040px;}
+#playerPracticeView {min-height:calc(100dvh - var(--app-header-height,64px));}
+#playerPracticeStatus:empty {display:none;}
+#playerPracticeList {display:grid;gap:16px;}
+#playerPracticeList .dd-task-card {gap:12px;padding:16px 20px;}
+#playerPracticeList .practice-card-heading {display:flex;align-items:flex-start;justify-content:space-between;gap:16px;}
+#playerPracticeList .practice-card-heading>div {display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;min-width:0;}
+#playerPracticeList .practice-card-heading h3 {margin:0;font-size:18px;line-height:1.4;overflow-wrap:anywhere;}
+#playerPracticeList .practice-due {font-size:12px;line-height:1.5;font-weight:500;color:var(--text-secondary);}
+
+#playerPracticeList .dd-status {padding:3px 8px;border-radius:4px;font-size:12px;line-height:1.5;font-weight:500;text-transform:none;letter-spacing:0;}
+#playerPracticeList .dd-status[data-tone="neutral"] {background:var(--surface-raised);color:var(--text-secondary);}
+#playerPracticeList .dd-status[data-tone="info"] {background:var(--info-muted);color:var(--info);}
+#playerPracticeList .dd-status[data-tone="success"] {background:var(--success-muted);color:var(--success);}
+#playerPracticeList .dd-status[data-tone="warning"] {background:var(--warning-muted);color:var(--warning);}
+#playerPracticeList .practice-assignment-card>p {max-width:70ch;margin:0;font-size:14px;line-height:1.5;color:var(--text-secondary);}
+#playerPracticeList .practice-progress-copy {font-size:12px;font-weight:400;}
+#playerPracticeList .practice-progress-copy strong {font-weight:500;}
+#playerPracticeList .practice-situation-list {display:grid;gap:0;}
+#playerPracticeList .practice-situation-list>li {display:flex;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border);font-size:13px;line-height:1.5;}
+#playerPracticeList .practice-situation-list strong {flex:0 0 auto;font-size:12px;font-weight:500;color:var(--text-secondary);}
+#playerPracticeList [data-practice-start] {justify-self:end;width:auto;min-height:44px;padding:10px 20px;font-size:14px;box-shadow:none;transform:none;}
+@media(max-width:700px) {
+ #playerPracticeList .practice-card-heading {flex-direction:column;gap:8px;}
+ #playerPracticeList [data-practice-start] {justify-self:stretch;width:100%;}
+ #playerPracticeList .practice-situation-list>li {flex-wrap:wrap;gap:4px 12px;}
+}
+
+#playerPracticeList .dd-task-notes {display:grid;gap:4px;max-width:70ch;}
+#playerPracticeList .dd-task-notes>span {font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);}
+#playerPracticeList .dd-task-notes>p {margin:0;font-size:14px;line-height:1.5;color:var(--text-secondary);}
+#playerPracticeList .dd-status {border:0;box-shadow:none;}
+#playerPracticeList .practice-situation-list>li {border-radius:0;background:transparent;}
+#playerPracticeList .practice-empty {padding:32px 20px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+
+#playerPracticeList .practice-card-heading .dd-status {flex:0 0 auto;}
+#playerPracticeList .practice-progress-copy {margin:0;color:var(--text-secondary);}
+#playerPracticeList .practice-situation-list>li[data-state="completed"] strong {color:var(--success);}
+#playerPracticeList .practice-situation-list>li[data-state="next"] strong {padding:2px 8px;border-radius:4px;background:var(--info-muted);color:var(--info);}
+
+#playerPracticeList .dd-deadline {font-weight:600;color:var(--text-primary);}
+#playerPracticeList .dd-deadline[data-urgency="soon"] {color:var(--warning);}
+#playerPracticeList .dd-deadline[data-urgency="overdue"] {color:var(--error);}

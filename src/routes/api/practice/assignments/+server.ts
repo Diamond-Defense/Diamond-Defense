@@ -34,7 +34,7 @@ export const GET: RequestHandler = async (event) => {
   const teamId = event.url.searchParams.get('teamId') || user.teamId || '';
   if(user.role !== 'player') await requireTrainingManager(event, teamId);
   const result = user.role === 'player'
-    ? await repository.listForPlayer(user.id, page, pageSize)
+    ? await repository.listForPlayer(user.id, page, pageSize, requestedView === 'pending' || requestedView === 'completed' ? requestedView : undefined)
     : await repository.listForTeam(
       teamId,
       page,

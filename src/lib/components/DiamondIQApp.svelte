@@ -25,6 +25,7 @@
   let designUrl = $state<URL | null>(null);
   let pendingEntry: URL | null = null;
   let switching = 0;
+  let restoringPracticeLocation = false;
 
   let testing = $state<Situation | null>(null);
   let restoreField: (() => void) | undefined;
@@ -130,6 +131,19 @@
       if (active !== 'field') navigate('field','replace');
       return;
     }
+    const practiceView = entry.searchParams.get('practice');
+    if (workspace === 'field' && account?.role === 'player' && (practiceView === 'pending' || practiceView === 'completed')) {
+      restoringPracticeLocation = true;
+      try { window._diqOpenPracticeWorkspace?.('player',practiceView); }
+      finally { restoringPracticeLocation = false; }
+      return;
+    }
+    if (!initial && workspace === 'field' && document.querySelector('#playerPracticeView:not(.hidden)')
+      && document.querySelector('#practiceWorkspace:not(.hidden)')) {
+      restoringPracticeLocation = true;
+      try { document.getElementById('practiceWorkspaceClose')?.click(); }
+      finally { restoringPracticeLocation = false; }
+    }
     navigate(workspace,initial ? 'replace' : 'pop',entry);
   }
 
@@ -138,6 +152,12 @@
     let ready = false;
     let removePlaybookAccessibility: (() => void) | undefined;
     window._diqNavigateWorkspace = workspace => navigate(workspace);
+    window._diqPracticeLocationChanged = view => {
+      if (!ready || restoringPracticeLocation || account?.role !== 'player') return;
+      const url = new URL('/',window.location.origin);
+      if (view) url.searchParams.set('practice',view);
+      if (url.href !== window.location.href) pushState(url,{});
+    };
     window._diqWorkspaceClosed = workspace => {
       if (active === workspace) {
         ++switching;
@@ -153,6 +173,7 @@
       if (pendingEntry && allowed(workspaceAt(pendingEntry),account)) {
         navigate(workspaceAt(pendingEntry),'replace',pendingEntry);
       }
+      if (account?.role === 'player' && new URL(window.location.href).searchParams.has('practice')) restoreLocation();
     };
     const onPop = () => { if (ready) restoreLocation(); };
     const onHeaderClick = (event: Event) => {
@@ -188,6 +209,7 @@
       window.removeEventListener('popstate',onPop);
       document.removeEventListener('click',onHeaderClick,true);
       delete window._diqNavigateWorkspace;
+      delete window._diqPracticeLocationChanged;
       delete window._diqWorkspaceClosed;
       delete window._diqStaffSessionChanged;
       if (testing) closePlayTest();

@@ -155,6 +155,7 @@ export interface PracticeAssignment {
 export interface PlayerPracticeState {
   pendingCount: number;
   overdueCount: number;
+  nextDueAt?: string | null;
   freePlayAllowed: boolean;
   lockedAssignmentId: string | null;
   lockedAssignment: PracticeAssignment | null;
@@ -412,10 +413,12 @@ export class SqlitePracticeAssignmentRepository {
     return { assignments: await this.hydrate(rows), total: Number(total?.total || 0) };
   }
 
-  async listForPlayer(playerId: string, page: number, pageSize: number): Promise<{ assignments: PracticeAssignment[]; total: number }> {
+  async listForPlayer(playerId: string, page: number, pageSize: number, view?: 'pending' | 'completed'): Promise<{ assignments: PracticeAssignment[]; total: number; counts: {pending: number; completed: number} }> {
     const offset = (page - 1) * pageSize;
-    const total = await this.database.one<{ total: number }>(
-      `SELECT COUNT(*) AS total
+    const total = await this.database.one<{ total: number; pending: number; completed: number }>(
+      `SELECT COUNT(*) AS total,
+         SUM(CASE WHEN ar.status = 'completed' THEN 0 ELSE 1 END) AS pending,
+         SUM(CASE WHEN ar.status = 'completed' THEN 1 ELSE 0 END) AS completed
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND pa.status IN ('active', 'completed')
@@ -429,6 +432,7 @@ export class SqlitePracticeAssignmentRepository {
            ON mine.assignment_id = pa.id AND mine.player_id = ?1
         WHERE pa.status IN ('active', 'completed')
           AND mine.withdrawn_at IS NULL
+          ${view === 'pending' ? "AND mine.status <> 'completed'" : view === 'completed' ? "AND mine.status = 'completed'" : ''}
           AND pa.closed_at IS NULL AND pa.cancelled_at IS NULL
         GROUP BY pa.id
         ORDER BY CASE mine.status WHEN 'in_progress' THEN 0 WHEN 'assigned' THEN 1 ELSE 2 END,
@@ -440,7 +444,8 @@ export class SqlitePracticeAssignmentRepository {
       ...assignment,
       recipients: assignment.recipients.filter((recipient) => recipient.playerId === playerId),
     }));
-    return { assignments, total: Number(total?.total || 0) };
+    const counts = {pending: Number(total?.pending || 0), completed: Number(total?.completed || 0)};
+    return { assignments, total: view ? counts[view] : Number(total?.total || 0), counts };
   }
 
   async get(id: string, playerId?: string): Promise<PracticeAssignment | null> {
@@ -457,10 +462,10 @@ export class SqlitePracticeAssignmentRepository {
 
   async playerState(playerId: string): Promise<PlayerPracticeState> {
     const now = new Date().toISOString();
-    const counts = await this.database.one<{ pending_count: number; overdue_count: number }>(
+    const counts = await this.database.one<{ pending_count: number; overdue_count: number; next_due_at: string | null }>(
       `SELECT COUNT(*) AS pending_count,
               SUM(CASE WHEN pa.due_at IS NOT NULL AND pa.due_at < ?2 THEN 1 ELSE 0 END)
-                AS overdue_count
+                AS overdue_count, MIN(pa.due_at) AS next_due_at
          FROM assignment_recipients ar
          JOIN practice_assignments pa ON pa.id = ar.assignment_id
         WHERE ar.player_id = ?1 AND ar.status <> 'completed'
@@ -488,6 +493,7 @@ export class SqlitePracticeAssignmentRepository {
     return {
       pendingCount,
       overdueCount: Number(counts?.overdue_count || 0),
+      nextDueAt: counts?.next_due_at || null,
       freePlayAllowed: pendingCount === 0,
       lockedAssignmentId: lockedAssignment?.id || null,
       lockedAssignment,

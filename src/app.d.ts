@@ -21,6 +21,8 @@ declare global {
     __DIQ_READY__?: Promise<void>;
     __DIQ_AUTH_USER__?: WorkspaceAccount | null;
     _diqNavigateWorkspace?: (workspace: StaffWorkspace) => void;
+    _diqPracticeLocationChanged?: (view: 'pending' | 'completed' | null) => void;
+    _diqOpenPracticeWorkspace?: (role?: 'player' | 'coach', view?: 'pending' | 'completed') => void;
     _diqWorkspaceClosed?: (workspace: StaffWorkspace) => void;
     _diqStaffSessionChanged?: (account?: WorkspaceAccount | null) => void;
     _diqOpenTrainingFromHeader?: (isCurrent?: () => boolean) => Promise<void>;

@@ -185,10 +185,21 @@
       <button id="practiceWorkspaceClose" class="btn btn-ghost" type="button">Back to field</button>
     </div>
 
-    <div id="playerPracticeView" class="practice-role-view">
-      <div id="playerPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
-      <div id="playerPracticeList" class="practice-assignment-list"></div>
-      <div id="playerPracticePagination" class="coach-results-pagination"></div>
+    <div id="playerPracticeView" class="practice-role-view dd-workspace-layout">
+      <aside class="dd-workspace-sidebar" aria-label="Your Practice sections">
+        <div class="dd-workspace-context"><h2>Practice</h2></div>
+        <button class="dd-section-toggle" type="button" aria-expanded="false" aria-controls="playerPracticeSections">Sections <span aria-hidden="true">⌄</span></button>
+        <nav id="playerPracticeSections" class="dd-workspace-nav" aria-label="Practice sections">
+          <button type="button" data-player-practice-view="pending" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg><span>To-do</span><span class="dd-nav-count" data-player-practice-count="pending">0</span></button>
+          <button type="button" data-player-practice-view="completed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg><span>Completed</span><span class="dd-nav-count" data-player-practice-count="completed">0</span></button>
+        </nav>
+      </aside>
+      <div class="dd-workspace-content">
+        <div class="dd-workspace-heading"><h2 id="playerPracticePageTitle">Assigned practice</h2><p id="playerPracticePageSubtitle">Complete the situations assigned by your coach.</p></div>
+        <div id="playerPracticeStatus" class="operation-status" role="status" aria-live="polite"></div>
+        <div id="playerPracticeList" class="practice-assignment-list"></div>
+        <div id="playerPracticePagination" class="coach-results-pagination"></div>
+      </div>
     </div>
 
     <div id="coachPracticeView" class="practice-role-view hidden">

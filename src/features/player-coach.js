@@ -923,6 +923,8 @@ function computeRosterPlayerId(teamObj, playerObj){
   let coachResultsOptionsTeamId = '';
   let coachResultsAggregateCache = { key:'', summary:null, insights:null };
   let playerPracticePage = 1;
+  let playerPracticeViewFilter = 'pending';
+  let playerPracticeRequest = 0;
   let coachPracticePage = 1;
   let playerPracticeAssignments = [];
   let coachPracticeAssignments = [];
@@ -946,6 +948,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     return {
       pendingCount,
       overdueCount:Math.max(0, Number(state?.overdueCount || 0)),
+      nextDueAt:state?.nextDueAt || null,
       freePlayAllowed:state?.freePlayAllowed !== false && pendingCount === 0,
       lockedAssignmentId:state?.lockedAssignmentId || null,
       lockedAssignment:state?.lockedAssignment || null,
@@ -968,7 +971,11 @@ function computeRosterPlayerId(teamObj, playerObj){
       context.hidden = !assignment;
     }
     const freePracticeLabel = document.getElementById('fieldPracticeLabel');
-    if (freePracticeLabel) freePracticeLabel.hidden = Boolean(assignment);
+    if (freePracticeLabel) {
+      freePracticeLabel.hidden = Boolean(assignment);
+      freePracticeLabel.textContent = pending ? 'Assigned practice' : 'Free practice';
+      freePracticeLabel.dataset.practiceMode = pending || assignment ? 'assigned' : 'free';
+    }
     if(practice){
       let label = practice.querySelector('.practice-toggle-label');
       let count = practice.querySelector('.practice-toggle-count');
@@ -981,11 +988,17 @@ function computeRosterPlayerId(teamObj, playerObj){
       }
       label.textContent = 'Your Practice';
       count.textContent = String(DIQ_PRACTICE_STATE.pendingCount);
+      count.setAttribute('aria-hidden', 'true');
       count.classList.toggle('hidden', !pending);
       practice.classList.toggle('has-pending-practice', pending);
-      practice.setAttribute('aria-label', pending
-        ? `Your Practice, ${DIQ_PRACTICE_STATE.pendingCount} pending`
-        : 'Your Practice');
+      const deadline = practiceDeadline({dueAt:DIQ_PRACTICE_STATE.nextDueAt,overdue:DIQ_PRACTICE_STATE.overdueCount > 0});
+      count.dataset.urgency = pending ? deadline.tone : 'neutral';
+      const urgency = deadline.tone !== 'neutral' ? `, ${deadline.label.toLowerCase()}` : '';
+      const description = pending
+        ? `Your Practice, ${DIQ_PRACTICE_STATE.pendingCount} ${DIQ_PRACTICE_STATE.pendingCount === 1 ? 'practice' : 'practices'} to complete${urgency}`
+        : 'Your Practice';
+      practice.setAttribute('aria-label',description);
+      practice.title = pending ? description : '';
     }
     if(playbook){
       playbook.disabled = Boolean(pending);
@@ -1004,16 +1017,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     DIQ_ACTIVE_PRACTICE_ASSIGNMENT_ID = DIQ_PRACTICE_STATE.lockedAssignmentId || '';
     updatePracticeNavigation();
     window._diqRefreshPlayerPresentation?.();
-    if(options.notify && DIQ_PRACTICE_STATE.pendingCount > 0){
-      const signature = `${DIQ_AUTH_USER?.id || ''}:${DIQ_PRACTICE_STATE.pendingCount}:${DIQ_PRACTICE_STATE.lockedAssignmentId || ''}`;
-      if(signature !== DIQ_PRACTICE_NOTICE_SIGNATURE){
-        DIQ_PRACTICE_NOTICE_SIGNATURE = signature;
-        const overdue = DIQ_PRACTICE_STATE.overdueCount > 0
-          ? ` ${DIQ_PRACTICE_STATE.overdueCount} ${DIQ_PRACTICE_STATE.overdueCount === 1 ? 'is' : 'are'} overdue.`
-          : '';
-        if(typeof toast === 'function') toast(`You have ${DIQ_PRACTICE_STATE.pendingCount} pending practice ${DIQ_PRACTICE_STATE.pendingCount === 1 ? 'assignment' : 'assignments'}.${overdue}`);
-      }
-    }
+    // Pending work stays visible in navigation and the field; avoid duplicate toasts.
     return DIQ_PRACTICE_STATE;
   }
 
@@ -1096,6 +1100,31 @@ function computeRosterPlayerId(teamObj, playerObj){
     return assignment.overdue ? `Overdue · ${label}` : `Due ${label}`;
   }
 
+  // Calendar-day comparison avoids DST changing the meaning of tomorrow.
+  function practiceDeadline(assignment, complete=false){
+    const due = assignment?.dueAt ? new Date(assignment.dueAt) : null;
+    const valid = due && !Number.isNaN(due.getTime());
+    const shortDate = valid ? due.toLocaleDateString([], {month:'short',day:'numeric'}) : '';
+    const fullDate = valid ? due.toLocaleDateString([], {month:'long',day:'numeric',year:'numeric'}) : '';
+    if (!complete && assignment?.overdue) return {tone:'overdue',label:shortDate ? `Overdue · ${shortDate}` : 'Practice overdue',full:fullDate ? `Overdue. Due ${fullDate}` : 'Practice overdue'};
+    if (!valid) return {tone:'neutral',label:'No due date',full:'No due date'};
+    const now = new Date();
+    const day = date => Date.UTC(date.getFullYear(),date.getMonth(),date.getDate());
+    const days = Math.round((day(due)-day(now))/86400000);
+    if (!complete && due.getTime() < now.getTime()) return {tone:'overdue',label:`Overdue · ${shortDate}`,full:`Overdue. Due ${fullDate}`};
+    if (!complete && days >= 0 && days <= 2) {
+      const label = days === 0 ? 'Due today' : days === 1 ? 'Due tomorrow' : 'Due in 2 days';
+      return {tone:'soon',label,full:`${label}. Due ${fullDate}`};
+    }
+    return {tone:'neutral',label:`Due ${shortDate}`,full:`Due ${fullDate}`};
+  }
+
+  function practiceDeadlineBadge(assignment, complete){
+    const deadline = practiceDeadline(assignment,complete);
+    if (!assignment.dueAt || Number.isNaN(new Date(assignment.dueAt).getTime())) return '<span class="practice-due">No due date</span>';
+    return `<time class="dd-deadline practice-due" data-urgency="${deadline.tone}" datetime="${escapeHtml(assignment.dueAt)}" title="${escapeHtml(deadline.full)}" aria-label="${escapeHtml(deadline.full)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/></svg><span>${escapeHtml(deadline.label)}</span></time>`;
+  }
+
   function practiceAssignmentStatus(assignment){
     if(assignment?.status === 'archived') return 'archived';
     if(assignment?.cancelledAt) return 'cancelled';
@@ -1127,22 +1156,43 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(!playerPracticeList) return;
     const assignments = Array.isArray(report?.assignments) ? report.assignments : [];
     playerPracticeAssignments = assignments;
+    const completedView = playerPracticeViewFilter === 'completed';
+    document.getElementById('playerPracticePageTitle').textContent = completedView ? 'Completed practice' : 'Assigned practice';
+    document.getElementById('playerPracticePageSubtitle').textContent = completedView ? 'Review your finished assignments.' : 'Complete the situations assigned by your coach.';
+    for (const button of playerPracticeView.querySelectorAll('[data-player-practice-view]')) {
+      if (button.dataset.playerPracticeView === playerPracticeViewFilter) button.setAttribute('aria-current','page');
+      else button.removeAttribute('aria-current');
+    }
+    for (const [view,count] of Object.entries(report.counts || {})) {
+      const badge = playerPracticeView.querySelector(`[data-player-practice-count="${view}"]`);
+      if (badge) badge.textContent = String(count);
+    }
     if(!assignments.length){
-      playerPracticeList.innerHTML = '<div class="practice-empty"><strong>No assigned practice yet</strong><span>Your coach’s assignments will appear here.</span></div>';
+      playerPracticeList.innerHTML = completedView
+        ? '<div class="practice-empty"><strong>No completed practice yet</strong><span>Finished practices will appear here.</span></div>'
+        : '<div class="practice-empty"><strong>No practice to complete</strong><span>You’re up to date. New assignments from your coach will appear here.</span></div>';
     }else{
       playerPracticeList.innerHTML = assignments.map(assignment=>{
         const recipient = (assignment.recipients || []).find(item=>item.playerId === DIQ_AUTH_USER?.id);
         const progress = assignmentProgress(assignment);
         const next = (assignment.situations || []).find(item=>item.progressStatus !== 'completed' && Number(item.completedRepetitions || 0) === 0);
         const complete = recipient?.status === 'completed' || assignment.status === 'completed';
-        return `<article class="practice-assignment-card${assignment.overdue ? ' is-overdue' : ''}${complete ? ' is-complete' : ''}">
-          <div class="practice-card-heading"><div><span class="practice-status is-${escapeHtml(recipient?.status || assignment.status)}">${escapeHtml(complete ? 'Completed' : recipient?.status === 'in_progress' ? 'In progress' : 'Assigned')}</span><h3>${escapeHtml(assignment.title)}</h3></div><span class="practice-due">${escapeHtml(practiceDueLabel(assignment))}</span></div>
-          ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
-          <div class="practice-progress"><span style="width:${progress.percent}%"></span></div>
-          <div class="practice-progress-copy"><strong>${progress.completed} of ${progress.required} situations complete</strong><span>${progress.percent}%</span></div>
-          <div class="practice-situation-list">${(assignment.situations || []).map(item=>`
-            <div><span>${escapeHtml(practiceSituationLabel(item))}</span><strong>${escapeHtml(practiceSituationStatus(item))}</strong></div>`).join('')}</div>
-          ${next && !complete ? `<button class="btn-green" type="button" data-practice-start="${escapeHtml(assignment.id)}" ${DIQ_PRACTICE_STATE.lockedAssignmentId && DIQ_PRACTICE_STATE.lockedAssignmentId !== assignment.id ? 'disabled title="Finish your current practice assignment first"' : ''}>${recipient?.lockActive || DIQ_PRACTICE_STATE.lockedAssignmentId === assignment.id ? 'Continue practice' : 'Start practice'}</button>` : ''}
+        const tone = complete ? 'success' : recipient?.status === 'in_progress' ? 'info' : 'neutral';
+        const situationRows = (assignment.situations || []).map(item=>{
+          const done = item.progressStatus === 'completed' || Number(item.completedRepetitions || 0) > 0;
+          const nextUp = !complete && item === next;
+          const state = done ? 'completed' : nextUp ? 'next' : 'pending';
+          const status = done ? 'Completed' : nextUp ? 'Next up' : practiceSituationStatus(item);
+          const check = done ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>' : '';
+          return `<li data-state="${state}"><span>${escapeHtml(practiceSituationLabel(item))}</span><strong>${check}${escapeHtml(status)}</strong></li>`;
+        }).join('');
+        const situationList = `<ul class="dd-checklist practice-situation-list" aria-label="Practice situations">${situationRows}</ul>`;
+        return `<article class="dd-task-card practice-assignment-card${assignment.overdue ? ' is-overdue' : ''}${complete ? ' is-complete' : ''}">
+          <div class="practice-card-heading"><div><h3>${escapeHtml(assignment.title)}</h3><span class="dd-status" data-tone="${tone}">${escapeHtml(complete ? 'Completed' : recipient?.status === 'in_progress' ? 'In progress' : 'Assigned')}</span></div>${practiceDeadlineBadge(assignment,complete)}</div>
+          ${assignment.instructions ? `<div class="dd-task-notes"><span>Coach’s notes</span><p>${escapeHtml(assignment.instructions)}</p></div>` : ''}
+          <div class="practice-progress-copy"><strong>${progress.completed} of ${progress.required} complete</strong></div>
+          ${(assignment.situations || []).length > 3 ? `<details class="dd-task-details"><summary>Situations (${assignment.situations.length})</summary>${situationList}</details>` : situationList}
+          ${next && !complete ? `<button class="dd-button btn-green" data-variant="primary" type="button" data-practice-start="${escapeHtml(assignment.id)}" ${DIQ_PRACTICE_STATE.lockedAssignmentId && DIQ_PRACTICE_STATE.lockedAssignmentId !== assignment.id ? 'disabled title="Finish your current practice assignment first"' : ''}>${recipient?.lockActive || DIQ_PRACTICE_STATE.lockedAssignmentId === assignment.id ? 'Continue practice' : 'Start practice'}</button>` : ''}
         </article>`;
       }).join('');
     }
@@ -1244,9 +1294,11 @@ function computeRosterPlayerId(teamObj, playerObj){
     const player = role === 'player';
     const status = player ? playerPracticeStatus : coachPracticeStatus;
     setPracticeStatus(status, 'Loading assignments…');
+    const requestId = player ? ++playerPracticeRequest : 0;
     try{
       const page = player ? playerPracticePage : coachPracticePage;
       const params = new URLSearchParams({ page:String(page), pageSize:'6' });
+      if(player) params.set('view',playerPracticeViewFilter);
       if(!player){
         params.set('teamId',staffTeamId());
         params.set('view', coachPracticeViewFilter);
@@ -1254,6 +1306,11 @@ function computeRosterPlayerId(teamObj, playerObj){
         if(practiceSearch?.value.trim()) params.set('search', practiceSearch.value.trim());
       }
       const report = await diqApiRequest(`practice/assignments?${params}`, { cache:'no-store' });
+      if(player && requestId !== playerPracticeRequest) return;
+      if(player && Number(report.page || 1) > Number(report.totalPages || 1)){
+        playerPracticePage = Number(report.totalPages || 1);
+        return loadPracticeAssignments('player');
+      }
       if(!player && Number(report.page || 1) > Number(report.totalPages || 1)){
         coachPracticePage = Number(report.totalPages || 1);
         return loadPracticeAssignments('coach');
@@ -1263,7 +1320,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(player) await refreshPlayerPracticeState();
       setPracticeStatus(status);
     }catch(error){
-      setPracticeStatus(status, error?.message || 'Assignments could not be loaded.', 'error');
+      if (!player || requestId === playerPracticeRequest) setPracticeStatus(status, error?.message || 'Assignments could not be loaded.', 'error');
     }
   }
 
@@ -1419,12 +1476,13 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
 
   function showFieldWorkspace(){
+    window._diqPracticeLocationChanged?.(null);
     practiceWorkspace?.classList.add('hidden');
     document.querySelector('.field-card')?.classList.remove('hidden');
     window.dispatchEvent(new Event('resize'));
   }
 
-  function openPracticeWorkspace(role='player'){
+  function openPracticeWorkspace(role='player', view='pending'){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     if(!user) return window._diqOpenAuthModal?.('player');
     const player = role === 'player' && user.role === 'player';
@@ -1443,6 +1501,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       : 'Create practices and track player completion.';
     if(eyebrow) eyebrow.textContent = player ? 'Assigned practice' : 'Coach workspace';
     if(player){
+      playerPracticeViewFilter = view === 'completed' ? 'completed' : 'pending';
+      window._diqPracticeLocationChanged?.(playerPracticeViewFilter);
       playerPracticePage = 1;
       void loadPracticeAssignments('player');
     }else{
@@ -1534,6 +1594,22 @@ function computeRosterPlayerId(teamObj, playerObj){
     void createPracticeAssignment(true);
   });
   practiceWorkspace?.addEventListener('click', event=>{
+    const sectionToggle = event.target.closest('.dd-section-toggle');
+    if (sectionToggle) {
+      const expanded = sectionToggle.getAttribute('aria-expanded') !== 'true';
+      sectionToggle.setAttribute('aria-expanded',String(expanded));
+      sectionToggle.closest('.dd-workspace-sidebar').classList.toggle('is-expanded',expanded);
+      return;
+    }
+    const playerSection = event.target.closest('[data-player-practice-view]');
+    if (playerSection && ['pending','completed'].includes(playerSection.dataset.playerPracticeView)) {
+      playerPracticeViewFilter = playerSection.dataset.playerPracticeView;
+      window._diqPracticeLocationChanged?.(playerPracticeViewFilter);
+      playerPracticePage = 1;
+      void loadPracticeAssignments('player');
+      return;
+    }
+
     const review = event.target.closest('[data-assignment-review]');
     if(review){
       coachResultsAppliedFilters = {assignmentId:review.dataset.assignmentReview,playerId:review.dataset.reviewPlayer};
@@ -3141,6 +3217,9 @@ function updatePlayerHeaderButton(){
     // A local toolbar keeps staff Playbook access clear of the account menu.
     const destination = coachOpen || adminPanel || designOpen ? workspaceToolbar : fieldToolbar;
     if (controls && destination && controls.parentElement !== destination) destination.append(controls);
+    if (destination === fieldToolbar) {
+      requestAnimationFrame(() => window._diqPlacePracticeControls?.());
+    }
     const fieldButton = document.getElementById('fieldNavigationButton');
     if (coachOpen || adminPanel || designOpen) fieldButton?.removeAttribute('aria-current');
     else fieldButton?.setAttribute('aria-current','page');
@@ -3898,7 +3977,7 @@ function refreshGuideText(){
   let stage, steps;
   if(practice && !practice.classList.contains('hidden')){
     stage = 'Your Practice';
-    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Back to field to return to the situation. Playbook and Random are available when required practice is complete.'];
+    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Field in the top navigation to return to the situation. Playbook and Random are available when required practice is complete.'];
   } else if(completed){
     stage = 'Situation complete';
     steps = ['Review the result and the expected throwing order in Play Review.', 'Use Reset to try this situation again, or choose another available situation.', 'For assigned practice, use the next-situation button when it appears.'];

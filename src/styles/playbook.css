@@ -13,8 +13,8 @@
 #playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered) {min-height:40px;padding:8px 12px;font-size:13px;line-height:1.4;font-weight:500;box-shadow:none;transform:none;background:transparent;border-color:transparent;color:var(--text-secondary);}
 #playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered):hover:not(:disabled) {background:var(--surface-hover);color:var(--text-primary);}
 #playbookBrowserOverlay :is(button,input,select,summary):focus-visible {outline:var(--focus-width) solid var(--focus-ring);outline-offset:var(--focus-offset);}
-#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));grid-auto-rows:auto;gap:12px;padding:0 24px 16px;align-items:stretch;}
-#playbookBrowserOverlay .playbook-situation-card {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;padding:12px;min-width:0;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface);box-shadow:none;transform:none;color:var(--text-primary);}
+#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));grid-auto-rows:max-content;gap:12px;padding:0 24px 16px;align-items:stretch;}
+#playbookBrowserOverlay .playbook-situation-card {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;padding:12px;min-width:0;min-height:max-content;box-sizing:border-box;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface);box-shadow:none;transform:none;color:var(--text-primary);}
 #playbookBrowserOverlay .playbook-situation-card:hover {background:var(--surface-hover);border-color:var(--border-emphasis);transform:none;box-shadow:none;}
 #playbookBrowserOverlay .playbook-situation-card.is-current {background:var(--selection-background);border-color:var(--selection-border);box-shadow:none;}
 #playbookBrowserOverlay .playbook-card-heading {display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px;}
@@ -31,3 +31,7 @@
 @media(max-width:1150px) {#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:700px) {#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:1fr;}#playbookBrowserOverlay :is(.playbook-browser-header,.playbook-browser-filters,.playbook-browser-summary,.playbook-browser-list) {padding-inline:16px;}}
 @media(pointer:coarse) {#playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered) {min-height:var(--control-touch-height);}}
+
+/* Large catalogs scroll; card contents must never shrink into adjacent rows. */
+#playbookBrowserOverlay .playbook-browser-list {align-content:start;overflow-y:auto;scrollbar-gutter:stable;}
+#playbookBrowserOverlay .playbook-situation-card>* {flex-shrink:0;}

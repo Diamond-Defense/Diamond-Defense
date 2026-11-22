@@ -795,19 +795,43 @@ test.describe('Diamond Defence regression behavior', () => {
       await loginAsSeedPlayer(page);
 
       await expect(page.locator('#practiceToggle')).toBeVisible();
-      await expect(page.locator('#practiceToggle')).toHaveAttribute('aria-label', 'Your Practice, 1 pending');
+      await expect(page.locator('#practiceToggle')).toHaveAttribute('aria-label', 'Your Practice, 1 practice to complete');
       await expect(page.locator('#practiceToggle .practice-toggle-count')).toHaveText('1');
       await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
       await expect(page.locator('#randomSitBtn')).toBeDisabled();
 
-      await page.locator('#practiceToggle').click();
+      await expect(page.locator('#fieldPracticeLabel')).toHaveText('Assigned practice');
+      await expect(page.locator('#practiceRequiredNotice')).toBeVisible();
+      await expect(page.locator('#viewPracticeBtn')).toBeVisible();
+      await expect(page.locator('#trainingMetrics')).toBeHidden();
+      await expect(page.locator('#fieldToolbar .situation-controls')).toBeHidden();
+      await page.locator('#viewPracticeBtn').click();
       const card = page.locator('.practice-assignment-card').filter({ hasText: title });
+      await expect(card).toBeVisible();
+      await expect(card.locator('.dd-status')).toHaveAttribute('data-tone','neutral');
+      await expect(card.getByRole('progressbar')).toHaveCount(0);
+      await expect(card.locator('.practice-progress-copy')).toHaveText('0 of 2 complete');
+      await expect(card.locator('[data-state=next]')).toHaveCount(1);
+      await expect(page.locator('#playerPracticePageTitle')).toHaveText('Assigned practice');
+      const sections = page.getByRole('navigation', {name:'Practice sections'});
+      await expect(sections.getByRole('button',{name:/To-do/})).toHaveAttribute('aria-current','page');
+      await sections.getByRole('button',{name:/Completed/}).click();
+      await expect(page.locator('#playerPracticePageTitle')).toHaveText('Completed practice');
+      await expect(page.locator('#playerPracticeList')).toContainText('No completed practice yet');
+      await expect(card).toHaveCount(0);
+      const completedReport = await (await page.request.get('/api/practice/assignments?view=completed&page=1&pageSize=6')).json();
+      expect(completedReport.total).toBe(completedReport.counts.completed);
+      expect(completedReport.counts.pending).toBeGreaterThan(0);
+      await sections.getByRole('button',{name:/To-do/}).click();
       await expect(card).toBeVisible();
       await card.getByRole('button', { name: 'Start practice' }).click();
       await expect(page.locator('.field-card')).toBeVisible();
       await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
       await expect(page.locator('#fieldToolbar #playerPracticeContext')).toContainText(title);
       await expect(page.locator('#fieldPracticeLabel')).toBeHidden();
+      await expect(page.locator('#viewPracticeBtn')).toBeHidden();
+      await expect(page.locator('#trainingMetrics')).toBeVisible();
+      await expect(page.locator('#practiceRequiredNotice')).toBeHidden();
       await expect(page.locator('#startBtn')).toBeEnabled();
 
       const attemptStart = page.waitForResponse((response) =>
@@ -863,6 +887,9 @@ test.describe('Diamond Defence regression behavior', () => {
       await expect(page.locator('#playbookBrowserToggle')).toBeEnabled();
       await expect(page.locator('#randomSitBtn')).toBeEnabled();
       await expect(page.locator('#practiceToggle .practice-toggle-count')).toBeHidden();
+      await expect(page.locator('#fieldPracticeLabel')).toHaveText('Free practice');
+      await expect(page.locator('#fieldPracticeLabel')).toBeVisible();
+      await expect(page.locator('#viewPracticeBtn')).toBeHidden();
     } finally {
       if (assignmentId) {
         await coach.patch(`/api/practice/assignments/${assignmentId}`, {
@@ -881,7 +908,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.getByRole('heading', { name: 'Diamond Defence' })).toBeVisible();
     await expect(page.locator('.situation-controls')).toBeVisible();
     await expect(page.locator('#fieldToolbar #playbookBrowserToggle')).toBeVisible();
-    await expect(page.locator('#trainingNavigation #playbookToggle')).toBeVisible();
+    await expect(page.locator('.account-actions #playbookToggle')).toBeVisible();
     const playerLayout = await page.evaluate(() => ({
       navigationBottom: document.getElementById('trainingNavigation').getBoundingClientRect().bottom,
       boardTop: document.querySelector('.training-board').getBoundingClientRect().top,
@@ -915,13 +942,12 @@ test.describe('Diamond Defence regression behavior', () => {
       };
     });
     expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn']);
-    expect(commandLayout.utilityOrder.slice(0, 4)).toEqual([
+    expect(commandLayout.utilityOrder.slice(0, 3)).toEqual([
       'fieldNavigationButton',
       'practiceToggle',
-      'playbookToggle',
       'staffToolsBtn',
     ]);
-    expect(commandLayout.accountOrder.slice(0, 2)).toEqual(['playerBtn', 'accountMenu']);
+    expect(commandLayout.accountOrder.slice(0, 3)).toEqual(['playbookToggle', 'playerBtn', 'accountMenu']);
     expect(commandLayout.panelLeft).toBeGreaterThanOrEqual(commandLayout.fieldRight);
     expect(commandLayout.hudParent).toBe('trainingPanelContent');
     expect(commandLayout.panelTop).toBeLessThanOrEqual(commandLayout.fieldTop);

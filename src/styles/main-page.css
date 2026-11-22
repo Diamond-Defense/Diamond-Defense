@@ -218,7 +218,7 @@ body.player-experience #trainingPanel #contextBar:has(#targetPanel:not(.hidden))
 
 body.player-experience #trainingPanel #fieldToolbar .player-practice-context {flex:1 1 100%;}
 
-/* Reversible floating selector trial: absolute positioning consumes no field row. */
+/* Field-owned floating controls consume no field row and never enter the panel. */
 @media(min-width:1024px) and (orientation:landscape) {
  body.player-experience #appWorkspace>.training-board {position:relative;}
  body.player-experience #appWorkspace>.training-board>#fieldToolbar.is-floating {
@@ -230,3 +230,57 @@ body.player-experience #trainingPanel #fieldToolbar .player-practice-context {fl
  body.player-experience #fieldToolbar.is-floating .situation-controls {min-width:0;flex:0 0 auto;margin:0;}
  body.player-experience #fieldToolbar.is-floating #playerPracticeContext {min-width:0;margin:0;}
 }
+
+/* A stationary navigation row with one moving destination indicator. */
+#appHeader #trainingNavigation .utility-actions {position:relative;align-items:center;}
+#appHeader #trainingNavigation .utility-actions>button {
+  box-sizing:border-box;min-height:44px;padding:8px 6px;border:0;border-radius:4px;
+  background:transparent!important;color:var(--header-text)!important;box-shadow:none!important;
+  transform:none!important;font-weight:600;transition:background-color 160ms ease!important;
+}
+#appHeader #trainingNavigation .utility-actions>button:hover:not(:disabled) {
+  background:var(--header-control-hover)!important;
+}
+#appHeader .navigation-indicator {
+  position:absolute;left:0;bottom:0;height:3px;background:var(--success);
+  pointer-events:none;transition:none;
+}
+#appHeader [data-indicator-ready="true"]>.navigation-indicator {
+  transition:transform 200ms ease,width 200ms ease;
+}
+#appHeader .navigation-indicator[hidden] {display:none;}
+#appHeader .account-actions {display:flex;align-items:center;gap:16px;flex-wrap:nowrap;}
+#appHeader .account-actions>#playbookToggle {
+  flex:0 0 auto;min-height:44px;padding:8px 6px;border:0;border-radius:4px;
+  background:transparent;color:var(--header-text);box-shadow:none;transform:none;
+  font-size:13px;font-weight:600;transition:background-color 160ms ease;
+}
+#appHeader .account-actions>#playbookToggle:is(:hover,[aria-expanded="true"]) {background:var(--header-control-hover);}
+#appHeader :is(.utility-actions>button,.account-actions>#playbookToggle):focus-visible {
+  outline:2px solid var(--header-text);outline-offset:2px;
+}
+body.player-experience #practiceWorkspaceClose {display:none;}
+@media(prefers-reduced-motion:reduce) {
+  #appHeader [data-indicator-ready="true"]>.navigation-indicator,
+  #appHeader #trainingNavigation .utility-actions>button,
+  #appHeader .account-actions>#playbookToggle {transition:none!important;}
+}
+
+/* Pending practice is ordinary work, not a warning or transient alert. */
+#appHeader #practiceToggle .practice-toggle-count {
+ display:inline-grid;place-items:center;box-sizing:border-box;min-width:22px;height:22px;
+ padding:0 5px;border-radius:999px;font-size:11px;line-height:1;font-weight:600;
+ background:#eaf0f5;color:#18344f;box-shadow:none;
+}
+#fieldPracticeLabel[data-practice-mode="assigned"]::before {background:var(--text-secondary);}
+#trainingPanel #practiceRequiredNotice {
+ margin:0 0 12px;font-size:13px;line-height:1.5;color:var(--text-secondary);
+}
+#trainingPanel #practiceRequiredNotice[hidden] {display:none;}
+
+#fieldToolbar .situation-controls[hidden],
+#workspaceSituationToolbar .situation-controls[hidden] {display:none!important;}
+body.player-experience #trainingPanel.is-practice-blocked #trainingMetrics {display:none;}
+
+#appHeader #practiceToggle .practice-toggle-count[data-urgency="soon"] {background:var(--warning-muted);color:var(--warning);}
+#appHeader #practiceToggle .practice-toggle-count[data-urgency="overdue"] {background:var(--error-muted);color:var(--error);}
