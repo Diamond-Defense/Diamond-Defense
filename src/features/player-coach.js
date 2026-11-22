@@ -959,6 +959,16 @@ function computeRosterPlayerId(teamObj, playerObj){
     const random = document.getElementById('randomSitBtn');
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     const pending = user?.role === 'player' && DIQ_PRACTICE_STATE.pendingCount > 0;
+    const context = document.getElementById('playerPracticeContext');
+    const assignment = user?.role === 'player' ? DIQ_PRACTICE_STATE.lockedAssignment : null;
+    if (context) {
+      const situations = assignment?.situations || [];
+      const completed = situations.filter(item => item.progressStatus === 'completed').length;
+      context.textContent = assignment ? `${assignment.title} · ${completed} of ${situations.length} complete` : '';
+      context.hidden = !assignment;
+    }
+    const freePracticeLabel = document.getElementById('fieldPracticeLabel');
+    if (freePracticeLabel) freePracticeLabel.hidden = Boolean(assignment);
     if(practice){
       let label = practice.querySelector('.practice-toggle-label');
       let count = practice.querySelector('.practice-toggle-count');
@@ -2811,7 +2821,7 @@ const preview = buildPlayerIdForTeam(t.name, coachPlayerName.value, coachPlayerN
       view.classList.toggle('hidden', view.dataset.authView !== safeRole);
     });
     const title = document.getElementById('playerModalTitle');
-    if(title) title.textContent = 'Login';
+    if(title) title.textContent = 'Log in';
     const playerPassword = document.getElementById('playerPass');
     const coachPassword = document.getElementById('pwInput');
     const adminPassword = document.getElementById('adminPwInput');
@@ -3051,7 +3061,9 @@ function updatePlayerHeaderButton(){
     playerModalOverlay.style.display = "none";
     playerModalOverlay.setAttribute("aria-hidden", "true");
     document.body.classList.remove("player-modal-open");
-    if(signInPassword)signInPassword.value='';
+    if(signInPassword){signInPassword.value='';signInPassword.type='password';}
+    const revealButton = document.getElementById('signInPasswordToggle');
+    if(revealButton){revealButton.textContent='Show';revealButton.setAttribute('aria-label','Show password');revealButton.setAttribute('aria-pressed','false');}
     if(playerModalLastFocus && typeof playerModalLastFocus.focus === "function"){
       playerModalLastFocus.focus();
     }
@@ -3119,6 +3131,19 @@ function updatePlayerHeaderButton(){
     const designOpen = document.body.classList.contains('design-workspace-open') || adminPanel?.dataset.workspace === 'global-tools';
     const orgOpen = Boolean(adminPanel) && !designOpen;
     const design = document.getElementById('designWorkspaceBtn');
+    const controls = document.querySelector('.situation-controls');
+    const fieldToolbar = document.getElementById('fieldToolbar');
+    let workspaceToolbar = document.getElementById('workspaceSituationToolbar');
+    if (!workspaceToolbar) {
+      workspaceToolbar = document.createElement('div'); workspaceToolbar.id = 'workspaceSituationToolbar';
+      document.getElementById('appWorkspace')?.before(workspaceToolbar);
+    }
+    // A local toolbar keeps staff Playbook access clear of the account menu.
+    const destination = coachOpen || adminPanel || designOpen ? workspaceToolbar : fieldToolbar;
+    if (controls && destination && controls.parentElement !== destination) destination.append(controls);
+    const fieldButton = document.getElementById('fieldNavigationButton');
+    if (coachOpen || adminPanel || designOpen) fieldButton?.removeAttribute('aria-current');
+    else fieldButton?.setAttribute('aria-current','page');
     for (const [button, active] of [[primary, platformAdmin ? orgOpen : coachOpen && !orgOpen],
       [org, orgOpen], [training, coachOpen && !orgOpen], [design, designOpen]]) {
       button?.classList.toggle('workspace-active', active);
@@ -3468,11 +3493,22 @@ function updatePlayerHeaderButton(){
     if(event.key === "Enter") void doPlayerLogin();
   });
 
+  const passwordToggle = document.getElementById('signInPasswordToggle');
+  passwordToggle?.addEventListener('click',()=>{
+    const reveal = signInPassword.type === 'password';
+    signInPassword.type = reveal ? 'text' : 'password';
+    passwordToggle.textContent = reveal ? 'Hide' : 'Show';
+    passwordToggle.setAttribute('aria-label',reveal ? 'Hide password' : 'Show password');
+    passwordToggle.setAttribute('aria-pressed',String(reveal));
+  });
+
   usernameSignInForm?.addEventListener('submit', async event=>{
     event.preventDefault();
     const submit=usernameSignInForm.querySelector('button[type=submit]');
     if(submit.disabled)return;
     submit.disabled=true;
+    submit.textContent='Logging in…';
+    usernameSignInForm.setAttribute('aria-busy','true');
     signInStatus.textContent='';
     try{
       const {user}=await diqApiRequest('auth/login',{
@@ -3490,6 +3526,8 @@ function updatePlayerHeaderButton(){
       signInStatus.textContent=rememberAuthenticationError('Sign-in failed',error);
     }finally{
       submit.disabled=false;
+      submit.textContent='Log in';
+      usernameSignInForm.removeAttribute('aria-busy');
     }
   });
 
@@ -4672,7 +4710,7 @@ function showSeqSuccessPanel(){
   const seqStr = seqArr.length ? seqArr.join(' \u2192 ') : '—';
 
   showSeqPanel(`
-    <div class="training-feedback is-success">✅ Correct sequence!</div>
+    <div class="training-feedback is-success"><span class="sequence-result-icon" aria-hidden="true">✓</span>Correct sequence!</div>
     <div class="hint" style="margin-top:6px">Expected: <b>${seqStr}</b></div>
   `);
 }
@@ -4682,7 +4720,7 @@ function showSeqSuccessPanel(){
 function showSeqFailPanel() {
   const seqStr = seqOrder.join(' → ') || '—';
   showSeqPanel(`
-    <div class="training-feedback is-error">❌ Incorrect sequence</div>
+    <div class="training-feedback is-error"><span class="sequence-result-icon" aria-hidden="true">×</span>Incorrect sequence</div>
     <div class="hint" style="margin-top:6px">Expected: <b>${seqStr}</b></div>
   `);
 }

@@ -700,6 +700,28 @@ const ensureHeaderGrouping = () => {
     }
   }
 
+  // One application navigation row; retain the original permission-owned controls.
+  let fieldNav = document.getElementById('fieldNavigationButton');
+  if (!fieldNav) {
+    fieldNav = document.createElement('button');
+    fieldNav.id = 'fieldNavigationButton'; fieldNav.type = 'button'; fieldNav.textContent = 'Field';
+    fieldNav.addEventListener('click', () => {
+      document.querySelector('#practiceWorkspace:not(.hidden) #practiceWorkspaceClose')?.click();
+      window._diqNavigateWorkspace?.('field');
+    });
+    utilityActions.prepend(fieldNav);
+  }
+  let fieldToolbar = document.getElementById('fieldToolbar');
+  if (!fieldToolbar) {
+    fieldToolbar = document.createElement('div'); fieldToolbar.id = 'fieldToolbar';
+    const context = document.createElement('span'); context.id = 'fieldPracticeLabel';
+    context.textContent = 'Free practice'; fieldToolbar.append(context);
+    trainingPanel?.prepend(fieldToolbar);
+  }
+  const practiceContext = document.getElementById('playerPracticeContext');
+  if (practiceContext) fieldToolbar.append(practiceContext);
+  fieldToolbar.append(situationControls);
+  if (trainingHelp && trainingPanel) trainingPanel.append(trainingHelp);
   installPlayerPresentation();
   const legacyActions = header.querySelector(':scope > .header-actions');
   if (legacyActions && !legacyActions.children.length) legacyActions.remove();
@@ -1312,7 +1334,8 @@ function renderTargetPanel(id){
   _currentSelectedTargetId = id;
 
   targetPanel.classList.remove('hidden');
-  targetPanelTitle.textContent = `Position Notes: ${id}`;
+  const positionName = {P:'Pitcher',C:'Catcher','1B':'First baseman','2B':'Second baseman',SS:'Shortstop','3B':'Third baseman',LF:'Left fielder',CF:'Center fielder',RF:'Right fielder'}[id] || id;
+  targetPanelTitle.textContent = `${positionName} responsibilities`;
 
   const notes = getTargetNotes(currentSituation.key, id);
   targetPanelBody.innerHTML = notes
@@ -1347,7 +1370,9 @@ function showTargetInstruction(){
   _currentSelectedTargetId = null;
   targetPanel.classList.add('hidden');
   targetPanelBody.classList.remove('show-instruction');
-  showFieldNotice();
+  // The persistent coaching prompt owns this instruction; no duplicate toast.
+  hideFieldNotice();
+  refreshPlayerPresentation();
 }
 
 /** Enable click-to-select for rings (used only after last try) */
@@ -2895,8 +2920,18 @@ function playbookCardMetadata(situation){
   difficulty.dataset.difficulty = situation.difficulty;
   difficulty.textContent = difficultyLabel(situation.difficulty);
   metadata.append(difficulty);
+  const variation = situationVariationLabel(situation);
+  if (variation) {
+    const badge = document.createElement('span');
+    badge.className = 'playbook-card-variation'; badge.textContent = variation;
+    metadata.append(badge);
+  }
   const category = teachingCategoryLabel(situation.primaryCategory);
-  if (category) metadata.append(` · ${category}`);
+  if (category) {
+    const label = document.createElement('span');
+    label.className = 'playbook-card-category'; label.textContent = category;
+    metadata.append(label);
+  }
   return metadata;
 }
 
@@ -2930,7 +2965,7 @@ function renderPlaybookBrowser(){
     const heading = document.createElement('span');
     heading.className = 'playbook-card-heading';
     const title = document.createElement('strong');
-    title.textContent = playbookCardTitle(situation);
+    title.textContent = playbookBaseTitle(situation);
     heading.append(title);
     if (isCurrent) {
       const current = document.createElement('span');
@@ -4142,21 +4177,38 @@ function refreshPlayerPresentation(){
   const board = document.querySelector('.training-board');
   const situationHud = document.getElementById('trainingHud');
   // Use the same compact field HUD for players, coaches, and administrators.
-  if(player && panel && situationHud && situationHud.parentElement !== panel) panel.prepend(situationHud);
-  else if(!player && board && situationHud && situationHud.parentElement !== board) board.prepend(situationHud);
+  const panelContent = document.getElementById('trainingPanelContent') || panel;
+  if(player && panelContent && situationHud && situationHud.parentElement !== panelContent) panelContent.prepend(situationHud);
+  const fieldToolbar = document.getElementById('fieldToolbar');
+  if(!player && board && situationHud && situationHud.parentElement !== board) board.prepend(situationHud);
+  if (player) placePracticeControls();
   document.body.classList.toggle('player-before-start', !gameActive && !phase2Active);
   if(guide && workspace && guide.parentElement !== workspace) workspace.appendChild(guide);
   const setText = (id, text) => {
     const element = document.getElementById(id);
     if(element && element.textContent !== text) element.textContent = text;
   };
-  const display = currentSituation ? situationDisplayLabel(currentSituation) : 'Choose a situation';
+  const display = currentSituation ? String(currentSituation.title || currentSituation.desc || 'Unnamed situation').trim() : 'Choose a situation';
   setText('playerSituationName', display);
+  const variation = situationVariationLabel(currentSituation);
+  setText('playerSituationVariation', variation);
+  const variationBadge = document.getElementById('playerSituationVariation');
+  if (variationBadge) variationBadge.hidden = !variation;
   setText('playerSituationReference', '');
+  setText('playerSituationCategory', currentSituation ? teachingCategoryLabel(currentSituation.primaryCategory) : 'Situation');
+  setText('playerSituationDifficulty', currentSituation ? difficultyLabel(currentSituation.difficulty) : '');
+  const difficultyBadge = document.getElementById('playerSituationDifficulty');
+  if (difficultyBadge) difficultyBadge.dataset.difficulty = currentSituation?.difficulty || '';
+  const fieldNav = document.getElementById('fieldNavigationButton');
+  const fieldActive = !document.querySelector('#coachCard:not(.hidden),#adminCard:not(.hidden),#practiceWorkspace:not(.hidden)') && !document.body.classList.contains('design-workspace-open');
+  if (fieldActive) fieldNav?.setAttribute('aria-current','page'); else fieldNav?.removeAttribute('aria-current');
+
   const context = String(currentSituation?.desc || '').trim();
   setText('playerSituationContext', context);
   const contextElement = document.getElementById('playerSituationContext');
   if(contextElement) contextElement.hidden = !context;
+  const situationNotes = document.getElementById('situationNotes');
+  if (situationNotes) situationNotes.hidden = !context;
   setText('playbookClose', '×');
   const solution = Boolean(_solutionReview?.watched || wrap?.classList.contains('is-showing-solution'));
   const unchecked = !phase2Active && !solution && (!startBtn?.disabled || (gameActive && remainingTries === MAX_TRIES));
@@ -4165,13 +4217,17 @@ function refreshPlayerPresentation(){
   const staffPositioningComplete = ['coach','admin'].includes(user?.role) && Boolean(_phase1Summary) && !currentSituation?.playSeq?.length;
   const complete = _completedFreePlay || staffPositioningComplete || (_phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary));
   const beforeStart = !gameActive && !phase2Active && !startBtn?.disabled;
+  panel?.classList.toggle('is-playing', !beforeStart && !complete);
+  panel?.classList.toggle('is-sequence', Boolean(phase2Active));
   const chooseNext = document.getElementById('chooseNextSituationBtn');
   if(chooseNext) chooseNext.classList.toggle('hidden', document.body.classList.contains('situation-player-preview') || !player || !(_completedFreePlay || (['coach','admin'].includes(user?.role) && complete)) || beforeStart);
   setText('playerStepLabel', beforeStart ? 'Position the defense' : complete ? 'Situation complete'
     : phase2Active ? 'Choose the throw sequence'
-    : solution || _phase1Summary ? 'Review positions' : 'Position the defense');
+    : _solutionReview?.animating ? 'Solution playing'
+    : _solutionReview?.watched ? 'Explore position responsibilities'
+    : _phase1Summary ? 'Watch the positioning solution' : 'Position the defense');
   const result = `${_phase1Summary?.scoreCorrect ?? scoreVal?.textContent ?? 0} of ${scoredPositionCount()} positions correct`;
-  const text = beforeStart || complete ? ''
+  const text = beforeStart ? 'Start the situation, then drag each defender into position.' : complete ? ''
     : phase2Active ? 'Select defenders in throwing order, then verify your sequence.'
     : solution ? ''
     : !startBtn?.disabled ? ''
@@ -4183,6 +4239,10 @@ function refreshPlayerPresentation(){
   const notesOpen = Boolean(_currentSelectedTargetId && targetPanel && !targetPanel.classList.contains('hidden'));
   if(coachingPrompt) coachingPrompt.hidden = !player || !coachingAvailable || notesOpen;
   setText('playerStepMessage', text);
+  const feedback = document.getElementById('contextBar');
+  const instruction = document.getElementById('playerStepMessage');
+  if (feedback && instruction && instruction.nextElementSibling !== feedback) instruction.after(feedback);
+
   const scoreLabel = document.querySelector('#scoreBadge .status-label');
   if(scoreLabel) scoreLabel.textContent = player ? 'Result' : 'Score';
   const triesLabel = document.querySelector('#triesBadge .status-label');
@@ -4192,8 +4252,103 @@ function refreshPlayerPresentation(){
   const runnersLabel = document.querySelector('#runnersBadge .status-label');
   if(runnersLabel) runnersLabel.textContent = 'Runners';
   if(continueBtn && continueBtn.textContent !== (player ? 'Continue to Throw Sequence' : 'Continue ▶')) continueBtn.textContent = player ? 'Continue to Throw Sequence' : 'Continue ▶';
+  // Promote the available next step without changing runtime-owned permissions.
+  const available = button => button && !button.classList.contains('hidden') && !button.hidden && !button.disabled;
+  const advance = document.getElementById('practiceAdvanceButton');
+  const advancePanel = document.getElementById('practiceAdvancePanel');
+  const nextAssignment = advancePanel && !advancePanel.classList.contains('hidden') && available(advance) ? advance : null;
+  const primary = _solutionReview?.animating ? watchSolutionBtn :
+    nextAssignment || [startBtn,checkBtn,continueBtn,verifySeqBtn,chooseNext,watchSolutionBtn].find(available);
+  for (const button of [startBtn,checkBtn,continueBtn,verifySeqBtn,chooseNext,watchSolutionBtn].filter(Boolean)) {
+    button.dataset.actionRole = button === resetBtn ? 'reset' : button === primary ? 'primary' :
+      button === watchSolutionBtn && available(button) && !phase2Active ? 'secondary' : 'inactive';
+  }
+  if (advance) advance.dataset.actionRole = advance === primary ? 'primary' : 'inactive';
+  const secondaryActions = document.getElementById('trainingSecondaryActions');
+  const mainActions = document.querySelector('#trainingActions .game-controls');
+  const watchParent = watchSolutionBtn?.dataset.actionRole === 'secondary' ? secondaryActions : mainActions;
+  if (watchSolutionBtn && watchParent && watchSolutionBtn.parentElement !== watchParent) watchParent.prepend(watchSolutionBtn);
+
+  if (watchSolutionBtn) {
+    const label = _solutionReview?.animating ? 'Playing solution…' : _solutionReview?.watched ? 'Replay solution' : 'Watch Solution';
+    if (watchSolutionBtn.textContent !== label) watchSolutionBtn.textContent = label;
+    const accessibleLabel = _solutionReview?.watched && !_solutionReview?.animating ? 'Watch Solution again' : label;
+    if (watchSolutionBtn.getAttribute('aria-label') !== accessibleLabel) watchSolutionBtn.setAttribute('aria-label',accessibleLabel);
+  }
+
 }
+// Float only within a conservative empty upper-right corner. Never resize the board.
+function placePracticeControls(){
+  const toolbar = document.getElementById('fieldToolbar');
+  const board = document.querySelector('.training-board');
+  const content = document.getElementById('trainingPanelContent');
+  const panel = document.getElementById('trainingPanel');
+  if (!toolbar || !board || !content || !panel || !img) return;
+  const restore = () => {
+    toolbar.classList.remove('is-floating');
+    if (toolbar.parentElement !== content || content.firstElementChild !== toolbar) content.prepend(toolbar);
+  };
+  const area = board.getBoundingClientRect(), field = img.getBoundingClientRect();
+  if (!window.matchMedia('(min-width:1024px) and (orientation:landscape)').matches || !area.width || !field.width) {restore();return;}
+  if (toolbar.parentElement !== board) board.append(toolbar);
+  toolbar.classList.add('is-floating');
+  const controls = toolbar.getBoundingClientRect();
+  // Stay outside the curved field artwork, with clearance from both field and panel.
+  const fits = controls.left >= field.left + field.width * .80 &&
+    controls.bottom <= field.top + field.height * .08 &&
+    controls.right <= panel.getBoundingClientRect().left - 8 &&
+    controls.top >= area.top && controls.height < 140;
+  if (!fits) restore();
+}
+
 function installPlayerPresentation(){
+  const panel = document.getElementById('trainingPanel');
+  if (panel && !document.getElementById('trainingPanelContent')) {
+    const content = document.createElement('div'); content.id = 'trainingPanelContent';
+    const footer = document.createElement('div'); footer.id = 'trainingPanelFooter';
+    footer.setAttribute('role','group'); footer.setAttribute('aria-label','Current stage and actions');
+    const metrics = document.getElementById('trainingMetrics');
+    const actions = document.getElementById('trainingActions');
+    const advance = document.getElementById('practiceAdvancePanel');
+    for (const child of Array.from(panel.children)) {
+      if (![metrics,actions,advance].includes(child)) content.append(child);
+    }
+    panel.append(content,footer);
+    if (metrics) footer.append(metrics);
+    if (actions) footer.append(actions);
+    if (advance && actions) {
+      const next = document.getElementById('practiceAdvanceButton');
+      const reset = document.getElementById('resetBtn');
+      if (next && reset) advance.after(reset); // reset follows the assignment next step in keyboard order
+      footer.append(advance);
+      if (reset) footer.append(reset);
+    }
+    const secondaryActions = document.createElement('div'); secondaryActions.id = 'trainingSecondaryActions';
+    footer.append(secondaryActions);
+    const resetAction = document.getElementById('resetBtn');
+    if (resetAction) secondaryActions.append(resetAction);
+    const description = document.getElementById('playerSituationContext');
+    if (description) {
+      const notes = document.createElement('details'); notes.id = 'situationNotes';
+      const summary = document.createElement('summary'); summary.textContent = 'Situation notes';
+      description.before(notes); notes.append(summary,description);
+    }
+    // A newly promoted action must not consume a rapid second click intended for
+    // its predecessor (for example final Check -> Watch Solution).
+    let previousButton = null, previousTime = -Infinity;
+    footer.addEventListener('click',event => {
+      const button = event.target instanceof Element ? event.target.closest('button') : null;
+      if (!button) return;
+      const now = performance.now();
+      const elapsed = now - previousTime;
+      // A replaced clock can reset its origin; a negative interval is not a repeat click.
+      if (event.detail > 0 && button === watchSolutionBtn && previousButton === checkBtn && elapsed >= 0 && elapsed < 450) {
+        event.preventDefault(); event.stopImmediatePropagation(); return;
+      }
+      previousButton = button; previousTime = now;
+    },true);
+  }
+
   if(!document.getElementById('chooseNextSituationBtn')){
     const button = document.createElement('button');
     button.id = 'chooseNextSituationBtn';
@@ -4201,7 +4356,7 @@ function installPlayerPresentation(){
     button.className = 'btn-green hidden';
     button.textContent = 'Choose another situation';
     button.addEventListener('click', openPlaybookBrowser);
-    document.getElementById('resetBtn')?.before(button);
+    document.querySelector('#trainingActions .game-controls')?.append(button);
   }
   if(!window._diqPlayerPresentationObserver){
     let queued = false;
@@ -4210,8 +4365,19 @@ function installPlayerPresentation(){
       queued = true;
       requestAnimationFrame(()=>{queued = false;refreshPlayerPresentation();});
     });
+    const resizePracticeControls = () => {
+      if (window._diqPracticeControlsFrame) cancelAnimationFrame(window._diqPracticeControlsFrame);
+      window._diqPracticeControlsFrame = requestAnimationFrame(placePracticeControls);
+    };
+    window.addEventListener('resize',resizePracticeControls);
+    const controlsResize = new ResizeObserver(resizePracticeControls);
+    for (const element of [document.querySelector('.training-board'),wrap,document.getElementById('fieldToolbar')]) {
+      if (element) controlsResize.observe(element);
+    }
     const actions = document.getElementById('trainingActions');
-    if(actions) observer.observe(actions,{subtree:true,attributes:true,attributeFilter:['disabled','class']});
+    if(actions) observer.observe(document.getElementById('trainingPanelFooter') || actions,{subtree:true,attributes:true,attributeFilter:['disabled','class']});
+    const advance = document.getElementById('practiceAdvancePanel');
+    if (advance) observer.observe(advance,{subtree:true,attributes:true,attributeFilter:['disabled','class']});
     if(wrap) observer.observe(wrap,{attributes:true,attributeFilter:['class','data-solution-state']});
     const board = document.querySelector('.training-board');
     if(board) observer.observe(board,{attributes:true,attributeFilter:['class']});

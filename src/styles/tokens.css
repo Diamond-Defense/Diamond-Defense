@@ -183,3 +183,30 @@
   --text-on-accent: #ffffff;
   --focus-ring: #2563eb;
 }
+
+/* Shared UI geometry. Colors and field-specific tokens above retain their existing owners. */
+:root {
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --control-height: 2.5rem;
+  --control-touch-height: 2.75rem;
+  --panel-padding: var(--space-4);
+  --page-gutter: var(--space-3);
+  --type-workspace-heading: 1.25rem;
+  --table-cell-block: var(--space-2);
+  --table-cell-inline: var(--space-3);
+  --navigation-compact-width: 4rem;
+  --navigation-expanded-width: 12rem;
+  --detail-panel-width: 30rem;
+  --focus-width: 2px;
+  --focus-offset: 2px;
+  --motion-fast: 120ms;
+  --layer-navigation: 30;
+  --layer-overlay: 100;
+  --workspace-gap: var(--space-3);
+  --workspace-control-height: var(--control-height);
+}

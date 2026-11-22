@@ -1,6 +1,12 @@
 <script>
   import { onMount, tick } from 'svelte';
   import GlobalLibraryTools from './GlobalLibraryTools.svelte';
+  import Button from '$lib/components/ui/Button.svelte';
+  import PageHeader from '$lib/components/ui/PageHeader.svelte';
+  import Panel from '$lib/components/ui/Panel.svelte';
+  import Field from '$lib/components/ui/Field.svelte';
+  import Feedback from '$lib/components/ui/Feedback.svelte';
+  import SectionNavigation from '$lib/components/ui/SectionNavigation.svelte';
   let {entryUrl, isAdmin, onField, onLocationChange, onPlayTest} = $props();
   let workspaces = $state([]);
   let loading = $state(true);
@@ -57,12 +63,14 @@
         body:JSON.stringify({decision,notes:historicalNotes,acceptedFields:historicalFields}),
       });
       historicalReview = null;
-      status = decision === 'approve' ? 'Proposal approved.' : 'Proposal rejected.';
+      showStatus(decision === 'approve' ? 'Proposal approved.' : 'Proposal rejected.', 'success');
       await loadLibrary();
-    } catch (error) { status = error.message; }
+    } catch (error) { showStatus(error.message, 'error'); }
     finally { busy = false; }
   }
   let status = $state('');
+  let statusTone = $state('info');
+  function showStatus(message, tone = 'info') { status = message; statusTone = tone; }
   let busy = $state(false);
   let requestNumber = 0;
   let review = $state(null);
@@ -70,6 +78,15 @@
   const scopeKey = scope => JSON.stringify([scope.type, scope.id]);
   const scopeLabel = {global:'Global Library',organization:'Organization Library',region:'Regional Library',team:'Team Library'};
   const library = $derived(workspaces.find(scope => scopeKey(scope) === selected));
+  const sections = $derived(library ? [
+    {value:'library',label:scopeLabel[library.type]},
+    ...(listing?.canReview || listing?.changeReviews.some(item => item.canReview && item.status === 'pending')
+      ? [{value:'reviews',label:'Publication reviews',count:listing.incoming.length}] : []),
+    ...(listing?.canCherryPick ? [{value:'cherry-pick',label:'Cherry-pick'}] : []),
+    ...(library.parent || listing?.changeReviews.length ? [{value:'submissions',label:'Submissions'}] : []),
+    ...(isAdmin && library.type === 'global' ? [{value:'manage',label:'Manage library'}] : []),
+    ...(isAdmin && ['organization','region'].includes(library.type) ? [{value:'import',label:'Import situations'}] : []),
+  ] : []);
   const sourceName = entry => {
     const type = entry.sourceType || library.type;
     const name = entry.sourceName || (entry.sourceType ? '' : library.name);
@@ -136,11 +153,11 @@
           const archive = await request('/api/situation-submissions?status=pending');
           if (sequence === requestNumber) historical = archive.submissions;
         } catch (error) {
-          if (sequence === requestNumber) status = error.message;
+          if (sequence === requestNumber) showStatus(error.message, 'error');
         }
       }
     } catch (error) {
-      if (sequence === requestNumber) status = error.message;
+      if (sequence === requestNumber) showStatus(error.message, 'error');
     }
   }
   function switchLibrary(event) {
@@ -155,13 +172,13 @@
     busy = true;
     try {
       const result = await request('/api/design', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-      status = typeof confirmation === 'function' ? confirmation(result) : confirmation;
+      showStatus(typeof confirmation === 'function' ? confirmation(result) : confirmation, 'success');
       review = null;
       changeReview = null;
       closeDetails();
       await loadLibrary();
       return true;
-    } catch (error) { status = error.message; return false; }
+    } catch (error) { showStatus(error.message, 'error'); return false; }
     finally { busy = false; }
   }
   const source = entry => ({sourceKey: entry.key, sourceRevision: entry.revision});
@@ -187,6 +204,7 @@
         } catch (error) { failure = error.message; }
       }
       status = submitted ? `Submitted ${submitted} of ${entries.length} to the ${destination} for review.` : failure || 'These revisions have already been reviewed.';
+      statusTone = failure ? (submitted ? 'warning' : 'error') : 'success';
       if (submitted && failure) status += ' ' + failure;
       marked = [];
       closeDetails();
@@ -201,7 +219,7 @@
   function playTest(snapshot) {
     try {
       onPlayTest(snapshot);
-    } catch (error) { status = error.message; }
+    } catch (error) { showStatus(error.message, 'error'); }
   }
 
   async function playTestCandidate(entry) {
@@ -212,7 +230,7 @@
       const {snapshot} = await request('/api/design', {method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({action:'preview_candidate',type:library.type,id:library.id,...source(entry)})});
       playTest(snapshot);
-    } catch (error) { status = error.message; }
+    } catch (error) { showStatus(error.message, 'error'); }
     finally { busy = false; }
   }
 
@@ -253,7 +271,7 @@
           && !listing?.changeReviews.some(item => item.canReview)) view = 'library';
         if (!cancelled && view === 'cherry-pick' && !listing?.canCherryPick) view = 'library';
       } catch (error) {
-        if (!cancelled) status = error.message;
+        if (!cancelled) showStatus(error.message, 'error');
       } finally {
         if (!cancelled) loading = false;
       }
@@ -292,43 +310,32 @@
 {/snippet}
 
 <main class="design-dashboard" id="designWorkspace">
-  <div class="workspace-heading">
-    <div><h1 class="workspace-heading-title">Design workspace</h1>
-      {#if library}<p class="workspace-heading-context">{library.name === 'Global Library' ? library.name : library.name + ' · ' + scopeLabel[library.type]}</p>{/if}
-    </div>
-    <div class="workspace-heading-actions">
-    {#if workspaces.length > 1}
-      <label>Library <select disabled={busy} value={selected} onchange={switchLibrary}>
-        {#each workspaces as scope}<option value={scopeKey(scope)}>{scope.name} {scope.type === 'global' ? '' : '· ' + scopeLabel[scope.type]}</option>{/each}
-      </select></label>
-    {/if}
-    {#if library?.canDesign && view === 'library'}<a class="primary" data-sveltekit-reload href={editLink()}>New situation</a>{/if}
-    <button class="btn btn-ghost" onclick={onField}>Back to field</button>
-    </div>
-  </div>
-  {#if status}<p role="status" class="status">{status}</p>{/if}
-  {#if library}
-    <div class="workspace-frame">
-      <div class="workspace-sections">
-        <nav class="workspace-nav" id="design-sections" aria-label="Design sections">
-      <button aria-pressed={view === 'library'} onclick={() => selectSection('library')}>{scopeLabel[library.type]}</button>
-      {#if listing?.canReview || listing?.changeReviews.some(item => item.canReview && item.status === 'pending')}<button aria-pressed={view === 'reviews'} onclick={() => selectSection('reviews')}>Publication reviews{listing.incoming.length ? ' (' + listing.incoming.length + ')' : ''}</button>{/if}
-      {#if listing?.canCherryPick}<button aria-pressed={view === 'cherry-pick'} onclick={() => selectSection('cherry-pick')}>Cherry-pick</button>{/if}
-      {#if library.parent || listing?.changeReviews.length}<button aria-pressed={view === 'submissions'} onclick={() => selectSection('submissions')}>Submissions</button>{/if}
-      {#if isAdmin && library.type === 'global'}
-        <button aria-expanded={view === 'manage'} aria-pressed={view === 'manage'} onclick={() => selectSection('manage')}>Manage library</button>
-      {:else if isAdmin && ['organization','region'].includes(library.type)}
-        <button aria-pressed={view === 'import'} onclick={() => selectSection('import')}>Import situations</button>
+  <PageHeader title="Design workspace"
+    context={library ? (library.name === 'Global Library' ? library.name : library.name + ' · ' + scopeLabel[library.type]) : ''}>
+    {#snippet actions()}
+      {#if workspaces.length > 1}
+        <Field label="Library" controlId="design-library-scope">
+          <select id="design-library-scope" class="dd-control" disabled={busy} value={selected} onchange={switchLibrary}>
+            {#each workspaces as scope}<option value={scopeKey(scope)}>{scope.name} {scope.type === 'global' ? '' : '· ' + scopeLabel[scope.type]}</option>{/each}
+          </select>
+        </Field>
       {/if}
-        </nav>
+      {#if library?.canDesign && view === 'library'}<a class="dd-button" data-variant="primary" data-sveltekit-reload href={editLink()}>New situation</a>{/if}
+      <Button variant="ghost" onclick={onField}>Back to field</Button>
+    {/snippet}
+  </PageHeader>
+  <Feedback message={status} tone={statusTone} />
+  {#if library}
+    <Panel class="workspace-frame" padded={false}>
+      <div class="workspace-sections">
+        <SectionNavigation id="design-sections" label="Design sections" items={sections}
+          value={view} onchange={next => selectSection(next)} />
       </div>
       <div class="workspace-content">
     {#if view === 'manage' && isAdmin && library.type === 'global'}
-      <nav class="workspace-nav workspace-nav-subsections" aria-label="Global Library tools">
-        {#each libraryTools as [key,label]}
-          <button aria-pressed={manageMode === key} onclick={() => selectSection('manage',key)}>{label}</button>
-        {/each}
-      </nav>
+      <SectionNavigation label="Global Library tools" secondary
+        items={libraryTools.map(([value,label]) => ({value,label}))} value={manageMode}
+        onchange={mode => selectSection('manage',mode)} />
       {#key manageMode}<GlobalLibraryTools {request} refresh={loadLibrary} mode={manageMode} destination={library} />{/key}
     {:else if view === 'import' && isAdmin && ['organization','region'].includes(library.type)}
       <GlobalLibraryTools {request} refresh={loadLibrary} mode="import" destination={library} />
@@ -394,7 +401,7 @@
                 </tr></thead>
                 <tbody>
                   {#each group.entries as entry}
-                    <tr class:selected-row={marked.includes(entryId(entry))}>
+                    <tr data-situation-key={entry.key} class:selected-row={marked.includes(entryId(entry))}>
                       {#if selectRows}<td>
                         {#if matchingIds.includes(entryId(entry))}
                           <input type="checkbox" bind:group={marked} value={entryId(entry)} disabled={busy} aria-label={'Select ' + entry.title}>
@@ -523,11 +530,11 @@
       </section>
     {/if}
     {#if detail}
-      <dialog class="situation-detail" bind:this={detailDialog} aria-labelledby="situation-detail-title"
+      <dialog class="situation-detail dd-detail-panel" bind:this={detailDialog} aria-labelledby="situation-detail-title"
         onclose={() => detail = null}>
         <div class="detail-heading">
           <h2 id="situation-detail-title">{detail.entry.title}</h2>
-          <button onclick={closeDetails}>Close</button>
+          <Button variant="ghost" onclick={closeDetails}>Close</Button>
         </div>
         {#if detail.entry.desc}<p>{detail.entry.desc}</p>{/if}
         <dl>
@@ -569,7 +576,7 @@
       </section>
     {/if}
       </div>
-    </div>
+    </Panel>
   {:else if loading}<p>Loading libraries…</p>
   {:else if !status}<p>Your account has no assigned design workspace.</p>{/if}
 </main>
@@ -577,13 +584,11 @@
 <style>
   .actions,.toolbar {display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;}
   a,button,select,input {font:inherit;}
-  button,a {padding:.55rem .7rem;border:1px solid #b6c4d4;border-radius:.5rem;background:var(--surface);color:var(--text-primary);text-decoration:none;cursor:pointer;}
+  button,a:not(.dd-button) {padding:.55rem .7rem;border:1px solid #b6c4d4;border-radius:.5rem;background:var(--surface);color:var(--text-primary);text-decoration:none;cursor:pointer;}
   button:disabled {cursor:default;opacity:.55;}
-  main {width:100%;box-sizing:border-box;margin:.75rem auto;padding:0 .75rem;}
-  .workspace-heading {margin-bottom:var(--workspace-gap);}
-  .workspace-heading-actions {display:flex;align-items:end;flex-wrap:wrap;gap:.65rem;}
+  main {width:100%;box-sizing:border-box;margin:var(--space-3) auto;padding:0 var(--page-gutter);}
+  :global(#designWorkspace > .dd-page-header) {margin-bottom:var(--workspace-gap);}
   .toolbar.workspace-toolbar {justify-content:flex-start;align-items:end;gap:.75rem 1.25rem;margin-bottom:.75rem;}
-  .workspace-heading-actions select {height:var(--workspace-control-height);}
   .filters > .field:first-child {width:clamp(12rem, 22vw, 20rem);}
   .filters {display:flex;align-items:end;gap:.6rem;flex-wrap:wrap;}
   .selection-toolbar {display:flex;align-items:center;flex-wrap:wrap;gap:.45rem;}
@@ -599,7 +604,7 @@
   .library-table .availability-column {width:16%;}
   .library-table .actions-column {width:14rem;}
   .library-table thead {background:var(--surface-raised);}
-  .library-table :is(th,td) {padding:.45rem .65rem;overflow-wrap:anywhere;}
+  .library-table :is(th,td) {padding:var(--table-cell-block) var(--table-cell-inline);overflow-wrap:anywhere;}
   .library-table tbody tr:hover {background:var(--surface-hover);}
   .library-table tbody tr.selected-row {background:var(--selection-background);}
   .situation-title {min-height:0;padding:0;border:0;background:none;text-align:start;font-weight:700;
@@ -607,7 +612,7 @@
   .situation-title:hover:not(:disabled) {text-decoration-color:currentColor;transform:none;box-shadow:none;}
   .difficulty-label {display:inline-block;margin-top:.2rem;padding:.05rem .4rem;border-radius:1rem;
     background:var(--surface-hover);color:var(--text-secondary);font-size:.8rem;}
-  .situation-detail {box-sizing:border-box;position:fixed;inset:0 0 0 auto;margin:0;width:min(100%,30rem);
+  .situation-detail {box-sizing:border-box;position:fixed;inset:0 0 0 auto;margin:0;width:min(100%,var(--detail-panel-width));
     max-width:none;height:100%;max-height:100%;padding:1.25rem;overflow:auto;color:inherit;background:var(--surface);
     border:0;border-inline-start:1px solid var(--border);}
   .situation-detail::backdrop {background:rgb(8 36 67 / .35);}
@@ -621,11 +626,10 @@
   .detail-actions:empty {display:none;}
   .workspace-toolbar .field :is(input,select) {box-sizing:border-box;width:100%;height:var(--workspace-control-height);}
 
-  h1,h2,h3,p {margin:0;}
+  h2,h3,p {margin:0;}
   h2,h3 {font-size:1rem;}
   p {margin-top:.35rem;color:#435873;}
   .toolbar,article {display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;}
-  button[aria-pressed="true"] {background:#e0effa;border-color:#286291;}
   section {background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);padding:1rem;margin:.75rem 0;}
   section > h2 {margin:.5rem 0;}
   article {padding:.75rem 0;border-bottom:1px solid #d7e1eb;}
@@ -635,5 +639,4 @@
   .inset .actions {margin-top:.75rem;}
   .comparison {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,18rem),1fr));gap:.75rem;margin:.75rem 0;}
   pre {height:14rem;overflow:auto;background:#f4f7fa;padding:.5rem;font-size:.78rem;}
-  .status {padding:.65rem;background:white;border:1px solid #b6c4d4;border-radius:.5rem;}
 </style>

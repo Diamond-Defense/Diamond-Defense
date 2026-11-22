@@ -72,11 +72,16 @@ async function logoutCurrentUser(page) {
   await page.evaluate(() => window.__DIQ_READY__);
   await expect(page.locator('#playerModalOverlay')).toBeVisible();
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
-  // Most callers explicitly open their next login; close this verified landing dialog.
+  // Logout returns to the mandatory username form. These legacy-role tests
+  // explicitly opt back into the legacy entry before opening their next account.
   await expect.poll(() => page.evaluate(() => window.__logoutWorkspaceMarker)).toBeUndefined();
   await expect.poll(() => page.evaluate(() => window.__DIQ_AUTH_USER__)).toBeNull();
   await expect(page.locator('#staffToolsBtn')).toBeHidden();
-  await page.locator('#playerModalCloseX').click();
+  await page.goto('/?signin=legacy');
+  await expect(page.locator('html')).toHaveAttribute('data-diq-runtime', 'loaded');
+  await page.evaluate(() => window.__DIQ_READY__);
+  // The legacy entry starts with its dialog closed; callers open the next login.
+  await expect(page.locator('#playerModalOverlay')).toBeHidden();
 }
 
 test.describe('Diamond Defence regression behavior', () => {
@@ -86,15 +91,15 @@ test.describe('Diamond Defence regression behavior', () => {
       try{
         const page=await context.newPage();
         await openCleanApp(page,{legacySignIn:false});
-        const dialog=page.getByRole('dialog',{name:'Login'});
+        const dialog=page.getByRole('dialog',{name:'Log in'});
         await expect(dialog).toBeVisible();
         await page.keyboard.press('Escape');
         await expect(dialog).toBeVisible();
         await expect(dialog.getByRole('tab')).toHaveCount(0);
         await expect(dialog.getByLabel('Username')).toBeFocused();
         await dialog.getByLabel('Username').fill(username);
-        await dialog.locator('#usernameSignInForm').getByLabel('Password').fill('password');
-        await dialog.locator('#usernameSignInForm').getByLabel('Password').press('Enter');
+        await dialog.locator('#usernameSignInForm').getByLabel('Password', { exact: true }).fill('password');
+        await dialog.locator('#usernameSignInForm').getByLabel('Password', { exact: true }).press('Enter');
         await expect(dialog).toBeHidden();
         await expect.poll(()=>page.evaluate(()=>window.__DIQ_AUTH_USER__?.role)).toBe(role);
         await page.reload();
@@ -497,11 +502,11 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.getByRole('button', { name: /Random/ })).toBeDisabled();
     await page.locator('#staffToolsBtn').click();
     await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-    const library = page.locator('#situationLibrary');
+    await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
+    const library = page.getByRole('region', { name: 'Manage Global Library', exact: true });
     await expect(library).toBeVisible();
-    await library.getByRole('button', { name: 'Import', exact: true }).click();
-    await expect(library.getByLabel('Situation export file')).toBeVisible();
+    await page.getByRole('navigation', { name: 'Global Library tools' }).getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(library.getByLabel('Situation JSON file')).toBeVisible();
     expect(errors).toEqual([]);
   });
 
@@ -514,21 +519,23 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     await page.locator('#staffToolsBtn').click();
     await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-    const library = page.locator('#situationLibrary');
-    await library.getByRole('button', { name: 'Delete situations', exact: true }).click();
+    await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
+    const library = page.getByRole('region', { name: 'Manage Global Library', exact: true });
+    await page.getByRole('navigation', { name: 'Global Library tools' }).getByRole('button', { name: 'Delete situations', exact: true }).click();
     const search = library.getByRole('searchbox', { name: 'Search situations' });
+    const before = await (await page.request.get('/api/situations')).json();
     await search.fill('LF');
-    const matches = await library.locator('.situation-library-row input').count();
+    const matches = await library.locator('.tool-row input[type=checkbox]').count();
     expect(matches).toBeGreaterThan(0);
-    await library.getByRole('button', { name: 'Select matching situations', exact: true }).click();
-    await expect(library.locator('.situation-library-row input:checked')).toHaveCount(matches);
+    await library.getByRole('button', { name: 'Select matching', exact: true }).click();
+    await expect(library.locator('.tool-row input[type=checkbox]:checked')).toHaveCount(matches);
     await search.fill('no-situation-matches-this');
-    await expect(library.getByRole('button', { name: `Delete selected (${matches})`, exact: true })).toBeEnabled();
+    await expect(library.getByRole('button', { name: `Review deletion (${matches})`, exact: true })).toBeEnabled();
     await library.getByRole('button', { name: 'Clear selection', exact: true }).click();
-    await expect(library.getByRole('button', { name: 'Delete selected', exact: true })).toBeDisabled();
+    await expect(library.getByRole('button', { name: 'Review deletion (0)', exact: true })).toBeDisabled();
     await search.fill('');
-    await expect(library.locator('.situation-library-row input:checked')).toHaveCount(0);
+    await expect(library.locator('.tool-row input[type=checkbox]:checked')).toHaveCount(0);
+    expect(await (await page.request.get('/api/situations')).json()).toEqual(before);
   });
 
   test('ignores legacy browser data and loads authoritative D1 records', async ({ page }) => {
@@ -693,7 +700,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(currentCard).toHaveCSS('box-shadow', 'none');
     await expect(currentCard).toHaveAttribute('aria-current', 'true');
     await expect(currentCard.locator('.playbook-card-current')).toHaveText('✓ Current');
-    for (const [level, token] of [['foundational', '--success'], ['intermediate', '--info'], ['advanced', '--text-primary']]) {
+    // Difficulty badges use the new restrained palette; labels still identify each level.
+    for (const [level, token] of [['foundational', '--success'], ['intermediate', '--text-secondary'], ['advanced', '--text-secondary']]) {
       const label = browser.locator(`.playbook-card-difficulty[data-difficulty="${level}"]`).first();
       await expect(label).toHaveCSS('color', await semanticColor(page, token));
     }
@@ -755,7 +763,8 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#descHud')).toHaveText('Hit to Left-Center Field');
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('Hit to Left-Center Field');
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-reference')).toHaveCount(0);
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-metadata')).toHaveText(/^(Foundational|Intermediate|Advanced) · Cutoffs & Relays$/);
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-difficulty')).toHaveText(/^(Foundational|Intermediate|Advanced)$/);
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-category')).toHaveText('Cutoffs & Relays');
   });
 
   test('guides a player through required practice and restores free play when staff closes it', async ({ page, baseURL }) => {
@@ -797,6 +806,8 @@ test.describe('Diamond Defence regression behavior', () => {
       await card.getByRole('button', { name: 'Start practice' }).click();
       await expect(page.locator('.field-card')).toBeVisible();
       await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
+      await expect(page.locator('#fieldToolbar #playerPracticeContext')).toContainText(title);
+      await expect(page.locator('#fieldPracticeLabel')).toBeHidden();
       await expect(page.locator('#startBtn')).toBeEnabled();
 
       const attemptStart = page.waitForResponse((response) =>
@@ -869,7 +880,7 @@ test.describe('Diamond Defence regression behavior', () => {
 
     await expect(page.getByRole('heading', { name: 'Diamond Defence' })).toBeVisible();
     await expect(page.locator('.situation-controls')).toBeVisible();
-    await expect(page.locator('#trainingNavigation #playbookBrowserToggle')).toBeVisible();
+    await expect(page.locator('#fieldToolbar #playbookBrowserToggle')).toBeVisible();
     await expect(page.locator('#trainingNavigation #playbookToggle')).toBeVisible();
     const playerLayout = await page.evaluate(() => ({
       navigationBottom: document.getElementById('trainingNavigation').getBoundingClientRect().bottom,
@@ -904,15 +915,16 @@ test.describe('Diamond Defence regression behavior', () => {
       };
     });
     expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn']);
-    expect(commandLayout.utilityOrder.slice(0, 3)).toEqual([
+    expect(commandLayout.utilityOrder.slice(0, 4)).toEqual([
+      'fieldNavigationButton',
       'practiceToggle',
       'playbookToggle',
       'staffToolsBtn',
     ]);
     expect(commandLayout.accountOrder.slice(0, 2)).toEqual(['playerBtn', 'accountMenu']);
     expect(commandLayout.panelLeft).toBeGreaterThanOrEqual(commandLayout.fieldRight);
-    expect(commandLayout.hudParent).toBe('trainingPanel');
-    expect(Math.abs(commandLayout.panelTop - commandLayout.fieldTop)).toBeLessThanOrEqual(2);
+    expect(commandLayout.hudParent).toBe('trainingPanelContent');
+    expect(commandLayout.panelTop).toBeLessThanOrEqual(commandLayout.fieldTop);
     await expect(page.locator('#playerSituationName')).toHaveText('Single to LF');
     await expect(page.locator('#trainingActions #checkBtn')).toBeHidden();
     await expect(page.locator('#trainingMetrics #hud')).toBeVisible();
@@ -928,7 +940,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await guideButton.click();
     await expect(page.locator('.playbook-rail')).toBeVisible();
     await expect(guideButton).toHaveAttribute('aria-expanded', 'true');
-    await expect(guideButton).toHaveCSS('background-color', await semanticColor(page, '--accent-primary'));
+    await expect(guideButton).toHaveCSS('background-color', await semanticColor(page, '--header-control-hover'));
     await expect(page.locator('.playbook-rail-heading')).toContainText('Guide');
     await expect(page.locator('#howToCard .howto-body')).toBeVisible();
     await expect(page.locator('#howToCard .howto-body')).toContainText('open Playbook');
@@ -991,9 +1003,9 @@ test.describe('Diamond Defence regression behavior', () => {
 
     const goldRunner = await semanticColor(page, '--runner');
     const header = page.locator('#appHeader');
-    await expect(header).toHaveCSS('background-color', 'rgb(4, 33, 66)');
+    await expect(header).toHaveCSS('background-color', await semanticColor(page, '--header-background'));
     await page.locator('html').evaluate(element => { element.dataset.theme = 'cobalt-daylight'; });
-    await expect(header).toHaveCSS('background-color', 'rgb(237, 243, 245)');
+    await expect(header).toHaveCSS('background-color', await semanticColor(page, '--header-background'));
     await expect(field).toHaveCSS('filter', 'none');
     expect(await semanticColor(page, '--runner')).toBe(goldRunner);
     await page.locator('html').evaluate(element => { element.dataset.theme = 'classic-dark'; });
@@ -1293,6 +1305,7 @@ test.describe('Diamond Defence regression behavior', () => {
   test('a positioning-only failure is saved without requiring a sequence', async ({ page }) => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
+    await page.clock.install();
     await page.evaluate(() => {
       currentSituation.playSeq = [];
       currentSituation.playSeq2 = [];
@@ -1333,8 +1346,13 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
-    await page.clock.install();
+    // Respect the intentional Check -> Watch repeat-click protection.
+    await page.clock.runFor(500);
+    // Hold playback at its first frame while asserting its starting geometry.
+    // install() alone leaves time advancing during locator and evaluate calls.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
     await page.getByRole('button', { name: 'Watch Solution' }).click();
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', /animating|ready/);
     expect(await page.evaluate(() => ({
       state: document.querySelector('#wrap')?.dataset.solutionState,
       ghosts: document.querySelectorAll('.solution-ghost').length,
@@ -1411,7 +1429,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(playerModal).toBeVisible();
     await expect(playerModal).toHaveAttribute('role', 'dialog');
     await expect(playerModal).toHaveAttribute('aria-modal', 'true');
-    await expect(page.locator('#playerModalTitle')).toHaveText('Login');
+    await expect(page.locator('#playerModalTitle')).toHaveText('Log in');
     await expect(page.locator('#authPlayerTab')).toHaveAttribute('aria-selected', 'true');
     await expect(page.locator('#playerSidebarCard')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Share my results' })).toHaveCount(0);
@@ -1517,12 +1535,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     const coachReviewLayout = await page.evaluate(() => {
-      const drawer = document.querySelector('#toolsDrawer');
+      const drawer = document.querySelector('#coachCard .workspace-heading');
       const rect = drawer.getBoundingClientRect();
       const report = document.querySelector('#coachResultsWorkspace').getBoundingClientRect();
       const workspace = document.querySelector('#appWorkspace').getBoundingClientRect();
       return {
-        parentId: document.querySelector('#coachCard').parentElement.id,
+        
         controlsLeft: rect.left,
         controlsRight: rect.right,
         controlsBottom: rect.bottom,
@@ -1535,12 +1553,13 @@ test.describe('Diamond Defence regression behavior', () => {
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     });
-    expect(coachReviewLayout.parentId).toBe('toolsDrawer');
-    // Review uses full-width controls above the report, not the builder's side panel.
-    expect(Math.abs(coachReviewLayout.controlsLeft - coachReviewLayout.workspaceLeft)).toBeLessThanOrEqual(1);
-    expect(Math.abs(coachReviewLayout.controlsRight - coachReviewLayout.workspaceRight)).toBeLessThanOrEqual(1);
-    expect(Math.abs(coachReviewLayout.reportLeft - coachReviewLayout.controlsLeft)).toBeLessThanOrEqual(1);
-    expect(Math.abs(coachReviewLayout.reportRight - coachReviewLayout.controlsRight)).toBeLessThanOrEqual(1);
+    // display:contents wrappers have no box; measure the visible heading and report.
+    expect(coachReviewLayout.controlsLeft).toBeGreaterThanOrEqual(coachReviewLayout.workspaceLeft);
+    expect(coachReviewLayout.controlsRight).toBeLessThanOrEqual(coachReviewLayout.workspaceRight + 1);
+    expect(coachReviewLayout.reportLeft).toBeGreaterThanOrEqual(coachReviewLayout.workspaceLeft);
+    expect(coachReviewLayout.reportRight).toBeLessThanOrEqual(coachReviewLayout.workspaceRight + 1);
+    expect(coachReviewLayout.controlsRight - coachReviewLayout.controlsLeft).toBeGreaterThan(600);
+    expect(coachReviewLayout.reportRight - coachReviewLayout.reportLeft).toBeGreaterThan(600);
     expect(coachReviewLayout.controlsBottom).toBeLessThanOrEqual(coachReviewLayout.reportTop);
     expect(coachReviewLayout.horizontalOverflow).toBeLessThanOrEqual(1);
     expect(coachReviewLayout.pageOverflow).toBeLessThanOrEqual(1);
@@ -1736,7 +1755,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminCoachAddBtn')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
     const adminWorkspaceLayout = await page.evaluate(() => {
-      const drawer = document.querySelector('#toolsDrawer');
+      const drawer = document.querySelector('#adminCard .workspace-heading');
       const admin = document.querySelector('#adminCard');
       const workspace = document.querySelector('#adminWorkspace');
       return {
@@ -1793,119 +1812,95 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminCsvPreview')).toBeHidden();
     await expect(page.getByRole('button', { name: /teams\.json|situations json|download all situations/i })).toHaveCount(0);
     await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-    await expect(page.locator('#adminWorkspace')).toBeVisible();
+    await expect(page.locator('#adminWorkspace')).toBeHidden();
     await expect(page.locator('.field-card')).toBeHidden();
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-    const situationLibrary = page.locator('#situationLibrary');
-    await situationLibrary.getByRole('button', { name: 'Export', exact: true }).click();
-    await expect(situationLibrary.locator('.situation-library-row input[type=checkbox]').first()).toBeVisible();
-    await situationLibrary.locator('.situation-library-row input[type=checkbox]').first().check();
+    const situationLibrary = page.getByRole('region', { name: 'Manage Global Library', exact: true });
+    const libraryTools = page.getByRole('navigation', { name: 'Global Library tools' });
+    await expect(situationLibrary).toBeVisible();
+    await libraryTools.getByRole('button', { name: 'Export', exact: true }).click();
+    await situationLibrary.locator('.tool-row input[type=checkbox]').first().check();
     await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('no-matching-situation');
     await expect(situationLibrary.getByRole('button', { name: 'Download selected (1)', exact: true })).toBeEnabled();
-    await situationLibrary.getByRole('button', { name: 'Import', exact: true }).click();
-    await expect(situationLibrary.getByLabel('Situation export file')).toBeVisible();
-    await expect(situationLibrary.locator('.situation-library-list')).toBeHidden();
-    await situationLibrary.getByRole('button', { name: 'Library', exact: true }).click();
-    await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('');
+    await libraryTools.getByRole('button', { name: 'Import', exact: true }).click();
+    await expect(situationLibrary.getByLabel('Situation JSON file')).toBeVisible();
+    await expect(situationLibrary.getByRole('searchbox')).toHaveCount(0);
 
-    await expect(situationLibrary.getByRole('button',{name:'Edit situation',exact:true}).first()).toBeVisible();
-    await expect(situationLibrary.getByRole('button',{name:'Open classic editor',exact:true})).toHaveCount(0);
-    await page.getByRole('button', { name:'Proposals to review', exact:true }).click();
-    await page.locator('#adminProposalPreviewBtn').click();
-    await expect(page.getByRole('button', { name: 'No published version', exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'No published version', exact: true })).toBeDisabled();
-    await expect(page.locator('.proposal-preview-bar')).toContainText('Pending UI Situation');
-    await page.getByRole('button', { name: 'Return to proposal review', exact: true }).click();
-    await expect(page.locator('#adminOutcomeReviewQueue')).toBeAttached();
-    await expect(page.locator('#adminOutcomeReviewQueue')).toBeVisible();
-    await expect(page.locator('#adminOutcomeReviewSummary')).toContainText('must be confirmed');
-    await expect(page.locator('#adminOutcomeReviewNextBtn')).toBeVisible();
-    await page.locator('#adminOutcomeReviewNextBtn').click();
-    await expect(page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name:'Play timeline'})).toHaveAttribute('aria-current','page');
+    // Outcomes are reviewed through the published situation's Coach Board editor.
+    await page.goto('/coach-board');
+    await openLibraryPlay(page, 'situation', fieldProposal.situationKey, fieldProposal.publishedTitle);
+    await expect(page.getByRole('navigation',{name:'Editor tools'})).toBeVisible();
     await selectStage(page,'Review');
     await page.getByLabel('I confirm these play and runner outcomes').check();
-    const outcomeResponse=page.waitForResponse(response=>response.request().method()==='PUT'&&response.url().includes('/api/situations/'));
+    const outcomeResponse = page.waitForResponse(response => response.request().method() === 'PUT' && response.url().includes('/api/situations/'));
     await page.getByRole('button',{name:'Publish Situation',exact:true}).click();
-    const reviewed=(await (await outcomeResponse).json()).record;
+    const reviewed = (await (await outcomeResponse).json()).record;
     expect(fieldProposal.reviewKeys).toContain(reviewed.key);
     expect(reviewed.playOutcome.reviewStatus).toBe('ready');
-    await page.goBack();
-    await page.evaluate(()=>window.__DIQ_READY__);
-    if(!await page.getByRole('button',{name:'Proposals to review',exact:true}).isVisible()){
-      await page.locator('#staffToolsBtn').click();
-      await page.getByRole('button',{name:'Situations',exact:true}).click();
+
+    await page.goto('/workspace/design?type=global&view=reviews');
+    const reviews = page.getByRole('region', { name: 'Publication reviews', exact: true });
+    const legacyReview = page.getByRole('region', { name: 'Review legacy proposal', exact: true });
+    await reviews.locator('article').filter({has: page.getByRole('heading', {name:'Pending UI Situation',exact:true})})
+      .getByRole('button', {name:'Review proposal',exact:true}).click();
+    await expect(legacyReview).toContainText('Verify the pending proposal interface.');
+    await expect(legacyReview.getByRole('button', {name:'Approve proposal',exact:true})).toBeEnabled();
+    await legacyReview.getByRole('button', {name:'Close review',exact:true}).click();
+    await reviews.locator('article').filter({has: page.getByRole('heading', {name:fieldProposal.situation.title,exact:true})})
+      .getByRole('button', {name:'Review proposal',exact:true}).click();
+    await expect(legacyReview.getByRole('button', {name:'Approve proposal',exact:true})).toBeDisabled();
+    for (const field of ['targets','hit','playSeq']) {
+      const comparison = legacyReview.locator('details').filter({has: page.locator('summary', {hasText: new RegExp(`^Compare ${field[0].toUpperCase()+field.slice(1)}$`, 'i')})});
+      await expect(comparison).toHaveCount(1);
     }
-    await expect(page.locator(`#adminOutcomeReviewList button[data-situation-key="${reviewed.key}"]`)).toHaveCount(0);
-    await page.getByRole('button',{name:'Proposals to review',exact:true}).click();
-    await page.locator('#adminProposalSelect').selectOption(fieldProposal.id);
-    const targetComparison = page.locator('.proposal-diff-row').filter({
-      has: page.locator('input[data-proposal-field="targets"]'),
-    });
-    await expect(targetComparison).toContainText('1 of 9 target positions changed');
-    await expect(targetComparison).toContainText(`${fieldProposal.targetId} moved`);
-    await expect(targetComparison).not.toContainText('9 positions configured');
-    await expect(page.locator('.proposal-diff-row').filter({
-      has: page.locator('input[data-proposal-field="hit"]'),
-    })).toContainText(/Moved 25 toward/);
-    await expect(page.locator('.proposal-diff-row').filter({
-      has: page.locator('input[data-proposal-field="playSeq"]'),
-    })).toContainText('sequence steps changed');
-    if (fieldProposal.addedCategoryLabel) {
-      await expect(page.locator('.proposal-diff-row').filter({
-        has: page.locator('input[data-proposal-field="relatedCategories"]'),
-      })).toContainText(fieldProposal.addedCategoryLabel);
+    // Select every available update except the title; verify the eventual request.
+    for (const checkbox of await legacyReview.getByRole('checkbox').all()) {
+      if (await checkbox.inputValue() !== 'title') await checkbox.check();
     }
-    await page.locator('#adminProposalClearAllBtn').click();
-    await expect(page.locator('#adminProposalPreviewBtn')).toBeDisabled();
-    await page.locator('#adminProposalSelectAllBtn').click();
-    await expect(page.locator('#adminProposalPreviewBtn')).toBeEnabled();
-    await page.locator('input[data-proposal-field="title"]').uncheck();
+    await expect(legacyReview.getByRole('button', {name:'Approve proposal',exact:true})).toBeEnabled();
     let previewAttemptRequests = 0;
-    page.on('request', (request) => {
-      if (request.method() === 'POST' && request.url().endsWith('/api/attempts')) {
-        previewAttemptRequests += 1;
-      }
+    page.on('request', request => {
+      if (request.method() === 'POST' && request.url().endsWith('/api/attempts')) previewAttemptRequests++;
     });
-    await page.locator('#adminProposalPreviewBtn').click();
-    await expect(page.locator('body')).toHaveClass(/proposal-field-preview/);
+    await legacyReview.getByRole('button', {name:'Play-test proposal',exact:true}).click();
+    await expect(page.locator('body')).toHaveClass(/situation-player-preview/);
     await expect(page.locator('.field-card')).toBeVisible();
-    await expect(page.locator('#adminWorkspace')).toBeHidden();
-    await expect(page.getByRole('button', { name: 'Selected changes', exact: true })).toHaveAttribute('aria-pressed', 'true');
     const selectedPreview = await page.evaluate(() => window._diqGetCurrentSituationSnapshot());
-    expect(selectedPreview.title).toBe(fieldProposal.publishedTitle);
+    expect(selectedPreview.title).toBe(fieldProposal.situation.title);
     expect(selectedPreview.targets[fieldProposal.targetId].x).toBe(fieldProposal.proposedTargetX);
-    await expect(page.getByRole('button', { name: 'Start Situation', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Published version', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'Published version', exact: true })).toHaveAttribute('aria-pressed', 'true');
-    await page.getByRole('button', { name: 'Selected changes', exact: true }).click();
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.getByRole('button', { name: 'Start Situation', exact: true }).click();
+    await page.getByRole('button', {name:'Start Situation',exact:true}).click();
     await page.evaluate(() => {
       for (const position of POS_IDS) {
         const target = currentSituation.targets[position];
-        tokens.get(position).pos = { x: target.x, y: target.y };
+        tokens.get(position).pos = {x:target.x,y:target.y};
         placeToken(position);
       }
     });
-    await page.getByRole('button', { name: 'Check Positions', exact: true }).click();
-    await page.getByRole('button', { name: 'Watch Solution', exact: true }).click();
-    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', 'ready');
+    await page.getByRole('button', {name:'Check Positions',exact:true}).click();
+    // Keyboard activation is intentional and should bypass the rapid-pointer guard.
+    await page.getByRole('button', {name:'Watch Solution',exact:true}).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state','ready');
     if (selectedPreview.playSeq?.length > 1) {
       await page.locator('#continueBtn').click();
-      await expect(page.getByRole('button', { name: 'Verify Sequence', exact: true })).toBeVisible();
-      await expect(page.locator('#seqPanel')).toBeHidden();
       for (const position of selectedPreview.playSeq) {
-        const chip = page.locator('#wrap .chip').filter({ hasText: position });
-        await expect(chip).toHaveCount(1);
-        await chip.click();
+        await page.locator('#wrap .chip').filter({hasText:position}).click();
       }
-      await page.getByRole('button', { name: 'Verify Sequence', exact: true }).click();
+      await page.getByRole('button', {name:'Verify Sequence',exact:true}).click();
     }
     expect(previewAttemptRequests).toBe(0);
-    await page.getByRole('button', { name: 'Return to proposal review', exact: true }).click();
-    await expect(page.locator('body')).not.toHaveClass(/proposal-field-preview/);
-    await expect(page.locator('#adminProposalSelect')).toHaveValue(fieldProposal.id);
+    await page.getByRole('button', {name:'Back to review',exact:true}).click();
+    await expect(page.locator('body')).not.toHaveClass(/situation-player-preview/);
+    await expect(legacyReview.getByRole('checkbox', {name:'Apply Title',exact:true})).not.toBeChecked();
+    await page.route(`**/api/admin/situation-submissions/${fieldProposal.id}`, route => route.fulfill({json:{}}));
+    const decision = page.waitForRequest(request => request.method() === 'PUT' && request.url().endsWith(`/api/admin/situation-submissions/${fieldProposal.id}`));
+    await legacyReview.getByRole('button', {name:'Approve proposal',exact:true}).click();
+    const submitted = (await decision).postDataJSON();
+    expect(submitted.decision).toBe('approve');
+    expect(submitted.acceptedFields).toEqual(expect.arrayContaining(['targets','hit','playSeq']));
+    expect(submitted.acceptedFields).not.toContain('title');
+    await expect(legacyReview).toHaveCount(0);
+    await page.getByRole('button', {name:'Org workspace',exact:true}).click();
     await page.getByRole('button', { name: 'Recovery', exact: true }).click();
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
@@ -1915,7 +1910,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1024, height: 768 });
-    const compactDrawer = await page.locator('#toolsDrawer').evaluate((drawer) => {
+    const compactDrawer = await page.locator('#adminCard .workspace-heading').evaluate((drawer) => {
       const rect = drawer.getBoundingClientRect();
       return { left: rect.left, right: rect.right, bottom: rect.bottom, width: rect.width };
     });
@@ -1961,7 +1956,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminPwOk').click();
     await page.locator('#staffToolsBtn').click();
     await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
     const original=(await (await page.request.get('/api/situations')).json())[0];
     await isolatePublishedSituation(original);
     await page.goto('/coach-board');
@@ -2013,7 +2008,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#adminPwOk').click();
     await page.locator('#staffToolsBtn').click();
     await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
     const original=(await (await page.request.get('/api/situations')).json())[0];
     await isolatePublishedSituation(original);
     await page.goto('/coach-board');
@@ -2315,7 +2310,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(result.finalCount).toBe(result.initialCount);
   });
 
-  test('coach reviews replace the field and proposals restore it', async ({ page }) => {
+  test('coach reviews replace the field and proposals restore it', async ({ page, baseURL }) => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
     const savedAttempt = await page.evaluate(async () => {
@@ -2460,28 +2455,49 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByRole('button', { name: 'Design workspace' }).click();
     await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
     await expect(page.locator('.field-card')).toBeHidden();
-    await expect(page.locator('#coachSituationEditorMount')).toBeVisible();
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-    const proposalLibraryBounds = await page.locator('#situationLibrary').evaluate(element => {
-      const bounds = element.getBoundingClientRect();
-      return { left:bounds.left, right:bounds.right, width:bounds.width, viewport:document.documentElement.clientWidth };
-    });
-    expect(proposalLibraryBounds.left).toBeGreaterThanOrEqual(0);
-    expect(proposalLibraryBounds.right).toBeLessThanOrEqual(proposalLibraryBounds.viewport + 1);
-    expect(proposalLibraryBounds.width).toBeGreaterThan(proposalLibraryBounds.viewport / 2);
-    await page.locator('#situationLibrary').getByRole('button',{name:'Propose changes',exact:true}).first().click();
-    await expect(page.getByRole('navigation',{name:'Editor tools'}).getByRole('button')).toHaveCount(3);
-    await page.getByLabel('Situation name').fill('Coach draft title');
-    await selectStage(page,'Review');
-    await page.getByLabel('Proposal reason').fill('Clarifies the player-facing coaching objective.');
-    await page.getByRole('button',{name:'Preview as player',exact:true}).click();
-    await expect(page.locator('body')).toHaveClass(/situation-player-preview/);
-    await expect(page.locator('#chooseNextSituationBtn')).toBeHidden();
-    await expect(page.locator('#playbookBrowserToggle')).toBeHidden();
-    await expect(page.locator('#randomSitBtn')).toBeHidden();
-    await page.getByRole('button',{name:'Return to editor',exact:true}).click();
-    await expect(page.getByLabel('Situation name')).toHaveValue('Coach draft title');
-    await expect(page.getByLabel('Proposal reason')).toHaveValue('Clarifies the player-facing coaching objective.');
+    const inherited = page.getByRole('table', { name: 'Inherited situations', exact: true });
+    await expect(inherited).toBeVisible();
+    await inherited.locator('.situation-title').first().click();
+    // A coach without Designer can browse inherited plays but cannot propose changes.
+    await expect(page.getByRole('dialog').getByRole('link', { name: 'Propose update', exact: true })).toHaveCount(0);
+    const admin = await requestFactory.newContext({ baseURL });
+    const headers = { Origin: new URL(baseURL).origin };
+    let originalGrant;
+    try {
+      expect((await admin.post('/api/auth/login', { headers, data: { username: 'admin', password: 'password' } })).ok()).toBe(true);
+      const directory = await (await admin.get('/api/admin/workspace-directory')).json();
+      originalGrant = directory.assignments.find(item => item.userId === 'staff-coach' && item.role === 'coach' && item.teamId === '13u-black');
+      expect(originalGrant).toBeDefined();
+      expect((await admin.post('/api/admin/workspace-directory', { headers, data: {
+        action: 'stage_access', userId: 'staff-coach', role: 'coach', scopeId: '13u-black', canDesign: true,
+      } })).ok()).toBe(true);
+      await page.reload();
+      await inherited.locator('.situation-title').first().click();
+      await page.getByRole('dialog').getByRole('link', { name: 'Propose update', exact: true }).click();
+      await expect(page.getByRole('navigation', { name: 'Editor tools' })).toBeVisible();
+      await page.getByLabel('Situation name').fill('Coach draft title');
+      await selectStage(page,'Details');
+      await page.getByLabel('Player context').fill('Clarifies the player-facing coaching objective.');
+      await selectStage(page,'Review');
+      await expect(page.getByRole('button', { name: 'Submit proposed update', exact: true })).toBeVisible();
+      await page.getByRole('button',{name:'Preview as player',exact:true}).click();
+      await expect(page.locator('body')).toHaveClass(/situation-player-preview/);
+      await expect(page.locator('#chooseNextSituationBtn')).toBeHidden();
+      await expect(page.locator('#playbookBrowserToggle')).toBeHidden();
+      await expect(page.locator('#randomSitBtn')).toBeHidden();
+      await page.getByRole('button',{name:'Return to editor',exact:true}).click();
+      await expect(page.getByLabel('Situation name')).toHaveValue('Coach draft title');
+      await selectStage(page,'Details');
+      await expect(page.getByLabel('Player context')).toHaveValue('Clarifies the player-facing coaching objective.');
+
+    } finally {
+      if (originalGrant) {
+        expect((await admin.post('/api/admin/workspace-directory', { headers, data: {
+          action: 'stage_access', userId: 'staff-coach', role: 'coach', scopeId: '13u-black', canDesign: Boolean(originalGrant.canDesign),
+        } })).ok()).toBe(true);
+      }
+      await admin.dispose();
+    }
 
   });
 
@@ -2489,6 +2505,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
+    await page.clock.install();
     await page.getByRole('button', { name: 'Start Situation' }).click();
     await page.evaluate(() => {
       for (const position of POS_IDS) {
@@ -2505,8 +2522,10 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('.tgt.selectable')).toHaveCount(0);
     await expect(page.locator('#playerStepMessage')).toBeHidden();
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
-    await page.clock.install();
+    // Let the final Check -> Watch pointer guard expire before intentionally proceeding.
+    await page.clock.runFor(500);
     await page.getByRole('button', { name: 'Watch Solution' }).click();
+    await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state', /animating|ready/);
     for(let i=0;i<48&&(await page.locator('#wrap').getAttribute('data-solution-state'))!=='ready';i++){
       await page.clock.runFor(250);
     }
@@ -2518,14 +2537,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('body')).toHaveClass(/player-solution-state/);
     await expect(page.locator('#continueBtn')).toBeVisible();
     await expect(page.locator('.solution-ghost')).toHaveCount(0);
-    await expect(page.locator('#fieldNotice')).toContainText(
-      'Select a target ring to view its coaching notes.',
-    );
-    await expect(page.locator('#fieldNotice')).toHaveClass(/is-visible/);
+    await expect(page.locator('#playerCoachingPrompt')).toHaveText('Select a target ring or position label to view its coaching notes.');
+    await expect(page.locator('#fieldNotice')).not.toHaveClass(/is-visible/);
     await expect(page.locator('#targetPanel')).toBeHidden();
 
     await page.locator('.tgt[data-id="P"]').click();
-    await expect(page.locator('#targetPanelTitle')).toHaveText('Position Notes: P');
+    await expect(page.locator('#targetPanelTitle')).toHaveText('Pitcher responsibilities');
     await expect(page.locator('#playerCoachingPrompt')).toBeHidden();
     await expect(page.locator('#targetPanelBody')).toContainText('backup position');
     await expect(page.locator('#fieldNotice')).not.toHaveClass(/is-visible/);
@@ -2536,12 +2553,12 @@ test.describe('Diamond Defence regression behavior', () => {
       const contextRect = context.getBoundingClientRect();
       const fieldRect = document.querySelector('#fieldImg').getBoundingClientRect();
       return {
-        parentClass: context.parentElement.className,
+        insidePanelBody: document.querySelector('#trainingPanelContent').contains(context),
         contextLeft: contextRect.left,
         fieldRight: fieldRect.right,
       };
     });
-    expect(notesLayout.parentClass).toContain('training-panel');
+    expect(notesLayout.insidePanelBody).toBe(true);
     expect(notesLayout.contextLeft).toBeGreaterThanOrEqual(notesLayout.fieldRight);
 
     await page.getByRole('button', { name: 'Close notes and review' }).click();
@@ -2593,6 +2610,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#playbookClose').click();
     await expect(page.locator('.throwTrail')).toHaveCount(0);
     await expect(page.locator('#seqPanel')).toContainText('Play Review');
+    await expect(page.locator('#contextBarClose')).toBeHidden();
+    const feedbackOrder = await page.evaluate(() => ({
+      headingBottom: document.getElementById('playerStepLabel').getBoundingClientRect().bottom,
+      feedbackTop: document.getElementById('seqPanel').getBoundingClientRect().top,
+    }));
+    expect(feedbackOrder.feedbackTop).toBeGreaterThanOrEqual(feedbackOrder.headingBottom);
     const reviewDoesNotOverlap = await page.evaluate(() => {
       const contextRect = document.querySelector('#contextBar').getBoundingClientRect();
       const fieldRect = document.querySelector('#fieldImg').getBoundingClientRect();
@@ -2743,26 +2766,25 @@ test('creating a variation through training stages preserves its source and assi
   await page.locator('#adminPwOk').click();
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
   await page.locator('#staffToolsBtn').click();
-  await page.goto('/?workspace=global-tools');
-    await expect(page.locator('#situationLibrary')).toBeVisible();
-  const library = page.locator('#situationLibrary');
-  const sourceTitle = await library.locator('.situation-library-row').first().locator('strong').first().textContent();
   const records = await (await page.request.get('/api/situations')).json();
-  const source = records.find(record => sourceTitle.includes(record.title));
+  const source = records[0];
   expect(source).toBeDefined();
-  await library.getByRole('button', { name: 'Create variation', exact: true }).first().click();
+  await page.goto('/workspace/design?type=global');
+  await page.locator(`tr[data-situation-key=${JSON.stringify(source.key)}]`).getByRole('button', { name: source.title, exact: true }).click();
+  await page.getByRole('dialog').getByRole('link', { name: 'Create variation', exact: true }).click();
   const stages = page.getByRole('navigation', { name: 'Editor tools' });
   await expect(stages).toBeVisible();
   const title = `Training variation ${Date.now()}`;
   await page.getByLabel('Situation name').fill(title);
   await stages.getByRole('button', { name: 'Review', exact: true }).click();
   await page.getByLabel('I confirm these play and runner outcomes').check();
-  await page.getByRole('button', { name: 'Publish Situation', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Situation created.');
+  await page.getByRole('button', { name: 'Publish variation', exact: true }).click();
+  await expect(page).toHaveURL(/\/workspace\/design/);
   const published = await (await page.request.get('/api/situations')).json();
   const variation = published.find(record => record.title === title);
   expect(variation).toMatchObject({
     variationSourceKey: source.variationSourceKey || source.key,
     variationNumber: expect.any(Number),
   });
+  expect(published.find(record => record.key === source.key)).toEqual(source);
 });

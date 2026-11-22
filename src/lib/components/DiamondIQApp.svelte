@@ -4,6 +4,9 @@
   import type { Situation } from '$lib/domain/models';
   import DesignWorkspace from '../../routes/design/DesignWorkspace.svelte';
   import { asset } from '$app/paths';
+  import { canAccessWorkspace, workspaceLabels } from '$lib/ui/navigation';
+  import Feedback from '$lib/components/ui/Feedback.svelte';
+  import { installPlaybookAccessibility } from '$lib/ui/playbook-accessibility';
   import softFieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import legacyDocument from '../../../index.html?raw';
   import { loadLegacyRuntime } from '$lib/legacy/loadRuntime';
@@ -61,14 +64,7 @@
     return destination === 'org' || destination === 'training' || destination === 'design' ? destination : 'field';
   }
 
-  function allowed(workspace: StaffWorkspace, user: WorkspaceAccount | null) {
-    if (workspace === 'field') return true;
-    if (!user || user.mustChangePassword || user.role === 'player') return false;
-    if (workspace === 'org') return user.role === 'admin' || Boolean(user.directorScopes?.length);
-    if (workspace === 'training') return user.role === 'admin' ||
-      Boolean(user.directorScopes?.length || user.coachedTeamIds?.length || user.teamId);
-    return true;
-  }
+  const allowed = canAccessWorkspace;
 
   function workspaceUrl(workspace: StaffWorkspace, entry?: URL) {
     const url = new URL(workspace === 'field' ? '/' : '/workspace/' + workspace, window.location.origin);
@@ -140,6 +136,7 @@
   onMount(() => {
     let disposed = false;
     let ready = false;
+    let removePlaybookAccessibility: (() => void) | undefined;
     window._diqNavigateWorkspace = workspace => navigate(workspace);
     window._diqWorkspaceClosed = workspace => {
       if (active === workspace) {
@@ -178,6 +175,7 @@
       if (disposed) return;
       account = window.__DIQ_AUTH_USER__ ?? null;
       ready = true;
+      removePlaybookAccessibility = installPlaybookAccessibility();
       restoreLocation(true);
     }).catch(error => {
       if (disposed) return;
@@ -186,6 +184,7 @@
     });
     return () => {
       disposed = true;
+      removePlaybookAccessibility?.();
       window.removeEventListener('popstate',onPop);
       document.removeEventListener('click',onHeaderClick,true);
       delete window._diqNavigateWorkspace;
@@ -198,7 +197,7 @@
 </script>
 
 <svelte:head>
-  <title>{active === 'field' ? 'Diamond Defence' : `${{org:'Org',training:'Training',design:'Design'}[active]} workspace | Diamond Defence`}</title>
+  <title>{active === 'field' ? 'Diamond Defence' : `${workspaceLabels[active]} | Diamond Defence`}</title>
   <meta
     name="description"
     content="Diamond Defence is a baseball situation simulator and interactive playbook trainer for players and coaches."
@@ -206,7 +205,7 @@
 </svelte:head>
 
 {#if runtimeError}
-  <div class="runtime-error" role="alert">{runtimeError}</div>
+  <Feedback message={runtimeError} tone="error" class="runtime-error" />
 {/if}
 
 {@html markup}
@@ -224,13 +223,5 @@
 {/if}
 
 <style>
-  .runtime-error {
-    margin: 1rem;
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--error);
-    border-radius: 0.5rem;
-    background: var(--error-muted);
-    color: var(--error);
-    font-weight: 700;
-  }
+  :global(.runtime-error) { margin: var(--space-4); }
 </style>

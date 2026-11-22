@@ -1,0 +1,108 @@
+import { test, expect } from '@playwright/test';
+async function login(page,baseURL){
+ const response=await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{username:'bob.smith',password:'password'}});
+ expect(response.ok()).toBe(true);
+ await page.goto('/');
+ await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
+ await page.evaluate(()=>window.__DIQ_READY__);
+}
+test('top navigation and field fit desktop and tablet without changing field proportions',async({page,baseURL})=>{
+ await login(page,baseURL);
+ await expect(page.locator('#fieldTeamContext')).toHaveCount(0);
+ await expect(page.locator('#fieldToolbar #playerPracticeContext')).toHaveCount(1);
+ await expect(page.locator('#fieldPracticeLabel')).toBeVisible();
+ for(const viewport of [{width:1440,height:900},{width:1366,height:768},{width:1024,height:768}]){
+  await page.setViewportSize(viewport);
+  await expect(page.locator('#fieldToolbar #playbookBrowserToggle')).toBeVisible();
+  await expect(page.locator('#trainingNavigation #fieldNavigationButton')).toBeVisible();
+  await expect(page.locator('#playerSituationDifficulty')).not.toBeEmpty();
+  const g=await page.evaluate(()=>{const r=id=>{const b=document.getElementById(id).getBoundingClientRect();return {left:b.left,right:b.right,top:b.top,bottom:b.bottom,width:b.width,height:b.height}};return {field:r('fieldImg'),panel:r('trainingPanel'),header:r('appHeader'),toolbar:r('fieldToolbar'),floating:document.getElementById('fieldToolbar').classList.contains('is-floating'),width:document.documentElement.scrollWidth};});
+  expect(g.field.width/g.field.height).toBeCloseTo(3200/2133,3);
+  expect(g.field.width).toBeGreaterThan(viewport.width*.60);
+  expect(g.field.right).toBeLessThanOrEqual(g.panel.left);
+  expect(g.field.bottom).toBeLessThanOrEqual(viewport.height+1);
+  if(g.floating){
+   expect(g.toolbar.left).toBeGreaterThanOrEqual(g.field.left+g.field.width*.80);
+   expect(g.toolbar.bottom).toBeLessThanOrEqual(g.field.top+g.field.height*.08);
+   expect(g.toolbar.right).toBeLessThanOrEqual(g.panel.left-8);
+  }else{
+   expect(g.toolbar.left).toBeGreaterThanOrEqual(g.panel.left);
+   expect(g.toolbar.right).toBeLessThanOrEqual(g.panel.right);
+  }
+  expect(g.field.top).toBeGreaterThanOrEqual(g.header.bottom);
+  expect(g.width).toBeLessThanOrEqual(viewport.width);
+  await page.screenshot({path:`/private/tmp/newui2-main-${viewport.width}.png`});
+ }
+ await page.locator('#practiceToggle').click();await expect(page.locator('#practiceWorkspace')).toBeVisible();
+ await page.locator('#fieldNavigationButton').click();await expect(page.locator('#practiceWorkspace')).toBeHidden();await expect(page.locator('#fieldImg')).toBeVisible();
+});
+test('Playbook retains metadata and returns keyboard focus to the moved trigger',async({page,baseURL})=>{
+ await login(page,baseURL);const trigger=page.locator('#playbookBrowserToggle');await trigger.click();
+ const dialog=page.getByRole('dialog',{name:'Playbook',exact:true});await expect(dialog).toBeVisible();
+ await expect(dialog.locator('.playbook-card-metadata').first()).not.toBeEmpty();
+ await expect(dialog.locator('.training-base-map').first().locator('i')).toHaveCount(3);
+ await expect(page.locator('#appHeader')).toHaveJSProperty('inert',true);
+ await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(trigger).toBeFocused();
+ await expect(page.locator('#appHeader')).toHaveJSProperty('inert',false);
+});
+
+test('long situation titles and variation badges do not overlap gameplay instructions',async({page,baseURL})=>{
+ await login(page,baseURL);
+ for(const viewport of [{width:1440,height:900},{width:1024,height:768}]){
+  await page.setViewportSize(viewport);
+  await page.evaluate(()=>{
+   currentSituation.title='Line Drive to Right-Center — Bases Loaded';
+   currentSituation.variationTagged=true;currentSituation.variationNumber=2;
+   currentSituation.desc='Keep the full situation description readable while positioning all defenders.';
+   currentSituation.runnersOn={first:true,second:true,third:true};
+   currentSituation.revision=currentSituation.revision || 1;
+   // Browser-only published fixture: keep its authoritative group aligned with
+   // the long title, rather than accidentally testing a regrouped draft.
+   SITUATIONS_ORIG_BY_KEY[currentSituation.key]=JSON.parse(JSON.stringify(currentSituation));
+   window._diqRefreshPlayerPresentation();
+  });
+  await expect(page.locator('#playerSituationName')).toHaveText('Line Drive to Right-Center — Bases Loaded');
+  await expect(page.locator('#playerSituationVariation')).toHaveText('Variation B');
+  const geometry=await page.evaluate(()=>{
+   const bounds=id=>document.getElementById(id).getBoundingClientRect();
+   return {hudBottom:bounds('trainingHud').bottom,instructionTop:bounds('playerStepLabel').top,
+    panelOverflow:document.getElementById('trainingPanel').scrollWidth>document.getElementById('trainingPanel').clientWidth};
+  });
+  expect(geometry.instructionTop).toBeGreaterThanOrEqual(geometry.hudBottom);
+  expect(geometry.panelOverflow).toBe(false);
+ }
+});
+
+test('final position check does not move Reset into the previous check target',async({page,baseURL})=>{
+ await page.setViewportSize({width:1440,height:1000});
+ await login(page,baseURL);
+ await page.locator('#startBtn').click();
+ const check=page.locator('#checkBtn');
+ await expect(check).toBeEnabled();
+ await check.click();await check.click();
+ const checkBox=await check.boundingBox();
+ const panelHeight=await page.locator('#trainingPanel').evaluate(el=>el.getBoundingClientRect().height);
+ await check.click();
+ await expect(page.locator('#triesVal')).toHaveText('0/3');
+ const resetBox=await page.locator('#resetBtn').boundingBox();
+ expect(resetBox.y).toBeGreaterThan(checkBox.y+checkBox.height);
+ expect(await page.locator('#trainingPanel').evaluate(el=>el.getBoundingClientRect().height)).toBeCloseTo(panelHeight,0);
+ await page.mouse.click(checkBox.x+checkBox.width/2,checkBox.y+checkBox.height/2);
+ await expect(page.locator('#triesVal')).toHaveText('0/3');
+});
+
+test('gameplay footer remains visible while long situation notes scroll',async({page,baseURL})=>{
+ await page.setViewportSize({width:1024,height:768});
+ await login(page,baseURL);
+ await page.evaluate(()=>{
+  currentSituation.desc='Coaching context and detailed situation notes. '.repeat(100);
+  window._diqRefreshPlayerPresentation();
+ });
+ await page.locator('#situationNotes summary').click();
+ const footer=page.locator('#trainingPanelFooter');
+ const before=await footer.boundingBox();
+ expect(before.y+before.height).toBeLessThanOrEqual(768);
+ await page.locator('#trainingPanelContent').evaluate(el=>el.scrollTop=el.scrollHeight);
+ expect(await footer.boundingBox()).toEqual(before);
+ await expect(page.locator('#startBtn')).toBeInViewport();
+});

@@ -267,14 +267,14 @@
   <section id="adminWorkspace" class="card admin-workspace hidden" aria-label="Administrator workspace"></section>
   <section class="card field-card training-board">
     <div id="trainingHud" class="training-hud" aria-label="Situation conditions">
-      <span class="training-board-label"><span class="eyebrow">Read the situation</span><strong>Make the play.</strong></span><div id="playerSituationHeading" class="player-situation-heading"><strong id="playerSituationName"></strong><span id="playerSituationReference"></span><p id="playerSituationContext" class="player-situation-context" hidden></p></div>
+      <span class="training-board-label"><span class="eyebrow">Read the situation</span><strong>Make the play.</strong></span><p id="playerPracticeContext" class="player-practice-context" hidden></p><div id="playerSituationCategory" class="player-situation-category"></div><div id="playerSituationHeading" class="player-situation-heading"><strong id="playerSituationName"></strong><span id="playerSituationReference"></span><div class="player-situation-badges"><span id="playerSituationDifficulty" class="player-situation-difficulty"></span><span id="playerSituationVariation" class="player-situation-variation" hidden></span></div><p id="playerSituationContext" class="player-situation-context" hidden></p></div>
     </div>
     <aside id="trainingPanel" class="training-panel" aria-label="Training situation and actions">
       <section id="trainingSituation" class="training-situation" aria-labelledby="trainingSituationTitle">
         <h2 id="trainingSituationTitle">Current Situation</h2>
       </section>
       <p id="playerStepLabel" class="player-step-label"></p>
-      <p id="playerCoachingPrompt" class="player-coaching-prompt" hidden role="status">Select a target ring for coaching notes.<span>Choose a position label on the field to learn its responsibility.</span></p>
+      <p id="playerCoachingPrompt" class="player-coaching-prompt" hidden role="status">Select a target ring or position label to view its coaching notes.</p>
       <p id="playerStepMessage" class="player-step-message" role="status" aria-live="polite"></p>
       <section class="training-objective" aria-label="Your objective">
         <span class="eyebrow">Your objective</span>
@@ -925,15 +925,11 @@
     <aside class="auth-brand-panel" aria-label="Diamond Defence">
       <span class="dd-monogram auth-brand-mark" aria-hidden="true"><img data-diamond-defense-logo alt="" width="96" height="96" decoding="async"></span>
       <span class="auth-wordmark">Diamond Defence</span>
-      <span class="eyebrow">Baseball situation simulator</span>
-      <p class="auth-brand-heading">Know the situation.<br>Make the play.</p>
-      <p class="auth-brand-description">An interactive playbook trainer for players and coaches.</p>
     </aside>
     <div class="auth-form-panel">
     <div class="modalHeader">
       <div>
-        <span class="eyebrow">Welcome back</span>
-        <div id="playerModalTitle" class="modal-title">Login</div>
+        <div id="playerModalTitle" class="modal-title">Log in</div>
       </div>
       <button id="playerModalCloseX" class="btn btn-ghost" type="button">Close</button>
     </div>
@@ -942,11 +938,11 @@
       <label class="field"><span>Username</span>
         <input id="signInUsername" class="input" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required>
       </label>
-      <label class="field"><span>Password</span>
-        <input id="signInPassword" class="input" type="password" name="password" autocomplete="current-password" required>
-      </label>
+      <div class="field"><label for="signInPassword">Password</label>
+        <span class="auth-password-control"><input id="signInPassword" class="input" type="password" name="password" autocomplete="current-password" required><button id="signInPasswordToggle" type="button" aria-label="Show password" aria-controls="signInPassword" aria-pressed="false">Show</button></span>
+      </div>
       <button class="btn btn-brand auth-submit-btn" type="submit">Log in</button>
-      <div id="signInStatus" class="operation-status is-error" role="status"></div>
+      <div id="signInStatus" class="operation-status is-error" role="status" aria-live="polite" aria-atomic="true"></div>
     </form>
     <div id="legacySignInControls" class="hidden">
     <div class="auth-role-tabs" role="tablist" aria-label="Account type">

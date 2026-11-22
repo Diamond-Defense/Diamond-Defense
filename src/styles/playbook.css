@@ -1,0 +1,33 @@
+/* Playbook uses the same surfaces, spacing and action hierarchy as the field panel. */
+#playbookBrowserOverlay .playbook-browser {width:min(1200px,calc(100vw - 32px));background:var(--app-background);border-radius:var(--radius-panel);}
+#playbookBrowserOverlay .playbook-browser-header {flex:0 0 auto;padding:12px 24px;gap:16px;background:var(--surface);}
+#playbookBrowserOverlay .playbook-browser-header h2 {margin:0 0 4px;font-size:22px;line-height:1.35;}
+#playbookBrowserOverlay .playbook-browser-header p {font-size:14px;line-height:1.5;color:var(--text-secondary);}
+#playbookBrowserOverlay .playbook-browser-filters {flex:0 0 auto;padding:12px 24px 4px;gap:8px 12px;}
+#playbookBrowserOverlay .playbook-browser-filters .field {gap:4px;min-width:0;}
+#playbookBrowserOverlay .playbook-browser-filters .field>span {font-size:12px;line-height:1.5;letter-spacing:0;text-transform:none;font-weight:600;color:var(--text-secondary);}
+#playbookBrowserOverlay .playbook-more-filters {padding-top:8px;}
+#playbookBrowserOverlay .playbook-more-filters summary {padding:4px 0;font-size:13px;}
+#playbookBrowserOverlay .playbook-browser-summary {flex:0 0 auto;padding:4px 24px 8px;gap:12px;flex-wrap:wrap;color:var(--text-secondary);}
+#playbookBrowserOverlay .playbook-browser-summary strong {font-size:13px;font-weight:500;}
+#playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered) {min-height:40px;padding:8px 12px;font-size:13px;line-height:1.4;font-weight:500;box-shadow:none;transform:none;background:transparent;border-color:transparent;color:var(--text-secondary);}
+#playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered):hover:not(:disabled) {background:var(--surface-hover);color:var(--text-primary);}
+#playbookBrowserOverlay :is(button,input,select,summary):focus-visible {outline:var(--focus-width) solid var(--focus-ring);outline-offset:var(--focus-offset);}
+#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:repeat(auto-fill,minmax(min(100%,250px),1fr));grid-auto-rows:auto;gap:12px;padding:0 24px 16px;align-items:stretch;}
+#playbookBrowserOverlay .playbook-situation-card {display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;gap:8px;padding:12px;min-width:0;border-radius:var(--radius-control);border:1px solid var(--border);background:var(--surface);box-shadow:none;transform:none;color:var(--text-primary);}
+#playbookBrowserOverlay .playbook-situation-card:hover {background:var(--surface-hover);border-color:var(--border-emphasis);transform:none;box-shadow:none;}
+#playbookBrowserOverlay .playbook-situation-card.is-current {background:var(--selection-background);border-color:var(--selection-border);box-shadow:none;}
+#playbookBrowserOverlay .playbook-card-heading {display:flex;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;gap:8px;}
+#playbookBrowserOverlay .playbook-card-heading strong {flex:1 1 160px;font-size:16px;line-height:1.4;font-weight:650;white-space:normal;overflow-wrap:anywhere;color:var(--text-primary);}
+#playbookBrowserOverlay .playbook-card-current {flex:0 0 auto;font-size:12px;font-weight:500;line-height:1.5;color:var(--accent-text);padding:0;}
+#playbookBrowserOverlay .playbook-card-metadata {display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;line-height:1.5;font-weight:400;}
+#playbookBrowserOverlay :is(.playbook-card-difficulty,.playbook-card-variation) {padding:3px 8px;border-radius:4px;font-size:12px;line-height:1.5;font-weight:500;background:var(--surface-raised);color:var(--text-secondary);}
+#playbookBrowserOverlay .playbook-card-difficulty[data-difficulty="foundational"] {background:var(--success-muted);color:var(--success);}
+#playbookBrowserOverlay .playbook-card-category {flex:0 1 auto;color:var(--text-secondary);}
+#playbookBrowserOverlay .playbook-card-description {font-size:13px;line-height:1.5;font-weight:400;color:var(--text-secondary);overflow-wrap:anywhere;}
+#playbookBrowserOverlay .playbook-card-state {margin-top:auto;padding-top:8px;border-top:1px solid var(--border);}
+#playbookBrowserOverlay .playbook-state-label {font-size:11px;font-weight:600;letter-spacing:.06em;color:var(--text-secondary);}
+@media(min-width:1800px) {#playbookBrowserOverlay .playbook-browser {width:min(1440px,calc(100vw - 48px));}}
+@media(max-width:1150px) {#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:700px) {#playbookBrowserOverlay .playbook-browser-list {grid-template-columns:1fr;}#playbookBrowserOverlay :is(.playbook-browser-header,.playbook-browser-filters,.playbook-browser-summary,.playbook-browser-list) {padding-inline:16px;}}
+@media(pointer:coarse) {#playbookBrowserOverlay :is(#playbookBrowserClose,#playbookClearFilters,#playbookRandomFiltered) {min-height:var(--control-touch-height);}}

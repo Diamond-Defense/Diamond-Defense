@@ -1,0 +1,232 @@
+/* Main field shell: one navigation row, native gameplay controls and board coordinates. */
+:root[data-theme="classic-ballpark"] {
+  --app-background:#eef3f7; --surface-raised:#eaf0f5; --surface-interactive:#eaf0f5;
+  --header-background:#082740; --header-border:#24445b; --header-control-hover:#173c56;
+  --accent-primary:#127c49; --accent-primary-hover:#0c663b; --accent-primary-pressed:#09542f;
+  --accent-primary-muted:#e6f4ec; --accent-text:#21653f; --text-primary:#18344f;
+  --selection-background:#e6f4ec; --selection-text:#21653f; --selection-border:#127c49;
+}
+#fieldToolbar {display:flex;align-items:center;justify-content:space-between;gap:16px;min-width:0;}
+#fieldPracticeLabel {font-size:13px;color:var(--text-secondary);}
+#fieldPracticeLabel::before {content:'';display:inline-block;width:6px;height:6px;background:var(--success);border-radius:50%;margin-right:8px;}
+.player-situation-category {font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:650;color:var(--text-secondary);}
+.player-situation-difficulty {font-size:12px;padding:3px 8px;align-self:flex-start;background:var(--surface-raised);border-radius:4px;color:var(--text-secondary);}
+.player-situation-difficulty:empty {display:none;}
+.player-practice-context {font-size:13px;line-height:1.5;color:var(--text-secondary);margin:0;}
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #appHeader {margin:0;padding:0 24px;background:var(--header-background);}
+ body.player-experience #appHeader .header-shell {min-height:64px;grid-template-columns:minmax(0,1fr) auto;gap:16px;}
+ body.player-experience #trainingNavigation {display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:24px;min-width:0;}
+ body.player-experience #trainingNavigation .brand-area {gap:12px;flex-shrink:0;}
+ body.player-experience #trainingNavigation .brand-mark {width:44px;height:44px;}
+ body.player-experience #trainingNavigation .brand-copy {display:block;}
+ body.player-experience #trainingNavigation .brand-copy h1 {font-size:17px;line-height:1.2;}
+ body.player-experience #trainingNavigation .brand-copy h1 span {display:inline;}
+ body.player-experience #trainingNavigation .utility-actions {gap:16px;flex-wrap:wrap;min-width:0;}
+ body.player-experience #trainingNavigation .utility-actions>button {min-height:44px;padding:8px 2px;border:0;border-radius:0;background:transparent;color:var(--header-text);font-size:13px;box-shadow:none;transform:none;}
+ body.player-experience #trainingNavigation .utility-actions>button:is([aria-current="page"],.workspace-active,[aria-expanded="true"]) {background:var(--header-control-hover);box-shadow:inset 0 -3px var(--success);}
+ body.player-experience #trainingNavigation .utility-actions>button:focus-visible {outline:2px solid var(--header-text);outline-offset:2px;}
+ body.player-experience #appWorkspace {width:100%;margin:0;padding:24px;box-sizing:border-box;}
+ body.player-experience #appWorkspace>.training-board {
+  --training-panel-width:304px;display:grid;grid-template-columns:minmax(0,1fr) var(--training-panel-width);
+  grid-template-rows:minmax(0,1fr);column-gap:16px;row-gap:0;
+  width:100%;height:calc(100dvh - var(--app-header-height) - 24px);min-width:0;margin:0;padding:0;
+  border:0;border-radius:0;box-shadow:none;background:transparent!important;align-items:start;
+ }
+ body.player-experience #fieldToolbar {display:flex;flex-direction:column;align-items:stretch;gap:8px;width:100%;height:auto;margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+ body.player-experience #fieldToolbar .situation-controls {display:flex;flex-wrap:wrap;gap:8px;align-items:center;flex-direction:row;width:auto;}
+ body.player-experience #fieldToolbar button {min-height:40px;padding:8px 12px;border-radius:var(--radius-control);font-size:14px;box-shadow:none;transform:none;}
+ body.player-experience #fieldToolbar #playbookBrowserToggle {background:var(--surface);border:1px solid var(--border-emphasis);color:var(--text-primary);}
+ body.player-experience #fieldToolbar #randomSitBtn {background:transparent;border-color:transparent;color:var(--text-secondary);}
+ body.player-experience .training-board #wrap {grid-column:1;grid-row:1;width:min(100%,calc((100dvh - var(--app-header-height) - 24px) * 1.5002344));justify-self:center;align-self:center;margin:0;border:0;border-radius:0;box-shadow:none;background:transparent;}
+ body.player-experience .training-board #fieldImg {border-radius:0;}
+ :root[data-theme="classic-ballpark"] body.player-experience .training-board #fieldImg {mix-blend-mode:multiply;}
+ body.player-experience #trainingPanel {grid-column:2;grid-row:1;box-sizing:border-box;width:100%;min-width:0;max-height:100%;height:auto;padding:24px;gap:0;border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:auto;overscroll-behavior:contain;}
+ body.player-experience #trainingPanel .training-hud {min-width:0;width:100%;gap:8px;}
+ body.player-experience #playerSituationHeading {display:flex;flex-direction:column;align-items:stretch;flex-wrap:nowrap;gap:8px;min-width:0;}
+ body.player-experience #playerSituationName {font-size:22px;line-height:1.35;letter-spacing:-.3px;overflow-wrap:anywhere;}
+ body.player-experience #playerSituationReference:empty {display:none;}
+ body.player-experience #playerSituationDifficulty {font-size:12px;line-height:1.5;}
+ body.player-experience #playerSituationContext {font-size:14px;line-height:1.5;margin:0;color:var(--text-secondary);}
+ body.player-experience #trainingPanel .status-strip {margin-top:8px;padding:12px 0;border:0;background:var(--surface-raised);}
+ body.player-experience #trainingPanel .player-step-label {font-size:17px;line-height:1.4;margin:16px 0 8px;}
+ body.player-experience #trainingPanel .player-step-message {font-size:14px;line-height:1.6;margin:0 0 16px;}
+ body.player-experience #trainingMetrics {margin:16px 0;padding:16px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border);}
+ body.player-experience #trainingMetrics .badge {padding:0;border:0;border-radius:0;background:transparent;min-width:0;}
+ body.player-experience #trainingMetrics .status-label {font-size:12px;line-height:1.4;text-transform:none;letter-spacing:0;min-height:20px;}
+ body.player-experience #trainingMetrics b {font-size:22px;font-variant-numeric:tabular-nums;}
+ body.player-experience #trainingActions .game-controls>button {min-height:44px;font-size:14px;line-height:1.4;font-weight:600;white-space:normal;}
+ body.player-experience #trainingActions #resetBtn {background:transparent;color:var(--text-secondary);border-color:transparent;box-shadow:none;}
+ body.player-experience #trainingHelp {margin:16px 0 0;padding:12px 0 0;border-top:1px solid var(--border);font-size:12px;}
+ body.player-experience #trainingPanel .context-bar {margin:12px 0;}
+ body.player-experience #trainingPanel .practice-advance-panel {margin-top:16px;}
+}
+@media(min-width:1024px) and (max-width:1200px) {
+ body.player-experience #appHeader {padding:0 12px;}
+ body.player-experience #trainingNavigation {gap:12px;}
+ body.player-experience #trainingNavigation .utility-actions {gap:8px;}
+ body.player-experience #trainingNavigation .brand-copy h1 {font-size:14px;}
+ body.player-experience #appWorkspace {padding:16px;}
+ body.player-experience #appWorkspace>.training-board {--training-panel-width:280px;column-gap:12px;height:calc(100dvh - var(--app-header-height) - 16px);}
+ body.player-experience #trainingPanel {padding:18px;}
+ body.player-experience .training-board #wrap {width:min(100%,calc((100dvh - var(--app-header-height) - 16px) * 1.5002344));}
+}
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience main#appWorkspace {width:100%;margin:0;padding:24px;}
+ body.player-experience #fieldToolbar .situation-controls {flex:0 0 auto;margin-left:0;background:transparent;border:0;padding:0;}
+ body.player-experience #trainingNavigation .brand-copy {align-self:center;}
+ body.player-experience #trainingPanel .player-step-label {color:var(--text-primary);}
+}
+@media(min-width:1024px) and (max-width:1200px) {
+ body.player-experience main#appWorkspace {padding:16px;}
+}
+
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #fieldToolbar .situation-controls {min-width:0;}
+ body.player-experience #appHeader #trainingNavigation #playbookToggle[aria-expanded="true"] {background:var(--header-control-hover);color:var(--header-text);border-color:transparent;box-shadow:inset 0 -3px var(--success);}
+ body.player-experience #trainingNavigation .situation-controls {flex:0 0 auto;min-width:0;width:auto;gap:6px;}
+ body.player-experience #trainingNavigation .situation-controls>button {font-size:12px;padding:6px 8px;}
+}
+
+#workspaceSituationToolbar:empty {display:none;}
+#workspaceSituationToolbar:not(:empty) {display:flex;justify-content:flex-end;padding:12px 24px 0;}
+#workspaceSituationToolbar .situation-controls {display:flex;flex:0 0 auto;min-width:0;gap:8px;}
+#workspaceSituationToolbar .situation-controls>button {min-height:36px;font-size:13px;padding:8px 12px;}
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #trainingNavigation:has(#designWorkspaceBtn:not(.hidden)) {flex-wrap:wrap;gap:8px 16px;}
+}
+
+#fieldToolbar .player-practice-context {min-width:0;overflow-wrap:anywhere;}
+
+/* Reclaim field space without compressing the gameplay panel or changing the board ratio.
+   Height allowance = top/bottom padding; situation controls live inside the panel. */
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience main#appWorkspace:has(>.training-board:not(.hidden)) {padding:12px;}
+}
+@media(min-width:1024px) and (max-width:1200px) and (orientation:landscape) {
+ body.player-experience main#appWorkspace:has(>.training-board:not(.hidden)) {padding:8px;}
+}
+
+/* Narrow desktop gameplay panel trial — remove this block to restore
+   the prior 304px panel with 24px padding. Tablet layout is unchanged. */
+@media(min-width:1201px) and (orientation:landscape) {
+ body.player-experience #appWorkspace>.training-board {--training-panel-width:280px;}
+ body.player-experience #trainingPanel {padding-inline:18px;}
+}
+
+/* Gameplay panel hierarchy: navy text, quiet secondary actions, semantic accents. */
+body.player-experience #trainingPanel #fieldToolbar .situation-controls>button:hover:not(:disabled) {background:var(--surface-hover);color:var(--text-primary);transform:none;}
+body.player-experience #trainingPanel #playerSituationDifficulty[data-difficulty="foundational"] {background:var(--success-muted);color:var(--success);}
+body.player-experience #trainingPanel #fieldToolbar button:focus-visible,
+body.player-experience #trainingPanel #trainingActions button:focus-visible {outline:var(--focus-width) solid var(--focus-ring);outline-offset:var(--focus-offset);}
+@media(pointer:coarse) {
+ body.player-experience #trainingPanel #fieldToolbar button {min-height:var(--control-touch-height);}
+}
+
+/* Let long titles/feedback grow naturally; scroll the panel instead of shrinking
+   its HUD and colliding with the following gameplay instruction. */
+body.player-experience #trainingPanel > * {flex-shrink:0;}
+body.player-experience #trainingPanel #trainingHud {flex:0 0 auto;height:auto;min-height:min-content;}
+body.player-experience #trainingPanel #playerSituationHeading {flex:0 0 auto;height:auto;min-height:0;}
+body.player-experience #trainingPanel .player-situation-badges {display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0;}
+body.player-experience #trainingPanel .player-situation-badges>span {max-width:100%;padding:3px 8px;border-radius:4px;font-size:12px;line-height:1.5;white-space:normal;overflow-wrap:anywhere;}
+body.player-experience #trainingPanel #playerSituationVariation {background:var(--surface-raised);color:var(--text-secondary);}
+body.player-experience #trainingPanel #playerSituationVariation[hidden] {display:none;}
+body.player-experience #trainingPanel #trainingHud .status-strip {flex:0 0 auto;}
+
+
+
+/* One fixed footer; only situation details and coaching feedback scroll. */
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #trainingPanel {height:100%;padding:0;overflow:hidden;display:flex;flex-direction:column;}
+ body.player-experience #trainingPanel #trainingPanelContent {flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:16px 18px;}
+ body.player-experience #trainingPanel #trainingPanelFooter {flex:0 0 auto;padding:12px 18px 16px;background:var(--surface);border-top:1px solid var(--border);}
+ body.player-experience #trainingPanel #trainingMetrics {margin:0 0 12px;padding:0 0 12px;border-top:0;}
+ body.player-experience #trainingActions {margin:0;padding:0;}
+ body.player-experience #trainingActions .game-controls {display:flex;flex-direction:column;gap:8px;min-height:44px;}
+ body.player-experience #trainingActions .game-controls>button[data-action-role="inactive"] {display:none;}
+ body.player-experience #trainingPanel [data-action-role="primary"] {order:0;min-height:44px;width:100%;background:var(--accent-primary);border:1px solid var(--accent-primary);color:var(--text-on-accent);border-radius:var(--radius-control);font-size:14px;font-weight:600;line-height:1.4;padding:10px 12px;}
+ body.player-experience #trainingPanel [data-action-role="primary"]:hover:not(:disabled) {background:var(--accent-primary-hover);border-color:var(--accent-primary-hover);}
+ body.player-experience #trainingPanel [data-action-role="secondary"] {order:1;min-height:40px;background:transparent;border-color:transparent;color:var(--text-secondary);}
+ body.player-experience #trainingPanelFooter #resetBtn {display:block;min-height:40px;width:100%;margin-top:8px;background:transparent;color:var(--text-secondary);border-color:transparent;font-size:14px;box-shadow:none;}
+ body.player-experience #trainingPanelFooter #resetBtn:disabled {visibility:hidden;}
+ body.player-experience #trainingPanel #fieldToolbar {flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:8px;margin-bottom:12px;padding-bottom:8px;}
+ body.player-experience #trainingPanel.is-sequence #scoreBadge {display:none;}
+ body.player-experience #trainingPanel #playerStepMessage {min-height:0;margin-bottom:8px;}
+ body.player-experience #trainingPanel #playerStepMessage:empty {display:none;}
+ body.player-experience #situationNotes {font-size:13px;line-height:1.5;color:var(--text-secondary);}
+ body.player-experience #situationNotes summary {padding:4px 0;cursor:pointer;}
+ body.player-experience #situationNotes[hidden] {display:none;}
+ body.player-experience #trainingPanel .practice-advance-panel:not(.hidden) {margin:0;padding:0;border:0;background:transparent;}
+ body.player-experience #trainingPanel .practice-advance-panel>:not(button) {display:none;}
+}
+
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #trainingPanelFooter #watchSolutionBtn[data-action-role="primary"]:disabled {display:block;opacity:.65;}
+ body.player-experience #trainingPanelFooter #watchSolutionBtn[data-action-role="primary"] {background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);}
+}
+
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #trainingSecondaryActions {display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;margin-top:8px;}
+ body.player-experience #trainingSecondaryActions #resetBtn {width:auto;min-width:64px;margin:0;margin-left:auto;padding:8px 12px;}
+ body.player-experience #trainingSecondaryActions #watchSolutionBtn {min-height:40px;padding:8px 0;font-size:13px;}
+ body.player-experience #trainingPanelFooter:has(#practiceAdvancePanel:not(.hidden)) #trainingActions {display:none;}
+}
+
+/* Required sequence feedback stays beneath the stage heading until the stage changes. */
+body.player-experience #trainingPanel #contextBar:has(#seqPanel:not(.hidden)) #contextBarClose {display:none;}
+body.player-experience #trainingPanel #contextBar #seqPanel:not(.hidden) {padding-top:12px;}
+
+/* Quiet disclosure and a single semantic result surface, without nested cards. */
+body.player-experience #trainingPanel #situationNotes summary {
+ display:flex;align-items:center;justify-content:space-between;gap:12px;
+ min-height:36px;padding:6px 0;list-style:none;font-size:13px;
+ line-height:1.5;font-weight:500;color:var(--text-secondary);
+}
+body.player-experience #trainingPanel #situationNotes summary::-webkit-details-marker {display:none;}
+body.player-experience #trainingPanel #situationNotes summary::after {
+ content:'';flex:0 0 6px;width:6px;height:6px;border-right:1.5px solid currentColor;
+ border-bottom:1.5px solid currentColor;transform:rotate(45deg);margin-right:3px;
+}
+body.player-experience #trainingPanel #situationNotes[open] summary::after {transform:rotate(225deg);}
+body.player-experience #trainingPanel #situationNotes summary:hover {color:var(--text-primary);}
+body.player-experience #trainingPanel #situationNotes summary:focus-visible {outline:var(--focus-width) solid var(--focus-ring);outline-offset:var(--focus-offset);}
+body.player-experience #trainingPanel #situationNotes #playerSituationContext {margin:4px 0 0;font-size:14px;line-height:1.5;}
+body.player-experience #trainingPanel #contextBar #seqPanel:not(.hidden) {
+ padding:0;border:0!important;border-radius:0;background:transparent!important;box-shadow:none!important;
+}
+body.player-experience #trainingPanel #seqPanel>strong {display:none;}
+body.player-experience #trainingPanel #seqBody {margin-top:0!important;font-size:14px;line-height:1.5;}
+body.player-experience #trainingPanel #seqBody .training-feedback {display:flex;align-items:center;gap:8px;padding:10px 12px;border:0;border-radius:var(--radius-control);font-weight:600;}
+body.player-experience #trainingPanel #seqBody .sequence-result-icon {font-size:16px;line-height:1;flex:0 0 auto;}
+body.player-experience #trainingPanel #seqBody .hint {margin-top:8px!important;font-size:13px;line-height:1.5;font-weight:400;color:var(--text-secondary);}
+body.player-experience #trainingPanel #seqBody .hint b {font-weight:400;}
+@media(pointer:coarse) {body.player-experience #trainingPanel #situationNotes summary {min-height:44px;}}
+
+/* Coaching headings wrap in their own space, clear of the close control. */
+body.player-experience #trainingPanel #targetPanelTitle {
+ display:block;box-sizing:border-box;min-width:0;padding-right:44px;
+ white-space:normal;overflow-wrap:anywhere;line-height:1.4;
+}
+body.player-experience #trainingPanel #contextBar:has(#targetPanel:not(.hidden)) #contextBarClose {
+ top:6px;right:6px;width:32px;height:32px;min-height:32px;
+}
+@media(pointer:coarse) {
+ body.player-experience #trainingPanel #targetPanelTitle {padding-right:52px;}
+ body.player-experience #trainingPanel #contextBar:has(#targetPanel:not(.hidden)) #contextBarClose {width:44px;height:44px;min-height:44px;}
+}
+
+body.player-experience #trainingPanel #fieldToolbar .player-practice-context {flex:1 1 100%;}
+
+/* Reversible floating selector trial: absolute positioning consumes no field row. */
+@media(min-width:1024px) and (orientation:landscape) {
+ body.player-experience #appWorkspace>.training-board {position:relative;}
+ body.player-experience #appWorkspace>.training-board>#fieldToolbar.is-floating {
+  position:absolute;inset:0 calc(var(--training-panel-width) + 16px) auto auto;
+  z-index:4;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
+  box-sizing:border-box;width:220px;height:auto;gap:8px;margin:0;padding:8px;
+  border:0;border-radius:var(--radius-control);background:var(--app-background);
+ }
+ body.player-experience #fieldToolbar.is-floating .situation-controls {min-width:0;flex:0 0 auto;margin:0;}
+ body.player-experience #fieldToolbar.is-floating #playerPracticeContext {min-width:0;margin:0;}
+}

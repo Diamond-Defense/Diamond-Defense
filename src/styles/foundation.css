@@ -1,0 +1,97 @@
+/* Opt-in component styles. No reset and no simulator/field selectors.
+   Legacy adapters below are deliberately limited to staff workspace chrome. */
+.dd-button {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  box-sizing: border-box; min-height: var(--control-height); max-width: 100%;
+  padding: var(--space-2) var(--space-3); border: 1px solid var(--border-emphasis);
+  border-radius: var(--radius-control); background: var(--surface); color: var(--text-primary);
+  font: inherit; font-size: var(--type-body); font-weight: var(--weight-control);
+  line-height: var(--line-heading); text-decoration: none; cursor: pointer; box-shadow: none;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+.dd-button:hover:not(:disabled) { background: var(--surface-hover); transform: none; box-shadow: none; }
+.dd-button[data-variant="primary"] { color: var(--text-on-accent); background: var(--accent-primary); border-color: var(--accent-primary); }
+.dd-button[data-variant="primary"]:hover:not(:disabled) { background: var(--accent-primary-hover); border-color: var(--accent-primary-hover); }
+.dd-button[data-variant="ghost"] { background: transparent; border-color: transparent; }
+.dd-button[data-variant="danger"] { color: var(--error); border-color: var(--error); background: var(--surface); }
+.dd-button[data-variant="danger"]:hover:not(:disabled) { background: var(--error-muted); }
+.dd-button:disabled { opacity: .55; cursor: not-allowed; }
+.dd-button:focus-visible, .dd-control:focus-visible, .dd-section-navigation button:focus-visible {
+  outline: var(--focus-width) solid var(--focus-ring); outline-offset: var(--focus-offset);
+}
+.dd-page-header {
+  box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: var(--space-4); min-width: 0; padding: var(--panel-padding);
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-panel);
+}
+.dd-page-header-copy { min-width: 0; flex: 1 1 16rem; }
+.dd-page-header h1 { margin: 0; color: var(--text-primary); font-size: var(--type-workspace-heading); font-weight: var(--weight-heading); line-height: var(--line-heading); }
+.dd-page-header p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--type-body); line-height: var(--line-body); overflow-wrap: anywhere; }
+.dd-page-header-actions { display: flex; align-items: end; flex-wrap: wrap; gap: var(--space-3); min-width: 0; }
+.dd-page-header-actions > .dd-field { width: clamp(14rem, 26vw, 24rem); max-width: 100%; }
+.dd-panel { box-sizing: border-box; min-width: 0; background: var(--surface); color: var(--text-primary); border: 1px solid var(--border); border-radius: var(--radius-panel); }
+.dd-panel[data-padded="true"] { padding: var(--panel-padding); }
+.dd-field { display: grid; align-content: start; gap: var(--space-1); min-width: 0; }
+.dd-field > label { font-size: var(--type-label); color: var(--text-secondary); font-weight: var(--weight-control); }
+.dd-field-hint, .dd-field-error { margin: 0; font-size: var(--type-help); line-height: var(--line-body); }
+.dd-field-hint { color: var(--text-secondary); }
+.dd-field-error { color: var(--error); }
+.dd-control {
+  box-sizing: border-box; min-height: var(--control-height); min-width: 0; max-width: 100%;
+  padding: var(--space-2) var(--space-3); background: var(--surface); color: var(--text-primary);
+  border: 1px solid var(--border-emphasis); border-radius: var(--radius-control); font: inherit;
+  font-size: var(--type-body); font-weight: 400; line-height: var(--line-body);
+}
+.dd-control[aria-invalid="true"] { border-color: var(--error); }
+.dd-control:disabled { opacity: .65; cursor: not-allowed; }
+.dd-feedback { box-sizing: border-box; margin: var(--space-3) 0; padding: var(--space-3) var(--space-4); color: var(--text-primary); background: var(--info-muted); border-inline-start: 3px solid var(--info); border-radius: var(--radius-control); font-size: var(--type-body); line-height: var(--line-body); overflow-wrap: anywhere; }
+.dd-feedback[data-tone="success"] { background: var(--success-muted); border-color: var(--success); }
+.dd-feedback[data-tone="warning"] { background: var(--warning-muted); border-color: var(--warning); }
+.dd-feedback[data-tone="error"] { background: var(--error-muted); border-color: var(--error); }
+.dd-feedback[data-empty="true"] { margin: 0; padding: 0; border: 0; }
+
+/* Horizontal section navigation, shared by Svelte and existing DOM screens. */
+:is(#design-sections, #org-sections, #training-sections, .workspace-nav-subsections).workspace-nav,
+.dd-section-navigation {
+  display: flex; align-items: stretch; flex-wrap: wrap; gap: var(--space-2);
+  padding: var(--space-1) var(--space-3); min-width: 0;
+}
+.workspace-sections #design-sections.workspace-nav button,
+#appWorkspace :is(#org-sections, #training-sections).workspace-nav button,
+.workspace-content > .workspace-nav-subsections button,
+.dd-section-navigation button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  box-sizing: border-box; min-height: var(--control-height); width: auto; max-width: 100%;
+  padding: var(--space-2) var(--space-3); border: 1px solid transparent; border-radius: var(--radius-control);
+  background: transparent; color: var(--text-secondary); font: inherit; font-weight: var(--weight-control);
+  white-space: normal; text-align: start; transform: none; box-shadow: none;
+}
+.workspace-sections #design-sections button[aria-pressed="true"],
+#appWorkspace :is(#org-sections, #training-sections) button.is-active,
+.workspace-content > .workspace-nav-subsections button[aria-pressed="true"],
+.dd-section-navigation button[aria-pressed="true"] {
+  color: var(--accent-text); background: var(--accent-primary-muted); border-color: transparent;
+}
+.workspace-sections #design-sections button[aria-pressed="true"]::after,
+#appWorkspace :is(#org-sections, #training-sections) button.is-active::after,
+.dd-section-navigation button[aria-pressed="true"]::after {
+  content: ''; position: absolute; inset: auto var(--space-3) 0; height: 2px;
+  border-radius: 2px; background: var(--accent-primary);
+}
+/* Secondary tools use one quieter selected treatment rather than a second underline. */
+.dd-section-navigation[data-secondary="true"] button::after { content: none; }
+
+/* Compatibility layer: same controls/header rules while legacy handlers retain ownership. */
+#appWorkspace :is(#adminCard[data-workspace="org"], #coachCard) .workspace-heading {
+  gap: var(--space-4); padding: var(--panel-padding); border-radius: var(--radius-panel);
+}
+#appWorkspace :is(#adminCard[data-workspace="org"], #coachCard) .workspace-heading-title { font-size: var(--type-workspace-heading); }
+#appWorkspace :is(#adminWorkspace, #coachResultsWorkspace, #practiceWorkspace) .workspace-toolbar :is(input:not([type="checkbox"]), select) {
+  box-sizing: border-box; min-height: var(--control-height); padding: var(--space-2) var(--space-3);
+  font: inherit; color: var(--text-primary); background: var(--surface); border: 1px solid var(--border-emphasis); border-radius: var(--radius-control);
+}
+@media (pointer: coarse) {
+  .dd-button, .dd-control, .dd-section-navigation button { min-height: var(--control-touch-height); }
+  .dd-control { font-size: max(1rem, var(--type-body)); }
+}
+@media (prefers-reduced-motion: reduce) { .dd-button { transition: none; } }

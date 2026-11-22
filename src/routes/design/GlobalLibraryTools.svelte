@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import Feedback from '$lib/components/ui/Feedback.svelte';
   let { request, refresh, mode, destination } = $props();
   let file = $state(null);
   let review = $state(null);
@@ -11,15 +12,16 @@
   let query = $state('');
   let busy = $state(false);
   let status = $state('');
+  let statusTone = $state('info');
   const matching = $derived(records.filter(item => `${item.title} ${item.displayCode || ''}`.toLowerCase().includes(query.trim().toLowerCase())));
   const blockers = $derived(previews.some(item => item.counts.blockingAssignments || item.counts.libraryReferences));
   const assignments = $derived([...new Map(previews.flatMap(item => item.blockingAssignments || []).map(item => [item.id,item])).values()]);
 
   async function run(operation) {
     if (busy) return;
-    busy = true; status = '';
-    try { await operation(); }
-    catch (failure) { status = failure.message; }
+    busy = true; status = ''; statusTone = 'info';
+    try { await operation(); statusTone = 'success'; }
+    catch (failure) { status = failure.message; statusTone = 'error'; }
     finally { busy = false; }
   }
   function load() {
@@ -131,7 +133,7 @@
 
 <section class="card global-tools" aria-label={destination.type === 'global' ? 'Manage Global Library' : 'Import situations'}>
   <h2>{mode === 'transfer' ? 'Export situations' : mode === 'import' ? 'Import situations' : mode === 'reorder' ? 'Library order' : 'Delete situations'}</h2>
-  {#if status}<p role="status">{status}</p>{/if}
+  <Feedback message={status} tone={statusTone} />
   {#if mode === 'import'}
     <p>Destination {destination.name}</p>
     <label class="field">Situation JSON file <input type="file" accept=".json,application/json" disabled={busy}
