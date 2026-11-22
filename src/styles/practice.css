@@ -5,8 +5,8 @@ body.player-experience #appWorkspace:has(>#practiceWorkspace:not(.hidden)>#playe
  background:transparent;border:0;box-shadow:none;align-self:start;
 }
 #practiceWorkspace:has(#playerPracticeView:not(.hidden))>.practice-workspace-header {display:none;}
-#playerPracticeView .dd-workspace-content {max-width:1040px;}
-#playerPracticeView {min-height:calc(100dvh - var(--app-header-height,64px));}
+#playerPracticeView .dd-workspace-content {max-width:none;width:100%;min-width:0;}
+#playerPracticeView {min-height:calc(100dvh - var(--app-header-height,64px));background:var(--app-background);}
 #playerPracticeStatus:empty {display:none;}
 #playerPracticeList {display:grid;gap:16px;}
 #playerPracticeList .dd-task-card {gap:12px;padding:16px 20px;}
@@ -48,3 +48,25 @@ body.player-experience #appWorkspace:has(>#practiceWorkspace:not(.hidden)>#playe
 #playerPracticeList .dd-deadline {font-weight:600;color:var(--text-primary);}
 #playerPracticeList .dd-deadline[data-urgency="soon"] {color:var(--warning);}
 #playerPracticeList .dd-deadline[data-urgency="overdue"] {color:var(--error);}
+
+/* Player practice shares the workspace scroll shell, without constraining cards. */
+body.player-experience:has(#playerPracticeView:not(.hidden)) #appHeader {position:sticky!important;top:0;z-index:100;}
+body.player-experience #appWorkspace>#practiceWorkspace:has(#playerPracticeView:not(.hidden)) {height:auto;max-height:none;overflow:visible;}
+#playerPracticeView {align-items:start;background:linear-gradient(to right,var(--surface) 230px,var(--app-background) 230px);}
+#playerPracticeView>.dd-workspace-sidebar {align-self:start;top:var(--app-header-height,64px);min-height:calc(100dvh - var(--app-header-height,64px));}
+#playerPracticeList {align-items:start;align-content:start;grid-auto-rows:max-content;}
+#playerPracticeList .dd-task-card {align-content:start;align-items:start;grid-auto-rows:max-content;min-height:0;height:auto;gap:10px;padding:16px;}
+#playerPracticeList .dd-task-notes {align-content:start;grid-auto-rows:max-content;}
+#playerPracticeList .practice-situation-list {margin:0;padding:0;align-content:start;grid-auto-rows:max-content;}
+#playerPracticeList [data-practice-start] {margin:0;min-height:40px;padding:8px 16px;}
+@media(max-width:1100px) {#playerPracticeView {background:var(--app-background);}#playerPracticeView>.dd-workspace-sidebar {min-height:0;}}
+
+/* Desktop action rail: deadline above the primary action, details alongside. */
+@media(min-width:701px) {
+ #playerPracticeList .practice-assignment-card {grid-template-columns:minmax(0,1fr) auto;column-gap:24px;position:relative;}
+ #playerPracticeList .practice-assignment-card>.practice-card-heading {display:contents;}
+ #playerPracticeList .practice-card-heading>div {grid-column:1;grid-row:1;}
+ #playerPracticeList .practice-card-heading>.practice-due {grid-column:2;grid-row:1;justify-self:end;align-self:start;}
+ #playerPracticeList .practice-assignment-card>:is(.dd-task-notes,.practice-progress-copy,.practice-situation-list,.dd-task-details) {grid-column:1;min-width:0;}
+ #playerPracticeList .practice-assignment-card>[data-practice-start] {grid-column:2;grid-row:2;align-self:start;justify-self:end;}
+}

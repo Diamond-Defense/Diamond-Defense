@@ -22,6 +22,8 @@ declare global {
     __DIQ_AUTH_USER__?: WorkspaceAccount | null;
     _diqNavigateWorkspace?: (workspace: StaffWorkspace) => void;
     _diqPracticeLocationChanged?: (view: 'pending' | 'completed' | null) => void;
+    _diqTrainingLocationChanged?: (query: string) => void;
+    _diqRestoreTrainingLocation?: () => void;
     _diqOpenPracticeWorkspace?: (role?: 'player' | 'coach', view?: 'pending' | 'completed') => void;
     _diqWorkspaceClosed?: (workspace: StaffWorkspace) => void;
     _diqStaffSessionChanged?: (account?: WorkspaceAccount | null) => void;

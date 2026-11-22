@@ -26,6 +26,7 @@
   let pendingEntry: URL | null = null;
   let switching = 0;
   let restoringPracticeLocation = false;
+  let restoringTrainingLocation = false;
 
   let testing = $state<Situation | null>(null);
   let restoreField: (() => void) | undefined;
@@ -69,6 +70,7 @@
 
   function workspaceUrl(workspace: StaffWorkspace, entry?: URL) {
     const url = new URL(workspace === 'field' ? '/' : '/workspace/' + workspace, window.location.origin);
+    if (workspace === 'training' && entry) url.search = entry.search;
     if (workspace === 'design') {
       url.search = (entry || designUrl)?.search || '';
       if (url.searchParams.get('workspace') === 'global-tools') {
@@ -90,7 +92,14 @@
   function navigate(workspace: StaffWorkspace, historyMode: 'push' | 'replace' | 'pop' = 'push', entry?: URL) {
     if (!allowed(workspace, account)) return;
     const url = workspaceUrl(workspace, entry);
-    if (workspace === active && (!entry || workspace !== 'design' || designUrl?.href === url.href)) return;
+    if (workspace === active && (!entry || workspace !== 'design' || designUrl?.href === url.href)) {
+      if (workspace === 'training' && entry) {
+        restoringTrainingLocation = true;
+        try { window._diqRestoreTrainingLocation?.(); }
+        finally { restoringTrainingLocation = false; }
+      }
+      return;
+    }
     if (testing) closePlayTest();
     const ticket = ++switching;
     pendingEntry = null;
@@ -152,6 +161,12 @@
     let ready = false;
     let removePlaybookAccessibility: (() => void) | undefined;
     window._diqNavigateWorkspace = workspace => navigate(workspace);
+    window._diqTrainingLocationChanged = query => {
+      if (!ready || restoringTrainingLocation || active !== 'training') return;
+      const url = new URL('/workspace/training',window.location.origin);
+      url.search = query;
+      if (url.href !== window.location.href) pushState(url,{});
+    };
     window._diqPracticeLocationChanged = view => {
       if (!ready || restoringPracticeLocation || account?.role !== 'player') return;
       const url = new URL('/',window.location.origin);
@@ -209,6 +224,7 @@
       window.removeEventListener('popstate',onPop);
       document.removeEventListener('click',onHeaderClick,true);
       delete window._diqNavigateWorkspace;
+      delete window._diqTrainingLocationChanged;
       delete window._diqPracticeLocationChanged;
       delete window._diqWorkspaceClosed;
       delete window._diqStaffSessionChanged;

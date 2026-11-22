@@ -205,7 +205,7 @@ test('practice sidebar filters and pagination remain local to the practice page'
   const assignments=Array.from({length:number},(_,index)=>({
    id:`practice-${completed?'done':pageNumber}-${index}`,title:completed?'Finished drill':`Assigned drill ${pageNumber}-${index}`,
    status:'active',instructions:'Focus on your cutoff position.',
-   recipients:[{playerId:'13u-black-bob-smith-11',status:completed?'completed':'assigned'}],
+   recipients:[{playerId:'13u-black-bob-smith-11',status:completed?'completed':'assigned',completedAt:completed?'2026-11-22T12:00:00Z':null}],
    situations:[{situationKey:'BD-01',title:'Line Drive to LF',progressStatus:completed?'completed':'not_started'}],
   }));
   return route.fulfill({json:{assignments,total,page:pageNumber,totalPages:completed?1:2,hasPrevious:pageNumber>1,hasNext:!completed&&pageNumber===1,counts:{pending:7,completed:1}}});
@@ -271,7 +271,7 @@ test('practice deadline badges and header counts share urgency rules',async({bro
    const completed=new URL(route.request().url()).searchParams.get('view')==='completed';
    const rows=completed?[cases[4]]:cases;
    return route.fulfill({json:{assignments:rows.map(([title,dueAt])=>({id:title,title,dueAt,status:'active',overdue:title==='Late',
-    recipients:[{playerId:'13u-black-bob-smith-11',status:completed?'completed':'assigned'}],
+    recipients:[{playerId:'13u-black-bob-smith-11',status:completed?'completed':'assigned',completedAt:completed?'2026-11-22T12:00:00Z':null}],
     situations:[{situationKey:'BD-01',title:'Line Drive to LF',progressStatus:completed?'completed':'not_started'}],
    })),counts:{pending:5,completed:1},page:1,total:rows.length,totalPages:1,hasNext:false,hasPrevious:false}});
   });
@@ -298,7 +298,8 @@ test('practice deadline badges and header counts share urgency rules',async({bro
   await page.getByRole('navigation',{name:'Practice sections'}).getByRole('button',{name:/Completed/}).click();
   await expect(page.locator('#playerPracticePageTitle')).toHaveText('Completed practice');
   await expect(page.locator('#playerPracticeList time')).toHaveCount(1);
-  await expect(page.locator('#playerPracticeList time')).toHaveAttribute('data-urgency','neutral');
-  await expect(page.locator('#playerPracticeList time')).toHaveText('Due Nov 21');
+  await expect(page.locator('#playerPracticeList time')).toHaveAttribute('datetime','2026-11-22T12:00:00Z');
+  await expect(page.locator('#playerPracticeList time')).toHaveText('Completed Nov 22, 2026');
+  await expect(page.locator('#playerPracticeList [data-urgency=overdue]')).toHaveCount(0);
  }finally{await context.close();}
 });

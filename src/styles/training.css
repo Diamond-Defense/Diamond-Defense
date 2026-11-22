@@ -1,0 +1,235 @@
+/* Training is an opt-in adapter of the shared workspace shell. Other workspaces
+   and the player practice page retain their own layout and permission owners. */
+#trainingSidebar,#trainingDashboard,#trainingPlayers {display:none;}
+body.training-redesign-open #appWorkspace {
+ display:grid!important;grid-template-columns:230px minmax(0,1fr)!important;grid-template-rows:auto!important;
+ gap:0;align-items:start;width:100%;margin:0;padding:0!important;
+}
+body.training-redesign-open #trainingSidebar {display:block;grid-column:1;grid-row:1;align-self:start;}
+body.training-redesign-open #coachCard,body.training-redesign-open #coachCard>.coachGrid {display:contents!important;}
+body.training-redesign-open #coachCard>.coachGrid>.workspace-heading,
+body.training-redesign-open #coachCard .workspace-sections,
+body.training-redesign-open #coachCard [data-coach-view="reviews"],
+body.training-redesign-open #coachCard [data-coach-view="assignments"] {display:none!important;}
+body.training-redesign-open #toolsDrawer {display:contents!important;}
+body.training-redesign-open :is(#trainingDashboard,#trainingPlayers):not(.hidden) {display:block;}
+body.training-redesign-open :is(.training-page,#coachResultsWorkspace,#practiceWorkspace,#coachCard [data-coach-view="overview"]) {
+ grid-column:2!important;grid-row:1!important;box-sizing:border-box;min-width:0;width:100%;max-width:1500px;
+ margin:0;padding:24px 32px;border:0;border-radius:0;background:transparent!important;box-shadow:none;
+}
+body.training-redesign-open #coachResultsWorkspace {height:auto;max-height:none;overflow:visible;}
+body.training-redesign-open #practiceWorkspace:has(#coachPracticeView:not(.hidden)) {height:auto;max-height:none;overflow:visible;}
+body.training-redesign-open #workspaceSituationToolbar {display:none;}
+body.training-redesign-open #trainingSidebar #trainingTeamField {display:grid;gap:6px;min-width:0;margin:0 8px 24px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-secondary);}
+body.training-redesign-open #trainingSidebar #trainingTeamSelect {box-sizing:border-box;width:100%;max-width:100%;min-height:40px;padding:8px 10px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font:inherit;font-size:14px;text-transform:none;letter-spacing:0;}
+.training-page-heading {display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:16px;margin:0 0 20px;}
+.training-page-heading h2,body.training-redesign-open :is(.coach-results-header,.practice-workspace-header) h2 {margin:0 0 6px;font-size:28px;line-height:1.3;letter-spacing:-.3px;color:var(--text-primary);}
+.training-page-heading p,body.training-redesign-open :is(.coach-results-header,.practice-workspace-header) p {margin:0;font-size:14px;line-height:1.5;color:var(--text-secondary);}
+.training-date-toolbar {display:flex;align-items:end;flex-wrap:wrap;gap:12px;margin-bottom:20px;font-size:12px;color:var(--text-secondary);}
+.training-date-toolbar label {display:grid;gap:4px;}
+.training-summary {display:flex;flex-wrap:wrap;gap:16px 28px;padding:0 0 24px;color:var(--text-secondary);font-size:14px;}
+.training-summary>span {padding-right:24px;border-right:1px solid var(--border);}
+.training-summary>span:last-child {border:0;}
+.training-summary strong {font-weight:650;color:var(--text-primary);}
+.training-overview-grid {display:grid;grid-template-columns:minmax(0,1.618fr) minmax(280px,1fr);gap:20px;margin-bottom:20px;}
+.training-page .dd-task-card {padding:18px 20px;gap:12px;}
+.training-page h3 {margin:0;font-size:20px;line-height:1.4;color:var(--text-primary);}
+.training-page p {margin:0;font-size:13px;line-height:1.5;color:var(--text-secondary);}
+.training-page small {font-size:12px;line-height:1.5;color:var(--text-secondary);}
+.training-attention {margin:0;padding:0;list-style:none;}
+.training-attention li {display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:14px 0;border-top:1px solid var(--border);font-size:13px;line-height:1.5;}
+
+.training-attention strong {font-size:14px;overflow-wrap:anywhere;}
+.training-active-practice {display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 0;border-top:1px solid var(--border);font-size:13px;}
+.training-active-practice>strong {flex:1 1 180px;font-size:15px;}
+.training-active-practice>span {flex:1 1 100%;color:var(--text-secondary);}
+.training-table-wrap {overflow:auto;max-width:100%;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+.training-recent .training-table-wrap {border:0;border-radius:0;}
+.training-table {width:100%;border-collapse:collapse;font-size:13px;text-align:left;}
+.training-table :is(th,td) {padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:middle;line-height:1.5;}
+.training-table thead th {font-size:12px;font-weight:600;color:var(--text-secondary);background:var(--surface-raised);white-space:nowrap;}
+.training-table tbody th {font-weight:600;}
+.training-table small {display:block;margin-top:4px;color:var(--text-secondary);font-size:12px;}
+.training-table .dd-button {white-space:nowrap;}
+.training-player-search {display:grid;gap:6px;max-width:360px;margin-bottom:20px;}
+.training-overdue {color:var(--error)!important;}
+body.training-redesign-open #coachResultsWorkspace>.coach-results-header {padding:0 0 16px;margin:0;border:0;}
+body.training-redesign-open .coach-review-views {display:flex;gap:4px;border-bottom:1px solid var(--border);}
+body.training-redesign-open .coach-review-views button {background:transparent!important;color:var(--text-secondary)!important;border:0;border-radius:0;border-bottom:3px solid transparent;box-shadow:none;padding:10px 16px;}
+body.training-redesign-open .coach-review-views button[aria-pressed=true] {color:var(--text-primary)!important;border-bottom-color:var(--selection-border);}
+body.training-redesign-open .dd-status[data-tone=error] {color:var(--error);background:var(--surface);border:1px solid currentColor;}
+body.training-redesign-open #coachResultsWorkspace .coach-results-filter {padding:16px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+body.training-redesign-open :is(#coachResultsList .coach-review-table-wrap,.coach-review-table) {background:var(--surface);border-color:var(--border);}
+body.training-redesign-open .coach-review-table :is(th,td) {padding:12px 14px;font-size:13px;}
+body.training-redesign-open #coachPracticeView .practice-manage-list {padding:0;background:transparent;border:0;box-shadow:none;}
+body.training-redesign-open #practiceWorkspace>.practice-workspace-header {margin:0 0 16px;padding:0;border:0;background:transparent;}
+body.training-redesign-open #practiceWorkspace>.practice-workspace-header .eyebrow {display:none;}
+body.training-redesign-open #practiceWorkspaceClose {display:none;}
+body.training-redesign-open .practice-list-heading {gap:12px;}
+body.training-redesign-open #practiceManageTitle {display:none;}
+body.training-redesign-open #practiceNewAssignment {margin-right:auto;}
+body.training-redesign-open #practiceLifecycleTabs {display:flex;gap:4px;grid-template-columns:none;padding-bottom:0;border-bottom:1px solid var(--border);}
+body.training-redesign-open #practiceLifecycleTabs button {padding:10px 16px;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--text-secondary);font-size:14px;box-shadow:none;}
+body.training-redesign-open #practiceLifecycleTabs button.is-active {border-bottom-color:var(--selection-border);background:transparent;color:var(--text-primary);}
+body.training-redesign-open #coachPracticeList {gap:12px;}
+body.training-redesign-open #coachPracticeList .practice-assignment-card {padding:16px 20px;border:1px solid var(--border);background:var(--surface);box-shadow:none;}
+body.training-redesign-open #coachPracticeList .practice-card-actions {justify-content:flex-end;}
+body.training-redesign-open #coachPracticeList .practice-progress {display:none;}
+body.training-redesign-open #coachPracticeList .practice-card-heading h3 {font-size:18px;line-height:1.4;}
+body.training-redesign-open #coachPracticeList .practice-card-heading>div {display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;}
+body.training-redesign-open #coachPracticeList .practice-card-heading h3 {order:-1;}
+body.training-redesign-open #coachPracticeList .practice-card-metrics {font-size:13px;color:var(--text-secondary);}
+body.training-redesign-open #coachPracticeList .practice-assignment-card>p {display:none;}
+body.training-redesign-open #practiceProgressDetail {margin-top:20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+body.training-redesign-open #practiceProgressDetail table {width:100%;border-collapse:collapse;}
+body.training-redesign-open #practiceProgressDetail :is(th,td) {padding:12px 10px;border-bottom:1px solid var(--border);font-size:13px;text-align:left;}
+body.training-redesign-open #practiceAssignmentForm {padding:20px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);}
+body.training-redesign-open #practiceAssignmentForm :is(input,select,textarea) {box-sizing:border-box;max-width:100%;min-height:44px;padding:10px 12px;font-size:14px;border:1px solid var(--border-emphasis);background:var(--surface);color:var(--text-primary);border-radius:var(--radius-control);}
+body.training-redesign-open #practiceAssignmentForm input[type=checkbox] {min-height:18px;width:18px;}
+body.training-redesign-open .practice-choice-group {padding:16px;border:1px solid var(--border);border-radius:var(--radius-control);background:transparent;}
+body.training-redesign-open #practiceAssignmentForm .practice-form-actions {position:sticky;bottom:0;padding:12px 0;margin:0;background:var(--surface);border-top:1px solid var(--border);z-index:2;}
+@media(max-width:1200px) {.training-overview-grid {grid-template-columns:minmax(0,1fr);}}
+@media(max-width:1100px) {
+ body.training-redesign-open #appWorkspace {grid-template-columns:minmax(0,1fr)!important;}
+ body.training-redesign-open #trainingSidebar {grid-column:1;grid-row:1;}
+ body.training-redesign-open :is(.training-page,#coachResultsWorkspace,#practiceWorkspace,#coachCard [data-coach-view="overview"]) {grid-column:1!important;grid-row:2!important;padding:20px 16px;}
+ .training-summary>span {padding-right:0;border:0;}
+}
+
+body.training-redesign-open #coachPracticeList tr.practice-assignment-card {display:table-row;border:0;border-radius:0;padding:0;background:transparent;}
+.training-practice-table h3 {margin:0 0 4px;font-size:16px;line-height:1.4;}
+.training-practice-table td:last-child {min-width:155px;}
+.training-row-menu {display:inline-block;margin-left:6px;vertical-align:middle;}
+.training-row-menu summary {padding:8px;min-height:36px;box-sizing:border-box;cursor:pointer;list-style:none;border-radius:var(--radius-control);}
+.training-row-menu summary::-webkit-details-marker {display:none;}
+.training-row-menu[open] {display:block;margin:8px 0 0;}
+.training-row-menu>div {display:grid;gap:4px;padding:8px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);}
+.training-row-menu>div .dd-button {justify-content:flex-start;}
+body.training-redesign-open #practiceProgressDetail {grid-column:1;}
+body.training-redesign-open #coachPracticeView:has(#practiceProgressDetail:not(.hidden)) .practice-coach-layout {display:flex;flex-direction:column;}
+body.training-redesign-open #practiceProgressDetail:not(.hidden) {order:2;}
+
+body.training-redesign-open #trainingSidebar [hidden] {display:none!important;}
+body.training-redesign-open .training-table :is(th,td):first-child {overflow-wrap:anywhere;}
+body.training-redesign-open .training-page .dd-deadline {max-width:100%;}
+
+body.training-redesign-open #trainingSidebar .training-team-name {margin:0 8px 20px;color:var(--text-secondary);font-size:13px;line-height:1.5;overflow-wrap:anywhere;}
+
+/* Overview previews grow with their content, never to match the adjacent card. */
+body.training-redesign-open .training-overview-grid {align-items:start;}
+body.training-redesign-open #trainingDashboard .dd-task-card {display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;gap:12px;}
+body.training-redesign-open .training-date-toolbar {align-items:center;justify-content:space-between;gap:12px;}
+.training-refresh-group {display:flex;align-items:center;gap:10px;margin-left:auto;}
+body.training-redesign-open .training-row-action,
+body.training-redesign-open .training-table .dd-button,
+body.training-redesign-open #practiceProgressDetail button {border:1px solid var(--border-emphasis);background:var(--surface);border-radius:var(--radius-control);color:var(--text-primary);box-shadow:none;min-height:36px;padding:7px 12px;font-size:13px;}
+body.training-redesign-open .training-row-action:hover {background:var(--surface-hover);border-color:var(--text-secondary);}
+body.training-redesign-open .training-navigation-link {display:inline-flex;align-items:center;gap:6px;align-self:flex-start;width:auto;min-height:36px;padding:4px 0;border:0;border-radius:0;background:transparent;color:var(--selection-text);font-size:13px;font-weight:600;text-decoration:underline;text-underline-offset:3px;box-shadow:none;cursor:pointer;}
+body.training-redesign-open .training-navigation-link:hover {color:var(--text-primary);}
+body.training-redesign-open .training-refresh-button {display:inline-grid;place-items:center;width:36px;padding:7px;}
+.training-refresh-button svg {width:18px;height:18px;}
+.training-preview-links {display:flex;flex-wrap:wrap;gap:8px 20px;padding-top:8px;border-top:1px solid var(--border);}
+body.training-redesign-open .training-active-practice {display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:14px 0;}
+.training-active-heading,.training-active-footer,.training-section-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.training-active-heading strong {font-size:15px;overflow-wrap:anywhere;flex:1 1 130px;}
+.training-active-footer>span {font-size:12px;color:var(--text-secondary);}
+body.training-redesign-open .training-recent .training-table-wrap {border:1px solid var(--border);border-radius:var(--radius-control);}
+.training-table .training-date-cell,.training-table .training-action-cell {text-align:right;white-space:nowrap;}
+.training-table tbody tr:last-child :is(th,td) {border-bottom:0;}
+.training-table tbody tr:hover {background:var(--surface-hover);}
+.training-sr-only {position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;}
+@media(max-width:700px) {.training-refresh-group {margin-left:0;flex-wrap:wrap;}.training-date-toolbar {align-items:flex-start;}}
+
+/* One document scroll, with global navigation and local context retained. */
+body.training-redesign-open #appHeader {position:sticky!important;top:0;z-index:100;}
+body.training-redesign-open #trainingDashboard .training-page-heading {margin-bottom:12px;}
+body.training-redesign-open #trainingDashboard .training-date-toolbar {margin-bottom:12px;}
+body.training-redesign-open #trainingDashboard .training-summary {padding-bottom:16px;font-size:13px;gap:12px 20px;}
+body.training-redesign-open #trainingDashboard .training-overview-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:stretch;}
+body.training-redesign-open #trainingDashboard .dd-task-card {padding:16px;gap:10px;}
+body.training-redesign-open #trainingDashboard h3 {font-size:18px;}
+body.training-redesign-open #trainingDashboard .training-attention li {padding:12px 0;}
+body.training-redesign-open #trainingDashboard .training-table :is(th,td) {padding:10px 12px;}
+body.training-redesign-open #trainingDashboard .training-row-action {padding:6px 10px;min-height:34px;font-size:12px;}
+.training-number-cell {text-align:right!important;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.training-result {display:inline-flex;align-items:center;gap:6px;white-space:nowrap;font-size:13px;font-weight:400;color:var(--text-secondary);}
+.training-result svg {width:16px;height:16px;flex:0 0 16px;stroke-linecap:round;stroke-linejoin:round;}
+.training-result[data-tone=success] svg {color:var(--success);}
+.training-result[data-tone=error] svg {color:var(--error);}
+@media(max-width:1300px) {body.training-redesign-open #trainingDashboard .training-overview-grid {grid-template-columns:minmax(0,1fr);}}
+
+/* Shared summary panels: matched shells, with content anchored at the top. */
+body.training-redesign-open #trainingDashboard .training-summary-panel {align-self:stretch;justify-content:flex-start;}
+.training-summary-panel .training-section-heading {align-items:flex-start;flex-wrap:nowrap;}
+.training-summary-panel .training-section-heading>div {min-width:0;}
+.training-summary-panel .training-navigation-link {flex-shrink:0;}
+.training-summary-list {list-style:none;margin:0;padding:0;}
+body.training-redesign-open #trainingDashboard .training-summary-list .training-summary-item {display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:14px 0;border-top:1px solid var(--border);}
+.training-summary-item-heading,.training-summary-item-detail {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.training-summary-item-heading>strong {flex:1 1 180px;min-width:0;overflow-wrap:anywhere;font-size:14px;line-height:1.5;}
+.training-summary-item-detail>p {display:flex;flex-direction:column;gap:2px;flex:1 1 170px;}
+.training-summary-item-detail>p>span {font-size:13px;color:var(--text-secondary);}
+.training-summary-item-detail .training-row-action {flex:0 0 auto;}
+body.training-redesign-open #trainingDashboard .training-summary-empty {display:block;padding:16px 0;border-top:1px solid var(--border);font-size:13px;color:var(--text-secondary);}
+@media(max-width:1300px) {body.training-redesign-open #trainingDashboard .training-summary-panel {align-self:start;}}
+
+/* Summary rows own their sizing; never inherit the former horizontal alert layout. */
+body.training-redesign-open #trainingDashboard .training-summary-list {flex:0 0 auto;align-content:start;}
+body.training-redesign-open #trainingDashboard .training-summary-item {flex:0 0 auto;justify-content:flex-start;}
+body.training-redesign-open #trainingDashboard .training-summary-item>div {flex:0 0 auto;min-height:0;height:auto;}
+body.training-redesign-open #trainingDashboard .training-summary-item-heading {display:flex;}
+body.training-redesign-open #trainingDashboard .training-summary-item-detail {display:flex;}
+
+/* Ranked priorities and completion meters express different coaching decisions. */
+body.training-redesign-open #trainingDashboard .training-overview-grid {align-items:start;}
+body.training-redesign-open #trainingDashboard .training-summary-panel {align-self:start;}
+.training-priority-list {list-style:none;margin:0;padding:0;}
+.training-priority {display:grid;grid-template-columns:28px minmax(0,1fr) auto;align-items:center;gap:12px;padding:16px 0;border-top:1px solid var(--border);}
+.training-priority-rank {display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--surface-raised);color:var(--text-secondary);font-size:12px;font-weight:600;}
+.training-priority-copy {min-width:0;}
+.training-priority-copy>strong {display:block;font-size:14px;line-height:1.5;overflow-wrap:anywhere;}
+body.training-redesign-open #trainingDashboard .training-priority-copy>p {margin:4px 0 0;font-size:12px;line-height:1.5;}
+.training-completion-item {padding:16px 0;border-top:1px solid var(--border);}
+.training-completion-heading,.training-completion-detail {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+.training-completion-heading {margin-bottom:10px;flex-wrap:wrap;}
+.training-completion-heading>strong {flex:1 1 160px;min-width:0;font-size:14px;line-height:1.5;overflow-wrap:anywhere;}
+.training-completion-meter {flex:1 1 auto;min-width:100px;max-width:360px;}
+.training-completion-meter progress {display:block;appearance:none;-webkit-appearance:none;width:100%;height:6px;border:0;border-radius:999px;background:var(--surface-raised);overflow:hidden;accent-color:var(--accent-primary);}
+.training-completion-meter progress::-webkit-progress-bar {background:var(--surface-raised);border-radius:999px;}
+.training-completion-meter progress::-webkit-progress-value {background:var(--accent-primary);border-radius:999px;}
+.training-completion-meter progress::-moz-progress-bar {background:var(--accent-primary);border-radius:999px;}
+.training-completion-meter>span {display:block;margin-top:6px;font-size:12px;line-height:1.5;color:var(--text-secondary);font-variant-numeric:tabular-nums;}
+.training-completion-detail>.training-row-action {flex:0 0 auto;}
+@media(max-width:700px) {.training-priority {grid-template-columns:28px minmax(0,1fr);}.training-priority>.training-row-action {grid-column:2;justify-self:start;}.training-completion-detail {flex-wrap:wrap;}}
+
+/* Match panel shells; expanded hit targets keep each row easy to activate. */
+body.training-redesign-open #trainingDashboard .training-overview-grid {align-items:stretch;}
+body.training-redesign-open #trainingDashboard .training-summary-panel {align-self:stretch;}
+.training-priority,.training-completion-item {position:relative;}
+.training-priority .training-row-action::after,.training-completion-item .training-row-action::after {content:'';position:absolute;inset:0;cursor:pointer;}
+.training-priority:hover,.training-completion-item:hover {background:var(--surface-hover);}
+.training-priority:has(button:focus-visible),.training-completion-item:has(button:focus-visible) {outline:2px solid var(--focus-ring);outline-offset:2px;border-radius:var(--radius-control);}
+body.training-redesign-open #trainingDashboard .training-summary-panel {justify-content:flex-start;}
+@media(max-width:1300px) {body.training-redesign-open #trainingDashboard .training-summary-panel {align-self:start;}}
+
+/* A native title button supplies keyboard activation; its row supplies the hit area. */
+body.training-redesign-open #trainingDashboard .training-row-title {display:inline;padding:0;margin:0;border:0;border-radius:0;background:transparent;color:var(--text-primary);font:inherit;font-weight:600;text-align:left;text-decoration:underline;text-underline-offset:3px;white-space:normal;overflow-wrap:anywhere;box-shadow:none;cursor:pointer;}
+.training-clickable-row {cursor:pointer;}
+.training-clickable-row:hover {background:var(--surface-hover);}
+.training-clickable-row:focus-within {outline:2px solid var(--focus-ring);outline-offset:-2px;border-radius:var(--radius-control);}
+.training-row-title:focus-visible {outline:2px solid var(--focus-ring);outline-offset:3px;}
+.training-row-chevron {display:inline-block;flex:0 0 auto;font-size:24px;line-height:1;color:var(--text-secondary);}
+.training-chevron-cell {width:20px;text-align:right!important;}
+.training-completion-heading>.training-row-title {flex:1 1 160px;}
+.training-priority-copy>.training-row-title {font-size:14px!important;line-height:1.5!important;}
+
+/* Compact completion rows: ring, title/count, deadline, centered navigation cue. */
+.training-completion-item.training-ring-row {display:grid;grid-template-columns:40px minmax(0,1fr) auto auto;align-items:center;gap:12px;padding:14px 0;}
+.training-progress-ring {display:block;width:40px;height:40px;fill:none;stroke-width:4;}
+.training-ring-track {stroke:color-mix(in srgb,var(--border-emphasis) 45%,var(--surface) 55%);}
+.training-ring-value {stroke:var(--accent-primary);stroke-linecap:butt;}
+.training-ring-copy {min-width:0;}
+.training-ring-copy>strong {font-size:14px;overflow-wrap:anywhere;}
+.training-ring-copy>span {display:block;margin-top:4px;color:var(--text-secondary);font-size:12px;line-height:1.5;font-variant-numeric:tabular-nums;}
+.training-ring-row>.training-row-chevron {align-self:center;}
+@media(max-width:700px) {.training-completion-item.training-ring-row {grid-template-columns:36px minmax(0,1fr) auto;}.training-progress-ring {width:36px;height:36px;}.training-ring-row>.practice-due {grid-column:2;grid-row:2;justify-self:start;}.training-ring-row>.training-row-chevron {grid-column:3;grid-row:1 / span 2;}}

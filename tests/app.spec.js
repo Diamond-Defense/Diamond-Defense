@@ -180,7 +180,7 @@ test.describe('Diamond Defence regression behavior', () => {
       expect((await page.request.get(`/api/training/overview?region=${sibling.id}`)).status()).toBe(403);
       await progress.getByRole('button', { name: 'Director North Team' }).click();
       await expect(page.locator('#trainingTeamSelect')).toHaveValue(north.record.id);
-      await expect(page.getByRole('button', { name: 'Assignments', exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Practices', exact: true })).toBeVisible();
 
       await adminPost(directoryPath, { action: 'remove_staged_director', assignmentId });
       assignmentId = undefined;
@@ -230,7 +230,11 @@ test.describe('Diamond Defence regression behavior', () => {
       })).ok()).toBe(true);
       await page.reload();
       await page.evaluate(() => window.__DIQ_READY__);
-      await expect(page).toHaveURL(/\/workspace\/training$/);
+      await expect(page).toHaveURL(/\/workspace\/training(?:\?|$)/);
+      // Refresh retains the team overview selected before the role change.
+      await expect(page.locator('[data-training-section="overview"]')).toHaveAttribute('aria-current','page');
+      await expect(page.locator('#trainingDashboard')).toBeVisible();
+      await page.locator('[data-training-section="scope"]').click();
       await expect(page.getByRole('table', { name: 'Team training progress' })).toBeVisible();
       await page.goto('/');
       await page.evaluate(() => window.__DIQ_READY__);
@@ -1553,15 +1557,18 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
     await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Training workspace');
     await page.locator('#staffToolsBtn').click();
-    await expect(page.locator('#coachCard')).toBeVisible();
+    // The legacy wrapper uses display:contents; assert the visible workspace instead.
+    await expect(page.locator('#trainingSidebar')).toBeVisible();
     await expect(page.locator('#coachStatus')).toHaveText('unlocked');
     const coachTeamName = await page.evaluate(() => window.__DIQ_AUTH_USER__.teamName);
     expect(coachTeamName).toBeTruthy();
     await expect(page.locator('#coachIdentity')).toHaveText(coachTeamName);
+    await expect(page.locator('#trainingDashboard')).toBeVisible();
+    await page.locator('[data-training-section="attempts"]').click();
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     const coachReviewLayout = await page.evaluate(() => {
-      const drawer = document.querySelector('#coachCard .workspace-heading');
+      const drawer = document.querySelector('#trainingSidebar');
       const rect = drawer.getBoundingClientRect();
       const report = document.querySelector('#coachResultsWorkspace').getBoundingClientRect();
       const workspace = document.querySelector('#appWorkspace').getBoundingClientRect();
@@ -1579,18 +1586,18 @@ test.describe('Diamond Defence regression behavior', () => {
         pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
       };
     });
-    // display:contents wrappers have no box; measure the visible heading and report.
+    // The local sidebar and report share a row below the global header.
     expect(coachReviewLayout.controlsLeft).toBeGreaterThanOrEqual(coachReviewLayout.workspaceLeft);
     expect(coachReviewLayout.controlsRight).toBeLessThanOrEqual(coachReviewLayout.workspaceRight + 1);
     expect(coachReviewLayout.reportLeft).toBeGreaterThanOrEqual(coachReviewLayout.workspaceLeft);
     expect(coachReviewLayout.reportRight).toBeLessThanOrEqual(coachReviewLayout.workspaceRight + 1);
-    expect(coachReviewLayout.controlsRight - coachReviewLayout.controlsLeft).toBeGreaterThan(600);
+    expect(coachReviewLayout.controlsRight - coachReviewLayout.controlsLeft).toBeGreaterThan(200);
     expect(coachReviewLayout.reportRight - coachReviewLayout.reportLeft).toBeGreaterThan(600);
-    expect(coachReviewLayout.controlsBottom).toBeLessThanOrEqual(coachReviewLayout.reportTop);
+    expect(coachReviewLayout.controlsRight).toBeLessThanOrEqual(coachReviewLayout.reportLeft);
     expect(coachReviewLayout.horizontalOverflow).toBeLessThanOrEqual(1);
     expect(coachReviewLayout.pageOverflow).toBeLessThanOrEqual(1);
 
-    await page.locator('[data-coach-tab="assignments"]').click();
+    await page.locator('[data-training-section="practices"]').click();
     await expect(page.locator('#practiceWorkspace')).toBeVisible();
     await expect(page.locator('#practiceLifecycleTabs [data-practice-view]')).toHaveCount(3);
     await expect(page.locator('[data-practice-view="active"]')).toHaveClass(/is-active/);
@@ -1602,7 +1609,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#practiceAssignmentForm')).toBeHidden();
     await expect(page.locator('#coachPracticeList')).toBeVisible();
     await expect(page.locator('#practiceSearch')).toBeVisible();
-    await expect(page.locator('#practiceSort')).toHaveValue('newest');
+    await expect(page.locator('#practiceSort')).toHaveValue('due');
     await page.locator('#practiceNewAssignment').click();
     await expect(page.locator('#practiceAssignmentForm')).toBeVisible();
     await expect(page.locator('#practiceSituationCategory option')).toHaveCount(13);
@@ -2375,9 +2382,10 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#pwOk').click();
     await page.locator('#staffToolsBtn').click();
 
-    await expect(page.locator('[data-coach-tab="reviews"]')).toHaveClass(/is-active/);
-    await expect(page.locator('[data-coach-tab="reviews"]')).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
-    await expect(page.locator('#coachOverviewTab')).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
+    await expect(page.locator('[data-training-section="overview"]')).toHaveAttribute('aria-current','page');
+    await expect(page.locator('#trainingDashboard')).toBeVisible();
+    await page.locator('[data-training-section="attempts"]').click();
+    await page.locator('#coachOverviewTab').click();
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     await expect(page.locator('#teamsSubsec')).toHaveCount(0);

@@ -918,6 +918,8 @@ function computeRosterPlayerId(teamObj, playerObj){
   const practiceSearch = document.getElementById('practiceSearch');
   const practiceSort = document.getElementById('practiceSort');
   let coachResultsPage = 1;
+  let coachResultsRequest = 0;
+  let coachPracticeRequest = 0;
   let coachResultsAppliedFilters = {};
   let coachReviewView = 'overview';
   let coachResultsOptionsTeamId = '';
@@ -930,6 +932,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   let coachPracticeAssignments = [];
   let coachPracticeViewFilter = 'active';
   let practiceEditingAssignment = null;
+  let trainingPracticePane = 'list';
 
   function escapeHtml(value){
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -1178,6 +1181,14 @@ function computeRosterPlayerId(teamObj, playerObj){
         const next = (assignment.situations || []).find(item=>item.progressStatus !== 'completed' && Number(item.completedRepetitions || 0) === 0);
         const complete = recipient?.status === 'completed' || assignment.status === 'completed';
         const tone = complete ? 'success' : recipient?.status === 'in_progress' ? 'info' : 'neutral';
+        const completedAt = recipient?.completedAt;
+        const completionDate = completedAt ? new Date(completedAt) : null;
+        const cardDate = complete
+          ? completionDate && !Number.isNaN(completionDate.getTime())
+            ? `<time class="practice-due practice-completed-date" datetime="${escapeHtml(completedAt)}" title="${escapeHtml(completionDate.toLocaleString())}">Completed ${escapeHtml(completionDate.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}))}</time>`
+            : '<span class="practice-due practice-completed-date">Completion date unavailable</span>'
+          : practiceDeadlineBadge(assignment,false);
+
         const situationRows = (assignment.situations || []).map(item=>{
           const done = item.progressStatus === 'completed' || Number(item.completedRepetitions || 0) > 0;
           const nextUp = !complete && item === next;
@@ -1188,7 +1199,7 @@ function computeRosterPlayerId(teamObj, playerObj){
         }).join('');
         const situationList = `<ul class="dd-checklist practice-situation-list" aria-label="Practice situations">${situationRows}</ul>`;
         return `<article class="dd-task-card practice-assignment-card${assignment.overdue ? ' is-overdue' : ''}${complete ? ' is-complete' : ''}">
-          <div class="practice-card-heading"><div><h3>${escapeHtml(assignment.title)}</h3><span class="dd-status" data-tone="${tone}">${escapeHtml(complete ? 'Completed' : recipient?.status === 'in_progress' ? 'In progress' : 'Assigned')}</span></div>${practiceDeadlineBadge(assignment,complete)}</div>
+          <div class="practice-card-heading"><div><h3>${escapeHtml(assignment.title)}</h3><span class="dd-status" data-tone="${tone}">${escapeHtml(complete ? 'Completed' : recipient?.status === 'in_progress' ? 'In progress' : 'Assigned')}</span></div>${cardDate}</div>
           ${assignment.instructions ? `<div class="dd-task-notes"><span>Coach’s notes</span><p>${escapeHtml(assignment.instructions)}</p></div>` : ''}
           <div class="practice-progress-copy"><strong>${progress.completed} of ${progress.required} complete</strong></div>
           ${(assignment.situations || []).length > 3 ? `<details class="dd-task-details"><summary>Situations (${assignment.situations.length})</summary>${situationList}</details>` : situationList}
@@ -1201,6 +1212,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   let practiceQueue = [];
   function showPracticePane(pane='list'){
+    trainingPracticePane = pane;
     practiceAssignmentForm?.classList.toggle('hidden', pane !== 'editor');
     document.querySelector('#coachPracticeView .practice-manage-list')?.classList.toggle('hidden', pane !== 'list');
     document.getElementById('practiceProgressDetail')?.classList.toggle('hidden', pane !== 'progress');
@@ -1221,13 +1233,14 @@ function computeRosterPlayerId(teamObj, playerObj){
   function showPracticeProgress(assignment){
     if(!assignment) return;
     const detail = document.getElementById('practiceProgressDetail');
-    detail.innerHTML = `<div class="practice-list-heading"><h3>${escapeHtml(assignment.title)}</h3><button type="button" class="btn btn-ghost" data-practice-back>Back to assignments</button></div>
+    detail.innerHTML = `<div class="practice-list-heading"><h3>${escapeHtml(assignment.title)}</h3><button type="button" class="btn btn-ghost" data-practice-back>Close details</button></div>
       <p>${escapeHtml(practiceDueLabel(assignment))} · ${Number(assignment.situationCount)} situations</p>
       ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
       <p>${Number(assignment.completedRecipientCount)} of ${Number(assignment.recipientCount)} players complete</p>
-      <table class="practice-progress-table"><thead><tr><th>Player</th><th>Progress</th><th>Completed</th><th>Review</th></tr></thead><tbody>${(assignment.recipients||[]).map(recipient=>`<tr><td>${escapeHtml(recipient.playerNumber ? '#'+recipient.playerNumber+' ' : '')}${escapeHtml(recipient.playerName)}</td><td>${escapeHtml(recipient.status.replaceAll('_',' '))}</td><td>${recipient.completedAt ? escapeHtml(new Date(recipient.completedAt).toLocaleDateString()) : '—'}</td><td><button type="button" class="btn btn-ghost" data-assignment-review="${escapeHtml(assignment.id)}" data-review-player="${escapeHtml(recipient.playerId)}">Review attempts</button></td></tr>`).join('')}</tbody></table>
+      <table class="practice-progress-table"><thead><tr><th>Player</th><th>Progress</th><th>Completed</th><th>Review</th></tr></thead><tbody>${(assignment.recipients||[]).map(recipient=>`<tr><td>${escapeHtml(recipient.playerNumber ? '#'+recipient.playerNumber+' ' : '')}${escapeHtml(recipient.playerName)}</td><td><span class="dd-status" data-tone="${recipient.status==='completed'?'success':recipient.status==='in_progress'?'info':'neutral'}">${escapeHtml(recipient.status.replaceAll('_',' '))}</span></td><td>${recipient.completedAt ? escapeHtml(new Date(recipient.completedAt).toLocaleDateString()) : '—'}</td><td><button type="button" class="btn btn-ghost" data-assignment-review="${escapeHtml(assignment.id)}" data-review-player="${escapeHtml(recipient.playerId)}">Review attempts</button></td></tr>`).join('')}</tbody></table>
       <h4>Practice order</h4><ol>${[...(assignment.situations||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(item=>`<li>${escapeHtml(item.title)}</li>`).join('')}</ol>`;
     showPracticePane('progress');
+    if(document.body.classList.contains('training-redesign-open'))document.querySelector('#coachPracticeView .practice-manage-list')?.classList.remove('hidden');
   }
   function syncPracticeTabs(){
     const history = ['completed','closed','archived'].includes(coachPracticeViewFilter);
@@ -1241,12 +1254,44 @@ function computeRosterPlayerId(teamObj, playerObj){
   function practiceActionHelp(label, attributes, explanation, danger=false){
     return `<div class="practice-action-option"><button class="btn ${danger ? 'btn-danger' : 'btn-ghost'}" type="button" ${attributes}>${escapeHtml(label)}</button><details class="practice-action-help"><summary aria-label="About ${escapeHtml(label)}">ⓘ</summary><p>${escapeHtml(explanation)}</p></details></div>`;
   }
+  function renderTrainingPractices(assignments,canDelete){
+    if(!assignments.length){coachPracticeList.innerHTML='<div class="dd-task-card"><strong>No practices in this view</strong><p>Create a practice or change the filters.</p></div>';return;}
+    const action=(label,attributes,danger=false)=>`<button class="dd-button" data-variant="${danger?'danger':'ghost'}" type="button" ${attributes}>${label}</button>`;
+    const rows=assignments.map(assignment=>{
+      const recipients=(assignment.recipients||[]).filter(item=>!item.withdrawnAt);
+      const notStarted=recipients.filter(item=>item.status==='assigned').length;
+      const inProgress=recipients.filter(item=>item.status==='in_progress').length;
+      const draft=assignment.status==='draft';
+      const editable=assignment.status==='active'&&!assignment.closedAt&&!assignment.cancelledAt;
+      const details=[
+        draft||editable?action('Edit',`data-practice-edit="${escapeHtml(assignment.id)}"`):'',
+        draft?action('Publish',`data-practice-action="publish" data-assignment-id="${escapeHtml(assignment.id)}"`):'',
+        editable?action('Close assignment',`data-practice-action="close" data-assignment-id="${escapeHtml(assignment.id)}"`):'',
+        editable?action('Cancel assignment',`data-practice-action="cancel" data-assignment-id="${escapeHtml(assignment.id)}"`,true):'',
+        action('Duplicate',`data-practice-action="duplicate" data-assignment-id="${escapeHtml(assignment.id)}"`),
+        !draft?action('Retake',`data-practice-action="retake" data-assignment-id="${escapeHtml(assignment.id)}"`):'',
+        action(assignment.status==='archived'?'Restore':'Archive',`data-practice-action="${assignment.status==='archived'?'restore':'archive'}" data-assignment-id="${escapeHtml(assignment.id)}"`),
+        draft?action('Delete draft',`data-practice-delete="${escapeHtml(assignment.id)}"`,true):'',
+      ].join('');
+      return `<tr class="practice-assignment-card"><td><h3>${escapeHtml(assignment.title)}</h3><small>${Number(assignment.situationCount||0)} situations · ${escapeHtml(practiceAssignmentStatus(assignment).replaceAll('_',' '))}</small>${canDelete&&(assignment.status==='archived'||assignment.cancelledAt)?`<label><input type="checkbox" data-practice-bulk-id="${escapeHtml(assignment.id)}"> Select for deletion</label>`:''}</td><td>${practiceDeadlineBadge(assignment,assignment.status!=='active'||Boolean(assignment.closedAt||assignment.cancelledAt)||(Number(assignment.recipientCount)>0&&Number(assignment.completedRecipientCount)>=Number(assignment.recipientCount)))}</td><td><strong>${Number(assignment.completedRecipientCount||0)} of ${Number(assignment.recipientCount||0)} complete</strong><small>${notStarted} not started · ${inProgress} in progress</small></td><td>${draft?action('Continue editing',`data-practice-edit="${escapeHtml(assignment.id)}"`):action('View progress',`data-practice-progress="${escapeHtml(assignment.id)}"`)}<details class="training-row-menu"><summary aria-label="Actions for ${escapeHtml(assignment.title)}">•••</summary><div>${details}</div></details></td></tr>`;
+    }).join('');
+    coachPracticeList.innerHTML=`<div class="training-table-wrap"><table class="training-table training-practice-table"><thead><tr><th scope="col">Practice</th><th scope="col">Deadline</th><th scope="col">Player completion</th><th scope="col">Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    if(canDelete && (coachPracticeViewFilter==='archived'||assignments.some(item=>item.cancelledAt))) {
+      coachPracticeList.insertAdjacentHTML('afterbegin','<div class="practice-card-actions"><button type="button" class="dd-button" data-practice-select-page>Select all on this page</button><button type="button" class="dd-button" data-practice-clear-selection>Clear selection</button><button type="button" class="dd-button" data-variant="danger" data-practice-delete-selected>Delete selected assignments</button></div>');
+    }
+  }
+
   function renderCoachPractice(report){
     syncPracticeTabs();
     if(!coachPracticeList) return;
     const assignments = Array.isArray(report?.assignments) ? report.assignments : [];
     coachPracticeAssignments = assignments;
     const canDeleteAssignments = (DIQ_AUTH_USER || window.__DIQ_AUTH_USER__)?.role === 'admin';
+    if(document.body.classList.contains('training-redesign-open')) {
+      renderTrainingPractices(assignments,canDeleteAssignments);
+      if(coachPracticePagination)coachPracticePagination.innerHTML = paginationHtml(report,'coach');
+      return;
+    }
     if(!assignments.length){
       const label = coachPracticeViewFilter === 'draft' ? 'drafts' : `${coachPracticeViewFilter} assignments`;
       coachPracticeList.innerHTML = `<div class="practice-empty"><strong>No ${escapeHtml(label)}</strong><span>Change the status tab or search, or create a new practice queue.</span></div>`;
@@ -1294,7 +1339,8 @@ function computeRosterPlayerId(teamObj, playerObj){
     const player = role === 'player';
     const status = player ? playerPracticeStatus : coachPracticeStatus;
     setPracticeStatus(status, 'Loading assignments…');
-    const requestId = player ? ++playerPracticeRequest : 0;
+    const requestId = player ? ++playerPracticeRequest : ++coachPracticeRequest;
+    const requestTeam = player ? null : staffTeamId();
     try{
       const page = player ? playerPracticePage : coachPracticePage;
       const params = new URLSearchParams({ page:String(page), pageSize:'6' });
@@ -1306,7 +1352,7 @@ function computeRosterPlayerId(teamObj, playerObj){
         if(practiceSearch?.value.trim()) params.set('search', practiceSearch.value.trim());
       }
       const report = await diqApiRequest(`practice/assignments?${params}`, { cache:'no-store' });
-      if(player && requestId !== playerPracticeRequest) return;
+      if(player ? requestId !== playerPracticeRequest : requestId !== coachPracticeRequest || requestTeam !== staffTeamId()) return;
       if(player && Number(report.page || 1) > Number(report.totalPages || 1)){
         playerPracticePage = Number(report.totalPages || 1);
         return loadPracticeAssignments('player');
@@ -1320,7 +1366,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(player) await refreshPlayerPracticeState();
       setPracticeStatus(status);
     }catch(error){
-      if (!player || requestId === playerPracticeRequest) setPracticeStatus(status, error?.message || 'Assignments could not be loaded.', 'error');
+      if (player ? requestId === playerPracticeRequest : requestId === coachPracticeRequest && requestTeam === staffTeamId()) setPracticeStatus(status, error?.message || 'Assignments could not be loaded.', 'error');
     }
   }
 
@@ -1495,10 +1541,10 @@ function computeRosterPlayerId(teamObj, playerObj){
     const title = document.getElementById('practiceWorkspaceTitle');
     const subtitle = document.getElementById('practiceWorkspaceSubtitle');
     const eyebrow = document.getElementById('practiceWorkspaceEyebrow');
-    if(title) title.textContent = player ? 'Your Practice' : 'Practice Assignments';
+    if(title) title.textContent = player ? 'Your Practice' : 'Practices';
     if(subtitle) subtitle.textContent = player
       ? 'Complete the situations assigned by your coach.'
-      : 'Create practices and track player completion.';
+      : 'Assign focused work and track each player’s progress.';
     if(eyebrow) eyebrow.textContent = player ? 'Assigned practice' : 'Coach workspace';
     if(player){
       playerPracticeViewFilter = view === 'completed' ? 'completed' : 'pending';
@@ -1506,9 +1552,14 @@ function computeRosterPlayerId(teamObj, playerObj){
       playerPracticePage = 1;
       void loadPracticeAssignments('player');
     }else{
-      resetPracticeForm();
       coachPracticePage = 1;
-      void refreshCoachPracticeWorkspace();
+      if (document.body.classList.contains('training-redesign-open') && trainingPracticePane === 'editor') {
+        showPracticePane('editor');
+        void loadPracticeAssignments('coach');
+      } else {
+        resetPracticeForm();
+        void refreshCoachPracticeWorkspace();
+      }
     }
   }
 
@@ -1579,6 +1630,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(event.key === 'Enter'){
       event.preventDefault();
       coachPracticePage = 1;
+      syncTrainingLocation();
       void loadPracticeAssignments('coach');
     }
   });
@@ -1621,7 +1673,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       renderCoachPlayerChoices();
       document.getElementById('coachAttemptView').value='all';
       setCoachReviewView('attempts');
-      setCoachWorkspaceMode('reviews');
+      selectTrainingSection('attempts');
       return;
     }
     if(event.target.closest('[data-practice-back]')){showPracticePane();return;}
@@ -2015,7 +2067,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const selectedPlayer = (report.playerIds || [report.playerId].filter(Boolean)).join(',');
     const heading = document.getElementById('coachResultsTitle');
     const subtitle = document.getElementById('coachResultsSubtitle');
-    if(heading) heading.textContent = selectedPlayer ? (selectedPlayer.includes(',') ? 'Selected Players’ Reviews' : 'Player Reviews') : 'Team Reviews';
+    if(heading) heading.textContent = document.body.classList.contains('training-redesign-open') ? 'Attempt history' : selectedPlayer ? (selectedPlayer.includes(',') ? 'Selected Players’ Reviews' : 'Player Reviews') : 'Team Reviews';
     if(subtitle) subtitle.textContent = '';
     renderCoachResultsSummary(report.summary || {});
     renderCoachDevelopmentInsights(report.insights || {}, selectedPlayer);
@@ -2076,6 +2128,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       populateCoachResultsPlayers(staffTeamId());
       populateCoachResultsSituations();
     }
+    const request = ++coachResultsRequest, team = staffTeamId();
     setCoachResultsStatus('Loading saved team results…', 'pending');
     try{
       const query = coachResultsQuery();
@@ -2086,11 +2139,13 @@ function computeRosterPlayerId(teamObj, playerObj){
         && coachResultsAggregateCache.summary
         && coachResultsAggregateCache.insights;
       if(canReuseAggregates) query.set('includeAggregates', '0');
-      const report = await diqApiRequest(`reports/team/${encodeURIComponent(staffTeamId())}?${query}`, { cache:'no-store' });
+      const report = await diqApiRequest(`reports/team/${encodeURIComponent(team)}?${query}`, { cache:'no-store' });
+      if(request !== coachResultsRequest || team !== staffTeamId() || user.id !== window.__DIQ_AUTH_USER__?.id) return;
       if(report.options){
         applyCoachResultsOptions(report.options);
         coachResultsOptionsTeamId = staffTeamId();
       }
+      syncCoachFilterControls();
       if(report.summary && report.insights){
         coachResultsAggregateCache = {
           key:aggregateKey,
@@ -2105,7 +2160,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       });
       setCoachResultsStatus('');
     }catch(error){
-      setCoachResultsStatus(error?.message || 'Unable to load saved team results.', 'error');
+      if(request === coachResultsRequest && team === staffTeamId()) setCoachResultsStatus(error?.message || 'Unable to load saved team results.', 'error');
     }
   }
   window._diqLoadCoachDatabaseReport = loadCoachDatabaseReport;
@@ -2157,6 +2212,17 @@ function computeRosterPlayerId(teamObj, playerObj){
     return {playerId:coachResultsPlayerSelect,seasonId:coachResultsSeasonSelect,assignmentId:coachResultsAssignmentSelect,
       situationKey:coachResultsSituationSelect,difficulty:coachResultsDifficultySelect,categoryId:coachResultsCategorySelect,
       activityType:coachResultsActivitySelect,outcome:coachResultsOutcomeSelect,dateFrom:coachResultsDateFrom,dateTo:coachResultsDateTo};
+  }
+  function syncCoachFilterControls(){
+    Object.entries(coachFilterControls()).forEach(([key,control])=>{
+      if(!control)return;
+      const value=String(coachResultsAppliedFilters[key]||'');
+      if(control.multiple){const ids=new Set(value.split(','));Array.from(control.options).forEach(option=>option.selected=ids.has(option.value));}
+      else control.value=value;
+    });
+    document.getElementById('coachDatePreset').value=coachResultsAppliedFilters.dateFrom||coachResultsAppliedFilters.dateTo?'custom':'';
+    document.getElementById('coachCustomDates').hidden=!(coachResultsAppliedFilters.dateFrom||coachResultsAppliedFilters.dateTo);
+    renderCoachPlayerChoices();renderCoachActiveFilters();
   }
   function renderCoachActiveFilters(){
     const container = document.getElementById('coachActiveFilters');
@@ -2215,6 +2281,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       return;
     }
     coachResultsAppliedFilters = filters;
+    syncTrainingLocation();
     renderCoachActiveFilters();
     coachResultsPage = 1;
     coachResultsAggregateCache = { key:'', summary:null, insights:null };
@@ -2254,7 +2321,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       user?.directorScopes?.some(scope => scope.role === 'regional_director' && scope.regionId === team?.parent?.id);
   }
   async function loadTrainingCatalog(teamId) {
-    if (!teamId) return;
+    if (!teamId || trainingCatalogTeam === teamId) return;
     const result = await diqApiRequest(`teams/${encodeURIComponent(teamId)}/playbook?includeSituations=true`, { cache: 'no-store' });
     if (staffTeamId() !== teamId) return;
     trainingCatalog = result.situations || [];
@@ -2273,7 +2340,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     let label=document.getElementById('trainingTeamField');
     if(!label){label=document.createElement('label');label.id='trainingTeamField';label.className='field';label.append('Workspace');const select=document.createElement('select');select.id='trainingTeamSelect';select.setAttribute('aria-label','Workspace');label.append(select);document.querySelector('#coachCard .tools-panel-actions')?.before(label);
-      select.onchange=()=>{if(!window.confirm('Switch teams? Any unsaved assignment form will be cleared.')){select.value=staffTeamId();return;}trainingTeamId=select.value;resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';setCoachWorkspaceMode('reviews');};
+      select.onchange=()=>{if(!window.confirm('Switch teams? Any unsaved assignment form will be cleared.')){select.value=staffTeamId();return;}trainingTeamId=select.value;coachResultsAppliedFilters={};resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';selectTrainingSection(trainingSection);};
     }
     const previous=staffTeamId();
     const select=label.querySelector('select');
@@ -2317,8 +2384,9 @@ function computeRosterPlayerId(teamObj, playerObj){
           trainingTeamId = team.id;
           resetPracticeForm();
           coachResultsOptionsTeamId = '';
-          setCoachWorkspaceMode('reviews');
-          document.querySelector('[data-coach-tab="reviews"]')?.focus();
+          coachResultsAppliedFilters={};
+          selectTrainingSection('overview');
+          document.querySelector('[data-training-section="overview"]')?.focus();
         });
         row.insertCell().append(button);
         for (const value of [regions.get(team.regionId) || 'Unassigned', team.activeAssignments,
@@ -2333,14 +2401,194 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
   trainingOverviewRegion?.addEventListener('change', () => void loadTrainingOverview());
 
+  let trainingSection = 'overview';
+  let trainingDays = 14;
+  let trainingDashboardData = null;
+  let trainingDashboardRequest = 0;
+  let trainingRestoring = false;
+  const trainingSections = {overview:'Overview',players:'Players',practices:'Practices',attempts:'Attempt history',scope:'Scope progress'};
+
+  function syncTrainingLocation(){
+    if(trainingRestoring || !document.body.classList.contains('training-redesign-open')) return;
+    const params = new URLSearchParams({section:trainingSection,team:staffTeamId(),days:String(trainingDays)});
+    if(trainingSection === 'practices') {
+      params.set('view',coachPracticeViewFilter);
+      if(practiceSearch?.value) params.set('search',practiceSearch.value);
+      if(practiceSort?.value) params.set('sort',practiceSort.value);
+    }
+    if(trainingSection === 'attempts') for(const [key,value] of Object.entries(coachResultsAppliedFilters)) {
+      if(value) params.set(key,String(value));
+    }
+    window._diqTrainingLocationChanged?.(params.toString());
+  }
+
+  function ensureTrainingShell(){
+    const workspace = document.getElementById('appWorkspace');
+    if(!document.getElementById('trainingSidebar')) {
+      const sidebar = document.createElement('aside');
+      sidebar.id = 'trainingSidebar'; sidebar.className = 'dd-workspace-sidebar';
+      sidebar.setAttribute('aria-label','Training sections');
+      const icons = {overview:'M3 10 12 3l9 7v11h-6v-7H9v7H3Z',players:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87',practices:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',attempts:'M3 12a9 9 0 1 0 3-6M3 3v6h6M12 7v5l3 2',scope:'M3 21V7h6v14M9 21V3h6v18M15 21V11h6v10'};
+      sidebar.innerHTML = `<div class="dd-workspace-context"><h2>Training</h2></div><div id="trainingSidebarContext"></div><button type="button" class="dd-section-toggle" aria-expanded="false" aria-controls="trainingSectionNavigation">Sections <span aria-hidden="true">⌄</span></button><nav class="dd-workspace-nav" id="trainingSectionNavigation" aria-label="Training navigation">${Object.entries(trainingSections).map(([key,label])=>`<button type="button" data-training-section="${key}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${icons[key]}"/>${key==='players'?'<circle cx="9" cy="7" r="4"/>':''}</svg><span>${label}</span></button>`).join('')}</nav>`;
+      workspace.prepend(sidebar);
+      for(const [id,label] of [['trainingDashboard','Team overview'],['trainingPlayers','Players']]) {
+        const panel = document.createElement('section'); panel.id=id;panel.className='training-page hidden';panel.setAttribute('aria-label',label);workspace.append(panel);
+      }
+      sidebar.addEventListener('click',event=>{
+        const toggle=event.target.closest('.dd-section-toggle');
+        if(toggle){const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));sidebar.classList.toggle('is-expanded',open);return;}
+        const button=event.target.closest('[data-training-section]');
+        if(button) selectTrainingSection(button.dataset.trainingSection);
+      });
+      workspace.addEventListener('click',event=>{
+        if(event.target.closest('#practiceLifecycleTabs button,#practiceApplyFilters'))syncTrainingLocation();
+        const button=event.target.closest('[data-training-action]');if(!button)return;
+        const action=button.dataset.trainingAction;
+        if(action==='new') {selectTrainingSection('practices');document.getElementById('practiceNewAssignment')?.click();}
+        if(action==='practices')selectTrainingSection('practices');
+        if(action==='attempts')selectTrainingSection('attempts');
+        if(action==='refresh')void loadTrainingDashboard();
+        if(action==='attempt') {const attempt=trainingDashboardData?.recentAttempts?.[Number(button.dataset.index)];if(attempt)window._diqOpenCoachReview?.(attempt,document.getElementById('fieldImg').src,BASES_NATIVE);}
+        if(action==='player'||action==='situation') {
+          coachResultsAppliedFilters=action==='player'?{playerId:button.dataset.id}:{situationKey:button.dataset.id};
+          Object.entries(coachFilterControls()).forEach(([key,control])=>{if(!control)return;if(control.multiple)Array.from(control.options).forEach(option=>option.selected=option.value===coachResultsAppliedFilters[key]);else control.value=coachResultsAppliedFilters[key]||'';});
+          renderCoachPlayerChoices();renderCoachActiveFilters();selectTrainingSection('attempts');
+        }
+        if(action==='progress') {
+          const assignment=trainingDashboardData?.activePractices?.find(item=>item.id===button.dataset.id);
+          selectTrainingSection('practices');
+          if(assignment)showPracticeProgress(assignment);
+        }
+      });
+      workspace.addEventListener('change',event=>{
+        if(['practiceSort','practiceHistoryStatus'].includes(event.target.id))syncTrainingLocation();
+        if(event.target.id==='trainingDateRange'){trainingDays=Number(event.target.value);syncTrainingLocation();void loadTrainingDashboard();}
+      });
+      workspace.addEventListener('input',event=>{if(event.target.id==='trainingPlayerSearch')renderTrainingPlayers(trainingDashboardData,event.target.value);});
+    }
+    const label=document.getElementById('trainingTeamField');
+    if(label){
+      document.getElementById('trainingSidebarContext').append(label);
+      if(label.firstChild?.nodeType===Node.TEXT_NODE)label.firstChild.textContent='Team';
+      const select=label.querySelector('select');
+      const singleTeam=select.options.length<=1;
+      select.setAttribute('aria-label','Team');select.disabled=singleTeam;
+      label.hidden=singleTeam;
+      let teamName=document.getElementById('trainingSingleTeamName');
+      if(!teamName){teamName=document.createElement('p');teamName.id='trainingSingleTeamName';teamName.className='training-team-name';document.getElementById('trainingSidebarContext').append(teamName);}
+      teamName.textContent=singleTeam?(select.selectedOptions[0]?.textContent||''):'';
+      teamName.hidden=!singleTeam;
+    }
+    document.querySelector('[data-training-section="scope"]').hidden=!hasTrainingOverview(window.__DIQ_AUTH_USER__);
+    document.querySelector('[data-training-section="practices"]').hidden=trainingReadOnly;
+  }
+
+  function applyTrainingLayout(){
+    if(!document.querySelector('#coachCard:not(.hidden)'))return;
+    document.body.classList.add('training-redesign-open');
+    ensureTrainingShell();
+    const sidebar=document.getElementById('trainingSidebar');
+    sidebar.querySelectorAll('[data-training-section]').forEach(button=>{
+      if(button.dataset.trainingSection===trainingSection)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');
+    });
+    document.getElementById('trainingDashboard').classList.toggle('hidden',trainingSection!=='overview');
+    document.getElementById('trainingPlayers').classList.toggle('hidden',trainingSection!=='players');
+    coachResultsWorkspace.classList.toggle('hidden',trainingSection!=='attempts');
+    if(trainingSection==='attempts')setCoachReviewView('attempts');
+    document.getElementById('coachResultsTitle').textContent='Attempt history';
+    renderCoachActiveFilters();
+    syncTrainingLocation();
+  }
+
+  function selectTrainingSection(section){
+    if(!Object.hasOwn(trainingSections,section))return;
+    if(section==='scope'&&!hasTrainingOverview(window.__DIQ_AUTH_USER__))section='overview';
+    trainingSection=section;
+    setCoachWorkspaceMode(section==='practices'?'assignments':section==='scope'?'overview':'reviews');
+    if(trainingSection==='overview'||trainingSection==='players')void loadTrainingDashboard();
+  }
+
+  function trainingPrimary(){return trainingReadOnly?'': '<button class="dd-button" data-variant="primary" type="button" data-training-action="new">+ New practice</button>';}
+  function trainingDate(value){return value ? new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'No activity in this period';}
+  function trainingLink(action,id,label,navigation=false){
+    if(trainingReadOnly&&['progress','practices'].includes(action))return '';
+    return `<button class="${navigation?'training-navigation-link':'dd-button training-row-action'}" type="button" data-training-action="${action}" data-id="${escapeHtml(id)}">${escapeHtml(label)}${navigation?' <span aria-hidden="true">→</span>':''}</button>`;
+  }
+  function renderTrainingDashboard(data){
+    const players=data.players||[], active=(data.activePractices||[]).slice(0,3);
+    const focus=(data.coachingFocus||[]).slice(0,3);
+    const rows=focus.map((item,index)=>`<li class="training-priority training-clickable-row" data-training-action="situation" data-id="${escapeHtml(item.situationKey)}"><span class="training-priority-rank" aria-label="Priority ${index+1}">${index+1}</span><div class="training-priority-copy"><button class="training-row-title" type="button">${escapeHtml(coachSituationName(item))}</button><p>${Number(item.failedPlayers)} ${Number(item.failedPlayers)===1?'player':'players'} may need help <span aria-hidden="true">·</span> ${Number(item.failed)} failed attempts</p></div><span class="training-row-chevron" aria-hidden="true">›</span></li>`).join('');
+    const recent=(data.recentAttempts||[]).slice(0,3).map((attempt,index)=>{
+      const outcome=attempt.outcome;
+      const label=outcome==='passed'?'Passed':outcome==='failed'?'Failed':outcome==='abandoned'?'Not finished':'In progress';
+      const tone=outcome==='passed'?'success':outcome==='failed'?'error':outcome==='abandoned'?'neutral':'info';
+      return `<tr class="training-clickable-row" data-training-action="attempt" data-index="${index}"><th scope="row">#${escapeHtml(attempt.playerNumber||'—')} ${escapeHtml(attempt.playerName||'Player')}</th><td><button class="training-row-title" type="button" aria-label="${escapeHtml(`Review ${attempt.playerName||'Player'}: ${coachSituationName(attempt)}`)}">${escapeHtml(coachSituationName(attempt))}</button></td><td><span class="training-result" data-tone="${tone}"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${outcome==='passed'?'<path d="m4 10 4 4 8-8"/>':outcome==='failed'?'<path d="m5 5 10 10M15 5 5 15"/>':outcome==='abandoned'?'<circle cx="10" cy="10" r="6.5"/>':'<circle cx="10" cy="10" r="6.5"/><path d="M10 6v4l3 2"/>'}</svg>${label}</span></td><td class="training-date-cell">${escapeHtml(trainingDate(attempt.completedAt||attempt.startedAt||attempt.createdAt))}</td><td class="training-chevron-cell"><span class="training-row-chevron" aria-hidden="true">›</span></td></tr>`;
+    }).join('');
+    document.getElementById('trainingDashboard').innerHTML=`
+      <div class="training-page-heading"><div><h2>Team overview</h2></div>${trainingPrimary()}</div>
+      <div class="training-date-toolbar"><label class="dd-field">Activity period<select class="dd-control" id="trainingDateRange">${[7,14,30].map(days=>`<option value="${days}" ${days===trainingDays?'selected':''}>Last ${days} days</option>`).join('')}</select></label><div class="training-refresh-group"><span role="status">Updated ${escapeHtml(trainingDate(data.updatedAt))}</span><button class="dd-button training-row-action training-refresh-button" type="button" data-training-action="refresh" aria-label="Refresh activity" title="Refresh activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div></div>
+      <div class="training-summary" aria-label="Team summary"><span><strong>${players.filter(player=>Number(player.attempts)>0).length} of ${players.length}</strong> players active in this period</span><span><strong>${Number(data.activePracticeCount)}</strong> active practices now</span><span><strong>${players.filter(player=>Number(player.overdue)>0).length}</strong> players with overdue work now</span></div>
+      <div class="training-overview-grid"><section class="dd-task-card training-summary-panel training-coaching-focus"><div class="training-section-heading"><div><h3>Coaching focus</h3><p>Identify situations where players may need help.</p></div>${trainingLink('attempts','','View all',true)}</div><ol class="training-priority-list">${rows||'<li class="training-summary-empty">No repeated failed attempts in this period.</li>'}</ol></section>
+      <section class="dd-task-card training-summary-panel training-practice-progress"><div class="training-section-heading"><div><h3>Practice progress</h3><p>Track completion and upcoming deadlines.</p></div>${trainingLink('practices','',`View all (${Number(data.activePracticeCount)})`,true)}</div><ul class="training-summary-list">${active.map(assignment=>{
+        const total=Math.max(0,Number(assignment.recipientCount)||0);
+        const completed=Math.min(total,Math.max(0,Number(assignment.completedRecipientCount)||0));
+        const percent=total?Math.round(completed/total*100):0;
+        return `<li class="training-completion-item training-ring-row ${trainingReadOnly?'':'training-clickable-row'}" ${trainingReadOnly?'':`data-training-action="progress" data-id="${escapeHtml(assignment.id)}"`}><svg class="training-progress-ring" viewBox="0 0 40 40" role="progressbar" aria-label="${escapeHtml(assignment.title)} completion" aria-valuemin="0" aria-valuemax="${total||1}" aria-valuenow="${completed}" aria-valuetext="${completed} of ${total} complete"><circle class="training-ring-track" cx="20" cy="20" r="16"/><circle class="training-ring-value" cx="20" cy="20" r="16" pathLength="100" stroke-dasharray="${percent} 100" transform="rotate(-90 20 20)"/></svg><div class="training-ring-copy">${trainingReadOnly?`<strong>${escapeHtml(assignment.title)}</strong>`:`<button class="training-row-title" type="button">${escapeHtml(assignment.title)}</button>`}<span>${completed} of ${total} complete</span></div>${practiceDeadlineBadge(assignment,total>0&&completed>=total)}${trainingReadOnly?'':'<span class="training-row-chevron" aria-hidden="true">›</span>'}</li>`;
+      }).join('')||'<li class="training-summary-empty">No active practices for this team.</li>'}</ul></section></div>
+      <section class="dd-task-card training-recent"><div class="training-section-heading"><div><h3>Recent activity</h3><p>Review the latest player attempts.</p></div>${trainingLink('attempts','','View all',true)}</div><div class="training-table-wrap"><table class="training-table"><caption class="training-sr-only">Recent player attempts</caption><thead><tr><th scope="col">Player</th><th scope="col">Situation</th><th scope="col">Result</th><th scope="col" class="training-date-cell">When</th><th scope="col" class="training-chevron-cell"><span class="training-sr-only">Open review</span></th></tr></thead><tbody>${recent||'<tr><td colspan="5">No recorded activity in this period.</td></tr>'}</tbody></table></div></section>`;
+  }
+
+  function renderTrainingPlayers(data,search=''){
+    if(!data)return;
+    const panel=document.getElementById('trainingPlayers');
+    if(!panel.querySelector('#trainingPlayerSearch'))panel.innerHTML=`<div class="training-page-heading"><div><h2>Players</h2><p>Current roster · activity from the last ${trainingDays} days.</p></div>${trainingPrimary()}</div><label class="dd-field training-player-search">Search players<input class="dd-control" id="trainingPlayerSearch" type="search" placeholder="Name or number"></label><div class="training-table-wrap"><table class="training-table"><thead><tr><th scope="col">Player</th><th scope="col">Practice</th><th scope="col">Positioning accuracy</th><th scope="col">Last activity</th><th scope="col">Action</th></tr></thead><tbody></tbody></table></div>`;
+    panel.querySelector('tbody').innerHTML=(data.players||[]).filter(player=>`${player.name} ${player.number}`.toLowerCase().includes(search.toLowerCase())).map(player=>`<tr><th scope="row">#${escapeHtml(player.number||'—')} ${escapeHtml(player.name)}</th><td>${Number(player.completed)} completed · ${Number(player.pending)} to do${Number(player.overdue)?`<small class="training-overdue">${Number(player.overdue)} overdue</small>`:''}</td><td>${player.positioningAccuracy===null?'No completed plays':`${Math.round(Number(player.positioningAccuracy))}%`}<small>${Number(player.completedPlays)} completed plays · ${Number(player.attempts)} attempts</small></td><td>${escapeHtml(trainingDate(player.lastActivity))}</td><td>${trainingLink('player',player.id,'Review player →')}</td></tr>`).join('')||'<tr><td colspan="5">No matching players.</td></tr>';
+  }
+
+  async function loadTrainingDashboard(){
+    const request=++trainingDashboardRequest,team=staffTeamId(),userId=window.__DIQ_AUTH_USER__?.id;
+    const panel=document.getElementById(trainingSection==='players'?'trainingPlayers':'trainingDashboard');
+    if(!panel)return;
+    panel.innerHTML='<p role="status">Loading team activity…</p>';
+    try {
+      const data=await diqApiRequest(`training/${encodeURIComponent(team)}/dashboard?days=${trainingDays}`,{cache:'no-store'});
+      if(request!==trainingDashboardRequest||team!==staffTeamId()||userId!==window.__DIQ_AUTH_USER__?.id)return;
+      trainingDashboardData=data;
+      document.getElementById('trainingPlayers').replaceChildren();
+      renderTrainingDashboard(data);renderTrainingPlayers(data);
+    }catch(error){if(request===trainingDashboardRequest)panel.innerHTML=`<div class="dd-task-card"><p role="alert">${escapeHtml(error.message||'Unable to load team activity.')}</p><button class="dd-button" type="button" data-training-action="refresh">Try again</button></div>`;}
+  }
+
+  window._diqRestoreTrainingLocation = () => {
+    const url=new URL(window.location.href);
+    const requestedTeam=url.searchParams.get('team');
+    if(requestedTeam&&trainingScopeTeams.some(team=>team.id===requestedTeam))trainingTeamId=requestedTeam;
+    const section=url.searchParams.get('section');
+    const view=url.searchParams.get('view');
+    coachPracticeViewFilter=['active','draft','completed','closed','archived'].includes(view)?view:'active';
+    trainingDays=[7,14,30].includes(Number(url.searchParams.get('days')))?Number(url.searchParams.get('days')):14;
+    if(practiceSearch)practiceSearch.value=url.searchParams.get('search')||'';
+    if(practiceSort)practiceSort.value=['newest','oldest','due','title'].includes(url.searchParams.get('sort'))?url.searchParams.get('sort'):'due';
+    coachResultsAppliedFilters={};
+    for(const key of Object.keys(coachFilterControls()))if(url.searchParams.get(key))coachResultsAppliedFilters[key]=url.searchParams.get(key);
+    trainingRestoring=true;
+    try{selectTrainingSection(Object.hasOwn(trainingSections,section)?section:hasTrainingOverview(window.__DIQ_AUTH_USER__)?'scope':'overview');}
+    finally{trainingRestoring=false;}
+  };
+
   function setCoachWorkspaceMode(mode){
+    if (!trainingRestoring) {
+      if(mode==='assignments')trainingSection='practices';
+      else if(mode==='overview')trainingSection='scope';
+      else if(mode==='reviews' && !['overview','players','attempts'].includes(trainingSection))trainingSection='attempts';
+    }
     refreshTrainingTeamSelector();
     const teamId = staffTeamId();
     const user = window.__DIQ_AUTH_USER__;
     const team = trainingScopeTeams.find(item => item.id === teamId) || { id: teamId };
     trainingReadOnly = !canWriteTraining(user, team);
     document.querySelector('[data-coach-tab="assignments"]')?.classList.toggle('hidden', trainingReadOnly);
-    if (trainingReadOnly && mode === 'assignments') mode = 'reviews';
+    if (trainingReadOnly && mode === 'assignments') {mode = 'reviews';trainingSection='overview';}
     if (mode === 'assignments') void loadTrainingCatalog(teamId).catch(error => reportDatabaseWriteError('Unable to load the Team Playbook.', error));
     const overviewActive = mode === 'overview' && hasTrainingOverview(user);
     document.querySelector('[data-coach-tab="overview"]')?.classList.toggle('hidden', !hasTrainingOverview(user));
@@ -2376,6 +2624,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       window._diqSituationEditorOpened?.('coach');
       window.dispatchEvent(new Event('resize'));
     }
+    applyTrainingLayout();
   }
   window._diqSetCoachWorkspaceMode = setCoachWorkspaceMode;
   window._diqOpenTrainingFromHeader = async (isCurrent = () => true) => {
@@ -2393,7 +2642,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       document.querySelector('#coachCard .tools-panel-header strong').textContent = 'Training workspace';
       setCoachMode(true, { role:'coach' });
       trainingOverviewRegion.value = '';
-      setCoachWorkspaceMode(hasTrainingOverview(user) ? 'overview' : 'reviews');
+      window._diqRestoreTrainingLocation();
     } catch (error) {
       reportDatabaseWriteError('Unable to open Training workspace.', error);
     }
@@ -3203,6 +3452,7 @@ function updatePlayerHeaderButton(){
     const training = document.getElementById('trainingWorkspaceBtn');
     const platformAdmin = window.__DIQ_AUTH_USER__?.role === 'admin';
     const coachOpen = document.querySelector('#coachCard:not(.hidden)') !== null;
+    document.body.classList.toggle('training-redesign-open',coachOpen);
     const adminPanel = document.querySelector('#adminCard:not(.hidden)');
     const designOpen = document.body.classList.contains('design-workspace-open') || adminPanel?.dataset.workspace === 'global-tools';
     const orgOpen = Boolean(adminPanel) && !designOpen;
@@ -5149,7 +5399,7 @@ wireSeqBuilderOnce();
     } else if(window.__DIQ_AUTH_USER__?.role === 'coach'){
       setCoachMode(true, { role:'coach' });
       trainingOverviewRegion.value = '';
-      setCoachWorkspaceMode(hasTrainingOverview(user) ? 'overview' : 'reviews');
+      selectTrainingSection(hasTrainingOverview(window.__DIQ_AUTH_USER__) ? 'scope' : 'overview');
     } else {
       openPwModal();
     }
