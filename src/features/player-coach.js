@@ -922,6 +922,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   let coachPracticeRequest = 0;
   let coachResultsAppliedFilters = {};
   let coachReviewView = 'overview';
+  let trainingReviewFromPlayers = false;
   let coachResultsOptionsTeamId = '';
   let coachResultsAggregateCache = { key:'', summary:null, insights:null };
   let playerPracticePage = 1;
@@ -933,6 +934,8 @@ function computeRosterPlayerId(teamObj, playerObj){
   let coachPracticeViewFilter = 'active';
   let practiceEditingAssignment = null;
   let trainingPracticePane = 'list';
+  let trainingPracticeListScroll = 0;
+  let trainingPracticeSelectedId = '';
 
   function escapeHtml(value){
     return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -1233,22 +1236,39 @@ function computeRosterPlayerId(teamObj, playerObj){
   function showPracticeProgress(assignment){
     if(!assignment) return;
     const detail = document.getElementById('practiceProgressDetail');
-    detail.innerHTML = `<div class="practice-list-heading"><h3>${escapeHtml(assignment.title)}</h3><button type="button" class="btn btn-ghost" data-practice-back>Close details</button></div>
+    trainingPracticeListScroll=window.scrollY;
+    trainingPracticeSelectedId=assignment.id;
+    detail.innerHTML = `<button type="button" class="training-navigation-link" data-practice-back>← Back to Practices</button><div class="practice-list-heading"><h3 tabindex="-1">${escapeHtml(assignment.title)}</h3></div>
       <p>${escapeHtml(practiceDueLabel(assignment))} · ${Number(assignment.situationCount)} situations</p>
       ${assignment.instructions ? `<p>${escapeHtml(assignment.instructions)}</p>` : ''}
       <p>${Number(assignment.completedRecipientCount)} of ${Number(assignment.recipientCount)} players complete</p>
       <table class="practice-progress-table"><thead><tr><th>Player</th><th>Progress</th><th>Completed</th><th>Review</th></tr></thead><tbody>${(assignment.recipients||[]).map(recipient=>`<tr><td>${escapeHtml(recipient.playerNumber ? '#'+recipient.playerNumber+' ' : '')}${escapeHtml(recipient.playerName)}</td><td><span class="dd-status" data-tone="${recipient.status==='completed'?'success':recipient.status==='in_progress'?'info':'neutral'}">${escapeHtml(recipient.status.replaceAll('_',' '))}</span></td><td>${recipient.completedAt ? escapeHtml(new Date(recipient.completedAt).toLocaleDateString()) : '—'}</td><td><button type="button" class="btn btn-ghost" data-assignment-review="${escapeHtml(assignment.id)}" data-review-player="${escapeHtml(recipient.playerId)}">Review attempts</button></td></tr>`).join('')}</tbody></table>
       <h4>Practice order</h4><ol>${[...(assignment.situations||[])].sort((a,b)=>a.sortOrder-b.sortOrder).map(item=>`<li>${escapeHtml(item.title)}</li>`).join('')}</ol>`;
     showPracticePane('progress');
-    if(document.body.classList.contains('training-redesign-open'))document.querySelector('#coachPracticeView .practice-manage-list')?.classList.remove('hidden');
+    if(document.body.classList.contains('training-redesign-open'))requestAnimationFrame(()=>{window.scrollTo({top:0,behavior:'instant'});detail.querySelector('h3')?.focus({preventScroll:true});});
   }
+  function updatePracticeTabIndicator(){
+    if(!practiceLifecycleTabs)return;
+    let indicator=practiceLifecycleTabs.querySelector('.practice-tab-indicator');
+    if(!indicator){indicator=document.createElement('span');indicator.className='practice-tab-indicator';indicator.setAttribute('aria-hidden','true');practiceLifecycleTabs.append(indicator);}
+    const selected=practiceLifecycleTabs.querySelector('[aria-selected="true"]');
+    if(selected){indicator.style.width=selected.offsetWidth+'px';indicator.style.transform=`translateX(${selected.offsetLeft}px)`;}
+  }
+  window.addEventListener('resize',updatePracticeTabIndicator);
+  practiceLifecycleTabs?.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    const tabs=[...practiceLifecycleTabs.querySelectorAll('[data-practice-view]')];
+    const index=tabs.indexOf(event.target);if(index<0)return;
+    event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+(event.key==='ArrowRight'?1:-1)+tabs.length)%tabs.length;
+    tabs[next].focus();tabs[next].click();
+  });
   function syncPracticeTabs(){
     const history = ['completed','closed','archived'].includes(coachPracticeViewFilter);
     document.getElementById('practiceHistoryField')?.classList.toggle('hidden', !history);
     if(history) document.getElementById('practiceHistoryStatus').value = coachPracticeViewFilter;
     practiceLifecycleTabs?.querySelectorAll('[data-practice-view]').forEach(tab=>{
       const selected = tab.dataset.practiceView === (history ? 'history' : coachPracticeViewFilter);
-      tab.classList.toggle('is-active', selected);tab.setAttribute('aria-selected', String(selected));
+      tab.classList.toggle('is-active', selected);tab.setAttribute('aria-selected', String(selected));tab.tabIndex=selected?0:-1;
     });
   }
   function practiceActionHelp(label, attributes, explanation, danger=false){
@@ -1273,9 +1293,9 @@ function computeRosterPlayerId(teamObj, playerObj){
         action(assignment.status==='archived'?'Restore':'Archive',`data-practice-action="${assignment.status==='archived'?'restore':'archive'}" data-assignment-id="${escapeHtml(assignment.id)}"`),
         draft?action('Delete draft',`data-practice-delete="${escapeHtml(assignment.id)}"`,true):'',
       ].join('');
-      return `<tr class="practice-assignment-card"><td><h3>${escapeHtml(assignment.title)}</h3><small>${Number(assignment.situationCount||0)} situations · ${escapeHtml(practiceAssignmentStatus(assignment).replaceAll('_',' '))}</small>${canDelete&&(assignment.status==='archived'||assignment.cancelledAt)?`<label><input type="checkbox" data-practice-bulk-id="${escapeHtml(assignment.id)}"> Select for deletion</label>`:''}</td><td>${practiceDeadlineBadge(assignment,assignment.status!=='active'||Boolean(assignment.closedAt||assignment.cancelledAt)||(Number(assignment.recipientCount)>0&&Number(assignment.completedRecipientCount)>=Number(assignment.recipientCount)))}</td><td><strong>${Number(assignment.completedRecipientCount||0)} of ${Number(assignment.recipientCount||0)} complete</strong><small>${notStarted} not started · ${inProgress} in progress</small></td><td>${draft?action('Continue editing',`data-practice-edit="${escapeHtml(assignment.id)}"`):action('View progress',`data-practice-progress="${escapeHtml(assignment.id)}"`)}<details class="training-row-menu"><summary aria-label="Actions for ${escapeHtml(assignment.title)}">•••</summary><div>${details}</div></details></td></tr>`;
+      return `<tr class="practice-assignment-card training-clickable-row" data-practice-row><td><h3><button class="training-row-title" type="button" ${draft?`data-practice-edit="${escapeHtml(assignment.id)}"`:`data-practice-progress="${escapeHtml(assignment.id)}"`}>${escapeHtml(assignment.title)}</button></h3><small>${Number(assignment.situationCount||0)} ${Number(assignment.situationCount)===1?'situation':'situations'}${coachPracticeViewFilter==='active'||draft?'':` · ${escapeHtml(practiceAssignmentStatus(assignment).replaceAll('_',' '))}`}</small>${canDelete&&(assignment.status==='archived'||assignment.cancelledAt)?`<label><input type="checkbox" data-practice-bulk-id="${escapeHtml(assignment.id)}"> Select for deletion</label>`:''}</td><td>${practiceDeadlineBadge(assignment,assignment.status!=='active'||Boolean(assignment.closedAt||assignment.cancelledAt)||(Number(assignment.recipientCount)>0&&Number(assignment.completedRecipientCount)>=Number(assignment.recipientCount)))}</td><td><strong>${Number(assignment.completedRecipientCount||0)} of ${Number(assignment.recipientCount||0)} complete</strong>${inProgress?`<small>${inProgress} in progress</small>`:''}</td><td><details class="training-row-menu"><summary aria-label="Actions for ${escapeHtml(assignment.title)}">•••</summary><div>${details}</div></details><span class="training-row-chevron" aria-hidden="true">›</span></td></tr>`;
     }).join('');
-    coachPracticeList.innerHTML=`<div class="training-table-wrap"><table class="training-table training-practice-table"><thead><tr><th scope="col">Practice</th><th scope="col">Deadline</th><th scope="col">Player completion</th><th scope="col">Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    coachPracticeList.innerHTML=`<div class="training-table-wrap"><table class="training-table training-practice-table"><thead><tr><th scope="col">Practice</th><th scope="col">Deadline</th><th scope="col">Player completion</th><th scope="col"><span class="training-sr-only">Practice actions</span></th></tr></thead><tbody>${rows}</tbody></table></div>`;
     if(canDelete && (coachPracticeViewFilter==='archived'||assignments.some(item=>item.cancelledAt))) {
       coachPracticeList.insertAdjacentHTML('afterbegin','<div class="practice-card-actions"><button type="button" class="dd-button" data-practice-select-page>Select all on this page</button><button type="button" class="dd-button" data-practice-clear-selection>Clear selection</button><button type="button" class="dd-button" data-variant="danger" data-practice-delete-selected>Delete selected assignments</button></div>');
     }
@@ -1283,6 +1303,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   function renderCoachPractice(report){
     syncPracticeTabs();
+    requestAnimationFrame(updatePracticeTabIndicator);
     if(!coachPracticeList) return;
     const assignments = Array.isArray(report?.assignments) ? report.assignments : [];
     coachPracticeAssignments = assignments;
@@ -1546,6 +1567,15 @@ function computeRosterPlayerId(teamObj, playerObj){
       ? 'Complete the situations assigned by your coach.'
       : 'Assign focused work and track each player’s progress.';
     if(eyebrow) eyebrow.textContent = player ? 'Assigned practice' : 'Coach workspace';
+    let headingActions=document.getElementById('trainingPracticeHeadingActions');
+    if(!player){
+      if(!headingActions){headingActions=document.createElement('div');headingActions.id='trainingPracticeHeadingActions';headingActions.className='training-practice-heading-actions';practiceWorkspace.querySelector('.practice-workspace-header').append(headingActions);}
+      headingActions.append(document.getElementById('practiceNewAssignment'),document.getElementById('practiceCoachRefresh'));
+      document.getElementById('practiceNewAssignment').textContent='+ New practice';
+      const refresh=document.getElementById('practiceCoachRefresh');refresh.setAttribute('aria-label','Refresh practices');refresh.title='Refresh practices';refresh.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg>';
+    }
+    if(headingActions)headingActions.hidden=player;
+
     if(player){
       playerPracticeViewFilter = view === 'completed' ? 'completed' : 'pending';
       window._diqPracticeLocationChanged?.(playerPracticeViewFilter);
@@ -1620,6 +1650,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       tab.setAttribute('aria-selected', String(tab === button));
     });
     resetPracticeForm();
+    syncPracticeTabs();requestAnimationFrame(updatePracticeTabIndicator);
     void loadPracticeAssignments('coach');
   });
   document.getElementById('practiceApplyFilters')?.addEventListener('click', ()=>{
@@ -1634,6 +1665,11 @@ function computeRosterPlayerId(teamObj, playerObj){
       void loadPracticeAssignments('coach');
     }
   });
+  let practiceSearchTimer;
+  practiceSearch?.addEventListener('input',()=>{
+    clearTimeout(practiceSearchTimer);
+    practiceSearchTimer=setTimeout(()=>{coachPracticePage=1;syncTrainingLocation();void loadPracticeAssignments('coach');},250);
+  });
   practiceSort?.addEventListener('change', ()=>{
     coachPracticePage = 1;
     void loadPracticeAssignments('coach');
@@ -1645,7 +1681,43 @@ function computeRosterPlayerId(teamObj, playerObj){
     event.preventDefault();
     void createPracticeAssignment(true);
   });
+  function closePracticeActionMenus(except=null){
+    document.querySelectorAll('.training-row-menu[open]').forEach(menu=>{
+      if(menu===except)return;
+      const panel=menu.querySelector(':scope>div');
+      if(panel?.matches(':popover-open'))panel.hidePopover();
+      menu.open=false;
+    });
+  }
+  practiceWorkspace?.addEventListener('toggle',event=>{
+    const menu=event.target;
+    if(!menu.matches?.('.training-row-menu'))return;
+    const panel=menu.querySelector(':scope>div');
+    if(!menu.open){if(panel.matches(':popover-open'))panel.hidePopover();return;}
+    closePracticeActionMenus(menu);
+    if(typeof panel.showPopover==='function'){panel.setAttribute('popover','manual');if(!panel.matches(':popover-open'))panel.showPopover();}
+    const anchor=menu.querySelector('summary').getBoundingClientRect();
+    panel.style.maxHeight=`${Math.max(120,window.innerHeight-24)}px`;
+    const rect=panel.getBoundingClientRect();
+    const top=anchor.bottom+6+rect.height<=window.innerHeight-12?anchor.bottom+6:Math.max(12,anchor.top-rect.height-6);
+    panel.style.left=`${Math.max(12,Math.min(anchor.right-rect.width,window.innerWidth-rect.width-12))}px`;
+    panel.style.top=`${top}px`;
+  },true);
+  document.addEventListener('pointerdown',event=>{
+    if(!event.target.closest('.training-row-menu'))closePracticeActionMenus();
+  });
+  document.addEventListener('keydown',event=>{
+    if(event.key!=='Escape')return;
+    const menu=document.querySelector('.training-row-menu[open]');
+    if(menu){event.preventDefault();closePracticeActionMenus();menu.querySelector('summary').focus();}
+  });
+  window.addEventListener('resize',()=>closePracticeActionMenus());
+  document.addEventListener('scroll',event=>{if(!event.target.closest?.('.training-row-menu>div'))closePracticeActionMenus();},true);
   practiceWorkspace?.addEventListener('click', event=>{
+    if(event.target.closest('.training-row-menu button'))closePracticeActionMenus();
+    const row=event.target.closest('[data-practice-row]');
+    if(row&&!event.target.closest('button,details,input,label,a')){row.querySelector('h3 button')?.click();return;}
+
     const sectionToggle = event.target.closest('.dd-section-toggle');
     if (sectionToggle) {
       const expanded = sectionToggle.getAttribute('aria-expanded') !== 'true';
@@ -1676,7 +1748,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       selectTrainingSection('attempts');
       return;
     }
-    if(event.target.closest('[data-practice-back]')){showPracticePane();return;}
+    if(event.target.closest('[data-practice-back]')){showPracticePane();requestAnimationFrame(()=>{updatePracticeTabIndicator();window.scrollTo({top:trainingPracticeListScroll,behavior:'instant'});const button=[...coachPracticeList.querySelectorAll('[data-practice-progress]')].find(item=>item.dataset.practiceProgress===trainingPracticeSelectedId);button?.focus({preventScroll:true});});return;}
     const progress = event.target.closest('[data-practice-progress]');
     if(progress){showPracticeProgress(coachPracticeAssignments.find(item=>item.id===progress.dataset.practiceProgress));return;}
     const move = event.target.closest('[data-queue-move]');
@@ -1925,17 +1997,35 @@ function computeRosterPlayerId(teamObj, playerObj){
     return query;
   }
 
+  function trainingScoreBand(value){
+    if(value == null || value === '' || !Number.isFinite(Number(value)))return {color:'var(--text-primary)',label:'No recorded score'};
+    const score=Math.round(Math.max(0,Math.min(100,Number(value))));
+    return score<50?{color:'#a86000',label:'Needs attention'}:score<80?{color:'#2463bd',label:'Developing'}:{color:'#007f83',label:'Strong'};
+  }
+  function trainingScoreColor(value){return trainingScoreBand(value).color;}
   function renderCoachResultsSummary(summary={}){
     if(!coachResultsSummary) return;
     const formatPercent = value => value != null && Number.isFinite(Number(value)) ? `${Math.round(Number(value))}%` : '—';
     const completed = Number(summary.passed || 0) + Number(summary.failed || 0);
     const primary = [
-      ['Players active', Number(summary.players || 0), 'Players with any matching activity.'],
-      ['Completed plays', completed, `${Number(summary.passed || 0)} passed · ${Number(summary.failed || 0)} failed. Unfinished attempts excluded.`],
-      ['Pass rate', completed ? formatPercent(Number(summary.passed || 0) / completed * 100) : '—', 'Passed plays divided by completed plays. Unfinished attempts excluded.'],
-      ['Positioning accuracy', formatPercent(summary.averageScorePercent), 'Average recorded positioning score across completed plays.'],
+      ['Failed plays', Number(summary.failed || 0), `${Number(summary.passed || 0)} passed · ${completed} completed plays`, 'volume'],
+      ['Overall pass rate', completed ? formatPercent(Number(summary.passed || 0) / completed * 100) : '—', `${Number(summary.passed || 0)} of ${completed} completed plays passed`, 'pass'],
+      ['Average positioning score', formatPercent(summary.averageScorePercent), 'Across completed plays with a recorded score', 'positioning'],
     ];
-    const markup = primary.map(([label,value,definition])=>`<div class="coach-summary-card"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><details class="coach-metric-definition"><summary aria-label="About ${escapeHtml(label)}">ⓘ</summary><p>${escapeHtml(definition)}</p></details></div>`).join('');
+    const markup = primary.map(([label,value,context,metric])=>{
+      const score=metric==='pass'?(completed?Number(summary.passed||0)/completed*100:null):summary.averageScorePercent;
+      const band=trainingScoreBand(score);
+      const color=metric==='volume'?(Number(summary.failed||0)>0?'#a86000':'var(--text-primary)'):band.color;
+      return `<div class="coach-summary-card" data-metric="${metric}" style="--metric-color:${color}"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>${metric!=='volume'?`<span class="training-metric-band">${band.label}</span>`:''}<small>${escapeHtml(context)}</small></div>`;
+    }).join('');
+    let activityContext = document.getElementById('coachSummaryActivityContext');
+    if(!activityContext){
+      activityContext = document.createElement('p');
+      activityContext.id = 'coachSummaryActivityContext';
+      coachResultsSummary.before(activityContext);
+    }
+    const activePlayers = Number(summary.players || 0);
+    activityContext.textContent = `${activePlayers} player${activePlayers === 1 ? '' : 's'} with activity in the selected period`;
     coachResultsSummary.innerHTML = markup;
     const playerSummary = document.getElementById('coachSelectedPlayerSummary');
     if(playerSummary){
@@ -1957,42 +2047,37 @@ function computeRosterPlayerId(teamObj, playerObj){
     const formatPercent = value => hasNumber(value) ? `${Math.round(Number(value))}%` : '—';
     const positioning = insights.phases?.positioning || {};
     const sequence = insights.phases?.sequence || {};
-    const phaseCard = (label, phase) => `<div class="coach-phase-row">
-      <div><strong>${escapeHtml(label)}</strong><small>${Number(phase.passed || 0)} of ${Number(phase.attempts || 0)} passed</small></div>
-      <div class="coach-insight-meter" aria-label="${escapeHtml(label)} pass rate ${escapeHtml(formatPercent(phase.passRate))}">
-        <span style="width:${Math.max(0, Math.min(100, Number(phase.passRate || 0)))}%"></span>
-      </div><b>${escapeHtml(formatPercent(phase.passRate))}</b>
-    </div>`;
+    const phaseCard = (label, phase) => {
+      const available=hasNumber(phase.passRate);
+      const rate=available?Math.max(0,Math.min(100,Number(phase.passRate))):0;
+      return `<div class="training-skill-donut"><h4>${escapeHtml(label)}</h4><div class="training-donut-value" style="--skill-color:${trainingScoreColor(available?rate:null)}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="49" fill="none" stroke="var(--border)" stroke-width="10"/><circle cx="60" cy="60" r="49" fill="none" stroke="var(--skill-color)" stroke-width="10" pathLength="100" stroke-dasharray="${rate} 100" transform="rotate(-90 60 60)"/></svg><strong>${escapeHtml(formatPercent(phase.passRate))}</strong></div><span class="training-skill-band" style="color:${trainingScoreColor(available?rate:null)}">${trainingScoreBand(available?rate:null).label}</span><p>${Number(phase.passed||0)} of ${Number(phase.attempts||0)} passed</p></div>`;
+    };
     const trend = Array.isArray(insights.trend) ? insights.trend : [];
-    const trendMarkup = trend.length ? trend.map(point=>{
-      const date = new Date(`${point.period}${point.period.length === 7 ? '-01' : ''}T00:00:00Z`);
-      const label = (point.interval === 'week' ? 'Week of ' : '') + date.toLocaleDateString(undefined, {month:'short', ...(point.period.length > 7 ? {day:'numeric'} : {year:'numeric'}), timeZone:'UTC'});
-      return `<div class="coach-trend-column">
-        <div class="coach-trend-track" aria-label="${escapeHtml(label)}: ${escapeHtml(formatPercent(point.passRate))} pass rate">
-          <span style="height:${Math.max(3, Math.min(100, Number(point.passRate || 0)))}%"></span>
-        </div>
-        <strong>${escapeHtml(formatPercent(point.passRate))}</strong>
-        <small>${escapeHtml(label)} · ${Number(point.attempts || 0)}</small>
-      </div>`;
-    }).join('') : '<p class="coach-insight-empty">No completed plays in this date range yet.</p>';
+    const dated = trend.map(point => ({...point, time:Date.parse(`${point.period}${point.period.length === 7 ? '-01' : ''}T00:00:00Z`)})).filter(point=>Number.isFinite(point.time)).sort((a,b)=>a.time-b.time);
+    const interval=dated[0]?.interval || 'day';
+    const buckets=[];
+    if(dated.length){
+      const byTime=new Map(dated.map(point=>[point.time,point]));
+      const cursor=new Date(dated[0].time);
+      const last=dated.at(-1).time;
+      while(cursor.valueOf()<=last){
+        buckets.push(byTime.get(cursor.valueOf()) || {time:cursor.valueOf(),attempts:0,passed:0,passRate:null});
+        if(interval==='month')cursor.setUTCMonth(cursor.getUTCMonth()+1);
+        else cursor.setUTCDate(cursor.getUTCDate()+(interval==='week'?7:1));
+      }
+    }
+    const maximum=Math.max(1,...buckets.map(point=>Number(point.attempts||0)));
+    const trendMarkup=buckets.length?`<div class="training-results-legend"><span><i data-outcome="passed"></i>Passed</span><span><i data-outcome="failed"></i>Failed</span><span>Bar height = completed plays</span></div><div class="training-daily-results">${buckets.map(point=>{
+      const total=Number(point.attempts||0),passed=Number(point.passed||0),failed=total-passed;
+      const label=(interval==='week'?'Week of ':'')+new Date(point.time).toLocaleDateString(undefined,{month:'short',...(interval==='month'?{year:'numeric'}:{day:'numeric'}),timeZone:'UTC'});
+      return `<div class="training-daily-result"><div class="training-daily-plot" aria-hidden="true">${total?`<span class="training-daily-total">${total}</span><div class="training-daily-stack" style="height:${total/maximum*150}px"><span data-outcome="passed" style="height:${passed/total*100}%"></span><span data-outcome="failed" style="height:${failed/total*100}%"></span></div>`:'<span class="training-no-plays">—</span>'}</div><strong>${escapeHtml(label)}</strong><small>${total?`${passed} passed · ${failed} failed`:'No plays'}</small>${total?`<small>${formatPercent(point.passRate)} pass rate</small>`:''}</div>`;
+    }).join('')}</div>`:'<p class="coach-insight-empty">No completed plays in this date range yet.</p>';
     const attention = Array.isArray(insights.attentionSituations) ? insights.attentionSituations : [];
-    const attentionMarkup = attention.length ? attention.map(situation=>{
-      const detail = [
-        Number(situation.positioningMisses || 0) ? `${Number(situation.positioningMisses)} positioning` : '',
-        Number(situation.sequenceMisses || 0) ? `${Number(situation.sequenceMisses)} sequence` : '',
-      ].filter(Boolean).join(' · ');
-      return `<li><div><strong>${escapeHtml(coachSituationName(situation))}</strong>
-        <small>${escapeHtml(detail || `${Number(situation.missed || 0)} unsuccessful`)}</small></div>
-        <span>${Number(situation.missed || 0)} of ${Number(situation.attempts || 0)} missed</span><button type="button" class="btn btn-ghost" data-attention-key="${escapeHtml(situation.situationKey || '')}">Review</button></li>`;
-    }).join('') : '<li class="coach-insight-success">No missed situations in the filtered results.</li>';
-    coachDevelopmentContent.innerHTML = `<div class="coach-insight-grid">
-      <article class="coach-insight-card coach-attention-card"><h4>Needs attention</h4>
-        <ol class="coach-attention-list">${attentionMarkup}</ol>
-      </article>
-      <article class="coach-insight-card coach-phases-card"><h4>${selectedPlayer ? (selectedPlayer.includes(',') ? 'Selected players’ progress' : 'Player progress') : 'Team progress'}</h4>
-        <div class="coach-phase-list">${phaseCard('Positioning', positioning)}${phaseCard('Throw sequence', sequence)}</div>
-        <h5>Pass-rate trend${trend.length === 1 ? ' · Starting baseline' : ''}</h5><p class="muted">Only intervals with completed plays are shown; missing intervals are not zero scores.</p><div class="coach-trend-chart">${trendMarkup}</div>
-      </article>
+    const attentionMarkup = attention.length ? `<div class="coach-review-table-wrap"><table class="coach-review-table training-priority-table"><thead><tr><th scope="col">Situation</th><th scope="col">Unsuccessful plays</th><th scope="col">Positioning misses</th><th scope="col">Sequence misses</th><th scope="col"><span class="sr-only">Review</span></th></tr></thead><tbody>${attention.map(situation=>`<tr class="training-focus-history-row"><td><button type="button" class="training-history-title" data-attention-key="${escapeHtml(situation.situationKey||'')}">${escapeHtml(coachSituationName(situation))}</button></td><td>${Number(situation.missed||0)} of ${Number(situation.attempts||0)}</td><td>${Number(situation.positioningMisses||0)}</td><td>${Number(situation.sequenceMisses||0)}</td><td><span class="training-row-chevron" aria-hidden="true">›</span></td></tr>`).join('')}</tbody></table></div>` : '<p class="coach-insight-success">No missed situations in the filtered results.</p>';
+    coachDevelopmentContent.innerHTML = `<div class="training-report-grid">
+      <article class="training-report-panel training-report-trend"><h3>Results by ${interval}</h3><p>${finalizedAttempts} completed plays · Passed and failed results</p>${trendMarkup}</article>
+      <article class="training-report-panel training-report-skills"><h3>Pass rate by skill</h3><p>Passing results for each recorded skill.</p><div class="training-skill-donuts">${phaseCard('Positioning', positioning)}${phaseCard('Throw sequence', sequence)}</div><small>Skill pass rates count passing plays. Average positioning score above measures scoring accuracy.</small></article>
+      <article class="training-report-panel training-report-priorities"><h3>Coaching priorities</h3><p>Review situations with unsuccessful plays. A play can include both positioning and sequence misses.</p>${attentionMarkup}</article>
     </div>`;
   }
 
@@ -2068,7 +2153,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const heading = document.getElementById('coachResultsTitle');
     const subtitle = document.getElementById('coachResultsSubtitle');
     if(heading) heading.textContent = document.body.classList.contains('training-redesign-open') ? 'Attempt history' : selectedPlayer ? (selectedPlayer.includes(',') ? 'Selected Players’ Reviews' : 'Player Reviews') : 'Team Reviews';
-    if(subtitle) subtitle.textContent = '';
+    if(subtitle) subtitle.textContent = selectedPlayer ? `${coachResultsPlayerSelect.selectedOptions[0]?.textContent||'Selected players'} · Review results and identify coaching opportunities.` : 'Review player results and identify coaching opportunities.';
     renderCoachResultsSummary(report.summary || {});
     renderCoachDevelopmentInsights(report.insights || {}, selectedPlayer);
     coachResultsList.replaceChildren();
@@ -2087,24 +2172,25 @@ function computeRosterPlayerId(teamObj, playerObj){
             : '',
           attempt.primaryCategory || '',
         ].filter(Boolean).join(' · ');
-        return `<tr data-attempt-id="${escapeHtml(attempt.id || '')}">
+        return `<tr class="training-attempt-row" data-attempt-row="${attemptIndex}" data-attempt-id="${escapeHtml(attempt.id || '')}">
           <td><span class="coach-review-primary">#${escapeHtml(attempt.playerNumber || '—')} ${escapeHtml(attempt.playerName || '')}</span></td>
-          <td><span class="coach-review-primary">${escapeHtml(coachSituationName(attempt))}</span></td>
-          <td>${resultBadge(values.positionResult, positionState)}</td>
-          <td>${countText(values.positionScore, 'score')}</td>
-          <td>${escapeHtml(values.dateTime)}</td>
-          <td><button type="button" class="attempt-review-open" data-attempt-index="${attemptIndex}">Review attempt</button></td>
+          <td><button type="button" class="training-history-title" data-attempt-index="${attemptIndex}">${escapeHtml(coachSituationName(attempt))}</button></td>
+          <td><span class="training-result"><span aria-hidden="true" class="training-history-result-icon" data-result="${positionState}">${values.positionResult==='PASS'?'✓':values.positionResult==='FAIL'?'×':values.positionResult==='IN PROGRESS'?'◷':'○'}</span>${values.positionResult==='PASS'?'Passed':values.positionResult==='FAIL'?'Failed':values.positionResult==='IN PROGRESS'?'In progress':'Not finished'}</span></td>
+          <td class="training-history-score">${escapeHtml(values.positionScore.replace('/', ' of '))}</td>
+          <td>${escapeHtml(trainingDate(attempt.completedAt||attempt.startedAt||attempt.createdAt||attempt.ts))}</td>
+          <td><span class="training-row-chevron" aria-hidden="true">›</span></td>
         </tr>`;
       }).join('');
       coachResultsList.innerHTML = `<div class="coach-review-table-wrap">
         <table class="coach-review-table coach-results-table">
           <thead><tr>
-            <th>Player</th><th>Situation</th><th>Result</th><th>Position score</th><th>When</th><th>Review</th>
+            <th>Player</th><th>Situation</th><th>Result</th><th class="training-history-score">Position score</th><th class="training-history-date">When</th><th><span class="training-sr-only">Open review</span></th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
     }
+    coachResultsList.querySelectorAll('[data-attempt-row]').forEach(row=>row.addEventListener('click',event=>{if(!event.target.closest('button,a,input'))row.querySelector('[data-attempt-index]')?.click();}));
     coachResultsList.querySelectorAll('[data-attempt-index]').forEach(button => {
       button.addEventListener('click', () => {
         const attempt = attempts[Number(button.dataset.attemptIndex)];
@@ -2112,8 +2198,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       });
     });
     coachResultsPagination.innerHTML = `
-      <button class="btn btn-ghost" type="button" data-page="previous" ${report.hasPrevious ? '' : 'disabled'}>← Previous</button>
-      <span>Page ${report.page} of ${report.totalPages} · ${report.total} result${report.total === 1 ? '' : 's'}</span>
+      <span class="training-results-count">${report.total} result${report.total === 1 ? '' : 's'} · Page ${report.page} of ${report.totalPages}</span><button class="btn btn-ghost" type="button" data-page="previous" ${report.hasPrevious ? '' : 'disabled'}>← Previous</button>
       <button class="btn btn-ghost" type="button" data-page="next" ${report.hasNext ? '' : 'disabled'}>Next →</button>`;
     coachResultsPagination.querySelector('[data-page="previous"]')?.addEventListener('click', ()=>{ coachResultsPage -= 1; void loadCoachDatabaseReport({ refreshAggregates:false }); });
     coachResultsPagination.querySelector('[data-page="next"]')?.addEventListener('click', ()=>{ coachResultsPage += 1; void loadCoachDatabaseReport({ refreshAggregates:false }); });
@@ -2199,13 +2284,24 @@ function computeRosterPlayerId(teamObj, playerObj){
     document.getElementById('coachReviewOverview').hidden = coachReviewView !== 'overview';
     document.getElementById('coachReviewAttempts').hidden = coachReviewView !== 'attempts';
     document.getElementById('coachResultsExportBtn').hidden = coachReviewView !== 'attempts';
+    const showField=document.getElementById('coachAttemptView')?.closest('label');if(showField)showField.hidden=coachReviewView!=='attempts';
     document.querySelectorAll('[data-review-view]').forEach(button=>{
       const active = button.dataset.reviewView === coachReviewView;
       button.setAttribute('aria-pressed', String(active));
       button.className = active ? 'btn-green' : 'btn btn-ghost';
+      button.tabIndex=active?0:-1;
     });
+    if(document.body.classList.contains('training-redesign-open')){
+      requestAnimationFrame(()=>{const rail=document.querySelector('.coach-review-views'),selected=rail?.querySelector('[aria-pressed="true"]');if(selected){rail.style.setProperty('--review-tab-left',selected.offsetLeft+'px');rail.style.setProperty('--review-tab-width',selected.offsetWidth+'px');}});
+      syncTrainingLocation();
+    }
   }
   document.querySelectorAll('[data-review-view]').forEach(button=>button.addEventListener('click', ()=>setCoachReviewView(button.dataset.reviewView)));
+  document.querySelector('.coach-review-views')?.addEventListener('keydown',event=>{
+    if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;
+    const tabs=[...document.querySelectorAll('[data-review-view]')],index=tabs.indexOf(event.target);if(index<0)return;
+    event.preventDefault();const next=event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+1)%tabs.length;tabs[next].click();tabs[next].focus();
+  });
   setCoachReviewView('overview');
 
   function coachFilterControls(){
@@ -2230,6 +2326,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     container.replaceChildren();
     const controls = coachFilterControls();
     const entries = Object.entries(controls).filter(([key])=>coachResultsAppliedFilters[key]);
+    container.hidden=entries.length===0;
     const heading = document.createElement('strong');
     heading.className = 'coach-active-filter-heading';
     heading.textContent = entries.length ? `Active filters (${entries.length})` : 'No filters applied · All team activity';
@@ -2313,6 +2410,8 @@ function computeRosterPlayerId(teamObj, playerObj){
   let trainingTeamId = '';
   let trainingUserId = '';
   let trainingScopeTeams = [];
+  let trainingScopeHierarchy = [];
+  let trainingRecentTeams = [];
   let trainingReadOnly = false;
   let trainingCatalog = [];
   let trainingCatalogTeam = '';
@@ -2352,6 +2451,50 @@ function computeRosterPlayerId(teamObj, playerObj){
     if(identity) identity.textContent = user?.role === 'coach' && available.length <= 1
       ? user.teamName || '' : available.find(team => team.id === trainingTeamId)?.name || '';
   }
+  function renderTrainingTeamSwitcher(){
+    const context=document.getElementById('trainingSidebarContext');
+    const select=document.getElementById('trainingTeamSelect');
+    if(!context||!select)return;
+    const available=[...select.options].map(option=>trainingScopeTeams.find(team=>team.id===option.value)||{id:option.value,name:option.textContent});
+    let picker=document.getElementById('trainingTeamSwitcher');
+    if(!picker){
+      picker=document.createElement('details');picker.id='trainingTeamSwitcher';
+      picker.innerHTML='<summary aria-label="Switch training team"><span class="training-switcher-current"></span><span aria-hidden="true">⌄</span></summary><div class="training-switcher-panel"><label class="dd-field">Find a team<input type="search" placeholder="Search team, region or district" aria-label="Search accessible teams"></label><div class="training-switcher-results"></div></div>';
+      context.append(picker);
+      picker.addEventListener('toggle',()=>{if(picker.open){picker.querySelector('input').value='';picker.refreshTeams?.();picker.querySelector('input').focus();}});
+      picker.querySelector('input').addEventListener('input',()=>picker.refreshTeams?.());
+      picker.addEventListener('keydown',event=>{
+        const buttons=[...picker.querySelectorAll('.training-switcher-results button')];
+        if(event.key==='Escape'){picker.open=false;picker.querySelector('summary').focus();}
+        if(event.key==='ArrowDown'||event.key==='ArrowUp'){event.preventDefault();const index=buttons.indexOf(document.activeElement);buttons[(index+(event.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length]?.focus();}
+      });
+      document.addEventListener('pointerdown',event=>{if(!picker.contains(event.target))picker.open=false;});
+    }
+    picker.hidden=available.length<=1||trainingSection==='scope';
+    const regionLabel=team=>{
+      const region=trainingScopeHierarchy.find(item=>item.id===team.parent?.id);
+      const district=trainingScopeHierarchy.find(item=>item.id===region?.parent?.id);
+      return [district?.name,region?.name].filter(Boolean).join(' / ');
+    };
+    const current=available.find(team=>team.id===select.value);
+    picker.querySelector('.training-switcher-current').innerHTML=`<strong>${escapeHtml(current?.name||'Choose team')}</strong>${current&&regionLabel(current)?`<small>${escapeHtml(regionLabel(current))}</small>`:''}`;
+    function draw(){
+      const query=picker.querySelector('input').value.trim().toLowerCase();
+      const teams=available.filter(team=>`${team.name} ${regionLabel(team)}`.toLowerCase().includes(query));
+      const groups=new Map();
+      if(!query){const recent=trainingRecentTeams.map(id=>teams.find(team=>team.id===id)).filter(Boolean);if(recent.length)groups.set('Recent teams',recent);}
+      for(const team of teams){const group=regionLabel(team)||'Teams';if(!groups.has(group))groups.set(group,[]);groups.get(group).push(team);}
+      const results=picker.querySelector('.training-switcher-results');
+      results.innerHTML=[...groups].map(([name,items])=>`<section><h4>${escapeHtml(name)}</h4>${items.map(team=>`<button type="button" data-team-id="${escapeHtml(team.id)}" ${team.id===select.value?'aria-current="true"':''}>${escapeHtml(team.name)}${team.id===select.value?'<span aria-hidden="true">✓</span>':''}</button>`).join('')}</section>`).join('')||'<p role="status">No matching teams.</p>';
+      results.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>{
+        if(button.dataset.teamId===select.value){picker.open=false;return;}
+        select.value=button.dataset.teamId;select.onchange();
+        if(select.value===button.dataset.teamId){trainingRecentTeams=[select.value,...trainingRecentTeams.filter(id=>id!==select.value)].slice(0,4);picker.open=false;picker.querySelector('summary').focus();}
+      }));
+    }
+    picker.refreshTeams=draw;
+    draw();
+  }
   const trainingOverviewRegion = document.getElementById('trainingOverviewRegion');
   const trainingOverviewStatus = document.getElementById('trainingOverviewStatus');
   const trainingOverviewRows = document.getElementById('trainingOverviewTeams');
@@ -2374,11 +2517,20 @@ function computeRosterPlayerId(teamObj, playerObj){
         ...[...regions].map(([id, name]) => new Option(name, id)));
       trainingOverviewRegion.value = region;
       document.getElementById('trainingOverviewRegionField').hidden = regions.size < 2;
-      for (const team of result.teams) {
+      const search=document.getElementById('trainingOverviewSearch').value.trim().toLowerCase();
+      const sort=document.getElementById('trainingOverviewSort').value;
+      const teams=result.teams.filter(team=>team.name.toLowerCase().includes(search)).sort((a,b)=>{
+        const difference=sort==='overdue'?b.overdue-a.overdue:sort==='completion'?(a.assigned?a.completed/a.assigned:Infinity)-(b.assigned?b.completed/b.assigned:Infinity):0;
+        return difference||a.name.localeCompare(b.name);
+      });
+      const showRegion=new Set(result.teams.map(team=>team.regionId)).size>1;
+      trainingOverviewRows.closest('table').querySelector('thead th:nth-child(2)').hidden=!showRegion;
+      document.getElementById('trainingOverviewRegionContext').textContent=!showRegion&&result.teams.length?(regions.get(result.teams[0].regionId)||'Unassigned region'):'';
+      for (const team of teams) {
         const row = trainingOverviewRows.insertRow();
         const button = document.createElement('button');
         button.type = 'button';
-        button.className = 'btn btn-ghost';
+        button.className = 'training-history-title';
         button.textContent = team.name;
         button.addEventListener('click', () => {
           trainingTeamId = team.id;
@@ -2388,25 +2540,34 @@ function computeRosterPlayerId(teamObj, playerObj){
           selectTrainingSection('overview');
           document.querySelector('[data-training-section="overview"]')?.focus();
         });
+        row.className='training-clickable-row';
+        row.addEventListener('click',event=>{if(!event.target.closest('button'))button.click();});
         row.insertCell().append(button);
-        for (const value of [regions.get(team.regionId) || 'Unassigned', team.activeAssignments,
-          `${team.completed} / ${team.assigned}`, team.overdue]) row.insertCell().textContent = value;
+        const regionCell=row.insertCell();regionCell.textContent=regions.get(team.regionId)||'Unassigned';regionCell.hidden=!showRegion;
+        row.insertCell().textContent=team.activeAssignments;
+        row.insertCell().textContent=team.assigned?`${team.completed} of ${team.assigned} complete`:'No assigned practice';
+        const overdue=row.insertCell();overdue.textContent=team.overdue;if(team.overdue)overdue.className='training-overdue';
+        row.insertCell().innerHTML='<span class="training-row-chevron" aria-hidden="true">›</span>';
       }
-      trainingOverviewStatus.textContent = result.teams.length ? '' : 'No teams in this scope.';
+      trainingOverviewStatus.textContent = teams.length ? `${teams.length} of ${result.teams.length} teams` : 'No teams match this view.';
     } catch (error) {
       if (request === trainingOverviewRequest && userId === window.__DIQ_AUTH_USER__?.id) {
         trainingOverviewStatus.textContent = error.message || 'Unable to load team progress.';
       }
     }
   }
+  document.getElementById('trainingOverviewRefresh')?.addEventListener('click',()=>void loadTrainingOverview());
+  document.getElementById('trainingOverviewSearch')?.addEventListener('input',()=>void loadTrainingOverview());
+  document.getElementById('trainingOverviewSort')?.addEventListener('change',()=>void loadTrainingOverview());
   trainingOverviewRegion?.addEventListener('change', () => void loadTrainingOverview());
 
   let trainingSection = 'overview';
   let trainingDays = 14;
+  const trainingPlayerFilters={search:'',view:'all',sort:'name'};
   let trainingDashboardData = null;
   let trainingDashboardRequest = 0;
   let trainingRestoring = false;
-  const trainingSections = {overview:'Overview',players:'Players',practices:'Practices',attempts:'Attempt history',scope:'Scope progress'};
+  const trainingSections = {overview:'Overview',players:'Players',practices:'Practices',attempts:'Attempt history',scope:'All teams'};
 
   function syncTrainingLocation(){
     if(trainingRestoring || !document.body.classList.contains('training-redesign-open')) return;
@@ -2416,6 +2577,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(practiceSearch?.value) params.set('search',practiceSearch.value);
       if(practiceSort?.value) params.set('sort',practiceSort.value);
     }
+    if(trainingSection === 'attempts'){params.set('review',coachReviewView);if(trainingReviewFromPlayers)params.set('from','players');}
     if(trainingSection === 'attempts') for(const [key,value] of Object.entries(coachResultsAppliedFilters)) {
       if(value) params.set(key,String(value));
     }
@@ -2438,7 +2600,7 @@ function computeRosterPlayerId(teamObj, playerObj){
         const toggle=event.target.closest('.dd-section-toggle');
         if(toggle){const open=toggle.getAttribute('aria-expanded')!=='true';toggle.setAttribute('aria-expanded',String(open));sidebar.classList.toggle('is-expanded',open);return;}
         const button=event.target.closest('[data-training-section]');
-        if(button) selectTrainingSection(button.dataset.trainingSection);
+        if(button){if(button.dataset.trainingSection==='attempts'){trainingReviewFromPlayers=false;coachResultsAppliedFilters={};}selectTrainingSection(button.dataset.trainingSection);}
       });
       workspace.addEventListener('click',event=>{
         if(event.target.closest('#practiceLifecycleTabs button,#practiceApplyFilters'))syncTrainingLocation();
@@ -2447,12 +2609,15 @@ function computeRosterPlayerId(teamObj, playerObj){
         if(action==='new') {selectTrainingSection('practices');document.getElementById('practiceNewAssignment')?.click();}
         if(action==='practices')selectTrainingSection('practices');
         if(action==='attempts')selectTrainingSection('attempts');
+        if(action==='players')selectTrainingSection('players');
         if(action==='refresh')void loadTrainingDashboard();
         if(action==='attempt') {const attempt=trainingDashboardData?.recentAttempts?.[Number(button.dataset.index)];if(attempt)window._diqOpenCoachReview?.(attempt,document.getElementById('fieldImg').src,BASES_NATIVE);}
         if(action==='player'||action==='situation') {
+          trainingReviewFromPlayers=action==='player';
           coachResultsAppliedFilters=action==='player'?{playerId:button.dataset.id}:{situationKey:button.dataset.id};
           Object.entries(coachFilterControls()).forEach(([key,control])=>{if(!control)return;if(control.multiple)Array.from(control.options).forEach(option=>option.selected=option.value===coachResultsAppliedFilters[key]);else control.value=coachResultsAppliedFilters[key]||'';});
           renderCoachPlayerChoices();renderCoachActiveFilters();selectTrainingSection('attempts');
+          if(action==='player'){setCoachReviewView('overview');}
         }
         if(action==='progress') {
           const assignment=trainingDashboardData?.activePractices?.find(item=>item.id===button.dataset.id);
@@ -2462,9 +2627,10 @@ function computeRosterPlayerId(teamObj, playerObj){
       });
       workspace.addEventListener('change',event=>{
         if(['practiceSort','practiceHistoryStatus'].includes(event.target.id))syncTrainingLocation();
-        if(event.target.id==='trainingDateRange'){trainingDays=Number(event.target.value);syncTrainingLocation();void loadTrainingDashboard();}
+        if(['trainingPlayersDateRange','trainingDateRange'].includes(event.target.id)){trainingDays=Number(event.target.value);syncTrainingLocation();void loadTrainingDashboard();}
       });
-      workspace.addEventListener('input',event=>{if(event.target.id==='trainingPlayerSearch')renderTrainingPlayers(trainingDashboardData,event.target.value);});
+      workspace.addEventListener('input',event=>{if(event.target.id==='trainingPlayerSearch'){trainingPlayerFilters.search=event.target.value;renderTrainingPlayers(trainingDashboardData);}});
+      workspace.addEventListener('change',event=>{if(event.target.id==='trainingPlayerView'||event.target.id==='trainingPlayerSort'){trainingPlayerFilters[event.target.id==='trainingPlayerView'?'view':'sort']=event.target.value;renderTrainingPlayers(trainingDashboardData);}});
     }
     const label=document.getElementById('trainingTeamField');
     if(label){
@@ -2473,12 +2639,14 @@ function computeRosterPlayerId(teamObj, playerObj){
       const select=label.querySelector('select');
       const singleTeam=select.options.length<=1;
       select.setAttribute('aria-label','Team');select.disabled=singleTeam;
-      label.hidden=singleTeam;
+      label.hidden=true;
       let teamName=document.getElementById('trainingSingleTeamName');
       if(!teamName){teamName=document.createElement('p');teamName.id='trainingSingleTeamName';teamName.className='training-team-name';document.getElementById('trainingSidebarContext').append(teamName);}
       teamName.textContent=singleTeam?(select.selectedOptions[0]?.textContent||''):'';
-      teamName.hidden=!singleTeam;
+      teamName.hidden=!singleTeam&&trainingSection!=='scope';
+      if(trainingSection==='scope')teamName.textContent='All accessible teams';
     }
+    renderTrainingTeamSwitcher();
     document.querySelector('[data-training-section="scope"]').hidden=!hasTrainingOverview(window.__DIQ_AUTH_USER__);
     document.querySelector('[data-training-section="practices"]').hidden=trainingReadOnly;
   }
@@ -2494,8 +2662,28 @@ function computeRosterPlayerId(teamObj, playerObj){
     document.getElementById('trainingDashboard').classList.toggle('hidden',trainingSection!=='overview');
     document.getElementById('trainingPlayers').classList.toggle('hidden',trainingSection!=='players');
     coachResultsWorkspace.classList.toggle('hidden',trainingSection!=='attempts');
-    if(trainingSection==='attempts')setCoachReviewView('attempts');
+    if(trainingSection==='attempts')setCoachReviewView(trainingRestoring?coachReviewView:'overview');
     document.getElementById('coachResultsTitle').textContent='Attempt history';
+    const historyHeader = coachResultsWorkspace.querySelector('.coach-results-header');
+    let historyActions = document.getElementById('trainingHistoryHeadingActions');
+    if(!historyActions){
+      historyActions = document.createElement('div');
+      historyActions.id = 'trainingHistoryHeadingActions';
+      historyActions.className = 'training-header-actions';
+      historyHeader.append(historyActions);
+      historyActions.append(document.getElementById('coachResultsRefreshBtn'));
+    }
+    let historyNew = historyActions.querySelector('[data-training-action="new"]');
+    if(!historyNew && !trainingReadOnly){historyActions.insertAdjacentHTML('afterbegin',trainingPrimary());historyNew=historyActions.querySelector('[data-training-action="new"]');}
+    if(historyNew)historyNew.hidden=trainingReadOnly;
+
+    const showField=document.getElementById('coachAttemptView')?.closest('label');
+    if(showField)coachResultsWorkspace.querySelector('.coach-results-filter').insertBefore(showField,document.getElementById('coachMoreFilters'));
+
+    let backToPlayers=document.getElementById('trainingBackToPlayers');
+    if(!backToPlayers){backToPlayers=document.createElement('button');backToPlayers.id='trainingBackToPlayers';backToPlayers.type='button';backToPlayers.className='training-navigation-link';backToPlayers.dataset.trainingAction='players';backToPlayers.textContent='← Back to Players';coachResultsWorkspace.prepend(backToPlayers);}
+    backToPlayers.hidden=!trainingReviewFromPlayers;
+
     renderCoachActiveFilters();
     syncTrainingLocation();
   }
@@ -2509,6 +2697,9 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
 
   function trainingPrimary(){return trainingReadOnly?'': '<button class="dd-button" data-variant="primary" type="button" data-training-action="new">+ New practice</button>';}
+  function trainingHeaderActions(){
+    return `<div class="training-header-actions">${trainingPrimary()}<button class="dd-button training-refresh-button" type="button" data-training-action="refresh" aria-label="Refresh ${trainingSection==='players'?'players':'activity'}" title="Refresh current page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div>`;
+  }
   function trainingDate(value){return value ? new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'No activity in this period';}
   function trainingLink(action,id,label,navigation=false){
     if(trainingReadOnly&&['progress','practices'].includes(action))return '';
@@ -2525,8 +2716,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       return `<tr class="training-clickable-row" data-training-action="attempt" data-index="${index}"><th scope="row">#${escapeHtml(attempt.playerNumber||'—')} ${escapeHtml(attempt.playerName||'Player')}</th><td><button class="training-row-title" type="button" aria-label="${escapeHtml(`Review ${attempt.playerName||'Player'}: ${coachSituationName(attempt)}`)}">${escapeHtml(coachSituationName(attempt))}</button></td><td><span class="training-result" data-tone="${tone}"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${outcome==='passed'?'<path d="m4 10 4 4 8-8"/>':outcome==='failed'?'<path d="m5 5 10 10M15 5 5 15"/>':outcome==='abandoned'?'<circle cx="10" cy="10" r="6.5"/>':'<circle cx="10" cy="10" r="6.5"/><path d="M10 6v4l3 2"/>'}</svg>${label}</span></td><td class="training-date-cell">${escapeHtml(trainingDate(attempt.completedAt||attempt.startedAt||attempt.createdAt))}</td><td class="training-chevron-cell"><span class="training-row-chevron" aria-hidden="true">›</span></td></tr>`;
     }).join('');
     document.getElementById('trainingDashboard').innerHTML=`
-      <div class="training-page-heading"><div><h2>Team overview</h2></div>${trainingPrimary()}</div>
-      <div class="training-date-toolbar"><label class="dd-field">Activity period<select class="dd-control" id="trainingDateRange">${[7,14,30].map(days=>`<option value="${days}" ${days===trainingDays?'selected':''}>Last ${days} days</option>`).join('')}</select></label><div class="training-refresh-group"><span role="status">Updated ${escapeHtml(trainingDate(data.updatedAt))}</span><button class="dd-button training-row-action training-refresh-button" type="button" data-training-action="refresh" aria-label="Refresh activity" title="Refresh activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div></div>
+      <div class="training-page-heading"><div><h2>Team overview</h2><p>Spot coaching priorities and track assigned practice.</p></div>${trainingHeaderActions()}</div>
+      <div class="training-date-toolbar"><label class="dd-field">Activity period<select class="dd-control" id="trainingDateRange">${[7,14,30].map(days=>`<option value="${days}" ${days===trainingDays?'selected':''}>Last ${days} days</option>`).join('')}</select></label><div class="training-refresh-group"><span role="status">Updated ${escapeHtml(trainingDate(data.updatedAt))}</span></div></div>
       <div class="training-summary" aria-label="Team summary"><span><strong>${players.filter(player=>Number(player.attempts)>0).length} of ${players.length}</strong> players active in this period</span><span><strong>${Number(data.activePracticeCount)}</strong> active practices now</span><span><strong>${players.filter(player=>Number(player.overdue)>0).length}</strong> players with overdue work now</span></div>
       <div class="training-overview-grid"><section class="dd-task-card training-summary-panel training-coaching-focus"><div class="training-section-heading"><div><h3>Coaching focus</h3><p>Identify situations where players may need help.</p></div>${trainingLink('attempts','','View all',true)}</div><ol class="training-priority-list">${rows||'<li class="training-summary-empty">No repeated failed attempts in this period.</li>'}</ol></section>
       <section class="dd-task-card training-summary-panel training-practice-progress"><div class="training-section-heading"><div><h3>Practice progress</h3><p>Track completion and upcoming deadlines.</p></div>${trainingLink('practices','',`View all (${Number(data.activePracticeCount)})`,true)}</div><ul class="training-summary-list">${active.map(assignment=>{
@@ -2538,11 +2729,29 @@ function computeRosterPlayerId(teamObj, playerObj){
       <section class="dd-task-card training-recent"><div class="training-section-heading"><div><h3>Recent activity</h3><p>Review the latest player attempts.</p></div>${trainingLink('attempts','','View all',true)}</div><div class="training-table-wrap"><table class="training-table"><caption class="training-sr-only">Recent player attempts</caption><thead><tr><th scope="col">Player</th><th scope="col">Situation</th><th scope="col">Result</th><th scope="col" class="training-date-cell">When</th><th scope="col" class="training-chevron-cell"><span class="training-sr-only">Open review</span></th></tr></thead><tbody>${recent||'<tr><td colspan="5">No recorded activity in this period.</td></tr>'}</tbody></table></div></section>`;
   }
 
-  function renderTrainingPlayers(data,search=''){
+  function renderTrainingPlayers(data){
     if(!data)return;
     const panel=document.getElementById('trainingPlayers');
-    if(!panel.querySelector('#trainingPlayerSearch'))panel.innerHTML=`<div class="training-page-heading"><div><h2>Players</h2><p>Current roster · activity from the last ${trainingDays} days.</p></div>${trainingPrimary()}</div><label class="dd-field training-player-search">Search players<input class="dd-control" id="trainingPlayerSearch" type="search" placeholder="Name or number"></label><div class="training-table-wrap"><table class="training-table"><thead><tr><th scope="col">Player</th><th scope="col">Practice</th><th scope="col">Positioning accuracy</th><th scope="col">Last activity</th><th scope="col">Action</th></tr></thead><tbody></tbody></table></div>`;
-    panel.querySelector('tbody').innerHTML=(data.players||[]).filter(player=>`${player.name} ${player.number}`.toLowerCase().includes(search.toLowerCase())).map(player=>`<tr><th scope="row">#${escapeHtml(player.number||'—')} ${escapeHtml(player.name)}</th><td>${Number(player.completed)} completed · ${Number(player.pending)} to do${Number(player.overdue)?`<small class="training-overdue">${Number(player.overdue)} overdue</small>`:''}</td><td>${player.positioningAccuracy===null?'No completed plays':`${Math.round(Number(player.positioningAccuracy))}%`}<small>${Number(player.completedPlays)} completed plays · ${Number(player.attempts)} attempts</small></td><td>${escapeHtml(trainingDate(player.lastActivity))}</td><td>${trainingLink('player',player.id,'Review player →')}</td></tr>`).join('')||'<tr><td colspan="5">No matching players.</td></tr>';
+    if(!panel.querySelector('#trainingPlayerSearch')){
+      panel.innerHTML=`<div class="training-page-heading"><div><h2>Players</h2><p>Review practice completion and player performance.</p></div>${trainingHeaderActions()}</div><div class="training-players-toolbar"><label class="dd-field">Search players<input class="dd-control" id="trainingPlayerSearch" type="search" placeholder="Name or number"></label><label class="dd-field">Activity period<select class="dd-control" id="trainingPlayersDateRange">${[7,14,30].map(days=>`<option value="${days}" ${days===trainingDays?'selected':''}>Last ${days} days</option>`).join('')}</select></label><label class="dd-field">Show<select class="dd-control" id="trainingPlayerView"><option value="all">All players</option><option value="overdue">Overdue</option><option value="inactive">No recent activity</option></select></label><label class="dd-field">Sort by<select class="dd-control" id="trainingPlayerSort"><option value="name">Name</option><option value="completion">Completion · lowest first</option><option value="accuracy">Accuracy · lowest first</option><option value="activity">Last activity · newest first</option></select></label></div><p class="training-player-count" role="status"></p><div class="training-table-wrap"><table class="training-table training-players-table"><caption class="training-sr-only">Current player training summary</caption><thead><tr><th scope="col">Player</th><th scope="col">Assigned practice</th><th scope="col" class="training-number-cell">Positioning accuracy</th><th scope="col" class="training-date-cell">Last activity</th><th scope="col" class="training-chevron-cell"><span class="training-sr-only">Open player summary</span></th></tr></thead><tbody></tbody></table></div><p class="training-metric-note">Accuracy is the average recorded positioning score across completed plays in the selected period. Assigned practice reflects current work.</p>`;
+      panel.querySelector('#trainingPlayerSearch').value=trainingPlayerFilters.search;
+      panel.querySelector('#trainingPlayerView').value=trainingPlayerFilters.view;
+      panel.querySelector('#trainingPlayerSort').value=trainingPlayerFilters.sort;
+    }
+    const ratio=player=>Number(player.completed)/(Number(player.completed)+Number(player.pending)||1);
+    const filtered=(data.players||[]).filter(player=>`${player.name} ${player.number}`.toLowerCase().includes(trainingPlayerFilters.search.trim().toLowerCase())&&(trainingPlayerFilters.view!=='overdue'||Number(player.overdue)>0)&&(trainingPlayerFilters.view!=='inactive'||!Number(player.attempts)));
+    filtered.sort((a,b)=>{
+      let order=0;
+      if(trainingPlayerFilters.sort==='completion')order=ratio(a)-ratio(b);
+      else if(trainingPlayerFilters.sort==='accuracy')order=(a.positioningAccuracy??Infinity)-(b.positioningAccuracy??Infinity);
+      else if(trainingPlayerFilters.sort==='activity')order=(Date.parse(b.lastActivity)||0)-(Date.parse(a.lastActivity)||0);
+      return (Number.isNaN(order)?0:order)||a.name.localeCompare(b.name,undefined,{numeric:true});
+    });
+    panel.querySelector('.training-player-count').textContent=`${filtered.length} of ${(data.players||[]).length} players`;
+    panel.querySelector('tbody').innerHTML=filtered.map(player=>{
+      const completed=Number(player.completed)||0,total=completed+(Number(player.pending)||0),percent=total?completed/total*100:0;
+      return `<tr class="training-clickable-row" data-training-action="player" data-id="${escapeHtml(player.id)}"><th scope="row"><button class="training-row-title" type="button" aria-label="${escapeHtml(`Review #${player.number||'—'} ${player.name}`)}">#${escapeHtml(player.number||'—')} ${escapeHtml(player.name)}</button></th><td><div class="training-player-completion"><div><span class="training-player-assignment-count" data-assigned="${total>0}">${total?`${completed} of ${total} complete`:'No assigned practice'}</span>${Number(player.overdue)?`<small class="training-overdue">${Number(player.overdue)} overdue</small>`:''}</div></div></td><td class="training-number-cell">${player.positioningAccuracy==null?'—':`${Math.round(Number(player.positioningAccuracy))}%`}<small>${player.positioningAccuracy==null?'No completed plays':`${Number(player.completedPlays)} completed plays`}</small></td><td class="training-date-cell">${player.lastActivity?escapeHtml(trainingDate(player.lastActivity)):'No recent activity'}</td><td class="training-chevron-cell"><span class="training-row-chevron" aria-hidden="true">›</span></td></tr>`;
+    }).join('')||'<tr><td colspan="5">No players match these filters.</td></tr>';
   }
 
   async function loadTrainingDashboard(){
@@ -2564,6 +2773,8 @@ function computeRosterPlayerId(teamObj, playerObj){
     const requestedTeam=url.searchParams.get('team');
     if(requestedTeam&&trainingScopeTeams.some(team=>team.id===requestedTeam))trainingTeamId=requestedTeam;
     const section=url.searchParams.get('section');
+    trainingReviewFromPlayers=url.searchParams.get('from')==='players';
+    coachReviewView=url.searchParams.get('review')==='attempts'?'attempts':'overview';
     const view=url.searchParams.get('view');
     coachPracticeViewFilter=['active','draft','completed','closed','archived'].includes(view)?view:'active';
     trainingDays=[7,14,30].includes(Number(url.searchParams.get('days')))?Number(url.searchParams.get('days')):14;
@@ -2634,6 +2845,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       staffTeamId();
       const result = await diqApiRequest('design', { cache: 'no-store' });
       if (!isCurrent() || window.__DIQ_AUTH_USER__?.id !== user.id) return;
+      trainingScopeHierarchy = result.workspaces;
       trainingScopeTeams = result.workspaces.filter(scope => scope.type === 'team');
       if (!trainingScopeTeams.length && !hasTrainingOverview(user)) {
         if (typeof toast === 'function') toast('No teams are available in your training scope.');
@@ -2656,7 +2868,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     applyCoachResultsFilters();
   });
   document.getElementById('coachResultsRefreshBtn')?.addEventListener('click', ()=>void loadCoachDatabaseReport());
-  document.getElementById('coachResultsApplyBtn')?.addEventListener('click', ()=>{closeCoachPlayerPicker();applyCoachResultsFilters();});
+  document.getElementById('coachResultsApplyBtn')?.addEventListener('click', ()=>{closeCoachPlayerPicker();const panel=document.getElementById('coachExtraFiltersPanel');if(panel)panel.hidden=true;document.getElementById('coachMoreFilters')?.setAttribute('aria-expanded','false');applyCoachResultsFilters();});
   document.getElementById('coachAttemptView')?.addEventListener('change', applyCoachResultsFilters);
   document.getElementById('coachDatePreset')?.addEventListener('change', event=>{
     const value = event.target.value;
@@ -2670,6 +2882,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     applyCoachResultsFilters();
   });
   coachDevelopmentContent?.addEventListener('click', event=>{
+    const row=event.target.closest('.training-focus-history-row');if(row&&!event.target.closest('button')){row.querySelector('button').click();return;}
     const button = event.target.closest('[data-attention-key]');
     if(!button?.dataset.attentionKey) return;
     coachResultsSituationSelect.value = button.dataset.attentionKey;
@@ -2680,6 +2893,12 @@ function computeRosterPlayerId(teamObj, playerObj){
   });
 
   document.getElementById('coachResultsClearBtn')?.addEventListener('click', clearCoachResultsFilters);
+  document.getElementById('coachMoreFilters')?.addEventListener('click', event => {
+    const button = event.currentTarget;
+    const panel = document.getElementById('coachExtraFiltersPanel');
+    panel.hidden = !panel.hidden;
+    button.setAttribute('aria-expanded', String(!panel.hidden));
+  });
   document.getElementById('coachResultsExportBtn')?.addEventListener('click', ()=>void exportCoachDatabaseReport());
 
   const coachCollapseAllBtn = document.getElementById("coachCollapseAllBtn");

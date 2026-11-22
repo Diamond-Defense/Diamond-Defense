@@ -76,7 +76,7 @@
         <h2 id="coachResultsTitle">Team Reviews</h2>
         <p id="coachResultsSubtitle"></p>
       </div>
-      <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button">Refresh</button>
+      <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button" aria-label="Refresh attempt history" title="Refresh attempt history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button>
     </div>
     <nav class="coach-review-views" aria-label="Review views">
       <button id="coachOverviewTab" type="button" class="btn-green" data-review-view="overview" aria-pressed="true">Summary</button>
@@ -91,7 +91,21 @@
         </select>
       </label>
       <label class="field"><span>Date range</span><select id="coachDatePreset"><option value="">All dates</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="custom">Custom dates</option></select></label>
-      <details id="coachMoreFilters"><summary>More filters <span id="coachExtraFilterCount"></span></summary><div class="coach-extra-filters"><fieldset><legend>Practice context</legend><label class="field">
+      <button id="coachMoreFilters" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="coachExtraFiltersPanel"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg> Filters <span id="coachExtraFilterCount"></span></button><div id="coachCustomDates" class="coach-custom-dates" hidden>      <label class="field">
+        <span>From</span>
+        <input id="coachResultsDateFrom" type="date">
+      </label>
+      <label class="field">
+        <span>Through</span>
+        <input id="coachResultsDateTo" type="date">
+      </label>
+</div>
+      <div class="coach-results-filter-actions">
+        <button id="coachResultsApplyBtn" class="btn-green" type="button">Apply</button>
+        <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear filters</button>
+      </div>
+    </div>
+    <div id="coachExtraFiltersPanel" hidden><div class="coach-extra-filters"><fieldset><legend>Practice context</legend><label class="field">
         <span>Season</span>
         <select id="coachResultsSeasonSelect" class="select">
           <option value="">All seasons</option>
@@ -135,21 +149,7 @@
           <option value="abandoned">Not finished</option>
           <option value="incomplete">In progress</option>
         </select>
-      </label></fieldset></div></details><div id="coachCustomDates" class="coach-custom-dates" hidden>      <label class="field">
-        <span>From</span>
-        <input id="coachResultsDateFrom" type="date">
-      </label>
-      <label class="field">
-        <span>Through</span>
-        <input id="coachResultsDateTo" type="date">
-      </label>
-</div>
-      <div class="coach-results-filter-actions">
-        <button id="coachResultsApplyBtn" class="btn-green" type="button">Apply</button>
-        <button id="coachResultsClearBtn" class="btn btn-ghost" type="button">Clear filters</button>
-        <button id="coachResultsExportBtn" class="btn btn-ghost" type="button">Export CSV</button>
-      </div>
-    </div>
+      </label></fieldset></div></div>
     <p id="coachFilterPending" class="coach-filter-pending" hidden role="status">Changes not applied. Select Apply to update results.</p>
     <div id="coachActiveFilters" class="coach-active-filters" aria-label="Active filters"></div>
     <div id="coachResultsStatus" class="operation-status" role="status" aria-live="polite"></div>
@@ -172,7 +172,7 @@
       <div class="coach-section-heading"><span class="eyebrow">Attempt review</span><h3 id="coachAttemptsTitle">Recent attempts</h3><label class="field"><span>Show</span><select id="coachAttemptView"><option value="all">All attempts</option><option value="latest">Latest per player</option></select></label></div>
       <div id="coachResultsList"></div>
     </section>
-    <div id="coachResultsPagination" class="coach-results-pagination"></div>
+    <div class="training-results-footer"><div id="coachResultsPagination" class="coach-results-pagination"></div><button id="coachResultsExportBtn" class="btn btn-ghost" type="button">Export CSV</button></div>
     </section>
   </section>
   <section id="practiceWorkspace" class="card practice-workspace hidden" aria-labelledby="practiceWorkspaceTitle">
@@ -258,7 +258,6 @@
             <button type="button" role="tab" aria-selected="false" data-practice-view="draft">Drafts</button>
             <button type="button" role="tab" aria-selected="false" data-practice-view="history">History</button>
           </div>
-          <label id="practiceHistoryField" class="field hidden"><span>History status</span><select id="practiceHistoryStatus"><option value="completed">Completed</option><option value="closed">Closed / cancelled</option><option value="archived">Archived</option></select></label>
           <div class="practice-list-filters workspace-toolbar">
             <label class="field"><span>Search</span><input id="practiceSearch" type="search" maxlength="120" placeholder="Search assignments"></label>
             <label class="field"><span>Sort</span><select id="practiceSort">
@@ -267,6 +266,7 @@
               <option value="due">Due date</option>
               <option value="title">Name</option>
             </select></label>
+          <label id="practiceHistoryField" class="field hidden"><span>History status</span><select id="practiceHistoryStatus"><option value="completed">Completed</option><option value="closed">Closed / cancelled</option><option value="archived">Archived</option></select></label>
             <button id="practiceApplyFilters" class="btn btn-ghost" type="button">Apply</button>
           </div>
           <div id="coachPracticeList" class="practice-assignment-list"></div>
@@ -400,15 +400,15 @@
     </nav>
   </div>
   <section class="coach-view hidden" data-coach-view="overview" aria-labelledby="trainingOverviewHeading">
-    <h3 id="trainingOverviewHeading">Team progress</h3>
+    <div class="training-page-heading"><div><h2 id="trainingOverviewHeading">All teams</h2><p>Compare practice completion across teams you manage.</p></div><button id="trainingOverviewRefresh" class="dd-button training-refresh-button" type="button" aria-label="Refresh all teams"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div><div class="training-teams-toolbar"><label class="dd-field">Search teams<input id="trainingOverviewSearch" class="dd-control" type="search" placeholder="Team name"></label><label class="dd-field">Sort by<select id="trainingOverviewSort" class="dd-control"><option value="overdue">Overdue · highest first</option><option value="completion">Completion · lowest first</option><option value="name">Team name</option></select></label></div><p id="trainingOverviewRegionContext"></p>
     <label class="field" id="trainingOverviewRegionField" hidden>Region
       <select class="select" id="trainingOverviewRegion"><option value="">All regions</option></select>
     </label>
     <p id="trainingOverviewStatus" role="status"></p>
     <div class="admin-access-table-wrap">
       <table class="admin-access-table" aria-label="Team training progress">
-        <thead><tr><th scope="col">Team</th><th scope="col">Region</th><th scope="col">Active assignments</th>
-          <th scope="col">Completed / assigned</th><th scope="col">Overdue</th></tr></thead>
+        <thead><tr><th scope="col">Team</th><th scope="col">Region</th><th scope="col">Active practices</th>
+          <th scope="col">Player completion</th><th scope="col">Overdue player assignments</th><th scope="col"><span class="training-sr-only">Open team overview</span></th></tr></thead>
         <tbody id="trainingOverviewTeams"></tbody>
       </table>
     </div>
@@ -921,9 +921,10 @@
       <label class="field"><span>Category</span><select id="playbookCategory"><option value="">All categories</option></select></label>
 
       <label class="field"><span>Difficulty</span><select id="playbookDifficulty"><option value="">All levels</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
-      <details class="playbook-more-filters" id="playbookMoreFilters"><summary>More filters <span id="playbookMoreFilterCount"></span></summary><div>      <label class="field"><span>Hit outcome</span><select id="playbookHitOutcome"><option value="">All outcomes</option><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base hits</option><option value="General">General / Other</option></select></label>      <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label></div></details>
-      <button id="playbookClearFilters" class="btn btn-ghost" type="button">Clear</button>
+<button id="playbookMoreFilters" class="btn btn-ghost" type="button" aria-expanded="false" aria-controls="playbookExtraFilters"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg> Filters <span id="playbookMoreFilterCount"></span></button>
+      <button id="playbookClearFilters" class="btn btn-ghost" type="button">Clear filters</button>
     </div>
+    <div id="playbookExtraFilters" hidden><div>      <label class="field"><span>Hit outcome</span><select id="playbookHitOutcome"><option value="">All outcomes</option><option value="Singles">Singles</option><option value="Extra-base hits">Extra-base hits</option><option value="General">General / Other</option></select></label>      <label class="field"><span>Runners</span><select id="playbookRunners"><option value="">Any runners</option><option value="empty">Bases empty</option><option value="on">Runners on</option></select></label></div></div>
     <div class="playbook-browser-summary"><strong id="playbookResultCount">0 situations</strong><button id="playbookRandomFiltered" class="btn-slate" type="button">Random from results</button></div>
     <div id="playbookBrowserList" class="playbook-browser-list"></div>
     <div id="playbookBrowserEmpty" class="playbook-browser-empty hidden">No situations match these filters.</div>

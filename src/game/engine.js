@@ -130,6 +130,11 @@ const playbookCategory = document.getElementById('playbookCategory');
 const playbookHitOutcome = document.getElementById('playbookHitOutcome');
 const playbookDifficulty = document.getElementById('playbookDifficulty');
 const playbookRunners = document.getElementById('playbookRunners');
+document.getElementById('playbookMoreFilters')?.addEventListener('click',event=>{
+  const panel=document.getElementById('playbookExtraFilters');
+  panel.hidden=!panel.hidden;
+  event.currentTarget.setAttribute('aria-expanded',String(!panel.hidden));
+});
 const playbookClearFilters = document.getElementById('playbookClearFilters');
 const playbookRandomFiltered = document.getElementById('playbookRandomFiltered');
 const playbookBrowserList = document.getElementById('playbookBrowserList');
@@ -721,7 +726,7 @@ const ensureHeaderGrouping = () => {
     let pending = false;
     const updateIndicator = () => {
       pending = false;
-      const practiceOpen = !document.getElementById('practiceWorkspace')?.classList.contains('hidden');
+      const practiceOpen = window.__DIQ_AUTH_USER__?.role === 'player' && !document.getElementById('practiceWorkspace')?.classList.contains('hidden') && !document.getElementById('playerPracticeView')?.classList.contains('hidden');
       if (practiceOpen && practiceToggle.getAttribute('aria-current') !== 'page') practiceToggle.setAttribute('aria-current', 'page');
       else if (!practiceOpen && practiceToggle.hasAttribute('aria-current')) practiceToggle.removeAttribute('aria-current');
       const selected = practiceOpen ? practiceToggle : [...utilityActions.children].find(button =>

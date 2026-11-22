@@ -103,3 +103,28 @@ test('overview limits previews and exposes clear review and navigation actions',
   await dashboard.locator('.training-recent').getByRole('button',{name:'View all',exact:true}).click();
   await expect(page.locator('[data-training-section="attempts"]')).toHaveAttribute('aria-current','page');
 });
+
+
+test('Players filters, completion rings and player summary navigation work together',async({page,baseURL})=>{
+  await signIn(page,baseURL);
+  await page.route('**/api/training/13u-black/dashboard?*',route=>route.fulfill({json:{
+    updatedAt:new Date().toISOString(),activePractices:[],activePracticeCount:0,coachingFocus:[],recentAttempts:[],
+    players:[{id:'13u-black-bob-smith-11',name:'Bob Smith',number:'11',completed:1,pending:3,overdue:1,attempts:4,completedPlays:2,positioningAccuracy:50,lastActivity:new Date().toISOString()},
+      {id:'inactive-fixture',name:'Inactive Player',number:'99',completed:0,pending:2,overdue:0,attempts:0,completedPlays:0,positioningAccuracy:null,lastActivity:null}],
+  }}));
+  await ready(page,'/workspace/training?section=players&team=13u-black');
+  const players=page.locator('#trainingPlayers');
+  await expect(players.locator('tbody tr')).toHaveCount(2);
+  await expect(players.locator('tbody tr').first()).toContainText('1 of 4 complete');
+  await players.locator('#trainingPlayerView').selectOption('inactive');
+  await expect(players.locator('tbody tr')).toHaveCount(1);
+  await expect(players.locator('tbody')).toContainText('No recent activity');
+  await players.locator('#trainingPlayerView').selectOption('all');
+  await players.locator('#trainingPlayerSearch').fill('11');
+  await expect(players.locator('tbody tr')).toHaveCount(1);
+  await players.getByRole('button',{name:'Review #11 Bob Smith',exact:true}).click();
+  await expect(page.locator('#coachReviewOverview')).toBeVisible();
+  await page.locator('#trainingBackToPlayers').click();
+  await expect(players).toBeVisible();
+  await expect(players.locator('#trainingPlayerSearch')).toHaveValue('11');
+});
