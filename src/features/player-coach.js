@@ -2847,7 +2847,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     if (user?.mustChangePassword || !['coach','admin'].includes(user?.role)) return;
     try {
       staffTeamId();
-      const result = await diqApiRequest('design', { cache: 'no-store' });
+      const result = await diqApiRequest('training/scopes', { cache: 'no-store' });
       if (!isCurrent() || window.__DIQ_AUTH_USER__?.id !== user.id) return;
       trainingScopeHierarchy = result.workspaces;
       trainingScopeTeams = result.workspaces.filter(scope => scope.type === 'team');
