@@ -65,6 +65,7 @@ export const POST: RequestHandler = async (event) => {
         coachedTeamIds: permissions?.coachedTeamIds,
         directorScopes: permissions?.directorScopes,
         canPublishSituations: permissions?.canPublishSituations,
+        canAccessDesign: permissions?.canAccessDesign,
         id: user.id,
         username: user.username,
         displayName: user.displayName,

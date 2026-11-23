@@ -3719,7 +3719,7 @@ function updatePlayerHeaderButton(){
       (user?.role === 'coach' && Boolean(user.coachedTeamIds?.length || user.teamId)));
     const org = document.getElementById('orgWorkspaceBtn');
     const design = document.getElementById('designWorkspaceBtn');
-    design?.classList.toggle('hidden', Boolean(user?.mustChangePassword || !['coach', 'admin'].includes(user?.role)));
+    design?.classList.toggle('hidden', Boolean(user?.mustChangePassword || !(user?.role === 'admin' || user?.canAccessDesign === true)));
     const training = document.getElementById('trainingWorkspaceBtn');
     const extraTraining = !user?.mustChangePassword && (user?.role === 'admin' ||
       (user?.directorScopes?.length && !user?.coachedTeamIds?.length));

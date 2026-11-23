@@ -647,7 +647,7 @@
     destination.focus();
   }
   function openStaffAccessDialog(person,membershipsOnly=false) {
-    const {dialog,content}=orgDialog(membershipsOnly?'Manage team memberships':'View access',`${person.name} · ${person.username||''}`);
+    const {dialog,content}=orgDialog(membershipsOnly?'Manage team memberships':'Manage access',`${person.name} · ${person.username||''}`);
     content.append(directoryElement('p',membershipsOnly?'Each team membership is separate. Removing one preserves other memberships and historical results.':'Access can come from a direct team membership or an organization or regional appointment.','muted'));
     const entries=directory.assignments.filter(item=>item.userId===person.id&&(!membershipsOnly||item.teamId));
     const list=directoryElement('div','','org-access-entries');content.append(list);
@@ -656,7 +656,7 @@
       if(assignment.regionId&&entries.some(item=>item.role==='organization_director'&&item.organizationId===assignment.staffOrganizationId))card.append(directoryElement('p','Also covered by the organization appointment','muted'));
       const canManage=isPlatformAdmin()||(assignment.role!=='organization_director'&&directsOrganization(assignment.staffOrganizationId));
       if(canManage&&canDelegateDesigner(assignment.staffOrganizationId))card.append(renderDesignerSetting(person,assignment));
-      if(canManage&&assignment.teamId)card.append(directoryButton('Remove membership',()=>{dialog.close();void removeCoachMembership(person,assignment);},'btn btn-danger'));
+      if(canManage&&assignment.teamId){const actions=directoryElement('div','','org-access-membership-actions');actions.append(directoryButton('Remove team membership',()=>{dialog.close();void removeCoachMembership(person,assignment);},'btn btn-danger'));card.append(actions);}
       if(!membershipsOnly&&canManage&&assignment.stagedDirectorId)card.append(directoryButton('Remove appointment',()=>{dialog.close();void removeDirectorAppointment(person,assignment);},'btn btn-danger'));
       list.append(card);
     }
@@ -1641,12 +1641,17 @@
   }
 
   function renderDesignerSetting(person, assignment) {
+    const setting = directoryElement('div', '', 'org-designer-permission');
     const label = directoryElement('label', '', 'admin-designer-setting');
-    const { input, pill } = designerSwitch(`Designer for ${accessRoles[assignment.role]} · ${accessScope(assignment)}`);
+    const { input, pill } = designerSwitch(`Situation Designer access for ${accessRoles[assignment.role]} · ${accessScope(assignment)}`);
     input.checked = Boolean(assignment.canDesign);
-    label.append(pill);
+    const feedback = directoryElement('span', '', 'operation-status');
+    feedback.setAttribute('role', 'status');
+    label.append(directoryElement('strong', 'Situation Designer access'), pill, feedback);
+    setting.append(label, directoryElement('p', 'Allows this staff member to create and edit situations. Changes save automatically.', 'muted'));
     input.addEventListener('change', async () => {
       const canDesign = input.checked;
+      feedback.textContent = 'Saving…';feedback.className = 'operation-status';
       input.disabled = true;
       try {
         await diqApiRequest('admin/workspace-directory', {
@@ -1661,17 +1666,17 @@
           }),
         });
         assignment.canDesign = canDesign;
-          setStatus('Designer setting saved.', 'success');
+        feedback.textContent = 'Saved';feedback.className = 'operation-status is-success';
       } catch (error) {
         input.checked = Boolean(assignment.canDesign);
-        setStatus(error.message, 'error');
+        feedback.textContent = error.message;feedback.className = 'operation-status is-error';
       } finally {
         const restoreFocus = document.activeElement === document.body;
         input.disabled = false;
         if (restoreFocus && input.isConnected) input.focus();
       }
     });
-    return label;
+    return setting;
   }
 
   function accountCurrentMemberships(person) {
@@ -1892,9 +1897,11 @@
     const scopeField = directoryElement('label', '', 'field');
     const scopeLabel = directoryElement('span', 'Applies to');
     scopeField.append(scopeLabel, scope);
-    const { input: design, pill } = designerSwitch('Enable Situation Designer');
+    const { input: design, pill } = designerSwitch('Situation Designer access');
     const designField = directoryElement('label', '', 'admin-designer-setting');
-    designField.append(pill, 'Enable Situation Designer');
+    designField.append(directoryElement('strong', 'Situation Designer access'), pill);
+    const designHelp = directoryElement('span', 'Allows this staff member to create and edit situations. Applies when you save this assignment.', 'muted org-designer-help');
+    designField.append(designHelp);
     const save = directoryElement('button', creating ? 'Create staff account' : 'Save assignment', 'btn btn-brand');
     const status = directoryElement('p', '', 'operation-status');
     status.setAttribute('role', 'status');

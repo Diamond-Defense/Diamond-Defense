@@ -333,3 +333,11 @@ body.org-redesign-open #adminWorkspace .org-people-row {cursor:pointer;}
 .org-member-dialog .admin-designer-setting {display:flex;align-items:center;gap:10px;margin:10px 0;}
 body.org-redesign-open #adminWorkspace [data-admin-view="recovery"] .admin-account-grid {display:block;max-width:720px;}
 body.org-redesign-open #adminWorkspace [data-admin-view="recovery"] .recovery-card:not([hidden]) {padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+
+/* Keep optional design permissions distinct from team membership actions. */
+.org-member-dialog .org-designer-permission {margin-top:16px;}
+.org-member-dialog .org-designer-permission .admin-designer-setting {flex-wrap:wrap;margin-bottom:6px;}
+.org-member-dialog .org-designer-permission p {margin:0;}
+.org-member-dialog .org-access-membership-actions {margin-top:16px;padding-top:16px;border-top:1px solid var(--border);}
+.org-member-dialog .admin-designer-setting:has(.org-designer-help) {flex-wrap:wrap;}
+.org-member-dialog .org-designer-help {flex-basis:100%;font-weight:400;}

@@ -6,7 +6,7 @@ export function canAccessWorkspace(workspace: StaffWorkspace, user: WorkspaceAcc
   if (workspace === 'org') return user.role === 'admin' || Boolean(user.directorScopes?.length);
   if (workspace === 'training') return user.role === 'admin' ||
     Boolean(user.directorScopes?.length || user.coachedTeamIds?.length || user.teamId);
-  return true;
+  return user.role === 'admin' || user.canAccessDesign === true;
 }
 
 export const workspaceLabels: Record<StaffWorkspace, string> = {

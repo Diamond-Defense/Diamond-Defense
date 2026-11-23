@@ -71,7 +71,8 @@ function libraryPath(scope: LibraryWorkspace, workspaces: LibraryWorkspace[]): s
 export const GET: RequestHandler = async event => {
   const user = await requireUser(event, ['admin', 'coach']);
   const db = databaseFor(event);
-  const workspaces = await designWorkspaces(db, user);
+  const workspaces = (await designWorkspaces(db, user)).filter(scope => user.role === 'admin' || scope.canDesign);
+  if (!workspaces.length) return fail('Situation Designer access is required.', 403);
   if (!event.url.searchParams.has('type')) return json({ workspaces }, { headers: { 'Cache-Control': 'no-store' } });
   const selected = workspaces.find(scope => scope.type === event.url.searchParams.get('type')
     && scope.id === (event.url.searchParams.get('id') || ''));
@@ -167,7 +168,8 @@ export const POST: RequestHandler = async event => {
   const user = await requireUser(event, ['admin', 'coach']);
   const db = databaseFor(event);
   const body = await event.request.json();
-  const workspaces = await designWorkspaces(db, user);
+  const workspaces = (await designWorkspaces(db, user)).filter(scope => user.role === 'admin' || scope.canDesign);
+  if (!workspaces.length) return fail('Situation Designer access is required.', 403);
   const find = (type: unknown, id: unknown) => workspaces.find(scope => scope.type === type && scope.id === id);
   const repository = new SqliteSituationRepository(db);
 

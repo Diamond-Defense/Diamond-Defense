@@ -306,12 +306,12 @@ test.describe('Diamond Defence regression behavior', () => {
       await page.getByRole('dialog',{name:'Jamie Rivera',exact:true}).getByRole('button',{name:'Manage access',exact:true}).click();
     };
     await openJamieAccess();
-    const access=page.getByRole('dialog',{name:'View access',exact:true});
+    const access=page.getByRole('dialog',{name:'Manage access',exact:true});
     await expect(access).toContainText('13U Black');
     await access.getByRole('combobox', { name: 'Role', exact: true }).selectOption('regional_director');
     await access.getByRole('combobox', { name: 'Region', exact: true }).selectOption({ label: 'Rawlings Tigers / NoVA' });
-    await expect(access.getByLabel('Enable Situation Designer')).toBeChecked();
-    await access.getByLabel('Enable Situation Designer').uncheck();
+    await expect(access.locator('form').getByLabel('Situation Designer access')).toBeChecked();
+    await access.locator('form').getByLabel('Situation Designer access').uncheck();
     await access.getByRole('button', { name: 'Save assignment' }).click();
     await expect(access).toBeHidden();await openJamieAccess();
     const directorRow = access.locator('.org-access-entry').filter({ hasText: 'Regional Director' });
@@ -421,7 +421,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await staffForm.getByLabel('Temporary password').fill('Temporary-4137');
     await staffForm.getByRole('combobox', { name: 'Role', exact: true }).selectOption('regional_director');
     await staffForm.getByRole('combobox', { name: 'Region', exact: true }).selectOption({ label: 'Rawlings Tigers / NoVA' });
-    await staffForm.getByLabel('Enable Situation Designer').uncheck();
+    await staffForm.getByLabel('Situation Designer access').uncheck();
     await staffForm.getByRole('button', { name: 'Create staff account' }).click();
     await expect(staffForm).toBeHidden();
     await people.getByRole('searchbox',{name:'Search people',exact:true}).fill('staff.onboarding');

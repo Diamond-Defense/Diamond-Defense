@@ -13,6 +13,7 @@ declare global {
     role: 'admin' | 'coach' | 'player';
     directorScopes?: unknown[];
     coachedTeamIds?: string[];
+    canAccessDesign?: boolean;
     teamId?: string | null;
     mustChangePassword?: boolean;
   }

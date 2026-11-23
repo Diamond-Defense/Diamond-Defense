@@ -1,3 +1,4 @@
+import { designWorkspaces } from '$lib/server/security/design-scopes';
 import type { Cookies } from '@sveltejs/kit';
 import type { SqliteDatabaseAdapter } from '$lib/server/database/adapter';
 
@@ -24,6 +25,7 @@ export interface AuthenticatedUser {
   coachedTeamIds?: string[];
   directorScopes?: DirectorScope[];
   canPublishSituations?: boolean;
+  canAccessDesign?: boolean;
 }
 
 interface SessionRow {
@@ -163,7 +165,7 @@ export async function currentUser(
         AND role IN ('organization_director', 'regional_director') ORDER BY role, organization_id, region_id`,
     [row.id],
   ) : [];
-  return {
+  const account: AuthenticatedUser = {
     directorScopes,
     coachedTeamIds,
     canPublishSituations: row.role === 'admin',
@@ -180,4 +182,7 @@ export async function currentUser(
     jerseyNumber: row.jersey_number,
     mustChangePassword: Boolean(row.must_change_password),
   };
+  account.canAccessDesign = row.role === 'admin' || (row.role === 'coach' &&
+    (await designWorkspaces(database, account)).some(scope => scope.canDesign));
+  return account;
 }
