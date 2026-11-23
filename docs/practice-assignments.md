@@ -52,19 +52,19 @@ reassigning players: a previously active practice is restored into the closed
 view.
 
 Drafts are invisible to players. Publishing makes the assignment available in
-each recipient's **Your Practice** queue. Archiving removes it from normal
+each recipient's **Assignments** queue. Archiving removes it from normal
 coach and player lists without deleting its historical attempts.
 
 ## Player workflow
 
-1. Log in as a player and open **Your Practice**.
+1. Log in as a player and open **Assignments**.
 2. Select **Start practice** or **Continue practice** on an assignment.
 3. Once an assignment starts, complete it before selecting another assignment.
    The app always opens the first incomplete situation in the saved assignment
    order.
 4. Complete the selected situation normally, then use **Continue to next
    situation**. If another assignment remains after completion, the app returns
-   to **Your Practice**.
+   to **Assignments**.
 5. Progress changes to **Incomplete** as soon as play starts. It changes to
    **Completed** when the attempt ends. Leaving or reloading records an
    abandoned result and advances to the next assigned situation; it does not

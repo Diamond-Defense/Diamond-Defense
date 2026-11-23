@@ -57,9 +57,29 @@ export const GET: RequestHandler = async (event) => {
     database.all<{ id: string }>(`SELECT organization_id AS id FROM workspace_assignments
       WHERE user_id=?1 AND role='organization_director' AND can_design=1`, [actor.id]),
   ]);
+  // Current accounts follow current responsibility. An unassigned account belongs
+  // to its last membership scope, not every team it has ever represented.
+  const historyTeams=await database.all<{id:string}>('SELECT id FROM teams WHERE region_id IN (SELECT value FROM json_each(?1))',[JSON.stringify(visibleRegions.map(region=>region.id))]);
+  const scopedTeamIds=JSON.stringify(historyTeams.map(team=>team.id));
+  const staffIds=JSON.stringify(people.map((person:any)=>person.id));
+  const accounts=await database.all<{id:string;name:string;username:string;role:string;active:number;revision:number}>(`SELECT u.id,u.display_name AS name,u.username,u.role,u.active,u.revision
+    FROM users u WHERE u.role IN ('player','coach') AND (
+      ?1=1 OR u.id IN (SELECT value FROM json_each(?3))
+      OR EXISTS (SELECT 1 FROM team_memberships m WHERE m.user_id=u.id AND m.active=1 AND m.team_id IN (SELECT value FROM json_each(?2)))
+      OR (
+        NOT EXISTS (SELECT 1 FROM team_memberships current_membership WHERE current_membership.user_id=u.id AND current_membership.active=1)
+        AND NOT EXISTS (SELECT 1 FROM workspace_assignments appointment WHERE appointment.user_id=u.id)
+        AND (SELECT latest_membership.team_id FROM team_memberships latest_membership WHERE latest_membership.user_id=u.id
+             ORDER BY COALESCE(latest_membership.archived_at,latest_membership.created_at) DESC,latest_membership.created_at DESC,latest_membership.team_id DESC LIMIT 1) IN (SELECT value FROM json_each(?2))
+      )
+    ) ORDER BY u.display_name COLLATE NOCASE,u.id`,[Number(admin),scopedTeamIds,staffIds]);
+  const accountMemberships=await database.all(`SELECT m.user_id AS userId,m.team_id AS teamId,m.team_role AS role,m.jersey_number AS number,m.active,m.revision,
+      m.season_id AS seasonId,t.name AS teamName,t.active AS teamActive,r.organization_id AS organizationId
+    FROM team_memberships m JOIN teams t ON t.id=m.team_id LEFT JOIN regions r ON r.id=t.region_id
+    WHERE ?1=1 OR (m.team_id IN (SELECT value FROM json_each(?2)) AND m.user_id IN (SELECT value FROM json_each(?3)))`,[Number(admin),scopedTeamIds,JSON.stringify(accounts.map(account=>account.id))]);
   return json({
     organizations: visibleOrganizations, regions: visibleRegions, teams: visibleTeams,
-    people, assignments, designerOrganizationIds: designerScopes.map(scope => scope.id),
+    people, accounts, accountMemberships, assignments, designerOrganizationIds: designerScopes.map(scope => scope.id),
   }, { headers: { 'Cache-Control': 'no-store' } });
 };
 

@@ -140,11 +140,13 @@ test('Playbook scrolls a large admin catalog without overlapping cards',async({p
  const situations=Array.from({length:32},(_,index)=>({...catalog[index%catalog.length],
   key:`overflow-fixture-${index}`,title:`Long library situation ${index} — line drive to right-center`,
   desc:index%3===0?'Additional situation context that must remain inside this card.':''}));
- await page.route('**/api/situations',route=>route.fulfill({json:situations}));
+ await page.route(/\/api\/situations(?:\?.*)?$/,route=>route.fulfill({json:situations}));
  await page.goto('/');
  await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
  await page.evaluate(()=>window.__DIQ_READY__);
+ const playbookResponse=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/situations' && url.searchParams.get('catalog')==='playbook';});
  await page.locator('#playbookBrowserToggle').click();
+ expect(await (await playbookResponse).json()).toHaveLength(32);
  const cards=page.locator('#playbookBrowserList .playbook-situation-card');
  await expect(cards).toHaveCount(32);
  const geometry=await page.locator('#playbookBrowserList').evaluate(list=>{
@@ -214,7 +216,7 @@ test('practice sidebar filters and pagination remain local to the practice page'
  const sidebar=page.locator('#playerPracticeView .dd-workspace-sidebar');
  const sections=page.getByRole('navigation',{name:'Practice sections'});
  await expect(sidebar).toBeVisible();
- await expect(sidebar.getByRole('heading',{name:'Practice',exact:true})).toBeVisible();
+ await expect(sidebar.getByRole('heading',{name:'Assignments',exact:true})).toBeVisible();
  await expect(sidebar.locator('.dd-workspace-meta')).toHaveCount(0);
  await expect(page.locator('#playerPracticePageTitle')).toHaveText('Assigned practice');
  await expect(page.locator('#playerPracticeList [role=progressbar]')).toHaveCount(0);

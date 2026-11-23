@@ -28,5 +28,5 @@ export const GET: RequestHandler = async (event) => {
 export const POST: RequestHandler = async (event) => {
   assertSameOrigin(event);
   await requireUser(event, ['coach']);
-  return json({ error: 'Submit a published revision to its parent library in Design workspace.' }, { status: 410 });
+  return json({ error: 'Submit a published revision to its parent library in Design.' }, { status: 410 });
 };

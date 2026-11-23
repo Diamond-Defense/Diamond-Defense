@@ -304,7 +304,7 @@ body.training-redesign-open .coach-review-views button[aria-pressed=true] {borde
 body.training-redesign-open #coachResultsWorkspace .coach-results-filter {margin:12px 0;padding:12px;gap:12px;}
 body.training-redesign-open #coachResultsWorkspace .coach-results-filter>.field {flex:0 1 280px;min-width:180px;font-size:12px;}
 body.training-redesign-open #coachResultsRefreshBtn {width:36px;height:36px;padding:0;font-size:0;}
-body.training-redesign-open #coachResultsRefreshBtn::after {content:'↻';font-size:24px;}
+body.training-redesign-open #coachResultsRefreshBtn::after {content:none;}
 body.training-redesign-open #coachActiveFilters {display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:0;margin:8px 0 16px;border:0;background:transparent;min-height:0;}
 body.training-redesign-open #coachActiveFilters .coach-active-filter-heading {font-size:12px;}
 body.training-redesign-open #coachActiveFilters .coach-filter-chip {padding:4px 8px;min-height:30px;font-size:12px;}

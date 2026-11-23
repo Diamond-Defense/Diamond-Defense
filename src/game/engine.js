@@ -512,7 +512,7 @@ const ensureHeaderGrouping = () => {
     practiceToggle.id = 'practiceToggle';
     practiceToggle.className = 'btn-slate hidden';
     practiceToggle.type = 'button';
-    practiceToggle.textContent = 'Your Practice';
+    practiceToggle.textContent = 'Assignments';
     practiceToggle.setAttribute('aria-controls', 'practiceWorkspace');
     practiceToggle.setAttribute('aria-hidden', 'true');
     utilityActions.appendChild(practiceToggle);
@@ -555,7 +555,7 @@ const ensureHeaderGrouping = () => {
     orgWorkspaceButton.id = 'orgWorkspaceBtn';
     orgWorkspaceButton.type = 'button';
     orgWorkspaceButton.className = 'btn-slate hidden';
-    orgWorkspaceButton.textContent = 'Org workspace';
+    orgWorkspaceButton.textContent = 'Organization';
     orgWorkspaceButton.setAttribute('aria-controls', 'adminWorkspace');
     orgWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('org'));
   }
@@ -565,7 +565,7 @@ const ensureHeaderGrouping = () => {
     designWorkspaceButton.id = 'designWorkspaceBtn';
     designWorkspaceButton.type = 'button';
     designWorkspaceButton.className = 'btn-slate hidden';
-    designWorkspaceButton.textContent = 'Design workspace';
+    designWorkspaceButton.textContent = 'Design';
     designWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('design'));
   }
   let trainingWorkspaceButton = document.getElementById('trainingWorkspaceBtn');
@@ -574,7 +574,7 @@ const ensureHeaderGrouping = () => {
     trainingWorkspaceButton.id = 'trainingWorkspaceBtn';
     trainingWorkspaceButton.type = 'button';
     trainingWorkspaceButton.className = 'btn-slate hidden';
-    trainingWorkspaceButton.textContent = 'Training workspace';
+    trainingWorkspaceButton.textContent = 'Training';
     trainingWorkspaceButton.addEventListener('click', () => window._diqNavigateWorkspace?.('training'));
   }
   if (staffToolsButton.dataset.wired !== '1') {
@@ -683,7 +683,7 @@ const ensureHeaderGrouping = () => {
     workspaceHeading = document.createElement('div');
     workspaceHeading.id = 'trainingWorkspaceHeading';
     workspaceHeading.className = 'training-workspace-heading';
-    workspaceHeading.innerHTML = '<span class="eyebrow">Diamond Defence</span><strong>Training workspace</strong>';
+    workspaceHeading.innerHTML = '<span class="eyebrow">Diamond Defence</span><strong>Training</strong>';
     shell.appendChild(workspaceHeading);
   }
   // Decorative HUD symbols mirror the existing text values for accessibility.
@@ -709,12 +709,44 @@ const ensureHeaderGrouping = () => {
   let fieldNav = document.getElementById('fieldNavigationButton');
   if (!fieldNav) {
     fieldNav = document.createElement('button');
-    fieldNav.id = 'fieldNavigationButton'; fieldNav.type = 'button'; fieldNav.textContent = 'Field';
+    fieldNav.id = 'fieldNavigationButton'; fieldNav.type = 'button'; fieldNav.textContent = 'Play';
     fieldNav.addEventListener('click', () => {
       document.querySelector('#practiceWorkspace:not(.hidden) #practiceWorkspaceClose')?.click();
       window._diqNavigateWorkspace?.('field');
     });
     utilityActions.prepend(fieldNav);
+  }
+  // Header destinations share Lucide stroke styling and retain text labels.
+  const headerIcons={
+    play:'<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
+    training:'<path d="M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z M2.5 21.5l1.4-1.4 M20.1 3.9l1.4-1.4 M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z M9.6 14.4l4.8-4.8"/>',
+    design:'<path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13 M8 6l2-2 M18 16l2-2 M17 11l4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17 M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z M15 5l4 4"/>',
+    organization:'<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2 M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2 M10 6h4 M10 10h4 M10 14h4 M10 18h4"/>',
+    board:'<path d="M2 3h20 M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3 M7 21l5-5 5 5"/>',
+    guide:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01"/>',
+  };
+  function headerDestination(button,label,icon){
+    if(!button)return;
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'}))svg.setAttribute(key,value);
+    svg.classList.add('header-nav-icon');svg.innerHTML=headerIcons[icon];
+    const text=document.createElement('span');text.className='header-nav-label'+(button===staffToolsButton?' staff-tools-label-full':'');text.textContent=label;button.replaceChildren(svg,text);
+    if(button===staffToolsButton){const short=document.createElement('span');short.className='staff-tools-label-short';short.textContent=label;button.append(short);}
+  }
+  const boardDestination=document.getElementById('coachBoardLink');
+  headerDestination(fieldNav,'Play','play');headerDestination(trainingWorkspaceButton,'Training','training');headerDestination(designWorkspaceButton,'Design','design');headerDestination(orgWorkspaceButton,'Organization','organization');headerDestination(boardDestination,'Coach Board','board');headerDestination(playbookToggle,'Guide','guide');
+  window._diqRefreshHeaderDestinations=()=>{
+    const admin=window.__DIQ_AUTH_USER__?.role==='admin';
+    // The legacy primary control is Organization for admins and Training for coaches.
+    // Keep its icon and position in sync with the permission-owned dedicated controls.
+    headerDestination(staffToolsButton,admin?'Organization':'Training',admin?'organization':'training');
+    const ordered=[boardDestination,fieldNav,...(admin?[trainingWorkspaceButton]:[staffToolsButton,trainingWorkspaceButton]),designWorkspaceButton,...(admin?[staffToolsButton,orgWorkspaceButton]:[orgWorkspaceButton])].filter(Boolean);
+    utilityActions.prepend(...ordered);
+  };
+  window._diqRefreshHeaderDestinations();
+  if(brand.dataset.playLink!=='true'){
+    brand.dataset.playLink='true';brand.setAttribute('role','link');brand.setAttribute('aria-label','Diamond Defence — Play');brand.tabIndex=0;
+    brand.addEventListener('click',()=>fieldNav.click());brand.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();fieldNav.click();}});
   }
   // Help is an action, separate from destinations and their shared indicator.
   accountActions.prepend(playbookToggle);
@@ -1079,12 +1111,11 @@ function updateChipScale(){
   wrap.style.setProperty('--chip-font', metrics.defenderFont + 'px');
 }
 
-function tolToCssDiameter(tol, allowTiny=false){
-  const s = Math.min(imgRect.width / IMG_W, imgRect.height / IMG_H);
-  const dCss = 2 * tol * s;
-  if (allowTiny) return Math.max(6, Math.round(dCss));
-  const minByChip = CHIP_PX * 1.8;
-  return Math.round(Math.max(dCss, minByChip));
+function tolToCssDiameter(tol, axis='x'){
+  // Use the same native-coordinate radius as checkPositions. Never enlarge
+  // the visible acceptance area to accommodate the chip's display size.
+  const scale = axis === 'y' ? imgRect.height / IMG_H : imgRect.width / IMG_W;
+  return 2 * tol * scale;
 }
 
 // @diq:end [A0]
@@ -1324,9 +1355,9 @@ function buildTargets(){
     label.className='tgt-label'; label.textContent=id;
     ring.appendChild(label);
     const tol = Number(pt.tol) || DEFAULT_TOL;
-    const dpx = tolToCssDiameter(tol, coachUnlocked);
-    ring.style.width  = dpx + 'px';
-    ring.style.height = dpx + 'px';
+    ring.style.boxSizing = 'border-box';
+    ring.style.width = tolToCssDiameter(tol, 'x') + 'px';
+    ring.style.height = tolToCssDiameter(tol, 'y') + 'px';
     if (coachUnlocked){
       ring.style.display='block';
       ring.classList.add('show-label','draggable'); ring.classList.remove('locked');

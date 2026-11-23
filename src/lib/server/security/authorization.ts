@@ -89,6 +89,6 @@ export async function requirePracticeAssignmentManager(event: RequestEvent, team
 
 export async function requireSituationPublisher(event: RequestEvent): Promise<AuthenticatedUser> {
  const user = await requireUser(event, ['coach','admin']);
- if (user.role !== 'admin') throw error(403, 'Global publication requires Platform Admin. Use the Design workspace for scoped publishing.');
+ if (user.role !== 'admin') throw error(403, 'Global publication requires Platform Admin. Use Design for scoped publishing.');
  return user;
 }

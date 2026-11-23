@@ -10,7 +10,25 @@
     (view) => view.dataset.adminView !== 'situations',
   );
   mainWorkspaceViews.forEach((view) => adminWorkspace?.appendChild(view));
+  const orgIcons={teams:'M3 21V3h12v18 M15 9h6v12 M7 7h4 M7 11h4 M7 15h4 M7 19h4 M18 13h1 M18 17h1',people:'M2 21a8 8 0 0 1 10.43-7.62 M15 7a5 5 0 1 1-10 0 5 5 0 0 1 10 0 M22 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0 M16.88 18.12 14 21 M15 20l1 1',recovery:'M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0 M4.93 4.93l4.24 4.24 M14.83 14.83l4.24 4.24 M14.83 9.17l4.24-4.24 M4.93 19.07l4.24-4.24'};
+  adminCard.querySelectorAll('[data-admin-tab]').forEach(button=>{
+    const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+    for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.8','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'}))svg.setAttribute(key,value);
+    const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',orgIcons[button.dataset.adminTab]);svg.append(path);button.prepend(svg);
+  });
+  function syncOrgShell(){document.body.classList.toggle('org-redesign-open',!adminCard.classList.contains('hidden') && adminCard.dataset.workspace==='org' && !adminWorkspace.classList.contains('hidden'));}
+  const orgShellObserver=new MutationObserver(syncOrgShell);
+  orgShellObserver.observe(adminCard,{attributes:true,attributeFilter:['class','data-workspace']});
+  orgShellObserver.observe(adminWorkspace,{attributes:true,attributeFilter:['class']});
+  syncOrgShell();
+  document.addEventListener('pointerdown',event=>{const picker=adminCard.querySelector('.org-context-switcher[open]');if(picker && !picker.contains(event.target))picker.open=false;});
+  document.addEventListener('keydown',event=>{const picker=adminCard.querySelector('.org-context-switcher[open]');if(event.key==='Escape' && picker){picker.open=false;picker.querySelector('summary').focus();}});
+  byId('orgWorkspaceRefresh').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;try{await loadAdminData(teamSelect?.value || '');}catch(error){setStatus(error.message,'error');}finally{button.disabled=false;}});
 
+
+  let directoryLandingTab='organizations';
+  const orgHeaderActions=document.createElement('div');orgHeaderActions.id='orgHeaderActions';orgHeaderActions.className='admin-actions';
+  byId('orgWorkspaceRefresh').before(orgHeaderActions);
   const statusEl = byId('adminOperationStatus');
   const teamSelect = byId('adminTeamSelect');
   const newTeamButton = byId('adminNewTeamBtn');
@@ -464,6 +482,7 @@
     renderCleanupControls();
     renderDeletionPlayerSelect();
     renderAdvanceRoster();
+    renderSeasonsPage();
   }
 
   async function loadSeasonData(teamId, preferredId = '') {
@@ -501,11 +520,11 @@
     showAddMemberChoices(false);
     for(const id of ['adminPlayerPass','adminCoachPass']){const input=byId(id);if(input) input.value='';}
   }
-  function openMemberEditor(role, id='', resetPassword=false){
+  function openMemberEditor(role){
+    const id='',resetPassword=false;
     const view=document.querySelector('[data-admin-team-view="roster"]');
     view.dataset.memberEditor=role;
     view.dataset.memberSection=resetPassword?'password':'details';
-    byId('adminMemberSections')?.remove();
     byId(role==='coach'?'adminCoachUpdateBtn':role==='existing'?'adminAddExistingPlayerBtn':'adminPlayerUpdateBtn')?.after(byId('adminMemberCancel'));
     showAddMemberChoices(false);
     byId('adminMemberDestination').textContent = teamLabel(selectedTeam());
@@ -536,101 +555,7 @@
     card.querySelector('.sectionTitle').textContent=id?selectedMember(role)?.name||'Member':role==='coach'?'New coach':'New player';
     const save=byId(role==='coach'?'adminCoachUpdateBtn':'adminPlayerUpdateBtn');
     save.textContent=resetPassword?'Reset password':`Save ${role}`;
-    if(id){
-      const nav=document.createElement('div');nav.id='adminMemberSections';nav.className='admin-actions';
-      const member=selectedMember(role);
-      for(const [key,label] of [['details','Details'],['password','Password'],['membership','Team membership']]){
-        const button=document.createElement('button');button.type='button';button.className='btn btn-ghost';button.textContent=label;
-        button.setAttribute('aria-pressed',String(view.dataset.memberSection===key));
-        button.onclick=()=>{
-          openMemberEditor(role,id,key==='password');
-          view.dataset.memberSection=key;
-          if(key==='membership')byId('adminMemberEditorHeader').append(byId('adminMemberCancel'));
-          byId('adminMemberSections').querySelectorAll('button').forEach(item=>item.setAttribute('aria-pressed',String(item.textContent===label)));
-        };nav.append(button);
-      }
-      byId('adminMemberEditorHeader').append(nav);
-      if(!card.querySelector('[data-member-membership]')){
-        const membership=document.createElement('section');membership.dataset.memberMembership='';
-        const copy=document.createElement('p');copy.textContent=role==='coach'?'Remove this coach from the current team.':'Transfer this player to another team, or remove their current membership. Historical results are preserved.';
-        membership.append(copy);
-        if(role==='player')membership.append(transferPlayerWorkflow);
-        membership.append(byId(role==='coach'?'adminCoachRemoveBtn':'adminPlayerRemoveBtn'));
-        card.append(membership);
-      }
-    }
     (resetPassword?password:byId(role==='coach'?'adminCoachName':'adminPlayerName')).focus();
-  }
-  function renderUnassignedAccounts(){
-    let panel=byId('adminUnassignedAccounts');
-    if(!panel){panel=document.createElement('details');panel.id='adminUnassignedAccounts';panel.className='card';document.querySelector('[data-admin-view="recovery"]').append(panel);}
-    panel.replaceChildren();
-    const title=document.createElement('summary');title.textContent=`Accounts without a team (${unassignedPlayers.length})`;panel.append(title);
-    const help=document.createElement('p');help.textContent='Assign a player or coach to a team, or delete their account. Jersey numbers are required for players. Deleting a coach also removes their proposals and permissions. Resolve any training assignments they own first.';panel.append(help);
-    if(!unassignedPlayers.length){panel.append('No unassigned accounts.');return;}
-    const selected=new Set(), numbers=new Map();let busy=false;
-    const search=document.createElement('input');search.className='input';search.type='search';search.placeholder='Search unassigned accounts';search.setAttribute('aria-label','Search unassigned accounts');panel.append(search);
-    const controls=document.createElement('div');controls.className='admin-actions';panel.append(controls);
-    const button=(label,action)=>{const el=document.createElement('button');el.type='button';el.className='btn btn-ghost';el.textContent=label;el.onclick=action;controls.append(el);return el;};
-    const matching=()=>unassignedPlayers.filter(item=>[item.name,item.username].some(value=>String(value||'').toLowerCase().includes(search.value.toLowerCase())));
-    button('Select matching',()=>{matching().forEach(item=>selected.add(item.userId));draw();});
-    button('Clear selection',()=>{selected.clear();draw();});
-    const destination=document.createElement('select');destination.className='select';destination.setAttribute('aria-label','Destination team for selected players');destination.append(option('','Select destination team'));
-    teams.filter(team=>team.active!==false).forEach(team=>destination.append(option(team.id,teamLabel(team))));panel.append(destination);
-    const count=document.createElement('p');panel.append(count);
-    const status=document.createElement('p');status.setAttribute('role','status');panel.append(status);
-    const list=document.createElement('div');panel.append(list);
-    const add=button('Add selected to team',()=>run(false));add.className='btn btn-brand';
-    const remove=button('Delete selected permanently',()=>run(true));remove.className='btn btn-danger';
-    function update(){count.textContent=`${selected.size} selected · ${matching().length} matching`;add.disabled=busy||!destination.value||!selected.size||unassignedPlayers.some(item=>selected.has(item.userId)&&item.role!=='coach'&&!numbers.get(item.userId)?.trim());remove.disabled=busy||!selected.size;}
-    async function run(deleting){
-      if(busy)return;
-      const chosen=unassignedPlayers.filter(item=>selected.has(item.userId));const team=teams.find(item=>item.id===destination.value);
-      if(!chosen.length||(!deleting&&(!team||chosen.some(item=>item.role!=='coach'&&!numbers.get(item.userId)?.trim()))))return;
-      busy=true;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=true);
-      const summary=chosen.map(item=>`${item.name} (${item.userId})${deleting?'':` #${numbers.get(item.userId)?.trim()||'Coach'}`}`).join('; ');
-      let completed=0;
-      try{
-        const confirmed=await requestConfirmation({title:deleting?'Delete selected accounts permanently':'Add selected accounts',message:deleting?`Delete ${chosen.length} accounts and all their historical results and practice records across teams? ${summary}. This cannot be undone.`:`Add ${chosen.length} accounts to ${teamLabel(team)}? ${summary}. Existing passwords and history are preserved.`,confirmLabel:deleting?'Delete accounts':'Add players',...(deleting?{requiredText:'DELETE'}:{})});
-        if(!confirmed)return;
-        for(const player of chosen){
-          status.textContent=`${deleting?'Deleting':'Adding'} ${player.name} (${completed+1} of ${chosen.length})…`;
-          if(deleting)await diqApiRequest(`admin/users/${encodeURIComponent(player.userId)}`,{method:'DELETE',body:JSON.stringify({confirmation:'DELETE ACCOUNT PERMANENTLY'})});
-          else await diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:player.userId,number:numbers.get(player.userId)?.trim()||''})});
-          completed++;selected.delete(player.userId);unassignedPlayers=unassignedPlayers.filter(item=>item.userId!==player.userId);
-          draw();
-        }
-        const refreshed=await diqApiRequest('admin/players/unassigned?includeCoaches=true',{cache:'no-store'});
-        unassignedPlayers=Array.isArray(refreshed?.players)?refreshed.players:[];
-        const remaining=chosen.filter(player=>unassignedPlayers.some(item=>item.userId===player.userId));
-        remaining.forEach(player=>selected.add(player.userId));
-        draw();
-        status.textContent=remaining.length
-          ? `${remaining.length} selected accounts are still unassigned after the requests. They remain selected; refresh and try again.`
-          : `${completed} accounts ${deleting?'deleted':'added to '+team.name}.`;
-        if(!deleting){
-          // Refresh roster data separately without replacing this operation's status.
-          const result=await diqApiRequest('admin/teams?includeArchived=true',{cache:'no-store'});
-          teams=Array.isArray(result?.teams)?result.teams:teams;
-          renderSelectedTeam();
-        }
-      }catch(error){status.textContent=`${completed} of ${chosen.length} completed. Stopped: ${error.message}. Remaining accounts are still selected.`;draw();}
-      finally{busy=false;panel.querySelectorAll('button,input,select').forEach(el=>el.disabled=false);update();}
-
-    }
-    function draw(){
-      list.replaceChildren();
-      for(const player of matching()){
-        const row=document.createElement('section');row.className='card';
-        const label=document.createElement('label');label.style.cssText='display:flex;align-items:center;gap:10px';
-        const check=document.createElement('input');check.type='checkbox';check.style.width='20px';check.checked=selected.has(player.userId);check.disabled=busy;check.onchange=()=>{if(check.checked)selected.add(player.userId);else selected.delete(player.userId);update();};
-        const name=document.createElement('span');name.textContent=`${player.name} · ${player.role==='coach'?'Coach':'Player'} · ${player.username || player.userId}`;label.append(check,name);
-        const number=document.createElement('input');number.className='input';number.maxLength=12;number.placeholder='Player number';number.value=numbers.get(player.userId)||'';number.disabled=busy;number.setAttribute('aria-label',`Player number for ${player.name} (${player.userId})`);number.oninput=()=>{numbers.set(player.userId,number.value);update();};row.append(label);if(player.role!=='coach')row.append(number);list.append(row);
-      }
-      if(!list.children.length)list.textContent='No matching unassigned accounts.';
-      update();
-    }
-    search.oninput=draw;destination.onchange=update;draw();
   }
   const selectedRosterIds = new Set();
   let rosterSelectionTeam = '';
@@ -643,6 +568,323 @@
     setVisible(button, count > 0);
   }
 
+  // Shared member actions keep routine edits in the roster context.
+  function orgDialog(title,context='') {
+    const active=document.activeElement;
+    const opener=active?.closest('tr,.org-staff-card')?.querySelector('button.org-menu-trigger') || active;
+    const dialog=document.createElement('dialog');dialog.className='org-member-dialog';
+    const heading=directoryElement('h3',title);heading.id='org-dialog-'+crypto.randomUUID();dialog.setAttribute('aria-labelledby',heading.id);
+    dialog.append(heading);if(context)dialog.append(directoryElement('p',context,'org-dialog-context'));
+    const content=directoryElement('div','','org-dialog-content');dialog.append(content);
+    document.body.append(dialog);
+    dialog.addEventListener('close',()=>{dialog.remove();if(opener?.isConnected)opener.focus();else (document.querySelector('#adminTeamRecords .admin-team-view:not(.hidden) button.org-menu-trigger')||byId('adminDirectoryTitle'))?.focus();});
+    dialog.showModal();return {dialog,content};
+  }
+  function dialogField(form,label,type='text',value='') {
+    const field=directoryElement('label','','field');field.append(directoryElement('span',label));
+    const input=document.createElement('input');input.className='input';input.type=type;input.value=value;field.append(input);form.append(field);return input;
+  }
+  function dialogForm(dialog,content,label,submit) {
+    const form=document.createElement('form');const status=directoryElement('p','','operation-status');status.setAttribute('role','status');
+    const actions=directoryElement('div','','admin-actions');const cancel=directoryButton('Cancel',()=>dialog.close());
+    const save=directoryElement('button',label,'btn btn-brand');save.type='submit';actions.append(cancel,save);
+    content.append(form);form.append(status,actions);
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();if(!form.reportValidity())return;
+      const controls=[...form.querySelectorAll('button,input,select')];const disabled=controls.map(el=>el.disabled);
+      controls.forEach(el=>el.disabled=true);status.textContent='Saving…';
+      try{if(await submit(form,status,save))dialog.close();}
+      catch(error){status.textContent=error.message;}
+      finally{controls.forEach((el,i)=>el.disabled=disabled[i]);}
+    });
+    return {form,status,actions,save};
+  }
+  function openRosterEdit(member,passwordOnly=false,teamContext=null) {
+    const team=teamContext||selectedTeam();if(!team || (member.role==='coach'&&!isPlatformAdmin()))return;
+    const {dialog,content}=orgDialog(passwordOnly?'Reset password':'Edit details',`${member.name} · ${teamLabel(team)}`);
+    let name,number,password;
+    const {form,status}=dialogForm(dialog,content,passwordOnly?'Reset password':'Save changes',async()=>{
+      const body={name:passwordOnly?member.name:name.value.trim(),number:member.role==='player'?(passwordOnly?member.number:number.value.trim()):'',role:member.role};
+      if(!body.name || (member.role==='player'&&!body.number)){status.textContent='Enter a name and player number.';return false;}
+      if(passwordOnly)body.password=password.value;
+      const ok=await perform(passwordOnly?'Resetting password…':'Saving member…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/members/${encodeURIComponent(member.playerId)}`,{
+        method:'PUT',headers:{'If-Match':String(member.revision)},body:JSON.stringify(body),
+      }),passwordOnly?'Password reset. The temporary password must be changed at next login.':'Member details saved.',team.id);
+      if(!ok)status.textContent='Unable to save. Check the workspace status and try again.';return ok;
+    });
+    const fields=document.createElement('div');fields.className='org-dialog-fields';form.prepend(fields);
+    if(passwordOnly){
+      fields.append(directoryElement('p','The member must change this temporary password at their next sign-in.','muted'));
+      password=dialogField(fields,'Temporary password','password');password.required=true;password.minLength=8;password.maxLength=1024;password.autocomplete='new-password';
+      const generate=directoryButton('Generate',()=>{password.value=generatePassword();password.type='text';password.focus();});fields.append(generate);password.focus();
+    }else{
+      name=dialogField(fields,'Name','text',member.name);name.required=true;name.maxLength=100;
+      if(member.role==='player'){number=dialogField(fields,'Jersey number','text',member.number||'');number.required=true;number.maxLength=12;}
+      name.focus();
+    }
+  }
+  async function removeRosterMember(member,teamContext=null) {
+    const team=teamContext||selectedTeam();if(!team || (member.role==='coach'&&!isPlatformAdmin()))return;
+    if(!await requestConfirmation({title:'Remove from team',message:`Remove ${member.name} from ${team.name}? This removes only their membership in this team. Their account, other memberships, and all historical training attempts and results remain. Current practice for this team will stop. No account deletion is needed.`,confirmLabel:'Remove from team'}))return;
+    await perform('Removing membership…',()=>removeTeamMembership(team,member),'Member removed from this team. Historical results were preserved.',team.id);
+  }
+  function openPlayerTransfer(member,teamContext=null) {
+    const source=teamContext||selectedTeam();if(!source || member.role!=='player')return;
+    const {dialog,content}=orgDialog('Transfer player',`${member.name} · From ${teamLabel(source)}`);
+    let reviewed=false,destination,number;
+    const {form,status,save}=dialogForm(dialog,content,'Review transfer',async()=>{
+      const target=teams.find(item=>item.id===destination.value);
+      if(!target || !number.value.trim()){status.textContent='Choose a destination and jersey number.';return false;}
+      if(!reviewed){reviewed=true;save.textContent='Transfer player';status.textContent=`Move ${member.name} to ${teamLabel(target)} as #${number.value.trim()}? Current practice will stop and active sessions will be signed out. Historical results stay with ${teamLabel(source)}.`;return false;}
+      const ok=await perform('Transferring player…',()=>diqApiRequest(`admin/players/${encodeURIComponent(member.playerId)}/transfer`,{method:'POST',body:JSON.stringify({destinationTeamId:target.id,number:number.value.trim()})}),`${member.name} transferred to ${teamLabel(target)}.`,source.id);
+      if(!ok)status.textContent='Transfer failed. Check the workspace status before trying again.';return ok;
+    });
+    const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);
+    const field=directoryElement('label','Destination team and active season','field');destination=document.createElement('select');destination.required=true;destination.className='select';
+    destination.append(option('','Choose destination'),...teams.filter(item=>item.id!==source.id&&item.active!==false&&item.activeSeasonId).map(item=>option(item.id,teamLabel(item))));field.append(destination);fields.append(field);
+    number=dialogField(fields,'New jersey number','text',member.number||'');number.required=true;number.maxLength=12;
+    for(const input of [destination,number])input.addEventListener('input',()=>{reviewed=false;save.textContent='Review transfer';status.textContent='';});
+    destination.focus();
+  }
+  function openStaffAccessDialog(person,membershipsOnly=false) {
+    const {dialog,content}=orgDialog(membershipsOnly?'Manage team memberships':'View access',`${person.name} · ${person.username||''}`);
+    content.append(directoryElement('p',membershipsOnly?'Each team membership is separate. Removing one preserves other memberships and historical results.':'Access can come from a direct team membership or an organization or regional appointment.','muted'));
+    const entries=directory.assignments.filter(item=>item.userId===person.id&&(!membershipsOnly||item.teamId));
+    const list=directoryElement('div','','org-access-entries');content.append(list);
+    for(const assignment of entries){
+      const card=directoryElement('section','','org-access-entry');card.append(directoryElement('strong',accessRoles[assignment.role]||assignment.role),directoryElement('p',accessScope(assignment),'muted'));
+      if(assignment.regionId&&entries.some(item=>item.role==='organization_director'&&item.organizationId===assignment.staffOrganizationId))card.append(directoryElement('p','Also covered by the organization appointment','muted'));
+      const canManage=isPlatformAdmin()||(assignment.role!=='organization_director'&&directsOrganization(assignment.staffOrganizationId));
+      if(canManage&&canDelegateDesigner(assignment.staffOrganizationId))card.append(renderDesignerSetting(person,assignment));
+      if(canManage&&assignment.teamId)card.append(directoryButton('Remove membership',()=>{dialog.close();void removeCoachMembership(person,assignment);},'btn btn-danger'));
+      if(!membershipsOnly&&canManage&&assignment.stagedDirectorId)card.append(directoryButton('Remove appointment',()=>{dialog.close();void removeDirectorAppointment(person,assignment);},'btn btn-danger'));
+      list.append(card);
+    }
+    if(!entries.length)list.append(directoryElement('p','No matching assignments.','muted'));
+    if(isPlatformAdmin()||window.__DIQ_AUTH_USER__?.directorScopes?.some(scope=>scope.role==='organization_director'))content.append(renderStaffAccessForm(person,()=>dialog.close(),{...(membershipsOnly?{fixedRole:'coach'}:{}),onSaved:()=>dialog.close()}));
+    content.append(directoryButton('Close',()=>dialog.close()));
+  }
+  function openNewSeason() {
+    const team=selectedTeam();if(!team||seasons.some(item=>item.status==='active'))return;
+    const {dialog,content}=orgDialog('New season',team.name);let name,start,end;
+    content.append(directoryElement('p','Start another season for this team. Current active players and coaches carry into it. To move members to a different team, use Advance roster instead.','muted'));
+    const {form,status}=dialogForm(dialog,content,'Create season',async()=>{
+      if(!name.value.trim()){status.textContent='Enter a season name.';return false;}
+      if(start.value&&end.value&&end.value<start.value){status.textContent='End date must be on or after the start date.';return false;}
+      const ok=await perform('Creating season…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons`,{method:'POST',body:JSON.stringify({name:name.value.trim(),startsOn:start.value||null,endsOn:end.value||null})}),'Season created. Current active roster members were carried into it.',team.id);
+      if(!ok)status.textContent='Unable to create the season. Check the workspace status before trying again.';return ok;
+    });
+    const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);
+    name=dialogField(fields,'Season name');name.required=true;name.maxLength=120;name.placeholder='e.g., Spring 2029';
+    const dates=directoryElement('div','','org-season-date-fields');fields.append(dates);start=dialogField(dates,'Start date (optional)','date');end=dialogField(dates,'End date (optional)','date');name.focus();
+  }
+  function openCloseSeason(season) {
+    const team=selectedTeam();if(!team||season.status!=='active')return;
+    const {dialog,content}=orgDialog('Close season',`${team.name} · ${season.name}`);
+    content.append(directoryElement('p','Players will stop receiving this season’s practice, and unfinished attempts will be marked abandoned. Historical rosters and results remain available for export and review.','muted'));
+    dataImpact(content,season,[['memberCount','Members'],['assignmentCount','Practices'],['attemptCount','Results']]);
+    const {status}=dialogForm(dialog,content,'Close season',async()=>{
+      const ok=await perform('Closing season…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}`,{method:'PATCH',body:JSON.stringify({action:'close'})}),'Season closed.',team.id);
+      if(!ok)status.textContent='Unable to close this season. Check the workspace status and refresh.';return ok;
+    });
+  }
+  function openSeasonDeletion(season) {
+    const team=selectedTeam();if(!isPlatformAdmin()||!team||season.status==='active')return;
+    const {dialog,content}=orgDialog('Delete closed season',`${team.name} · ${season.name}`);
+    content.append(directoryElement('p','This permanently deletes this season and its roster snapshots, practices, progress, and results. Export the season before deleting if you need to retain its history. Player accounts remain.','muted'));
+    dataImpact(content,season,[['memberCount','Members'],['assignmentCount','Practices'],['attemptCount','Results']]);let confirmation;
+    const {form,status,save}=dialogForm(dialog,content,'Delete season',async()=>{
+      if(confirmation.value!==season.name){status.textContent='Enter the exact season name.';return false;}
+      const ok=await perform('Deleting season…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}`,{method:'DELETE',body:JSON.stringify({confirmation:season.name})}),'Season permanently deleted.',team.id);
+      if(!ok)status.textContent='Unable to delete the season. Check the workspace status before trying again.';return ok;
+    });save.className='btn btn-danger btn-danger-strong';const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);confirmation=dialogField(fields,`Type “${season.name}” to confirm`);confirmation.required=true;confirmation.autocomplete='off';save.disabled=true;confirmation.addEventListener('input',()=>save.disabled=confirmation.value!==season.name);confirmation.focus();
+  }
+  function openAdvanceWizard(season) {
+    const source=selectedTeam();if(!isPlatformAdmin()||!source||seasons.some(item=>item.status==='active'))return;
+    const {dialog,content}=orgDialog('Advance roster',`${source.name} · ${season.name}`);dialog.classList.add('org-advance-dialog');
+    content.append(directoryElement('p','Move selected current members to another team. Their historical results remain with the original team and season.','muted'));
+    const steps=directoryElement('ol','','org-wizard-steps');for(const label of ['Destination','Members','Review'])steps.append(directoryElement('li',label));content.append(steps);
+    const panels=[0,1,2].map(()=>directoryElement('section','','org-wizard-panel'));content.append(...panels);
+    const field=directoryElement('label','Destination','field');const destination=document.createElement('select');destination.className='select';
+    destination.append(option('new','Create the next age-level team'),...teams.filter(item=>item.id!==source.id&&item.active!==false&&item.activeSeasonId).map(item=>option(item.id,teamLabel(item))));field.append(destination);panels[0].append(field);
+    const newFields=directoryElement('div','','org-dialog-fields');panels[0].append(newFields);
+    const teamName=dialogField(newFields,'New team name','text',suggestedNextAgeTeamName(source.name));teamName.required=true;teamName.maxLength=100;
+    const seasonName=dialogField(newFields,'First season name');seasonName.required=true;seasonName.maxLength=120;seasonName.placeholder='e.g., Spring 2029';
+    const dates=directoryElement('div','','org-season-date-fields');newFields.append(dates);const starts=dialogField(dates,'Start date (optional)','date'),ends=dialogField(dates,'End date (optional)','date');
+    const targetContext=directoryElement('p','','muted');panels[0].append(targetContext);
+    destination.addEventListener('change',()=>{newFields.hidden=destination.value!=='new';targetContext.textContent=destination.value==='new'?'A new team and its first season will be created.':`Members will join ${teamLabel(teams.find(item=>item.id===destination.value))}.`;});destination.dispatchEvent(new Event('change'));
+    const members=(source.roster||[]).filter(item=>item.active!==false);const selected=new Set();const numbers=new Map(members.map(item=>[item.playerId,String(item.number||'')]));
+    const filters=directoryElement('div','','org-wizard-filters');const searchField=directoryElement('label','Search members','field');const search=document.createElement('input');search.type='search';search.className='input';search.placeholder='Name or username';searchField.append(search);
+    const roleField=directoryElement('label','Role','field');const role=document.createElement('select');role.className='select';role.append(option('','All members'),option('player','Players'),option('coach','Coaches'));roleField.append(role);filters.append(searchField,roleField);panels[1].append(filters);
+    const toolbar=directoryElement('div','','admin-actions');const count=directoryElement('span','','muted');toolbar.append(count,directoryButton('Select matching',()=>{matching().forEach(item=>selected.add(item.playerId));drawMembers();}),directoryButton('Clear selection',()=>{selected.clear();drawMembers();}));panels[1].append(toolbar);
+    const wrap=directoryElement('div','','admin-access-table-wrap');const table=document.createElement('table');table.className='org-wizard-table';table.setAttribute('aria-label','Members to advance');const header=table.createTHead().insertRow();
+    for(const text of ['Select','Name','Role','New number']){const cell=document.createElement('th');cell.scope='col';cell.textContent=text;header.append(cell);}const body=table.createTBody();wrap.append(table);panels[1].append(wrap);
+    function matching(){return members.filter(item=>(!role.value||item.role===role.value)&&[item.name,item.username].join(' ').toLowerCase().includes(search.value.toLowerCase()));}
+    function drawMembers(){body.replaceChildren();count.textContent=`${selected.size} selected`;
+      for(const member of matching()){
+        const row=body.insertRow();const check=document.createElement('input');check.type='checkbox';check.checked=selected.has(member.playerId);check.setAttribute('aria-label','Select '+member.name);row.insertCell().append(check);
+        row.insertCell().textContent=member.name;row.insertCell().textContent=member.role==='coach'?'Coach':'Player';const numberCell=row.insertCell();
+        if(member.role==='player'){const number=document.createElement('input');number.className='input';number.value=numbers.get(member.playerId);number.maxLength=12;number.setAttribute('aria-label','New number for '+member.name);number.addEventListener('input',()=>numbers.set(member.playerId,number.value));numberCell.append(number);}else numberCell.textContent='—';
+        row.classList.toggle('is-selected',check.checked);check.addEventListener('change',()=>{if(check.checked)selected.add(member.playerId);else selected.delete(member.playerId);row.classList.toggle('is-selected',check.checked);count.textContent=`${selected.size} selected`;});
+        row.addEventListener('click',event=>{if(!event.target.closest('input,button,a,select,label')){check.checked=!check.checked;check.dispatchEvent(new Event('change'));}});
+      }
+      if(!body.rows.length){const cell=body.insertRow().insertCell();cell.colSpan=4;cell.textContent='No matching members.';}
+    }
+    search.addEventListener('input',drawMembers);role.addEventListener('change',drawMembers);drawMembers();
+    const status=directoryElement('p','','operation-status');status.setAttribute('role','status');content.append(status);
+    const actions=directoryElement('div','','admin-actions');const cancel=directoryButton('Cancel',()=>dialog.close());const back=directoryButton('Back',()=>show(step-1));const next=directoryButton('Next',()=>void advance(),'btn btn-brand');actions.append(cancel,back,next);content.append(actions);let step=0,busy=false;
+    function show(value){step=value;panels.forEach((panel,i)=>panel.hidden=i!==step);[...steps.children].forEach((item,i)=>{if(i===step)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');});back.hidden=step===0;next.textContent=step===2?'Advance roster':step===1?'Review advancement':'Next';status.textContent='';(step===0?destination:step===1?search:next).focus();}
+    function chosen(){return members.filter(item=>selected.has(item.playerId));}
+    async function advance(){
+      if(busy)return;
+      if(step===0){if(destination.value==='new'){
+        if(!teamName.value.trim()||!seasonName.value.trim()){status.textContent='Enter the new team and first season names.';return;}
+        for(const input of [teamName,seasonName,starts,ends])if(!input.reportValidity())return;
+        if(starts.value&&ends.value&&ends.value<starts.value){status.textContent='End date must be on or after the start date.';return;}
+      }show(1);return;}
+      if(step===1){
+        if(!selected.size){status.textContent='Select at least one member.';return;}
+        const used=new Set();const target=teams.find(item=>item.id===destination.value);for(const member of target?.roster||[])if(member.role==='player'&&member.active!==false)used.add(String(member.number||'').trim());
+        for(const member of chosen())if(member.role==='player'){const value=numbers.get(member.playerId).trim();if(!value||used.has(value)){status.textContent='Every selected player needs a unique jersey number that is available on the destination team.';return;}used.add(value);}
+        panels[2].replaceChildren(directoryElement('h4','Review advancement'),directoryElement('p',`From ${source.name} to ${destination.value==='new'?teamName.value.trim()+' — '+seasonName.value.trim():teamLabel(target)}.`));
+        if(destination.value==='new'&&(starts.value||ends.value))panels[2].append(directoryElement('p',`Dates: ${starts.value||'Not set'} – ${ends.value||'Not set'}`,'muted'));
+        const list=document.createElement('ul');for(const member of chosen())list.append(directoryElement('li',`${member.name} · ${member.role==='coach'?'Coach':'Player #'+numbers.get(member.playerId).trim()}`));panels[2].append(list,directoryElement('p','Only the selected memberships move. Historical results stay with their original season. Moved accounts will be signed out.','muted'));show(2);return;
+      }
+      busy=true;next.disabled=back.disabled=cancel.disabled=true;status.textContent='Advancing roster…';let destinationId=destination.value==='new'?'':destination.value;
+      const ok=await perform('Advancing roster…',async()=>{
+        const result=await diqApiRequest(`admin/teams/${encodeURIComponent(source.id)}/advance`,{method:'POST',body:JSON.stringify({destinationTeamId:destinationId||undefined,destinationTeamName:destinationId?undefined:teamName.value.trim(),seasonName:destinationId?undefined:seasonName.value.trim(),startsOn:destinationId?undefined:starts.value||null,endsOn:destinationId?undefined:ends.value||null,members:chosen().map(item=>({userId:item.playerId,number:item.role==='player'?numbers.get(item.playerId).trim():''}))})});destinationId=result.team?.id||destinationId;
+      },'Selected roster members advanced. Historical records were preserved.',()=>destinationId);
+      if(ok)dialog.close();else{busy=false;next.disabled=back.disabled=cancel.disabled=false;status.textContent='Unable to advance the roster. Check the workspace status and review your choices before retrying.';}
+    }
+    show(0);
+  }
+  function renderSeasonsPage() {
+    const view=document.querySelector('[data-admin-team-view="seasons"]');if(!view)return;
+    let root=byId('orgSeasonsPage');
+    if(!root){const legacy=directoryElement('div','','org-seasons-legacy');legacy.hidden=true;legacy.append(...view.childNodes);view.append(legacy);root=directoryElement('div','','org-seasons-page');root.id='orgSeasonsPage';view.append(root);}
+    const team=selectedTeam(),active=seasons.find(item=>item.status==='active');
+    if(root.dataset.teamId!==team?.id){root.dataset.teamId=team?.id||'';delete root.dataset.seasonId;}
+    root.replaceChildren();
+    const detail=seasons.find(item=>item.id===root.dataset.seasonId);
+    if(detail){renderSeasonDetail(root,detail);return;}
+    const heading=directoryElement('div','','org-seasons-heading');const copy=directoryElement('div');copy.append(directoryElement('h3','Seasons'),directoryElement('p','Manage this team’s seasons, export records, or advance members to another team.','muted'));heading.append(copy);
+    const create=directoryButton('+ New season',openNewSeason,'btn btn-brand');create.disabled=!team||Boolean(active);create.title=active?'Close the active season before starting another season.':'Start another season for this team';heading.append(create);root.append(heading);
+    if(active)root.append(directoryElement('p','Close the active season to start another season or advance the roster.','org-season-hint'));
+    const field=directoryElement('label','Search seasons','field org-season-search');const search=document.createElement('input');search.type='search';search.className='input';search.placeholder='Season name';field.append(search);root.append(field);
+    const wrap=directoryElement('div','','admin-access-table-wrap');const table=document.createElement('table');table.className='org-seasons-table';table.setAttribute('aria-label','Team seasons');const header=table.createTHead().insertRow();for(const text of ['Season','Status','Members','Practices','Results','Actions']){const cell=document.createElement('th');cell.scope='col';cell.textContent=text;header.append(cell);}const body=table.createTBody();wrap.append(table);root.append(wrap);
+    function draw(){body.replaceChildren();const matches=seasons.filter(item=>item.name.toLowerCase().includes(search.value.toLowerCase()));
+      for(const season of matches){const row=body.insertRow();row.className='org-season-browse-row';row.addEventListener('click',event=>{if(!event.target.closest('button,a,input,select,[popover]'))openSeasonDetail(season.id);});const identity=row.insertCell();identity.append(directoryButton(season.name,()=>openSeasonDetail(season.id),'org-record-title'));if(season.startsOn||season.endsOn)identity.append(directoryElement('small',`${season.startsOn||'Not set'} – ${season.endsOn||'Not set'}`,'org-season-dates'));
+        const badge=directoryElement('span',season.status[0].toUpperCase()+season.status.slice(1),'org-season-status is-'+season.status);row.insertCell().append(badge);for(const value of [season.memberCount,season.assignmentCount,season.attemptCount])row.insertCell().textContent=String(value||0);
+        const choices=seasonActionsFor(season,true);
+        row.insertCell().append(...directoryMenu(choices,'Actions for '+season.name));
+      }
+      if(!matches.length){const cell=body.insertRow().insertCell();cell.colSpan=6;cell.textContent=search.value?'No matching seasons.':'No seasons yet. Create a season to begin.';}
+    }
+    search.addEventListener('input',draw);draw();
+  }
+  function openSeasonDetail(id) {
+    const root=byId('orgSeasonsPage');if(!root)return;root.dataset.seasonId=id;renderSeasonsPage();byId('orgSeasonDetailTitle')?.focus();
+  }
+  function seasonActionsFor(season,includeOpen=false) {
+    const choices=[];if(includeOpen)choices.push(directoryButton('Open season',()=>openSeasonDetail(season.id)));
+    choices.push(directoryButton('Export',()=>exportSeasonData(season)));
+    if(season.status==='active')choices.push(directoryButton('Close season',()=>openCloseSeason(season)));
+    if(isPlatformAdmin()&&!seasons.some(item=>item.status==='active')&&season.id===seasons.find(item=>item.status==='closed')?.id&&(selectedTeam()?.roster||[]).some(item=>item.active!==false))choices.push(directoryButton('Advance roster',()=>openAdvanceWizard(season)));
+    if(isPlatformAdmin()&&season.status!=='active')choices.push(directoryButton('Delete closed season',()=>openSeasonDeletion(season),'btn btn-danger'));
+    return choices;
+  }
+  function openEndParticipation(member,season,undo=false) {
+    const team=selectedTeam();const current=team?.roster?.find(item=>item.playerId===member.userId&&item.active!==false);
+    if(!team||!current||season.status!=='active'||current.seasonId!==season.id)return;
+    if(current.role==='coach'&&!isPlatformAdmin())return;
+    const {dialog,content}=orgDialog(undo?'Undo mistaken season entry':'End season participation',`${member.name} · ${season.name}`);
+    content.append(directoryElement('p',undo?'This is allowed only if there are no training attempts or practice recipients for this person in the season. The season entry will be removed, current team membership ended, and the existing account kept as unassigned.':'This ends participation in this active season AND removes the current team membership. The account stays available in People as unassigned. Historical training attempts and results are retained.','muted'));
+    const {status}=dialogForm(dialog,content,undo?'Undo entry':'End participation',async()=>{
+      const ok=await perform('Ending participation…',()=>undo?diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/participation`,{method:'POST',body:JSON.stringify({userId:member.userId,action:'undo'})}):removeTeamMembership(team,current),undo?'Mistaken season entry removed. The account was retained.':'Participation ended. Account and history were retained.',team.id);
+      if(!ok)status.textContent='Unable to change participation. Check the workspace status and refresh.';return ok;
+    });
+  }
+  function renderSeasonDetail(root,season) {
+    const heading=directoryElement('div','','org-seasons-heading');const identity=directoryElement('div');const title=directoryElement('h3',season.name);title.id='orgSeasonDetailTitle';title.tabIndex=-1;
+    identity.append(title,directoryElement('p',season.status[0].toUpperCase()+season.status.slice(1),'org-season-status is-'+season.status));heading.append(identity);
+    const actions=directoryElement('div','','admin-actions');actions.append(directoryButton('← Back to seasons',()=>{delete root.dataset.seasonId;renderSeasonsPage();}),...directoryMenu(seasonActionsFor(season),'Actions for '+season.name));heading.append(actions);root.append(heading);
+    root.append(directoryElement('p',`${season.memberCount||0} members · ${season.assignmentCount||0} practices · ${season.attemptCount||0} results`,'muted'));
+    if(season.startsOn||season.endsOn)root.append(directoryElement('p',`${season.startsOn||'Start date not set'} – ${season.endsOn||'End date not set'}`,'org-season-dates'));
+    root.append(directoryElement('h4','Season roster'));
+    if(season.status==='active')root.append(directoryElement('p','This season is active. Close it before deleting season records. Account and team deletion are separate actions.','org-season-hint'));
+    const filters=directoryElement('div','','org-season-roster-filters');const searchField=directoryElement('label','Search season members','field');const search=document.createElement('input');search.type='search';search.className='input';search.placeholder='Name or username';searchField.append(search);filters.append(searchField);
+    const roleField=directoryElement('label','Role','field');const role=document.createElement('select');role.className='select';role.append(option('','All members'),option('player','Players'),option('coach','Coaches'));roleField.append(role);filters.append(roleField);root.append(filters);
+    const wrap=directoryElement('div','','admin-access-table-wrap');const table=document.createElement('table');table.className='org-data-table';table.setAttribute('aria-label','Season roster');const header=table.createTHead().insertRow();
+    for(const text of ['Name','Username','Number','Role','Membership','Actions']){const cell=document.createElement('th');cell.scope='col';cell.textContent=text;header.append(cell);}const body=table.createTBody();wrap.append(table);root.append(wrap);
+    function draw(){body.replaceChildren();
+      const matches=seasonMembers.filter(item=>item.seasonId===season.id).map(item=>({...item,username:(selectedTeam()?.roster||[]).find(member=>member.playerId===item.userId)?.username||''})).filter(item=>(!role.value||role.value===item.role)&&[item.name,item.username].join(' ').toLowerCase().includes(search.value.toLowerCase()));
+      for(const member of matches){const row=body.insertRow();for(const value of [member.name,member.username||'—',member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player',member.status==='removed'?'Removed':'Member'])row.insertCell().textContent=value;
+        const actions=row.insertCell();const choices=[];
+        const current=selectedTeam()?.roster?.find(item=>item.playerId===member.userId&&item.active!==false&&item.seasonId===season.id);
+        if(season.status==='active'&&current&&(member.role==='player'||isPlatformAdmin())){choices.push(directoryButton('End participation',()=>openEndParticipation(member,season)));if(isPlatformAdmin())choices.push(directoryButton('Undo mistaken entry',()=>openEndParticipation(member,season,true)));}
+        if(isPlatformAdmin()&&member.role==='player'&&season.status!=='active')choices.push(directoryButton('Review record deletion',()=>void openDataReview('season',member,season),'btn btn-danger'));
+        if(choices.length)actions.append(...directoryMenu(choices,'Actions for '+member.name));else actions.textContent='—';
+      }
+      if(!matches.length){const cell=body.insertRow().insertCell();cell.colSpan=6;cell.textContent=search.value||role.value?'No matching members.':'No roster records for this season.';}
+    }
+    search.addEventListener('input',draw);role.addEventListener('change',draw);draw();
+  }
+  function dataImpact(content,counts,labels) {
+    const list=directoryElement('dl','','org-data-impact');
+    for(const [key,label] of labels){list.append(directoryElement('dt',label),directoryElement('dd',String(Number(counts[key]||0))));}
+    content.append(list);
+  }
+  async function openDataReview(kind,player=null,seasonContext=null) {
+    const team=selectedTeam(),season=seasonContext||selectedCleanupSeason();
+    if(!isPlatformAdmin()||(kind!=='account'&&!team)||(kind==='season'&&(!season||!player||season.status==='active'))||(kind==='team'&&team.activeSeasonId))return;
+    const title=kind==='season'?'Delete season records':kind==='account'?'Delete account permanently':'Delete team permanently';
+    const {dialog,content}=orgDialog(title,kind==='season'?`${player.name} · ${season.name}`:kind==='account'?player.name:teamLabel(team));
+    const loading=directoryElement('p','Preparing deletion review…');content.append(loading);
+    try{
+      let preview={};
+      if(kind!=='account'){
+        const url=kind==='team'?`admin/teams/${encodeURIComponent(team.id)}/deletion-preview`:`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/cleanup?playerId=${encodeURIComponent(player.userId)}`;
+        const result=await diqApiRequest(url,{cache:'no-store'});preview=result.preview||{};
+      }
+      if(!dialog.open)return;content.replaceChildren();
+      if(kind==='season'){
+        content.append(directoryElement('p','This permanently deletes this player’s training attempts, results, and progress only in the selected closed season. Their account and records in other seasons remain. Export the season first if needed.','muted'));
+        dataImpact(content,preview,[['memberships','Season memberships'],['assignments','Assignments'],['recipients','Practice recipients'],['progressRecords','Progress records'],['attempts','Results']]);
+      }else if(kind==='account'){
+        content.append(directoryElement('p','This permanently deletes the account and ALL training attempts, results, progress, memberships, and personal information across every team and season. This cannot be undone. If the player is only leaving a team, cancel and use Remove from team on the Roster tab instead.','muted'));
+        const memberships=teams.filter(item=>(item.roster||[]).some(member=>member.playerId===player.userId));
+        content.append(directoryElement('strong','Teams associated with this account'));
+        const list=document.createElement('ul');for(const item of memberships)list.append(directoryElement('li',teamLabel(item)));content.append(list);
+        if(!memberships.length)content.append(directoryElement('p','Historical account associated with this team.','muted'));
+      }else{
+        content.append(directoryElement('p','Deleting this team permanently removes its seasons, practice assignments, and results. This cannot be undone.','muted'));
+        dataImpact(content,preview,[['seasons','Seasons'],['memberships','Membership records'],['assignments','Practice assignments'],['attempts','Results']]);
+      }
+      let confirmation,deletePlayers;
+      const required=kind==='team'?team.name:'DELETE';
+      const {form,status,save}=dialogForm(dialog,content,kind==='team'?'Delete team':kind==='account'?'Delete account permanently':'Delete season records',async()=>{
+        if(confirmation.value!==required){status.textContent=`Type ${required} to confirm.`;return false;}
+        const url=kind==='team'?`admin/teams/${encodeURIComponent(team.id)}/permanent`:kind==='account'?`admin/users/${encodeURIComponent(player.userId)}`:`admin/teams/${encodeURIComponent(team.id)}/seasons/${encodeURIComponent(season.id)}/cleanup`;
+        const body=kind==='team'?{confirmation:team.name,deletePlayers:deletePlayers.checked}:kind==='account'?{confirmation:player.role==='coach'?'DELETE ACCOUNT PERMANENTLY':'DELETE PLAYER PERMANENTLY'}:{playerId:player.userId,confirmation:'CLEAR SEASON RECORDS'};
+        const ok=await perform('Deleting records…',()=>diqApiRequest(url,{method:kind==='season'?'POST':'DELETE',body:JSON.stringify(body)}),kind==='season'?'Season records deleted. The player account was retained.':kind==='account'?'Player account permanently deleted.':'Team permanently deleted.',kind==='team'?'':team?.id||'');
+        if(!ok)status.textContent='Deletion did not complete. Check the workspace status and reopen this review before retrying.';return ok;
+      });
+      save.className='btn btn-danger btn-danger-strong';
+      const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);
+      if(kind==='team'){
+        const players=(team.roster||[]).filter(member=>member.role==='player'&&member.active!==false);
+        const field=directoryElement('label','','org-delete-option');deletePlayers=document.createElement('input');deletePlayers.type='checkbox';deletePlayers.checked=false;
+        field.append(deletePlayers,directoryElement('span','Also permanently delete the assigned player accounts listed below and all their records across every team.'));fields.append(field);
+        const list=document.createElement('ul');for(const member of players)list.append(directoryElement('li',`${member.name}${member.username?' · '+member.username:''}`));fields.append(list);
+        if(!players.length)fields.append(directoryElement('p','No active player accounts are assigned to this team.','muted'));
+        const warning=directoryElement('p','Player accounts will become unassigned. Their records outside this team remain.','muted');fields.append(warning);
+        deletePlayers.addEventListener('change',()=>{warning.textContent=deletePlayers.checked?'The listed accounts and all their records across teams will also be permanently deleted.':'Player accounts will become unassigned. Their records outside this team remain.';});
+        if(Number(preview.players)!==players.length){deletePlayers.disabled=true;warning.textContent='The assigned player list has changed. Refresh the team to enable account deletion. You can still delete the team without deleting accounts.';}
+      }
+      confirmation=dialogField(fields,`Type “${required}” to confirm`);confirmation.required=true;confirmation.autocomplete='off';
+      save.disabled=true;confirmation.addEventListener('input',()=>{save.disabled=confirmation.value!==required;});confirmation.focus();
+    }catch(error){if(dialog.open){content.replaceChildren(directoryElement('p',error.message,'operation-status'),directoryButton('Close',()=>dialog.close()));}}
+  }
   function renderRosterBrowser(){
     const team=selectedTeam();
     const root=byId('adminRosterBrowser');if(!root)return;
@@ -668,8 +910,11 @@
       checkbox.addEventListener('change', () => {
         if (checkbox.checked) selectedRosterIds.add(member.playerId);
         else selectedRosterIds.delete(member.playerId);
+        row.classList.toggle('is-selected',checkbox.checked);row.setAttribute('aria-selected',String(checkbox.checked));
         updateRosterSelection();
       });
+      row.classList.toggle('is-selected',checkbox.checked);row.setAttribute('aria-selected',String(checkbox.checked));
+      row.addEventListener('click',event=>{if(!checkbox.disabled&&!event.target.closest('button,a,input,select,label,[popover]')){checkbox.checked=!checkbox.checked;checkbox.dispatchEvent(new Event('change'));}});
       selection.append(checkbox);
       row.append(selection);
       [member.name,member.username||'—',member.role==='player'?member.number||'—':'—',member.role==='coach'?'Coach':'Player'].forEach(value=>{const cell=document.createElement('td');cell.textContent=value;row.appendChild(cell);});
@@ -680,11 +925,12 @@
         body.append(row);
         return;
       }
-      const edit=document.createElement('button');edit.type='button';edit.className='btn btn-ghost';edit.textContent='Manage member';edit.onclick=()=>openMemberEditor(member.role,member.playerId);actions.appendChild(edit);
-      if (member.role === 'coach') {
-        const person = directory.people.find(item => item.id === member.playerId);
-        if (person) actions.append(directoryButton('View access', () => openDirectoryPerson(person)));
-      }
+      const choices=[directoryButton('Edit details',()=>openRosterEdit(member)),directoryButton('Reset password',()=>openRosterEdit(member,true))];
+      const person=directory.people.find(item=>item.id===member.playerId);
+      if(member.role==='player')choices.push(directoryButton('Transfer player',()=>openPlayerTransfer(member)));
+      if(member.role==='coach'&&person){choices.push(directoryButton('View access',()=>openStaffAccessDialog(person)),directoryButton('Manage team memberships',()=>openStaffAccessDialog(person,true)));}
+      choices.push(directoryButton('Remove from team',()=>void removeRosterMember(member),'btn btn-danger'));
+      actions.append(...directoryMenu(choices,'Actions for '+member.name));
       row.appendChild(actions);body.appendChild(row);
     });
     if(!body.children.length){const row=document.createElement('tr');const cell=document.createElement('td');cell.colSpan=6;cell.textContent=members.length?'No members match these filters.':'No members yet. Select Add member to build the roster.';row.appendChild(cell);body.appendChild(row);}
@@ -1066,7 +1312,7 @@
     renderRosterBrowser();
     const team = selectedTeam();
     const settings=byId('adminTeamSettings');
-    if(settings){settings.hidden=!team&&!creatingTeam;settings.querySelector('h4').textContent=creatingTeam?'New team details':'Team settings';}
+    if(settings){settings.hidden=!creatingTeam;settings.querySelector('h4').textContent='New team details';}
     [teamName, initialSeasonName, playerName, playerNumber, playerPassword, coachName, coachPassword]
       .forEach(clearFieldError);
     if (teamName) teamName.value = team?.name || '';
@@ -1259,7 +1505,7 @@
 
   const peopleOrganization = byId('adminPeopleOrganization');
   const canManagePeople = () => isPlatformAdmin() || window.__DIQ_AUTH_USER__?.directorScopes?.some(
-    scope => scope.role === 'organization_director');
+    scope => ['organization_director','regional_director'].includes(scope.role));
   const canDelegateDesigner = organizationId => isPlatformAdmin()
     || directory.designerOrganizationIds?.includes(organizationId);
   peopleOrganization?.addEventListener('change', () => {
@@ -1292,15 +1538,11 @@
     return [organization?.name, region.name].filter(Boolean).join(' / ');
   }
 
-  function openDirectoryPerson(person) {
-    selectedPersonId = person.id;
-    peopleSearch.value = person.username;
-    renderPeopleDirectory();
-    switchTab('people');
-    byId('adminPersonTitle')?.focus();
-  }
+  function openDirectoryPerson(person) {openPeoplePerson(person);}
 
   function browseDirectory(scope, teamId = '') {
+    adminCard.querySelector('.org-context-switcher').open=false;
+    if(!scope && !teamId)directoryLandingTab='organizations';
     directoryScope = scope;
     directoryStatus.textContent = '';
     teamSelect.value = teamId;
@@ -1359,7 +1601,7 @@
         method: 'POST',
         body: JSON.stringify({ action: 'remove_coach', userId: person.id, scopeId: assignment.teamId }),
       });
-      await loadWorkspaceDirectory();
+      await loadAdminData(selectedTeam()?.id || '');
       setStatus('Coach assignment removed.', 'success');
     } catch (error) {
       setStatus(error.message, 'error');
@@ -1432,7 +1674,84 @@
     return label;
   }
 
+  function accountCurrentMemberships(person) {
+    return (directory.accountMemberships||[]).filter(item=>item.userId===person.id&&Boolean(item.active));
+  }
+  function accountState(person) {
+    if(!Number(person.active))return 'Archived';
+    return accountCurrentMemberships(person).length||directory.assignments.some(item=>item.userId===person.id)?'Assigned':'Unassigned';
+  }
+  function openAccountEdit(person,passwordOnly=false) {
+    const current=accountCurrentMemberships(person)[0];const team=teams.find(item=>item.id===current?.teamId);
+    const member=team?.roster?.find(item=>item.playerId===person.id&&item.active!==false);
+    if(member){openRosterEdit(member,passwordOnly,team);return;}
+    if(!isPlatformAdmin())return;
+    const {dialog,content}=orgDialog(passwordOnly?'Reset password':'Edit details',`${person.name} · ${person.username}`);let input;
+    const {form,status}=dialogForm(dialog,content,passwordOnly?'Reset password':'Save changes',async()=>{
+      const value=passwordOnly?input.value:input.value.trim();if(!value){status.textContent='Enter a value.';return false;}
+      const ok=await perform('Updating account…',()=>diqApiRequest(`admin/users/${encodeURIComponent(person.id)}/lifecycle`,{method:'POST',body:JSON.stringify({action:passwordOnly?'password':'details',revision:Number(person.revision),...(passwordOnly?{password:value}:{name:value})})}),passwordOnly?'Temporary password reset. The account must change it at next login.':'Account updated.',selectedTeam()?.id||'');
+      if(!ok)status.textContent='Unable to update. Refresh People before retrying.';return ok;
+    });const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);input=dialogField(fields,passwordOnly?'Temporary password':'Name',passwordOnly?'password':'text',passwordOnly?'':person.name);input.required=true;input.maxLength=passwordOnly?1024:100;if(passwordOnly){input.minLength=8;input.autocomplete='new-password';fields.append(directoryButton('Generate',()=>{input.value=generatePassword();input.type='text';}));}input.focus();
+  }
+  function openAccountLifecycle(person,restore=false) {
+    if(!isPlatformAdmin())return;
+    const {dialog,content}=orgDialog(restore?'Restore account':'Archive account',person.name);
+    content.append(directoryElement('p',restore?'Restore sign-in access without reactivating an old team membership. Assign this account to a current team separately.':'Disable sign-in and end current team memberships. The account and historical training attempts remain. This can be reversed from People → Archived. Staff appointments and owned practices must be resolved first.','muted'));
+    const {status}=dialogForm(dialog,content,restore?'Restore account':'Archive account',async()=>{
+      const ok=await perform(restore?'Restoring account…':'Archiving account…',()=>diqApiRequest(`admin/users/${encodeURIComponent(person.id)}/lifecycle`,{method:'POST',body:JSON.stringify({action:restore?'restore':'archive',revision:Number(person.revision)})}),restore?'Account restored. Assign a current team from People if needed.':'Account archived. History was preserved.',selectedTeam()?.id||'');
+      if(!ok)status.textContent='Unable to change this account. Check the workspace status and refresh People.';return ok;
+    });
+  }
+  function openAccountAssignment(person) {
+    if(!isPlatformAdmin()||accountState(person)==='Archived')return;
+    if(person.role==='player'&&accountCurrentMemberships(person).length)return;
+    const {dialog,content}=orgDialog('Assign to team',`${person.name} · Existing account`);let destination,number;
+    const {form,status}=dialogForm(dialog,content,'Assign to team',async()=>{
+      const target=teams.find(item=>item.id===destination.value);if(!target){status.textContent='Choose a team with an active season.';return false;}
+      const ok=await perform('Assigning account…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(target.id)}/members/existing`,{method:'POST',body:JSON.stringify({userId:person.id,number:person.role==='player'?number.value.trim():''})}),`${person.name} assigned to ${target.name}. Existing history was preserved.`,selectedTeam()?.id||'');
+      if(!ok)status.textContent='Unable to assign this account. Check the workspace status.';return ok;
+    });const fields=directoryElement('div','','org-dialog-fields');form.prepend(fields);const field=directoryElement('label','Team and active season','field');destination=document.createElement('select');destination.className='select';destination.required=true;destination.append(option('','Choose team'),...teams.filter(item=>item.active!==false&&item.activeSeasonId&&!accountCurrentMemberships(person).some(member=>member.teamId===item.id)).map(item=>option(item.id,teamLabel(item))));field.append(destination);fields.append(field);if(person.role==='player'){number=dialogField(fields,'Jersey number');number.required=true;number.maxLength=12;}destination.focus();
+  }
+  function openPeoplePerson(person) {
+    const account=(directory.accounts||[]).find(item=>item.id===person.id)||person;
+    const {dialog,content}=orgDialog(account.name,`${account.username||''} · ${account.role==='player'?'Player':'Staff'} · ${accountState(account)}`);
+    const memberships=(directory.accountMemberships||[]).filter(item=>item.userId===account.id);
+    const current=accountCurrentMemberships(account);content.append(directoryElement('p',account.role==='player'?'Players have one current team. Previous team and season records remain as history.':'Staff may have multiple team memberships and director appointments.','muted'));
+    const actions=directoryElement('div','','org-person-actions');content.append(actions);
+    const launch=fn=>()=>{dialog.close();fn();};
+    if(isPlatformAdmin()||(account.role==='player'&&current.some(item=>teams.some(team=>team.id===item.teamId)))){actions.append(directoryButton('Edit details',launch(()=>openAccountEdit(account))),directoryButton('Reset password',launch(()=>openAccountEdit(account,true))));}
+    if(accountState(account)==='Archived'){if(isPlatformAdmin())actions.append(directoryButton('Restore account',launch(()=>openAccountLifecycle(account,true)),'btn btn-brand'));}
+    else if(account.role==='player'){
+      const team=teams.find(item=>item.id===current[0]?.teamId),member=team?.roster?.find(item=>item.playerId===account.id&&item.active!==false);
+      if(member){actions.append(directoryButton('View current team',()=>{dialog.close();openTeamFromAccess(team.id);}));actions.append(directoryButton('Transfer player',launch(()=>openPlayerTransfer(member,team))),directoryButton('Remove from team',launch(()=>void removeRosterMember(member,team))));}
+      else if(isPlatformAdmin())actions.append(directoryButton('Assign to team',launch(()=>openAccountAssignment(account)),'btn btn-brand'));
+    }
+    if(account.role==='coach'&&Number(account.active))actions.append(directoryButton('Manage access',launch(()=>openStaffAccessDialog(account))));
+    content.append(directoryElement('h4','Team memberships and history'));const history=directoryElement('div','','org-access-entries');
+    for(const membership of memberships){const card=directoryElement('section','','org-access-entry');card.append(directoryElement('strong',membership.teamName),directoryElement('p',`${membership.role==='coach'?'Coach':'Player'} · ${membership.active?(membership.teamActive?'Current':'Assigned to archived team'):'Previous membership'}`,'muted'));history.append(card);}if(!memberships.length)history.append(directoryElement('p','No team memberships yet.','muted'));content.append(history);
+    if(isPlatformAdmin()){const danger=directoryElement('div','','org-person-danger');if(Number(account.active))danger.append(directoryButton('Archive account',launch(()=>openAccountLifecycle(account)),'btn btn-danger'));danger.append(directoryButton('Delete account permanently',launch(()=>void openDataReview('account',{...account,userId:account.id})),'btn btn-danger'));content.append(danger);}
+    content.append(directoryButton('Close',()=>dialog.close()));
+  }
   function renderPeopleDirectory() {
+    const view=document.querySelector('[data-admin-view="people"]');if(!view)return;let root=byId('orgPeopleHub');
+    if(!root){const legacy=directoryElement('div');legacy.hidden=true;legacy.id='orgPeopleLegacy';legacy.append(...view.childNodes);view.append(legacy);root=directoryElement('div','','org-people-hub');root.id='orgPeopleHub';view.append(root);}
+    const previous=root.querySelector('input')?.value||'';const typeValue=root.querySelector('[data-people-type]')?.value||'';const stateValue=root.querySelector('[data-people-state]')?.value||'';root.replaceChildren();
+    const heading=directoryElement('div','','org-seasons-heading');heading.append(directoryElement('p','Find current, unassigned, and archived accounts. Create new players from a team roster.','muted'));
+    if(isPlatformAdmin()||window.__DIQ_AUTH_USER__?.directorScopes?.some(scope=>scope.role==='organization_director'))heading.append(directoryButton('Add staff',()=>{const {dialog,content}=orgDialog('Add staff');content.append(renderStaffAccessForm(null,()=>dialog.close(),{onSaved:()=>dialog.close()}));},'btn btn-brand'));root.append(heading);
+    const toolbar=directoryElement('div','','org-people-filters');const field=directoryElement('label','Search people','field');const search=document.createElement('input');search.type='search';search.className='input';search.placeholder='Name or username';search.value=previous;field.append(search);toolbar.append(field);
+    function filter(label,attribute,values,value){const field=directoryElement('label',label,'field');const select=document.createElement('select');select.className='select';select.setAttribute(attribute,'');for(const [id,text] of values)select.append(option(id,text));select.value=value;field.append(select);toolbar.append(field);return select;}
+    const type=filter('Account type','data-people-type',[['','Players and staff'],['player','Players'],['coach','Staff']],typeValue);const state=filter('Status','data-people-state',[['','All accounts'],['Assigned','Assigned'],['Unassigned','Unassigned'],['Archived','Archived']],stateValue);root.append(toolbar);
+    const wrap=directoryElement('div','','admin-access-table-wrap');const table=document.createElement('table');table.className='org-people-table';table.setAttribute('aria-label','People');const head=table.createTHead().insertRow();for(const text of ['Name','Username','Type','Status','Current team / access','Actions']){const cell=document.createElement('th');cell.scope='col';cell.textContent=text;head.append(cell);}const body=table.createTBody();wrap.append(table);root.append(wrap);
+    function draw(){body.replaceChildren();const query=search.value.toLowerCase();const accounts=directory.accounts||[];
+      for(const person of accounts.filter(item=>(!type.value||item.role===type.value)&&(!state.value||accountState(item)===state.value)&&[item.name,item.username].join(' ').toLowerCase().includes(query))){
+        const row=body.insertRow();row.className='org-people-row';row.addEventListener('click',event=>{if(!event.target.closest('button,a,input,select,[popover]'))openPeoplePerson(person);});row.insertCell().append(directoryButton(person.name,()=>openPeoplePerson(person),'org-record-title'));row.insertCell().textContent=person.username;row.insertCell().textContent=person.role==='player'?'Player':'Staff';row.insertCell().textContent=accountState(person);
+        const current=accountCurrentMemberships(person);row.insertCell().textContent=current.map(item=>item.teamName).join(', ')||(directory.assignments.some(item=>item.userId===person.id)?'Director appointment':'—');row.insertCell().append(...directoryMenu([directoryButton('Manage person',()=>openPeoplePerson(person))],'Actions for '+person.name));
+      }
+      if(!body.rows.length){const cell=body.insertRow().insertCell();cell.colSpan=6;cell.textContent='No matching people.';}
+    }
+    for(const element of [search,type,state])element.addEventListener(element===search?'input':'change',draw);draw();
+  }
+  function renderStaffDirectoryDetails() {
     const list = byId('adminPeopleList');
     const details = byId('adminPersonAccess');
     const query = peopleSearch.value.trim().toLowerCase();
@@ -1540,7 +1859,7 @@
     details.append(formMount);
   }
 
-  function renderStaffAccessForm(person, cancel) {
+  function renderStaffAccessForm(person, cancel, config={}) {
     const creating = !person;
     const heading = creating ? 'Add staff' : 'Add assignment';
     const panel = directoryElement('section', '', 'admin-staff-form-panel');
@@ -1582,9 +1901,11 @@
     const actions = directoryElement('div', '', 'admin-actions');
     actions.append(save, directoryButton('Cancel', cancel));
 
+    let overlapReviewed=false;
     const overlap = directoryElement('p', '', 'muted admin-access-overlap');
     overlap.setAttribute('aria-live', 'polite');
     function updateOverlap() {
+      overlapReviewed=false;
       if (role.value === 'coach') { overlap.textContent = ''; return; }
       const region = directory.regions.find(item => item.id === scope.value);
       const organizationId = role.value === 'regional_director' ? region?.organizationId : scope.value;
@@ -1615,7 +1936,7 @@
     }
 
     function updateScopes() {
-      const fits = id => (!peopleOrganization.value || peopleOrganization.value === id)
+      const fits = id => (config.fixedRole || !peopleOrganization.value || peopleOrganization.value === id)
         && (isPlatformAdmin() || directsOrganization(id));
       const regions = directory.regions.filter(item => fits(item.organizationId));
       const options = role.value === 'organization_director'
@@ -1623,7 +1944,7 @@
         : role.value === 'regional_director' ? regions.map(item => option(item.id, regionPath(item.id)))
           : role.value === 'coach' ? directory.teams
             .filter(team => regions.some(region => region.id === team.regionId)
-              || (isPlatformAdmin() && !peopleOrganization.value && !team.regionId))
+              || (isPlatformAdmin() && (config.fixedRole || !peopleOrganization.value) && !team.regionId))
             .map(team => option(team.id, accessScope({ teamId: team.id }))) : [];
       const scopeType = role.value === 'organization_director' ? 'Organization' : role.value === 'coach' ? 'Team' : 'Region';
       scopeLabel.textContent = role.value ? scopeType : 'Applies to';
@@ -1632,7 +1953,9 @@
       updateDesigner();
       status.textContent = '';
     }
+    if(config.fixedRole){role.value=config.fixedRole;roleField.hidden=true;}
     updateScopes();
+    if(config.scopeId){scope.value=config.scopeId;scopeField.hidden=true;updateDesigner();updateOverlap();}
     role.addEventListener('change', () => {
       updateScopes();
       updateOverlap();
@@ -1646,7 +1969,8 @@
       event.preventDefault();
       if (!scope.value || save.disabled) return;
       const choice = { role: role.value, scopeId: scope.value, canDesign: design.checked };
-      if (overlap.textContent && !await requestConfirmation({
+      if(config.onSaved&&overlap.textContent&&!overlapReviewed){overlapReviewed=true;status.textContent=overlap.textContent+' Select Save assignment again to keep both appointments.';return;}
+      if (!config.onSaved && overlap.textContent && !await requestConfirmation({
         title: 'Keep both director appointments?',
         message: overlap.textContent,
         confirmLabel: 'Add appointment',
@@ -1665,7 +1989,9 @@
           selectedPersonId = result.userId;
           peopleSearch.value = result.username;
         }
-        await loadWorkspaceDirectory();
+        if(config.fixedRole==='coach')await loadAdminData(selectedTeam()?.id || '');
+        else await loadWorkspaceDirectory();
+        config.onSaved?.();
         setStatus(creating ? `Staff account created. Username is ${result.username}.` : 'Workspace access saved.', 'success');
         byId('adminPersonTitle')?.focus();
       } catch (error) {
@@ -1787,21 +2113,136 @@
     items.append(list);
   }
 
-  function renderUnassignedTeams(items) {
-    const teams = directory.teams.filter(item => !item.regionId);
-    const unassigned = directoryElement('details', '', 'admin-unassigned-teams');
-    unassigned.open = unassignedTeamsOpen || creatingTeam;
-    unassigned.addEventListener('toggle', () => {
-      if (unassigned.isConnected) unassignedTeamsOpen = unassigned.open;
+  function directoryMenu(actions,label) {
+    const menu=document.createElement('div');menu.className='org-action-menu';menu.id='org-menu-'+crypto.randomUUID();menu.setAttribute('popover','auto');
+    menu.append(...actions);
+    const trigger=directoryButton('•••',()=>{
+      if(menu.matches(':popover-open')){menu.hidePopover();return;}
+      menu.showPopover();const bounds=trigger.getBoundingClientRect();
+      menu.style.left=Math.max(12,Math.min(innerWidth-232,bounds.right-220))+'px';
+      menu.style.top=Math.max(12,bounds.bottom+menu.offsetHeight+8>innerHeight?bounds.top-menu.offsetHeight-6:bounds.bottom+6)+'px';
+    },'btn org-menu-trigger');
+    trigger.setAttribute('aria-label',label);trigger.setAttribute('aria-haspopup','true');trigger.setAttribute('popovertarget',menu.id);
+    // Position explicitly; avoid also toggling through the native default action.
+    trigger.addEventListener('click',event=>event.preventDefault());
+    menu.addEventListener('click',event=>{if(event.target.closest('button'))menu.hidePopover();});
+    return [trigger,menu];
+  }
+  function openTeamRename() {
+    const team=selectedTeam();if(!team)return;
+    const dialog=document.createElement('dialog');dialog.className='org-rename-dialog';
+    const heading=directoryElement('h3','Rename team');heading.id='orgRenameTitle';dialog.setAttribute('aria-labelledby',heading.id);
+    const form=document.createElement('form');
+    const field=directoryElement('label','','field');field.append(directoryElement('span','Team name'));
+    const input=document.createElement('input');input.className='input';input.name='name';input.required=true;input.maxLength=100;input.value=team.name;field.append(input);
+    const status=directoryElement('p','','operation-status');status.setAttribute('role','status');
+    const controls=directoryElement('div','','admin-actions');
+    const cancel=directoryButton('Cancel',()=>dialog.close());
+    const save=directoryElement('button','Save','btn btn-brand');save.type='submit';controls.append(cancel,save);
+    form.append(field,status,controls);dialog.append(heading,form);document.body.append(dialog);
+    dialog.addEventListener('close',()=>{dialog.remove();byId('adminDirectoryActions').querySelector('button')?.focus();});
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();const name=input.value.trim();
+      if(!name){input.setCustomValidity('Enter a team name.');input.reportValidity();return;}
+      save.disabled=true;cancel.disabled=true;input.disabled=true;
+      const saved=await perform('Saving team…',()=>diqApiRequest(`admin/teams/${encodeURIComponent(team.id)}`,{
+        method:'PUT',headers:{'If-Match':String(team.revision)},body:JSON.stringify({name}),
+      }),'Team saved.',team.id);
+      if(saved)dialog.close();
+      else {status.textContent='Unable to save the team name. Close this dialog and refresh the team before trying again.';save.disabled=false;cancel.disabled=false;input.disabled=false;}
     });
-    unassigned.append(directoryElement('summary', `Unassigned teams (${teams.length})`));
-    const content = directoryElement('div', '', 'admin-directory-group');
-    directoryList(content, '', teams, () => '', item => browseDirectory(null, item.id), 'All teams belong to a region.');
-    const actions = directoryElement('div', '', 'admin-actions');
-    actions.append(newTeamButton);
-    content.append(actions);
-    unassigned.append(content);
-    items.append(unassigned);
+    input.addEventListener('input',()=>input.setCustomValidity(''));
+    dialog.showModal();input.focus();input.select();
+  }
+  function openScopedDirectorForm(region,organization) {
+    const fixedRole=region?'regional_director':'organization_director';
+    const scopeId=region?.id||organization?.id;
+    if(!scopeId || !(isPlatformAdmin() || (region&&directsOrganization(organization?.id))))return;
+    const {dialog,content}=orgDialog('Add director',region?regionPath(region.id):organization.name);
+    const field=directoryElement('label','Staff account','field');const select=document.createElement('select');select.className='select';
+    select.append(option('','Choose staff account'),...directory.people.filter(person=>person.role==='coach').sort((a,b)=>a.name.localeCompare(b.name)).map(person=>option(person.id,`${person.name} · ${person.username}`)),option('__new','Create a new staff account'));
+    field.append(select);content.append(field);const mount=directoryElement('div');content.append(mount);
+    content.append(directoryButton('Close',()=>dialog.close()));
+    select.addEventListener('change',()=>{
+      mount.replaceChildren();if(!select.value)return;
+      const person=select.value==='__new'?null:directory.people.find(item=>item.id===select.value);
+      mount.append(renderStaffAccessForm(person,()=>dialog.close(),{fixedRole,scopeId,onSaved:()=>dialog.close()}));
+      mount.querySelector('input:not([type="checkbox"]):not(:disabled),button[type="submit"]')?.focus();
+    });select.focus();
+  }
+  function renderStaffTable(container,{title,key,entries,region,organization,additional=false}) {
+    const section=directoryElement('section','','org-staff-section');
+    const heading=directoryElement('div','','org-staff-heading');const count=directoryElement('h4',`${title} (${entries.length})`);heading.append(count);
+    if(!additional&&(isPlatformAdmin() || (region&&directsOrganization(organization?.id))))heading.append(directoryButton('Add director',()=>openScopedDirectorForm(region,organization),'btn btn-brand'));
+    section.append(heading);
+    const field=directoryElement('label',additional?'Search additional staff':'Search director appointments','field org-staff-search');
+    const search=document.createElement('input');search.type='search';search.className='input';search.placeholder='Name, username, role, or scope';search.value=directoryQueries.get(key)||'';field.append(search);section.append(field);
+    const wrapper=directoryElement('div','','admin-access-table-wrap');
+    const table=document.createElement('table');table.className='org-staff-table';table.setAttribute('aria-label',title);
+    const header=table.createTHead().insertRow();
+    for(const label of ['Name','Role','Access source','Actions']){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;header.append(cell);}
+    const results=table.createTBody();wrapper.append(table);section.append(wrapper);container.append(section);
+    function draw(){
+      const query=search.value.trim().toLowerCase();directoryQueries.set(key,search.value);results.replaceChildren();
+      const matches=entries.filter(({person,assignment})=>[person.name,person.username,accessRoles[assignment.role],accessScope(assignment)].join(' ').toLowerCase().includes(query));
+      for(const {person,assignment} of matches){
+        const row=results.insertRow();row.className='org-staff-row';
+        const identity=row.insertCell();
+        row.addEventListener('click',event=>{if(!event.target.closest('button,a,input,select,[popover]'))openStaffAccessDialog(person);});
+        const open=directoryButton('',()=>openStaffAccessDialog(person),'org-staff-name');
+        open.textContent=person.name;identity.append(open);
+        if(person.username&&person.username!==person.name)identity.append(directoryElement('small',person.username,'org-staff-username'));
+        row.insertCell().textContent=accessRoles[assignment.role]||assignment.role;
+        const inherited=additional || Boolean(region&&assignment.organizationId);
+        row.insertCell().textContent=`${inherited?'Inherited from':'Assigned to'} ${accessScope(assignment)}`;
+        const choices=[directoryButton('View access',()=>openStaffAccessDialog(person))];
+        if(!inherited&&assignment.stagedDirectorId&&(isPlatformAdmin()||(assignment.role!=='organization_director'&&directsOrganization(assignment.staffOrganizationId||organization?.id)))){
+          choices.push(directoryButton('Remove appointment',()=>void removeDirectorAppointment(person,assignment),'btn btn-danger'));
+        }
+        row.insertCell().append(...directoryMenu(choices,`Actions for ${person.name} ${accessRoles[assignment.role]||''}`));
+      }
+      if(!matches.length){const cell=results.insertRow().insertCell();cell.colSpan=4;cell.textContent=query?'No matching staff.':additional?'No additional staff access.':'No director appointments.';}
+    }
+    search.addEventListener('input',draw);draw();
+  }
+  function renderDirectoryTable(items,{key,label,records,open,empty,kind,canManage=false}) {
+    const wrapper=directoryElement('div','','org-directory-table');
+    const field=directoryElement('label',`Search ${label}`,'field admin-directory-search');
+    const search=directoryElement('input','','input');search.type='search';search.value=directoryQueries.get(key)||'';field.append(search);
+    const count=directoryElement('p','','org-result-count');
+    const scroll=directoryElement('div','','admin-access-table-wrap');
+    const table=document.createElement('table');table.className='org-hierarchy-table';table.setAttribute('aria-label',label[0].toUpperCase()+label.slice(1));
+    const headings=kind==='organization'?['Organization','Regions','Teams','Actions']:kind==='region'?['Region','Teams','Actions']:['Team','Season','Actions'];
+    const head=table.createTHead().insertRow();for(const text of headings){const th=document.createElement('th');th.scope='col';th.textContent=text;head.append(th);}
+    const body=table.createTBody();scroll.append(table);
+    function filter(){
+      directoryQueries.set(key,search.value);const query=search.value.trim().toLowerCase();
+      const matches=[...records].sort((a,b)=>a.name.localeCompare(b.name)).filter(item=>item.name.toLowerCase().includes(query));
+      count.textContent=`${matches.length} ${matches.length===1?label.replace(/s$/,''):label}`;body.replaceChildren();
+      for(const record of matches){
+        const row=body.insertRow();row.className='org-browse-row';
+        row.addEventListener('click',event=>{if(!event.target.closest('button,a,input,select,[popover]'))open(record);});
+        const title=directoryButton(record.name,()=>open(record),'org-record-title');row.insertCell().append(title);
+        if(kind==='organization'){
+          const regions=directory.regions.filter(item=>item.organizationId===record.id);row.insertCell().textContent=String(regions.length);
+          row.insertCell().textContent=String(directory.teams.filter(item=>regions.some(region=>region.id===item.regionId)).length);
+        }else if(kind==='region')row.insertCell().textContent=String(directory.teams.filter(item=>item.regionId===record.id).length);
+        else row.insertCell().textContent=teams.find(item=>item.id===record.id)?.activeSeasonName || 'No active season';
+        const cell=row.insertCell();
+        if(canManage){const controls=directoryElement('div');controls.append(directoryButton('Open',()=>open(record)));appendDirectoryManagement(controls,kind,record);cell.append(...directoryMenu([...controls.children],'Actions for '+record.name));}
+        else cell.append(directoryButton('Open',()=>open(record)));
+      }
+      if(!matches.length){const cell=body.insertRow().insertCell();cell.colSpan=headings.length;cell.textContent=query?`No matching ${label}.`:empty;}
+    }
+    search.addEventListener('input',filter);filter();wrapper.append(field,count,scroll);items.append(wrapper);
+  }
+  function renderLandingTabs(items,platformAdmin){
+    if(!platformAdmin)return;
+    const nav=directoryElement('nav','','org-directory-tabs');nav.setAttribute('aria-label','Organization lists');
+    for(const [value,label] of [['organizations','Organizations'],['unassigned',`Unassigned teams (${directory.teams.filter(item=>!item.regionId).length})`]]){
+      const button=directoryButton(label,()=>{browseDirectory(null);directoryLandingTab=value;renderWorkspaceDirectory();});button.setAttribute('aria-pressed',String(directoryLandingTab===value));nav.append(button);
+    }
+    items.append(nav);
   }
 
   function renderWorkspaceDirectory() {
@@ -1810,6 +2251,9 @@
     const organization = directory.organizations.find(item => item.id === (region?.organizationId || (!team && directoryScope?.organizationId)));
     const path = byId('adminDirectoryPath');
     const actions = byId('adminDirectoryActions');
+    const directoryHeading=byId('adminDirectoryTitle').closest('.admin-section-heading');
+    let headingControls=byId('orgDirectoryHeadingControls');
+    if(!headingControls){headingControls=directoryElement('div','','org-heading-controls');headingControls.id='orgDirectoryHeadingControls';directoryHeading.append(headingControls);headingControls.append(path,actions);}
     const items = byId('adminDirectoryItems');
     const platformAdmin = isPlatformAdmin();
     const organizationDirector = organization && directsOrganization(organization.id);
@@ -1817,7 +2261,7 @@
     const standaloneRegions = directory.regions.filter(item => !directsOrganization(item.organizationId));
     const overview = platformAdmin || managedOrganizations.length ? 'Organizations' : 'Regions';
     const organizationList = byId('adminOrganizationList');
-    organizationList.closest('.admin-organization-layout').classList.toggle('has-detail', Boolean(team || region || organization || creatingTeam));
+    byId('adminWorkspaceDirectory').querySelector('.admin-organization-layout').classList.toggle('has-detail', Boolean(team || region || organization || creatingTeam));
     organizationList.replaceChildren();
     if (platformAdmin || managedOrganizations.length) {
       renderSearchableDirectory(organizationList, {
@@ -1840,94 +2284,100 @@
     additionalStaff.replaceChildren();
     path.replaceChildren();
     actions.replaceChildren();
+    orgHeaderActions.replaceChildren();
     const unassigned = items.querySelector('.admin-unassigned-teams');
     if (unassigned) unassignedTeamsOpen = unassigned.open;
     items.replaceChildren();
     setVisible(directoryForm, false);
     const title = byId('adminDirectoryTitle');
     title.textContent = team?.name || region?.name || organization?.name || overview;
-    if (team || region || organization) path.append(directoryButton(overview, () => browseDirectory(null)));
-    if (organization && (team || region)) {
-      path.append(platformAdmin || organizationDirector
-        ? directoryButton(organization.name, () => browseDirectory({ organizationId: organization.id }))
-        : directoryElement('span', organization.name, 'admin-directory-ancestor'));
+    byId('orgContextLabel').textContent=organization?.name || region?.name || overview;
+
+    if (team && region) {
+      path.append(directoryButton(`← Back to ${region.name}`,()=>browseDirectory({regionId:region.id})));
+    } else if (region && organization && (platformAdmin || organizationDirector)) {
+      path.append(directoryButton(`← Back to ${organization.name}`,()=>browseDirectory({organizationId:organization.id})));
+    } else if (team) {
+      path.append(directoryButton('← Back to unassigned teams',()=>{
+        browseDirectory(null);directoryLandingTab='unassigned';renderWorkspaceDirectory();
+      }));
+    } else if (region || organization) {
+      path.append(directoryButton(`← Back to all ${overview.toLowerCase()}`,()=>browseDirectory(null)));
     }
-    if (team && region) path.append(directoryButton(region.name, () => browseDirectory({ regionId: region.id })));
-    if (team || region || organization) {
-      const current = directoryElement('span', title.textContent, 'admin-directory-ancestor');
-      current.setAttribute('aria-current', 'page');
-      path.append(current);
-    }
-    if (!team && !region && !organization) {
-      if (platformAdmin) {
-        actions.append(directoryButton('Add organization', () => showDirectoryForm('create_organization'), 'btn btn-brand'));
-        renderUnassignedTeams(items);
-      }
-      if (organizationList.childElementCount && !creatingTeam) {
-        items.prepend(directoryElement('p', `Select ${overview === 'Organizations' ? 'an organization' : 'a region'} to view its details.`, 'muted'));
+    let teamLocation=byId('orgTeamLocation');
+    if(!teamLocation){teamLocation=directoryElement('p','','org-team-location');teamLocation.id='orgTeamLocation';title.before(teamLocation);}
+    teamLocation.textContent=team?[organization?.name,region?.name].filter(Boolean).join(' · '):'';
+    teamLocation.hidden=!teamLocation.textContent;
+    const landing=!team && !region && !organization;
+    if(!landing)directoryLandingTab=team && !region?'unassigned':'organizations';
+    let navigation=byId('orgDirectoryNavigation');
+    if(!navigation){navigation=directoryElement('div','','org-directory-navigation');navigation.id='orgDirectoryNavigation';directoryHeading.before(navigation);}
+    navigation.replaceChildren();renderLandingTabs(navigation,platformAdmin);
+    path.hidden=landing;
+    byId('adminDirectoryTitle').closest('.admin-section-heading').classList.toggle('org-landing-heading',landing);
+    if (landing) {
+      if(platformAdmin && directoryLandingTab==='unassigned') {
+        actions.append(newTeamButton);
+        renderDirectoryTable(items,{key:'unassigned-teams',label:'teams',kind:'team',records:directory.teams.filter(item=>!item.regionId),open:item=>browseDirectory(null,item.id),empty:'All teams belong to a region. No unassigned teams.'});
+      }else{
+        if(platformAdmin)actions.append(directoryButton('+ New organization',()=>showDirectoryForm('create_organization'),'btn btn-brand'));
+        if(platformAdmin || managedOrganizations.length)renderDirectoryTable(items,{key:'landing-organizations',label:'organizations',kind:'organization',records:managedOrganizations,open:item=>browseDirectory({organizationId:item.id}),empty:'No organizations yet.',canManage:platformAdmin});
+        if(!platformAdmin && standaloneRegions.length)renderDirectoryTable(items,{key:'landing-regions',label:'regions',kind:'region',records:standaloneRegions,open:item=>browseDirectory({regionId:item.id}),empty:'No regions assigned.'});
       }
     } else if (team) {
+      actions.append(directoryButton('Rename team',openTeamRename));
       if (platformAdmin || organizationDirector) actions.append(directoryButton('Move team', () => showDirectoryForm('move_team', team)));
+      const archive=directoryButton('Archive team',()=>{actions.querySelector('button')?.focus();byId('adminTeamRemoveBtn').click();},'btn btn-danger');
+      archive.disabled=byId('adminTeamRemoveBtn').disabled;actions.append(archive);
       if (!region) items.append(directoryElement('p', 'Unassigned team', 'muted'));
       const staff = directory.assignments.filter(item => (
         (region && item.regionId === region.id)
         || (organization && item.organizationId === organization.id)));
-      if (staff.length) directoryList(additionalStaff, 'Additional staff access', staff.flatMap(assignment => {
-        const person = directory.people.find(item => item.id === assignment.userId);
-        return person ? [{ ...person, assignment }] : [];
-      }), person => {
-        const assignment = person.assignment;
-        const source = assignment.teamId ? assignment.source : `Through ${accessScope(assignment)}`;
-        return `${person.username} · ${accessRoles[assignment.role]} · ${source}`;
-      }, openDirectoryPerson, 'No staff assignments for this team.');
+      renderStaffTable(additionalStaff,{title:'Additional staff access',key:`team-staff:${team.id}`,region,organization,additional:true,entries:staff.flatMap(assignment=>{
+        const person=directory.people.find(item=>item.id===assignment.userId);return person?[{person,assignment}]:[];
+      })});
     } else if (region) {
       const add = directoryButton('Add existing team', () => showDirectoryForm('add_team'));
       add.disabled = !directory.teams.some(item => !item.regionId);
       if (platformAdmin) actions.append(add);
       if (platformAdmin || organizationDirector) appendDirectoryManagement(actions, 'region', region);
-      renderSearchableDirectory(items, {
-        key: `region:${region.id}`,
-        label: 'teams',
-        records: directory.teams.filter(item => item.regionId === region.id),
-        describe: () => '',
-        open: item => browseDirectory(null, item.id),
-        empty: 'No teams in this region.',
-      });
+      renderDirectoryTable(items,{key:`region:${region.id}`,label:'teams',kind:'team',records:directory.teams.filter(item=>item.regionId===region.id),open:item=>browseDirectory(null,item.id),empty:'No teams in this region.'});
     } else {
-      actions.append(directoryButton('Add region', () => showDirectoryForm('create_region'), 'btn btn-brand'));
-      if (platformAdmin) appendDirectoryManagement(actions, 'organization', organization);
-      renderSearchableDirectory(items, {
-        key: `organization:${organization.id}`,
-        label: 'regions',
-        records: directory.regions.filter(item => item.organizationId === organization.id),
-        describe: item => {
-          const count = directory.teams.filter(team => team.regionId === item.id).length;
-          return `${count} ${count === 1 ? 'team' : 'teams'}`;
-        },
-        open: item => browseDirectory({ regionId: item.id }),
-        empty: 'No regions in this organization.',
-      });
+      actions.append(directoryButton('+ New region',()=>showDirectoryForm('create_region'),'btn btn-brand'));
+      if(platformAdmin)appendDirectoryManagement(actions,'organization',organization);
+      renderDirectoryTable(items,{key:`organization:${organization.id}`,label:'regions',kind:'region',records:directory.regions.filter(item=>item.organizationId===organization.id),open:item=>browseDirectory({regionId:item.id}),empty:'No regions in this organization.',canManage:platformAdmin || organizationDirector});
     }
 
-    if (platformAdmin && !team && (region || organization)) {
-      const directors = directory.assignments.filter(item =>
-        region ? item.regionId === region.id || item.organizationId === organization?.id : item.organizationId === organization.id);
-      directoryList(items, 'Director appointments', directors.flatMap(assignment => {
-        const person = directory.people.find(item => item.id === assignment.userId);
-        return person ? [{ ...person, assignment }] : [];
-      }), person => `${accessRoles[person.assignment.role]} · ${accessScope(person.assignment)}`, openDirectoryPerson, 'No director appointments here.');
+    if (!team && (region || organization)) {
+      const directors=directory.assignments.filter(item=>item.role!=='coach'&&(region?item.regionId===region.id||item.organizationId===organization?.id:item.organizationId===organization.id));
+      renderStaffTable(items,{title:'Director appointments',key:`directors:${region?.id||organization.id}`,region,organization,entries:directors.flatMap(assignment=>{
+        const person=directory.people.find(item=>item.id===assignment.userId);return person?[{person,assignment}]:[];
+      })});
     }
-    const allowCreation = !team && (Boolean(region) || (platformAdmin && !organization));
+    const allowCreation = !team && (Boolean(region) || (platformAdmin && landing && directoryLandingTab==='unassigned'));
     setVisible(newTeamButton, allowCreation && !creatingTeam);
-    newTeamButton.classList.toggle('btn-brand', Boolean(team || region));
-    newTeamButton.classList.toggle('btn-ghost', !team && !region);
-    newTeamButton.textContent = region ? 'Create team in this region' : 'Create unassigned team';
+    newTeamButton.classList.toggle('btn-brand', allowCreation);
+    newTeamButton.classList.toggle('btn-ghost', !allowCreation);
+    newTeamButton.textContent = region ? '+ New team' : '+ New unassigned team';
     if (team || region || organization) actions.append(newTeamButton);
     const hasSelectedTeam = Boolean(selectedTeam()) && !creatingTeam;
-    setVisible(byId('adminTeamContext'), hasSelectedTeam || creatingTeam);
+    setVisible(byId('adminTeamContext'), creatingTeam);
     setVisible(teamContextSummary, hasSelectedTeam);
     setVisible(byId('adminTeamsResetBtn'), hasSelectedTeam);
     setVisible(byId('adminTeamRecords'), hasSelectedTeam);
+    byId('adminTeamUpdateBtn').textContent='Save';
+    byId('adminTeamUpdateBtn').classList.add('btn-brand');
+    const visibleActions=[...actions.children].filter(button=>!button.classList.contains('hidden'));
+    const primary=visibleActions.filter(button=>button.classList.contains('btn-brand'));
+    const secondary=visibleActions.filter(button=>!button.classList.contains('btn-brand'));
+    if(team){if(isPlatformAdmin()&&!team.activeSeasonId)visibleActions.push(directoryButton('Delete team permanently',()=>void openDataReview('team'),'btn btn-danger'));actions.replaceChildren(...directoryMenu(visibleActions,'Team actions'));}
+    else {
+      orgHeaderActions.append(...primary);
+      if(visibleActions.length>2)orgHeaderActions.append(...directoryMenu(secondary,'Organization actions'));
+      else orgHeaderActions.append(...secondary);
+    }
+    orgHeaderActions.hidden=activeTab!=='teams';
+
   }
 
   async function loadWorkspaceDirectory() {
@@ -2012,6 +2462,15 @@
     }
   });
 
+  function renderRecoverySections() {
+    const view=document.querySelector('[data-admin-view="recovery"]');if(!view)return;
+    byId('adminRestoreMemberBtn').closest('section').hidden=true;
+    const team=byId('adminRestoreTeamBtn').closest('section'),situation=byId('adminRestoreSituationBtn').closest('section');
+    let tabs=byId('orgRecoveryTabs');if(tabs)return;
+    tabs=directoryElement('nav','','org-directory-tabs');tabs.id='orgRecoveryTabs';tabs.setAttribute('aria-label','Recovery categories');team.parentElement.before(tabs);
+    const choose=value=>{team.hidden=value!=='teams';situation.hidden=value!=='situations';tabs.querySelectorAll('button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.recovery===value)));};
+    for(const [value,label] of [['teams','Teams'],['situations','Situations']]){const button=directoryButton(label,()=>choose(value));button.dataset.recovery=value;tabs.append(button);}choose('teams');
+  }
   async function loadAdminData(preferredTeamId = '') {
     setStatus('Loading the latest database records…', 'pending');
     const platformAdmin = isPlatformAdmin();
@@ -2043,7 +2502,8 @@
     await loadWorkspaceDirectory();
     if (platformAdmin) {
       populateRecovery();
-      renderUnassignedAccounts();
+      renderRecoverySections();
+      // Unassigned and archived accounts are managed from People.
       renderProposals();
       renderOutcomeReviewQueue();
     }
@@ -2163,7 +2623,7 @@
     if (!members?.length || operationInProgress) return;
     const confirmed = await requestConfirmation({
       title: 'Remove selected members',
-      message: `Remove ${members.length} selected ${members.length === 1 ? 'member' : 'members'} from ${team.name}? Historical results will be preserved.`,
+      message: `Remove ${members.length} selected ${members.length === 1 ? 'member' : 'members'} from ${team.name}? This removes only these team memberships. Accounts, other memberships, and historical training attempts and results remain. No account deletion is needed.`,
       confirmLabel: 'Remove from team',
     });
     if (!confirmed) return;
@@ -2205,6 +2665,7 @@
   }
 
   function switchTeamView(viewName) {
+    if(viewName==='data')viewName='roster';
     activeTeamView = viewName;
     document.querySelectorAll('[data-admin-team-tab]').forEach((button) => {
       const selected = button.dataset.adminTeamTab === viewName;
@@ -2218,6 +2679,13 @@
 
   function switchTab(tab) {
     activeTab = tab;
+    orgHeaderActions.hidden=tab!=='teams';
+    const headings={teams:['Organizations','Manage organizations, regions, teams, and their members.'],people:['People','Manage player and staff accounts, current memberships, and account history.'],recovery:['Recovery','Restore archived teams and situations. Manage accounts from People.']};
+    if(adminCard.dataset.workspace==='org' && headings[tab]){
+      adminCard.querySelector('.workspace-heading-title').textContent=headings[tab][0];
+      adminCard.querySelector('.workspace-heading-context').textContent=headings[tab][1];
+    }
+
     adminCard.querySelectorAll('[data-admin-tab]').forEach((button) => {
       const selected = button.dataset.adminTab === tab;
       button.classList.toggle('is-active', selected);
@@ -4246,7 +4714,7 @@
       byId('adminDirectoryTitle').textContent = 'Organizations';
     }
     const globalTools = platformAdmin && entry === 'global-tools';
-    adminCard.querySelector('.tools-panel-header strong').textContent = globalTools ? 'Design workspace' : 'Org workspace';
+    adminCard.querySelector('.tools-panel-header strong').textContent = globalTools ? 'Design' : 'Organization';
     adminCard.querySelector('.tools-panel-header .muted').textContent = globalTools
       ? 'Global library tools' : 'Manage your organizations, regions, and teams';
     setVisible(adminCard.querySelector('.admin-tabs'), !globalTools);

@@ -118,7 +118,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(response.ok()).toBe(true);
     expect((await response.json()).user.coachedTeamIds).toEqual(['13u-black']);
     await openCleanApp(page, { legacySignIn: false });
-    await page.getByRole('button', { name: 'Training workspace', exact: true }).click();
+    await page.getByRole('button', { name: 'Training', exact: true }).click();
     await expect(page.locator('#trainingTeamSelect')).toHaveValue('13u-black');
     await expect(page.locator('#trainingTeamSelect option')).toHaveText(['13U Black']);
     expect((await page.request.get('/api/reports/team/13u-orange')).status()).toBe(403);
@@ -148,16 +148,16 @@ test.describe('Diamond Defence regression behavior', () => {
       const response = await page.request.post('/api/auth/login', { headers, data: { username: 'jamie.rivera', password: 'password' } });
       expect(response.ok()).toBe(true);
       await openCleanApp(page, { legacySignIn: false });
-      const coach = page.getByRole('button', { name: 'Training workspace', exact: true });
-      const workspace = page.getByRole('button', { name: 'Org workspace', exact: true });
+      const coach = page.getByRole('button', { name: 'Training', exact: true });
+      const workspace = page.getByRole('button', { name: 'Organization', exact: true });
       await expect(coach).toBeVisible();
       await workspace.click();
       await expect(workspace).toHaveAttribute('aria-current', 'true');
       const directory = page.locator('#adminWorkspaceDirectory');
       await expect(directory.getByRole('heading', { name: 'Director North' })).toBeVisible();
-      await expect(directory.getByRole('navigation')).toContainText('Director Test Club');
-      await expect(directory.getByRole('navigation').getByRole('button', { name: 'Director Test Club' })).toHaveCount(0);
-      await expect(directory.getByRole('button', { name: 'Rename region' })).toHaveCount(0);
+      await expect(page.locator('#orgContextLabel')).toHaveText('Director Test Club');
+      await expect(directory.getByRole('navigation',{name:'Organization hierarchy'}).getByRole('button', { name: 'Director Test Club' })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Rename region', exact: true })).toHaveCount(0);
       await directory.getByRole('button', { name: 'Director North Team' }).click();
       await expect(directory.getByRole('heading', { name: 'Director North Team' })).toBeVisible();
       const scoped = await (await page.request.get(directoryPath)).json();
@@ -173,7 +173,7 @@ test.describe('Diamond Defence regression behavior', () => {
       await expect(workspace).toHaveAttribute('aria-current', 'true');
       await coach.click();
       await expect(coach).toHaveAttribute('aria-current', 'true');
-      await expect(page.locator('#coachCard .tools-panel-header strong')).toHaveText('Training workspace');
+      await expect(page.locator('#coachCard .tools-panel-header strong')).toHaveText('Training');
       const progress = page.getByRole('table', { name: 'Team training progress' });
       await expect(progress.getByRole('button', { name: 'Director North Team' })).toBeVisible();
       await expect(progress.getByRole('button', { name: 'Director South Team' })).toHaveCount(0);
@@ -265,16 +265,17 @@ test.describe('Diamond Defence regression behavior', () => {
     await openCleanApp(page,{legacySignIn:false});
     await page.locator('#staffToolsBtn').click();
     const directory=page.locator('#adminWorkspaceDirectory');
-    await directory.getByRole('button', { name: 'Add organization' }).click();
+    await page.getByRole('button', { name: '+ New organization', exact: true }).click();
     await directory.getByLabel('Organization name').fill('Rawlings Tigers');
     await directory.getByRole('button',{name:'Create organization'}).click();
     await expect(directory.getByRole('heading', { name: 'Rawlings Tigers' })).toBeVisible();
     await expect(page.locator('#adminTeamContext')).toBeHidden();
-    await directory.getByRole('button', { name: 'Add region' }).click();
+    await page.getByRole('button', { name: '+ New region', exact: true }).click();
     await directory.getByLabel('Region name').fill('NoVA');
     await directory.getByRole('button',{name:'Create region'}).click();
     await expect(directory.getByRole('heading', { name: 'NoVA' })).toBeVisible();
-    await directory.getByRole('button', { name: 'Add existing team' }).click();
+    await page.getByRole('button', { name: 'Organization actions', exact: true }).click();
+    await page.getByRole('button', { name: 'Add existing team', exact: true }).click();
     await directory.getByLabel('Existing team').selectOption('13u-black');
     await directory.getByRole('button',{name:'Add team',exact:true}).click();
     const dialog = page.getByRole('dialog', { name: 'Change team region' });
@@ -283,69 +284,80 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(directory.getByRole('status')).toHaveText('Team region saved.');
     const stored = await (await page.request.get('/api/admin/workspace-directory')).json();
     expect(stored.teams.find(team=>team.id==='13u-black').regionId).toBe(stored.regions.find(region=>region.name==='NoVA').id);
-    await expect(directory.getByRole('navigation')).toContainText('Rawlings Tigers');
-    await expect(directory.getByRole('navigation')).toContainText('NoVA');
-    const hierarchy = directory.getByRole('navigation');
-    await hierarchy.getByRole('button', { name: 'Rawlings Tigers' }).click();
+    await expect(page.locator('#orgTeamLocation')).toContainText('Rawlings Tigers');
+    await expect(directory.getByRole('navigation',{name:'Organization hierarchy'})).toContainText('NoVA');
+    const hierarchy = directory.getByRole('navigation',{name:'Organization hierarchy'});
+    await hierarchy.getByRole('button', { name: '← Back to NoVA',exact:true }).click();
+    await hierarchy.getByRole('button', { name: '← Back to Rawlings Tigers',exact:true }).click();
     const regions = directory.getByRole('searchbox', { name: 'Search regions' });
     await regions.fill('no match');
     await expect(directory.getByText('No matching regions.')).toBeVisible();
     await regions.fill('NOVA');
-    await directory.getByRole('button', { name: 'NoVA 1 team' }).click();
+    await directory.getByRole('button', { name: 'NoVA', exact: true }).click();
     const teams = directory.getByRole('searchbox', { name: 'Search teams' });
     await teams.fill('orange');
     await expect(directory.getByText('No matching teams.')).toBeVisible();
     await teams.fill('BLACK');
     await directory.getByRole('button', { name: '13U Black', exact: true }).click();
-    await page.locator('#adminRosterRows').getByRole('row', { name: /jamie.rivera/ }).getByRole('button', { name: 'View access' }).click();
-    const access = page.locator('#adminPersonAccess');
+    await page.locator('#org-sections').getByRole('button',{name:'People',exact:true}).click();
+    const openJamieAccess=async()=>{
+      await page.getByRole('searchbox',{name:'Search people',exact:true}).fill('jamie.rivera');
+      await page.getByRole('table',{name:'People',exact:true}).getByRole('button',{name:'Jamie Rivera',exact:true}).click();
+      await page.getByRole('dialog',{name:'Jamie Rivera',exact:true}).getByRole('button',{name:'Manage access',exact:true}).click();
+    };
+    await openJamieAccess();
+    const access=page.getByRole('dialog',{name:'View access',exact:true});
     await expect(access).toContainText('13U Black');
-    await expect(access.getByRole('table', { name: 'Current workspace assignments' })).toBeVisible();
-    await access.getByRole('button', { name: 'Add assignment' }).click();
     await access.getByRole('combobox', { name: 'Role', exact: true }).selectOption('regional_director');
     await access.getByRole('combobox', { name: 'Region', exact: true }).selectOption({ label: 'Rawlings Tigers / NoVA' });
     await expect(access.getByLabel('Enable Situation Designer')).toBeChecked();
     await access.getByLabel('Enable Situation Designer').uncheck();
     await access.getByRole('button', { name: 'Save assignment' }).click();
-    const directorRow = access.getByRole('row').filter({ hasText: 'Regional Director' });
+    await expect(access).toBeHidden();await openJamieAccess();
+    const directorRow = access.locator('.org-access-entry').filter({ hasText: 'Regional Director' });
     const directorSwitch = directorRow.getByRole('switch');
     await expect(directorSwitch).not.toBeChecked();
     await directorSwitch.check();
     await expect(page.locator('#adminOperationStatus')).toHaveText('Designer setting saved.');
     await expect(directorSwitch).toBeChecked();
-    await expect(access.getByRole('row').filter({ hasText: 'Coach' }).getByRole('switch')).not.toBeChecked();
+    await expect(access.locator('.org-access-entry').filter({ hasText: 'Coach' }).getByRole('switch')).not.toBeChecked();
 
-    await access.getByRole('button', { name: 'Add assignment' }).click();
     await access.getByRole('combobox', { name: 'Role', exact: true }).selectOption('organization_director');
     await access.getByRole('combobox', { name: 'Organization', exact: true }).selectOption({ label: 'Rawlings Tigers' });
     await expect(access.getByText(/overlaps an existing appointment/)).toBeVisible();
     await access.getByRole('button', { name: 'Save assignment' }).click();
-    await page.getByRole('dialog', { name: 'Keep both director appointments?' }).getByRole('button', { name: 'Add appointment' }).click();
-    const orgRow = access.getByRole('row').filter({ hasText: 'Organization Director' });
+    await expect(access).toContainText('Select Save assignment again');
+    await access.getByRole('button', { name: 'Save assignment' }).click();
+    await expect(access).toBeHidden();await openJamieAccess();
+    const orgRow = access.locator('.org-access-entry').filter({ hasText: 'Organization Director' });
     await expect(orgRow.getByRole('switch')).toBeChecked();
     await expect(directorRow.getByText('Also covered by the organization appointment')).toBeVisible();
-    await orgRow.getByRole('button', { name: 'Remove' }).click();
+    await orgRow.getByRole('button', { name: 'Remove appointment' }).click();
     await page.getByRole('dialog', { name: 'Remove director appointment' }).getByRole('button', { name: 'Remove appointment' }).click();
+    await openJamieAccess();
     await expect(orgRow).toHaveCount(0);
     await expect(directorSwitch).toBeChecked();
+    await access.getByRole('button',{name:'Close',exact:true}).click();
     await page.locator('#adminCard').getByRole('button', { name: 'Organizations' }).click();
-    await directory.getByRole('button', { name: 'Move team' }).click();
+    await page.getByRole('button',{name:'Team actions',exact:true}).click();
+    await page.getByRole('button', { name: 'Move team', exact: true }).click();
     await directory.getByLabel('Destination region').selectOption('');
     await directory.getByRole('button',{name:'Review move'}).click();
     await expect(dialog).toContainText('Director access removed');
     await dialog.getByRole('button', { name: 'Confirm team move' }).click();
     await expect(directory.getByRole('status')).toHaveText('Team region saved.');
-    await directory.getByRole('navigation').getByRole('button', { name: 'Organizations' }).click();
-    await directory.getByRole('button', { name: /Rawlings Tigers/ }).click();
-    await directory.getByRole('button', { name: /NoVA/ }).click();
+    await directory.getByRole('navigation',{name:'Organization lists'}).getByRole('button', { name: 'Organizations', exact:true }).click();
+    await page.locator('.org-context-switcher > summary').click();
+    await page.locator('#adminOrganizationList').getByRole('button', { name: /Rawlings Tigers/ }).click();
+    await directory.getByRole('button', { name: 'NoVA', exact: true }).click();
     await expect(page.locator('#adminTeamContext')).toBeHidden();
-    await page.getByRole('button', { name: 'Create team in this region' }).click();
+    await page.getByRole('button', { name: '+ New team' }).click();
     await expect(page.locator('#adminCsvImportPanel')).toBeHidden();
     await page.getByLabel('Team name', { exact: true }).fill('Directory Test Team');
     await page.getByLabel('Initial season', { exact: true }).fill('Spring 2027');
     await page.getByRole('button', { name: 'Create team', exact: true }).click();
     await expect(directory.getByRole('heading', { name: 'Directory Test Team' })).toBeVisible();
-    await expect(directory.getByRole('navigation')).toContainText('NoVA');
+    await expect(directory.getByRole('navigation',{name:'Organization hierarchy'})).toContainText('NoVA');
     const directoryData = await (await page.request.get('/api/admin/workspace-directory')).json();
     const scopedTeam = directoryData.teams.find(team => team.name === 'Directory Test Team');
     const scopedRegion = directoryData.regions.find(region => region.id === scopedTeam.regionId);
@@ -383,7 +395,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(exported).not.toContain(password);
     const roundTrip = await (await importCsv({ mode: 'preview', csv: exported })).json();
     expect(roundTrip).toMatchObject({ valid: true, summary: { unchanged: 3, changes: 0 } });
-    await page.locator('#adminTeamsResetBtn').click();
+    await page.getByRole('button', { name: 'Refresh organization workspace' }).click();
     const roster = page.locator('#adminRosterRows');
     await roster.getByRole('row', { name: /roster.collision2/ }).getByRole('checkbox').check();
     await roster.getByRole('row', { name: /roster.collision3/ }).getByRole('checkbox').check();
@@ -392,17 +404,18 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminOperationStatus')).toContainText('Removed 2 of 2 selected members');
     await expect(roster.getByRole('row', { name: /roster.collision2|roster.collision3/ })).toHaveCount(0);
     await expect(roster.getByRole('row', { name: /roster.collision/ })).toHaveCount(1);
-    await page.locator('#adminCard').getByRole('button', { name: 'People & access' }).click();
-    await directorRow.getByRole('button', { name: 'Remove', exact: true }).click();
+    await page.locator('#adminCard').getByRole('button', { name: 'People' }).click();
+    await openJamieAccess();
+    await directorRow.getByRole('button', { name: 'Remove appointment', exact: true }).click();
     await page.getByRole('dialog', { name: 'Remove director appointment' }).getByRole('button', { name: 'Remove appointment' }).click();
     await expect(directorRow).toHaveCount(0);
     const people = page.locator('[data-admin-view="people"]');
-    await people.getByRole('searchbox').fill('admin');
-    await expect(people.getByText('No matching staff.')).toBeVisible();
-    await people.getByRole('searchbox').fill('bob.smith');
-    await expect(people.getByText('No matching staff.')).toBeVisible();
+    await people.getByRole('searchbox',{name:'Search people',exact:true}).fill('admin');
+    await expect(people.getByText('No matching people.')).toBeVisible();
+    await people.getByRole('searchbox',{name:'Search people',exact:true}).fill('bob.smith');
+    await expect(people.getByRole('button',{name:'Bob Smith',exact:true})).toBeVisible();
     await people.getByRole('button', { name: 'Add staff', exact: true }).click();
-    const staffForm = people.locator('#adminStaffCreate');
+    const staffForm = page.getByRole('dialog',{name:'Add staff',exact:true});
     await expect(people.locator('#adminPeopleLayout')).toBeHidden();
     await staffForm.getByLabel('Full name').fill('Staff Onboarding');
     await staffForm.getByLabel('Temporary password').fill('Temporary-4137');
@@ -410,8 +423,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await staffForm.getByRole('combobox', { name: 'Region', exact: true }).selectOption({ label: 'Rawlings Tigers / NoVA' });
     await staffForm.getByLabel('Enable Situation Designer').uncheck();
     await staffForm.getByRole('button', { name: 'Create staff account' }).click();
-    await expect(access.getByRole('heading', { name: 'Staff Onboarding' })).toBeVisible();
-    await expect(access.getByRole('row').filter({ hasText: 'Regional Director' })).toContainText('Rawlings Tigers / NoVA');
+    await expect(staffForm).toBeHidden();
+    await people.getByRole('searchbox',{name:'Search people',exact:true}).fill('staff.onboarding');
+    await people.getByRole('button',{name:'Staff Onboarding',exact:true}).click();
+    await page.getByRole('dialog',{name:'Staff Onboarding',exact:true}).getByRole('button',{name:'Manage access',exact:true}).click();
+    await expect(access.locator('.org-access-entry').filter({hasText:'Regional Director'})).toContainText('Rawlings Tigers / NoVA');
+    await access.getByRole('button',{name:'Close',exact:true}).click();
     const staff = await requestFactory.newContext({ baseURL });
     try {
       const login = await staff.post('/api/auth/login', { headers, data: { username: 'staff.onboarding', password: 'Temporary-4137' } });
@@ -433,13 +450,16 @@ test.describe('Diamond Defence regression behavior', () => {
     await openCleanApp(page, { legacySignIn: false });
     await page.locator('#staffToolsBtn').click();
     const directory = page.locator('#adminWorkspaceDirectory');
-    const search = directory.getByRole('searchbox', { name: 'Search organizations' });
+    const context = page.locator('.org-context-switcher');
+    await context.locator('summary').click();
+    const search = context.getByRole('searchbox', { name: 'Search organizations' });
     await search.fill('no matching org');
-    await expect(directory.getByText('No matching organizations.')).toBeVisible();
-    await expect(directory.getByRole('button', { name: /Organization to manage/ })).toHaveCount(0);
+    await expect(context.getByText('No matching organizations.')).toBeVisible();
+    await expect(context.getByRole('button', { name: /Organization to manage/ })).toHaveCount(0);
     await search.fill('ORGANIZATION TO MANAGE');
-    await directory.getByRole('button', { name: /Organization to manage/ }).click();
-    await directory.getByRole('button', { name: 'Rename organization' }).click();
+    await context.getByRole('button', { name: /Organization to manage/ }).click();
+    await page.getByRole('button', { name: 'Organization actions', exact: true }).click();
+    await page.getByRole('button', { name: 'Rename organization', exact: true }).click();
     await expect(directory.getByLabel('Organization name')).toHaveValue(original.name);
     await directory.getByLabel('Organization name').fill('Updated organization');
     await directory.getByRole('button', { name: 'Save name' }).click();
@@ -447,14 +467,16 @@ test.describe('Diamond Defence regression behavior', () => {
 
     async function confirmDeletion(kind) {
       const label = `Delete ${kind}`;
-      await directory.getByRole('button', { name: label }).click();
+      await page.getByRole('button', { name: 'Organization actions', exact: true }).click();
+      await page.getByRole('button', { name: label, exact: true }).click();
       await page.getByRole('dialog', { name: label }).getByRole('button', { name: label }).click();
     }
 
     await confirmDeletion('organization');
     await expect(directory.getByRole('status')).toContainText('Remove the regions');
-    await directory.getByRole('button', { name: /Original region/ }).click();
-    await directory.getByRole('button', { name: 'Rename region' }).click();
+    await directory.getByRole('button', { name: 'Original region', exact: true }).click();
+    await page.getByRole('button', { name: 'Organization actions', exact: true }).click();
+    await page.getByRole('button', { name: 'Rename region', exact: true }).click();
     await directory.getByLabel('Region name').fill('Updated region');
     await directory.getByRole('button', { name: 'Save name' }).click();
     await expect(directory.getByRole('heading', { name: 'Updated region' })).toBeVisible();
@@ -467,7 +489,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(directory.getByRole('button', { name: /Updated organization/ })).toHaveCount(0);
   });
 
-  test('Org workspace team pages stay separate from Coach workspace', async ({ page }) => {
+  test('Organization team pages stay separate from Coach workspace', async ({ page }) => {
     const errors = await openCleanApp(page);
     await page.locator('#playerBtn').click();
     await page.locator('#authAdminTab').click();
@@ -476,18 +498,18 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     await page.locator('#staffToolsBtn').click();
     const directory = page.locator('#adminWorkspaceDirectory');
-    await directory.getByText(/^Unassigned teams \(/).click();
+    await directory.getByRole('button', { name: /^Unassigned teams \(/ }).click();
     await directory.getByRole('button', { name: '13U Orange', exact: true }).click();
     await expect(directory.getByRole('heading', { name: '13U Orange' })).toBeVisible();
     await expect(directory.getByRole('button', { name: 'Team training' })).toHaveCount(0);
-    for (const section of ['Organizations', 'People & access', 'Recovery']) {
+    for (const section of ['Organizations', 'People', 'Recovery']) {
       await page.locator('#adminCard').getByRole('button', { name: section, exact: true }).click();
       await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
       await expect(page.locator('#practiceWorkspace')).toBeHidden();
       await expect(page.locator('#coachCard')).toBeHidden();
       await expect(page.locator('.field-card')).toBeHidden();
     }
-    await page.locator('#adminCardCloseBtn').click();
+    await page.getByRole('button', { name: 'Play', exact: true }).click();
     await expect(page.locator('.field-card')).toBeVisible();
     expect(errors).toEqual([]);
   });
@@ -529,16 +551,18 @@ test.describe('Diamond Defence regression behavior', () => {
     const search = library.getByRole('searchbox', { name: 'Search situations' });
     const before = await (await page.request.get('/api/situations')).json();
     await search.fill('LF');
-    const matches = await library.locator('.tool-row input[type=checkbox]').count();
+    const matchingRows = library.getByRole('table', { name: 'Select situations for deletion', exact: true }).locator('tbody input[type=checkbox]');
+    await expect(matchingRows.first()).toBeVisible();
+    const matches = await matchingRows.count();
     expect(matches).toBeGreaterThan(0);
-    await library.getByRole('button', { name: 'Select matching', exact: true }).click();
-    await expect(library.locator('.tool-row input[type=checkbox]:checked')).toHaveCount(matches);
+    await library.getByRole('button', { name: `Select matching (${matches})`, exact: true }).click();
+    await expect(library.getByRole('table', { name: 'Select situations for deletion', exact: true }).locator('tbody input[type=checkbox]:checked')).toHaveCount(matches);
     await search.fill('no-situation-matches-this');
     await expect(library.getByRole('button', { name: `Review deletion (${matches})`, exact: true })).toBeEnabled();
-    await library.getByRole('button', { name: 'Clear selection', exact: true }).click();
+    await library.getByRole('button', { name: 'Clear', exact: true }).click();
     await expect(library.getByRole('button', { name: 'Review deletion (0)', exact: true })).toBeDisabled();
     await search.fill('');
-    await expect(library.locator('.tool-row input[type=checkbox]:checked')).toHaveCount(0);
+    await expect(library.getByRole('table', { name: 'Select situations for deletion', exact: true }).locator('tbody input[type=checkbox]:checked')).toHaveCount(0);
     expect(await (await page.request.get('/api/situations')).json()).toEqual(before);
   });
 
@@ -801,7 +825,7 @@ test.describe('Diamond Defence regression behavior', () => {
       await loginAsSeedPlayer(page);
 
       await expect(page.locator('#practiceToggle')).toBeVisible();
-      await expect(page.locator('#practiceToggle')).toHaveAttribute('aria-label', 'Your Practice, 1 practice to complete');
+      await expect(page.locator('#practiceToggle')).toHaveAttribute('aria-label', 'Assignments, 1 practice to complete');
       await expect(page.locator('#practiceToggle .practice-toggle-count')).toHaveText('1');
       await expect(page.locator('#playbookBrowserToggle')).toBeDisabled();
       await expect(page.locator('#randomSitBtn')).toBeDisabled();
@@ -948,10 +972,13 @@ test.describe('Diamond Defence regression behavior', () => {
       };
     });
     expect(commandLayout.situationOrder).toEqual(['playbookBrowserToggle', 'randomSitBtn']);
-    expect(commandLayout.utilityOrder.slice(0, 3)).toEqual([
+    expect(commandLayout.utilityOrder.slice(0, 6)).toEqual([
+      'coachBoardLink',
       'fieldNavigationButton',
-      'practiceToggle',
       'staffToolsBtn',
+      'trainingWorkspaceBtn',
+      'designWorkspaceBtn',
+      'orgWorkspaceBtn',
     ]);
     expect(commandLayout.accountOrder.slice(0, 3)).toEqual(['playbookToggle', 'playerBtn', 'accountMenu']);
     expect(commandLayout.panelLeft).toBeGreaterThanOrEqual(commandLayout.fieldRight);
@@ -1172,7 +1199,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(stages.sequence).not.toContain('Select Continue');
     expect(stages.complete).toContain('Situation complete');
     expect(stages.complete).not.toContain('Verify Sequence');
-    expect(stages.practice).toContain('Your Practice');
+    expect(stages.practice).toContain('Assignments');
     expect(stages.practice).not.toContain('Verify Sequence');
   });
 
@@ -1557,7 +1584,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Jamie Rivera');
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
-    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Training workspace');
+    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Training');
     await page.locator('#staffToolsBtn').click();
     // The legacy wrapper uses display:contents; assert the visible workspace instead.
     await expect(page.locator('#trainingSidebar')).toBeVisible();
@@ -1647,7 +1674,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.evaluate(() => window.__DIQ_READY__);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     await expect(page.locator('#staffToolsBtn')).toBeVisible();
-    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Org workspace');
+    await expect(page.locator('#staffToolsBtn .staff-tools-label-full')).toHaveText('Organization');
     const fieldProposal = await page.evaluate(() => {
       const published = JSON.parse(JSON.stringify(SITUATIONS[0]));
       const proposed = JSON.parse(JSON.stringify(published));
@@ -1731,19 +1758,25 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(await page.locator('#adminCard').evaluate((card) => card.parentElement.id)).toBe('toolsDrawer');
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
-    await expect(page.locator('[data-admin-team-tab]')).toHaveCount(3);
+    await expect(page.locator('[data-admin-team-tab]:visible')).toHaveCount(0);
+    await expect(page.locator('[data-admin-team-tab="data"]')).toBeHidden();
     await expect(page.locator('[data-admin-team-view="roster"]')).toBeHidden();
     await expect(page.getByText(/^(Login ID|Coach account ID):/)).toHaveCount(0);
     expect(await page.locator('[data-admin-view="teams"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="recovery"]').evaluate((view) => view.parentElement.id)).toBe('adminWorkspace');
     expect(await page.locator('[data-admin-view="situations"]').evaluate((view) => view.parentElement.id)).toBe('adminCard');
-    await expect(page.getByRole('button', { name: 'Design workspace' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Design' })).toBeVisible();
     await expect(page.locator('#adminProposalSelect')).toHaveValue('pending-ui-proposal');
     await expect(page.locator('#adminProposalDetails')).toContainText('Coach Pending submitted a create');
     await expect(page.locator('#adminTeamContext')).toBeHidden();
-    await page.locator('#adminWorkspaceDirectory').getByText(/^Unassigned teams \(/).click();
+    await page.locator('#adminWorkspaceDirectory').getByRole('button', { name: /^Unassigned teams \(/ }).click();
     await page.locator('#adminWorkspaceDirectory').getByRole('button', { name: '13U Black', exact: true }).click();
-    await expect(page.locator('#adminTeamContext')).toBeVisible();
+    await expect(page.locator('#adminDirectoryTitle')).toHaveText('13U Black');
+    await expect(page.locator('[data-admin-team-tab]:visible')).toHaveCount(2);
+    await expect(page.locator('[data-admin-team-tab="roster"]')).toBeVisible();
+    await expect(page.locator('[data-admin-team-tab="seasons"]')).toBeVisible();
+    await expect(page.locator('#adminTeamContext')).toBeHidden();
+    await expect(page.getByRole('button', { name: '← Back to unassigned teams', exact: true })).toBeVisible();
     await expect(page.locator('#adminNewTeamBtn')).toBeHidden();
     await expect(page.locator('#adminTeamSelect')).toBeHidden();
     await expect(page.locator('#adminRosterBrowser')).toBeVisible();
@@ -1771,31 +1804,41 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminUnassignedPlayerSelect')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
     const playerRow = page.locator('#adminRosterRows tr[data-member-role="player"]').first();
-    await playerRow.getByRole('button', { name: 'Manage member', exact: true }).click();
-    await expect(page.locator('#adminPlayerPass')).toBeHidden();
-    await expect(page.locator('#adminTransferPlayerWorkflow')).toBeHidden();
-    await page.locator('#adminMemberSections').getByRole('button', { name: 'Team membership', exact: true }).click();
-    await expect(page.locator('#adminTransferPlayerWorkflow')).toBeVisible();
-    await expect(page.locator('#adminTransferPlayerSummary')).toContainText('Transfer #');
-    await page.locator('#adminTransferPlayerSummary').click();
-    await expect(page.locator('#adminTransferTeamSelect')).toBeVisible();
-    await expect(page.locator('#adminPlayerAddBtn')).toBeHidden();
-    await page.locator('#adminMemberCancel').click();
-    await playerRow.getByRole('button', { name: 'Manage member', exact: true }).click();
-    await page.locator('#adminMemberSections').getByRole('button', { name: 'Password', exact: true }).click();
-    await expect(page.locator('#adminTransferPlayerWorkflow')).toBeHidden();
-    await expect(page.locator('#adminPlayerName')).toBeHidden();
-    await expect(page.locator('#adminPlayerPass')).toBeVisible();
-    await page.locator('#adminMemberCancel').click();
+    const playerCheck=playerRow.getByRole('checkbox');
+    await playerRow.locator('td').nth(1).click();await expect(playerCheck).toBeChecked();
+    await playerRow.locator('td').nth(2).click();await expect(playerCheck).not.toBeChecked();
+    await playerRow.getByRole('button',{name:/^Actions for /}).click();
+    await page.locator('.org-action-menu:popover-open').getByRole('button',{name:'Edit details',exact:true}).click();
+    const detailsDialog=page.getByRole('dialog',{name:'Edit details',exact:true});
+    await expect(detailsDialog.getByLabel('Name',{exact:true})).toBeVisible();
+    await expect(detailsDialog.getByLabel('Jersey number')).toBeVisible();
+    await expect(playerCheck).not.toBeChecked();
+    await detailsDialog.getByRole('button',{name:'Cancel',exact:true}).click();
+    await playerRow.getByRole('button',{name:/^Actions for /}).click();
+    await page.locator('.org-action-menu:popover-open').getByRole('button',{name:'Transfer player',exact:true}).click();
+    const transferDialog=page.getByRole('dialog',{name:'Transfer player',exact:true});
+    await expect(transferDialog.getByLabel('Destination team and active season')).toBeVisible();
+    await transferDialog.getByRole('button',{name:'Cancel',exact:true}).click();
+    await playerRow.getByRole('button',{name:/^Actions for /}).click();
+    await page.locator('.org-action-menu:popover-open').getByRole('button',{name:'Reset password',exact:true}).click();
+    const passwordDialog=page.getByRole('dialog',{name:'Reset password',exact:true});
+    await expect(passwordDialog.getByLabel('Temporary password')).toBeVisible();
+    await expect(passwordDialog.getByLabel('Name',{exact:true})).toHaveCount(0);
+    await passwordDialog.getByRole('button',{name:'Cancel',exact:true}).click();
     await page.locator('#adminAddMember').click();
     await page.locator('#adminAddMemberChoices').getByRole('menuitem', { name: 'Create player account' }).click();
     await expect(page.locator('#adminPlayerAddBtn')).toBeVisible();
     await expect(page.locator('#adminPlayerPass')).toBeVisible();
     await page.locator('#adminMemberCancel').click();
-    await page.locator('#adminRosterRows tr[data-member-role="coach"]').first().getByRole('button', { name: 'Manage member', exact: true }).click();
-    await expect(page.locator('#adminCoachAddBtn')).toBeHidden();
-    await expect(page.locator('#adminCoachPass')).toBeHidden();
-    await page.locator('#adminMemberCancel').click();
+    const coachRow=page.locator('#adminRosterRows tr[data-member-role="coach"]').first();
+    await coachRow.locator('td').nth(1).click();await expect(coachRow.getByRole('checkbox')).toBeChecked();
+    await coachRow.locator('td').nth(1).click();await expect(coachRow.getByRole('checkbox')).not.toBeChecked();
+    await coachRow.getByRole('button',{name:/^Actions for /}).click();
+    await page.locator('.org-action-menu:popover-open').getByRole('button',{name:'Edit details',exact:true}).click();
+    const coachDialog=page.getByRole('dialog',{name:'Edit details',exact:true});
+    await expect(coachDialog.getByLabel('Name',{exact:true})).toBeVisible();
+    await expect(coachDialog.getByLabel('Jersey number')).toHaveCount(0);
+    await coachDialog.getByRole('button',{name:'Cancel',exact:true}).click();
     await page.locator('#adminAddMember').click();
     await page.locator('#adminAddMemberChoices').getByRole('menuitem', { name: 'Create coach account' }).click();
     await expect(page.locator('#adminCoachAddBtn')).toBeVisible();
@@ -1805,6 +1848,7 @@ test.describe('Diamond Defence regression behavior', () => {
       const admin = document.querySelector('#adminCard');
       const workspace = document.querySelector('#adminWorkspace');
       return {
+        sidebarRight: document.querySelector('#adminCard > .workspace-sections').getBoundingClientRect().right,
         drawerLeft: drawer.getBoundingClientRect().left,
         drawerWidth: drawer.getBoundingClientRect().width,
         viewportWidth: window.innerWidth,
@@ -1816,20 +1860,18 @@ test.describe('Diamond Defence regression behavior', () => {
         ),
       };
     });
-    expect(adminWorkspaceLayout.drawerWidth).toBeGreaterThan(adminWorkspaceLayout.viewportWidth * 0.9);
+    expect(adminWorkspaceLayout.drawerLeft).toBeGreaterThanOrEqual(adminWorkspaceLayout.sidebarRight);
+    expect(adminWorkspaceLayout.drawerWidth).toBeCloseTo(adminWorkspaceLayout.viewportWidth-adminWorkspaceLayout.drawerLeft,0);
     expect(adminWorkspaceLayout.workspaceRight).toBeLessThanOrEqual(adminWorkspaceLayout.viewportWidth);
     expect(adminWorkspaceLayout.horizontalOverflow).toBeLessThanOrEqual(1);
     await page.locator('[data-admin-team-tab="seasons"]').click();
     await expect(page.locator('[data-admin-team-view="seasons"]')).toBeVisible();
-    await expect(page.locator('#adminAdvanceRosterTitle')).toContainText('roster');
-    await expect(page.locator('#adminAdvanceRosterSource')).toContainText('From:');
-    await expect(page.locator('#adminAdvanceDestinationSelect option').first()).toHaveText('Create a new destination team');
-    await expect(page.locator('#adminAdvanceRosterBtn')).toBeDisabled();
-    await page.locator('[data-admin-team-tab="data"]').click();
-    await expect(page.locator('[data-admin-team-view="data"]')).toBeVisible();
-    await expect(page.locator('#adminCleanupSeasonSelect')).toBeEnabled();
-    await expect(page.locator('#adminCleanupGuidance')).toContainText('Close a season');
-    await expect(page.locator('#adminPlayerClearSeasonBtn')).toBeDisabled();
+    await expect(page.getByRole('table',{name:'Team seasons',exact:true})).toBeVisible();
+    await expect(page.locator('#orgSeasonsPage').getByRole('button',{name:'+ New season',exact:true})).toBeDisabled();
+    await expect(page.locator('#orgSeasonsPage')).toContainText('Close the active season');
+    await expect(page.locator('#adminAdvanceRosterPanel')).toBeHidden();
+    await expect(page.locator('[data-admin-team-tab="data"]')).toBeHidden();
+    await expect(page.locator('[data-admin-team-view="data"]')).toBeHidden();
     await expect(page.locator('#adminCsvImportPanel')).toBeHidden();
     await page.locator('[data-admin-team-tab="roster"]').click();
     await expect(page.locator('#adminCsvImportPanel')).toBeHidden();
@@ -1864,9 +1906,9 @@ test.describe('Diamond Defence regression behavior', () => {
     const libraryTools = page.getByRole('navigation', { name: 'Global Library tools' });
     await expect(situationLibrary).toBeVisible();
     await libraryTools.getByRole('button', { name: 'Export', exact: true }).click();
-    await situationLibrary.locator('.tool-row input[type=checkbox]').first().check();
+    await situationLibrary.getByRole('table', { name: 'Export situations', exact: true }).locator('tbody input[type=checkbox]').first().check();
     await situationLibrary.getByRole('searchbox', { name: 'Search situations' }).fill('no-matching-situation');
-    await expect(situationLibrary.getByRole('button', { name: 'Download selected (1)', exact: true })).toBeEnabled();
+    await expect(situationLibrary.getByRole('button', { name: 'Export (1)', exact: true })).toBeEnabled();
     await libraryTools.getByRole('button', { name: 'Import', exact: true }).click();
     await expect(situationLibrary.getByLabel('Situation JSON file')).toBeVisible();
     await expect(situationLibrary.getByRole('searchbox')).toHaveCount(0);
@@ -1886,12 +1928,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.goto('/workspace/design?type=global&view=reviews');
     const reviews = page.getByRole('region', { name: 'Publication reviews', exact: true });
     const legacyReview = page.getByRole('region', { name: 'Review legacy proposal', exact: true });
-    await reviews.locator('article').filter({has: page.getByRole('heading', {name:'Pending UI Situation',exact:true})})
+    await reviews.getByRole('row').filter({has: page.getByRole('button', {name:'Pending UI Situation',exact:true})})
       .getByRole('button', {name:'Review proposal',exact:true}).click();
     await expect(legacyReview).toContainText('Verify the pending proposal interface.');
     await expect(legacyReview.getByRole('button', {name:'Approve proposal',exact:true})).toBeEnabled();
     await legacyReview.getByRole('button', {name:'Close review',exact:true}).click();
-    await reviews.locator('article').filter({has: page.getByRole('heading', {name:fieldProposal.situation.title,exact:true})})
+    await reviews.getByRole('row').filter({has: page.getByRole('button', {name:fieldProposal.situation.title,exact:true})})
       .getByRole('button', {name:'Review proposal',exact:true}).click();
     await expect(legacyReview.getByRole('button', {name:'Approve proposal',exact:true})).toBeDisabled();
     for (const field of ['targets','hit','playSeq']) {
@@ -1946,24 +1988,25 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(submitted.acceptedFields).toEqual(expect.arrayContaining(['targets','hit','playSeq']));
     expect(submitted.acceptedFields).not.toContain('title');
     await expect(legacyReview).toHaveCount(0);
-    await page.getByRole('button', {name:'Org workspace',exact:true}).click();
+    await page.getByRole('button', {name:'Organization',exact:true}).click();
     await page.getByRole('button', { name: 'Recovery', exact: true }).click();
     await expect(page.locator('#adminWorkspace')).toBeVisible();
     await expect(page.locator('.field-card')).toBeHidden();
     await expect(page.locator('#adminArchivedTeamSelect')).toBeVisible();
-    await expect(page.locator('#adminArchivedMemberSelect')).toBeVisible();
+    await expect(page.locator('#adminArchivedMemberSelect')).toBeHidden();
+    await page.getByRole('navigation',{name:'Recovery categories'}).getByRole('button',{name:'Situations',exact:true}).click();
     await expect(page.locator('#adminArchivedSituationSelect')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Refresh', exact: true })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1024, height: 768 });
     const compactDrawer = await page.locator('#adminCard .workspace-heading').evaluate((drawer) => {
       const rect = drawer.getBoundingClientRect();
-      return { left: rect.left, right: rect.right, bottom: rect.bottom, width: rect.width };
+      return { left: rect.left, right: rect.right, bottom: rect.bottom, width: rect.width, sidebarRight: document.querySelector('#adminCard > .workspace-sections').getBoundingClientRect().right, viewportWidth: window.innerWidth };
     });
-    expect(compactDrawer.left).toBeGreaterThanOrEqual(9);
-    expect(compactDrawer.right).toBeLessThanOrEqual(1015);
+    expect(compactDrawer.left).toBeGreaterThanOrEqual(compactDrawer.sidebarRight);
+    expect(compactDrawer.right).toBeLessThanOrEqual(compactDrawer.viewportWidth);
     expect(compactDrawer.bottom).toBeLessThanOrEqual(768);
-    expect(compactDrawer.width).toBeGreaterThan(900);
+    expect(compactDrawer.width).toBeCloseTo(compactDrawer.viewportWidth-compactDrawer.left,0);
   });
 
   test('login service failures do not masquerade as a database outage', async ({ page }) => {
@@ -2103,7 +2146,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.locator('#staffToolsBtn').click();
     await expect(page.locator('#adminCard')).toBeVisible();
     await expect(page.locator('#adminNewTeamBtn')).toBeHidden();
-    await page.locator('#adminWorkspaceDirectory').getByText(/^Unassigned teams \(/).click();
+    await page.locator('#adminWorkspaceDirectory').getByRole('button', { name: /^Unassigned teams \(/ }).click();
     await expect(page.locator('#adminNewTeamBtn')).toBeVisible();
     await expect(page.locator('#adminTeamAddBtn')).toBeHidden();
     await expect(page.locator('#adminTeamHeaderFields')).toBeHidden();
@@ -2136,12 +2179,15 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminNewTeamBtn')).toBeHidden();
     await expect(page.locator('#adminTeamAddBtn')).toBeHidden();
 
-    await expect(page.locator('#adminTeamSettings')).toBeVisible();
-    await page.locator('#adminTeamName').fill(`${teamName} Renamed`);
+    await expect(page.locator('#adminTeamContext')).toBeHidden();
+    await page.getByRole('button',{name:'Team actions',exact:true}).click();
+    await page.getByRole('button',{name:'Rename team',exact:true}).click();
+    const renameDialog=page.getByRole('dialog',{name:'Rename team'});
+    await renameDialog.getByLabel('Team name').fill(`${teamName} Renamed`);
     const updateResponse = page.waitForResponse((response) =>
       response.url().endsWith(`/api/admin/teams/${teamId}`) && response.request().method() === 'PUT',
     );
-    await page.locator('#adminTeamUpdateBtn').click();
+    await renameDialog.getByRole('button',{name:'Save',exact:true}).click();
     const updated = (await (await updateResponse).json()).record;
     expect(updated).toEqual(expect.objectContaining({
       id: teamId,
@@ -2149,9 +2195,10 @@ test.describe('Diamond Defence regression behavior', () => {
       revision: 2,
     }));
     await expect(page.locator('#adminOperationStatus')).toHaveText('Team saved.');
-    await expect(page.locator('#adminTeamSettings')).toBeVisible();
+    await expect(page.locator('#adminTeamContext')).toBeHidden();
 
-    await page.locator('#adminTeamRemoveBtn').click();
+    await page.getByRole('button',{name:'Team actions',exact:true}).click();
+    await page.getByRole('button',{name:'Archive team',exact:true}).click();
     await expect(page.locator('#adminConfirmDialog')).toBeVisible();
     await expect(page.locator('#adminConfirmTitle')).toHaveText('Archive team');
     await page.locator('#adminConfirmActionBtn').focus();
@@ -2161,13 +2208,14 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#adminConfirmActionBtn')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.locator('#adminConfirmDialog')).toBeHidden();
-    await expect(page.locator('#adminTeamRemoveBtn')).toBeFocused();
+    await expect(page.getByRole('button',{name:'Team actions',exact:true})).toBeFocused();
 
     const archiveResponse = page.waitForResponse((response) =>
       response.url().endsWith(`/api/admin/teams/${teamId}`)
       && response.request().method() === 'DELETE',
     );
-    await page.locator('#adminTeamRemoveBtn').click();
+    await page.getByRole('button',{name:'Team actions',exact:true}).click();
+    await page.getByRole('button',{name:'Archive team',exact:true}).click();
     await page.locator('#adminConfirmActionBtn').click();
     expect((await archiveResponse).status()).toBe(200);
     await expect(page.locator('#adminOperationStatus')).toHaveText('Team archived.');
@@ -2500,7 +2548,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(download.suggestedFilename()).toBe('diamond-defense-13u-black-results.csv');
     await expect(page.locator('#coachResultsStatus')).toContainText('CSV export downloaded');
 
-    await page.getByRole('button', { name: 'Design workspace' }).click();
+    await page.getByRole('button', { name: 'Design' }).click();
     await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
     await expect(page.locator('.field-card')).toBeHidden();
     const inherited = page.getByRole('table', { name: 'Inherited situations', exact: true });
@@ -2508,6 +2556,10 @@ test.describe('Diamond Defence regression behavior', () => {
     await inherited.locator('.situation-title').first().click();
     // A coach without Designer can browse inherited plays but cannot propose changes.
     await expect(page.getByRole('dialog').getByRole('link', { name: 'Propose update', exact: true })).toHaveCount(0);
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
+    await inherited.locator('tbody tr').first().getByRole('button', { name: /^Actions for / }).click();
+    await expect(page.getByRole('link', { name: 'Propose update', exact: true })).toHaveCount(0);
+    await page.keyboard.press('Escape');
     const admin = await requestFactory.newContext({ baseURL });
     const headers = { Origin: new URL(baseURL).origin };
     let originalGrant;
@@ -2520,8 +2572,8 @@ test.describe('Diamond Defence regression behavior', () => {
         action: 'stage_access', userId: 'staff-coach', role: 'coach', scopeId: '13u-black', canDesign: true,
       } })).ok()).toBe(true);
       await page.reload();
-      await inherited.locator('.situation-title').first().click();
-      await page.getByRole('dialog').getByRole('link', { name: 'Propose update', exact: true }).click();
+      await inherited.locator('tbody tr').first().getByRole('button', { name: /^Actions for / }).click();
+      await page.getByRole('link', { name: 'Propose update', exact: true }).click();
       await expect(page.getByRole('navigation', { name: 'Editor tools' })).toBeVisible();
       await page.getByLabel('Situation name').fill('Coach draft title');
       await selectStage(page,'Details');
@@ -2813,13 +2865,15 @@ test('creating a variation through training stages preserves its source and assi
   await page.locator('#adminPwInput').fill('password');
   await page.locator('#adminPwOk').click();
   await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
-  await page.locator('#staffToolsBtn').click();
-  const records = await (await page.request.get('/api/situations')).json();
+  // Retry a dropped connection once; HTTP error responses still fail this assertion.
+  const catalogResponse = await page.request.get('/api/situations', { maxRetries: 1 });
+  expect(catalogResponse.ok()).toBeTruthy();
+  const records = await catalogResponse.json();
   const source = records[0];
   expect(source).toBeDefined();
   await page.goto('/workspace/design?type=global');
-  await page.locator(`tr[data-situation-key=${JSON.stringify(source.key)}]`).getByRole('button', { name: source.title, exact: true }).click();
-  await page.getByRole('dialog').getByRole('link', { name: 'Create variation', exact: true }).click();
+  await page.locator(`tr[data-situation-key=${JSON.stringify(source.key)}]`).getByRole('button', { name: /^Actions for / }).click();
+  await page.getByRole('link', { name: 'Create variation', exact: true }).click();
   const stages = page.getByRole('navigation', { name: 'Editor tools' });
   await expect(stages).toBeVisible();
   const title = `Training variation ${Date.now()}`;

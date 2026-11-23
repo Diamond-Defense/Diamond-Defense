@@ -27,6 +27,7 @@ interface Promotion {
   destination_scope: LibraryScope['type'];
   destination_id: string;
   submitted_by: string | null;
+  review_notes: string;
   destination_key: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'kept';
 }
@@ -86,6 +87,7 @@ export const GET: RequestHandler = async event => {
         FROM json_each(?3) scope
         JOIN situations s ON s.library_scope=json_extract(scope.value,'$.type')
           AND s.library_id=json_extract(scope.value,'$.id') AND s.active=1
+        JOIN library_owned_catalog owned ON owned.key=s.key
         WHERE NOT EXISTS (
           SELECT 1 FROM situation_promotions p WHERE p.source_key=s.key AND p.source_revision=s.revision
             AND p.destination_scope=?1 AND p.destination_id=?2
@@ -139,8 +141,8 @@ export const GET: RequestHandler = async event => {
     };
   }));
   const ownKeys = entries.map(entry => entry.key);
-  const changes = await db.all<{ id: string; sourceKey: string; revision: number; payload_json: string; original_json: string; status: string; stale: number; is_owned: number }>(
-      `SELECT p.id,p.source_key AS sourceKey,p.source_revision AS revision,p.payload_json,
+  const changes = await db.all<{ id: string; sourceKey: string; revision: number; payload_json: string; original_json: string; status: string; stale: number; is_owned: number; author_id: string; destination_scope: string; destination_id: string }>(
+      `SELECT p.id,p.author_id,s.library_scope AS destination_scope,s.library_id AS destination_id,p.source_key AS sourceKey,p.source_revision AS revision,p.payload_json,
         v.payload_json AS original_json,p.status,(s.revision<>p.source_revision OR s.active<>1) AS stale,
         (s.library_scope=?2 AND s.library_id=?3) AS is_owned
         FROM situation_change_proposals p JOIN situations s ON s.key=p.source_key
@@ -148,8 +150,10 @@ export const GET: RequestHandler = async event => {
         WHERE (p.author_id=?1 AND p.author_scope=?2 AND p.author_scope_id=?3)
           OR (?4=1 AND s.library_scope=?2 AND s.library_id=?3)
         ORDER BY p.created_at DESC`, [user.id, selected.type, selected.id, Number(selected.canDesign)]);
-  const changeReviews = changes.map(({payload_json,original_json,is_owned,...item}) => ({
-    ...item, proposed:JSON.parse(payload_json), original:JSON.parse(original_json),
+  const changeReviews = changes.map(({payload_json,original_json,is_owned,author_id,...item}) => ({
+    ...item, submittedByYou:author_id === user.id,
+    destinationName:workspaces.find(scope => scope.type===item.destination_scope && scope.id===item.destination_id)?.name,
+    proposed:JSON.parse(payload_json), original:JSON.parse(original_json),
     canReview: selected.canDesign && Boolean(is_owned),
   }));
   return json({ selected, entries, ownKeys, sourceEntries: candidates, incoming: reviews,
@@ -318,9 +322,13 @@ export const POST: RequestHandler = async event => {
       if (!canReviewPublications(reviewer,user.role === 'admin')) {
         return fail('Designer access is required for the destination library.', 403);
       }
+      if (body.explanation != null && (typeof body.explanation !== 'string' || body.explanation.length > 2000)) {
+        return fail('Explanation must be text with at most 2,000 characters.', 400);
+      }
+      const explanation = (body.explanation || '').trim();
       const now = new Date().toISOString();
       const result = await db.execute(`UPDATE situation_promotions SET status='rejected', reviewed_by=?2,
-        reviewed_at=?3 WHERE id=?1 AND status='pending'`, [pending.id, user.id, now]);
+        reviewed_at=?3, review_notes=?4 WHERE id=?1 AND status='pending'`, [pending.id, user.id, now, explanation]);
       if (result.changes) await writeAudit(db, user.id, 'reject', 'situation_promotion', pending.id, null,
         { sourceKey: pending.source_key, revision: pending.source_revision, destination,
           approvalType: user.role === 'admin' && destination.type !== 'global' ? 'admin_override' : 'submission_review' });
@@ -366,6 +374,21 @@ export const POST: RequestHandler = async event => {
     let promotion = pending || await db.one<Promotion>(`SELECT * FROM situation_promotions
       WHERE source_key=?1 AND source_revision=?2 AND destination_scope=?3 AND destination_id=?4`,
       [key, revision, destination.type, destination.id]);
+    if (body.action === 'submit' && promotion?.status === 'rejected') {
+      if (source.revision !== revision) {
+        return fail('The source has changed. Refresh before resubmitting it.', 409);
+      }
+      const now = new Date().toISOString();
+      const result = await db.execute(`UPDATE situation_promotions SET status='pending', submitted_by=?2,
+        created_at=?3, reviewed_by=NULL, reviewed_at=NULL, review_notes=''
+        WHERE id=?1 AND status='rejected'`, [promotion.id, user.id, now]);
+      if (result.changes) {
+        await writeAudit(db, user.id, 'resubmit_promotion', 'situation_promotion', promotion.id, null,
+          { source: sourceScope, destination, revision, previousReviewNotes: promotion.review_notes });
+      }
+      promotion = await db.one<Promotion>('SELECT * FROM situation_promotions WHERE id=?1', [promotion.id]);
+      return json({ promotion });
+    }
     if (promotion && promotion.status !== 'pending') {
       return json({ promotion });
     }

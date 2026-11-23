@@ -284,3 +284,22 @@ body.player-experience #trainingPanel.is-practice-blocked #trainingMetrics {disp
 
 #appHeader #practiceToggle .practice-toggle-count[data-urgency="soon"] {background:var(--warning-muted);color:var(--warning);}
 #appHeader #practiceToggle .practice-toggle-count[data-urgency="overdue"] {background:var(--error-muted);color:var(--error);}
+/* Compact text-and-icon destination labels; Coach Board remains independent. */
+#appHeader #trainingNavigation .utility-actions > button:has(.header-nav-icon),
+#appHeader .account-actions > #playbookToggle {display:inline-flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;}
+#appHeader .header-nav-icon {display:block;width:18px;height:18px;flex:0 0 18px;}
+#appHeader #trainingNavigation .utility-actions > #coachBoardLink {margin-left:16px;}
+#appHeader #trainingNavigation .brand-area[role="link"] {cursor:pointer;}
+#appHeader #trainingNavigation .brand-area[role="link"]:focus-visible {outline:2px solid var(--header-text);outline-offset:4px;border-radius:4px;}
+@media(min-width:1024px) and (max-width:1200px) {
+ body.player-experience #trainingNavigation {gap:12px;}
+ body.player-experience #trainingNavigation .utility-actions {gap:8px;}
+ #appHeader #trainingNavigation .utility-actions > #coachBoardLink {margin-left:8px;}
+ #appHeader #trainingNavigation .utility-actions > button:has(.header-nav-icon) {gap:6px;}
+}
+
+/* Coach Board leads staff navigation; player navigation starts with Play. */
+#appHeader #trainingNavigation .utility-actions > #coachBoardLink {margin-left:0;margin-right:16px;}
+@media(min-width:1024px) and (max-width:1200px) {
+ #appHeader #trainingNavigation .utility-actions > #coachBoardLink {margin-left:0;margin-right:8px;}
+}

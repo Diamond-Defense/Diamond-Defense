@@ -990,9 +990,13 @@ function computeRosterPlayerId(teamObj, playerObj){
         label.className = 'practice-toggle-label';
         count = document.createElement('span');
         count.className = 'practice-toggle-count hidden';
-        practice.replaceChildren(label, count);
+        const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        for (const [key, value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'2','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true',focusable:'false'})) icon.setAttribute(key, value);
+        icon.classList.add('header-nav-icon');
+        icon.innerHTML = '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2 M12 11h4 M12 16h4 M8 11h.01 M8 16h.01"/>';
+        practice.replaceChildren(icon, label, count);
       }
-      label.textContent = 'Your Practice';
+      label.textContent = 'Assignments';
       count.textContent = String(DIQ_PRACTICE_STATE.pendingCount);
       count.setAttribute('aria-hidden', 'true');
       count.classList.toggle('hidden', !pending);
@@ -1001,8 +1005,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       count.dataset.urgency = pending ? deadline.tone : 'neutral';
       const urgency = deadline.tone !== 'neutral' ? `, ${deadline.label.toLowerCase()}` : '';
       const description = pending
-        ? `Your Practice, ${DIQ_PRACTICE_STATE.pendingCount} ${DIQ_PRACTICE_STATE.pendingCount === 1 ? 'practice' : 'practices'} to complete${urgency}`
-        : 'Your Practice';
+        ? `Assignments, ${DIQ_PRACTICE_STATE.pendingCount} ${DIQ_PRACTICE_STATE.pendingCount === 1 ? 'practice' : 'practices'} to complete${urgency}`
+        : 'Assignments';
       practice.setAttribute('aria-label',description);
       practice.title = pending ? description : '';
     }
@@ -1053,12 +1057,12 @@ function computeRosterPlayerId(teamObj, playerObj){
     }else if(state.pendingCount > 0){
       title.textContent = 'Assignment complete';
       message.textContent = 'Choose your next pending practice assignment.';
-      button.textContent = 'Back to Your Practice';
+      button.textContent = 'Back to Assignments';
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'practice-list' };
     }else{
       title.textContent = 'Practice complete';
       message.textContent = 'You have completed all assigned situations.';
-      button.textContent = 'Back to Your Practice';
+      button.textContent = 'Back to Assignments';
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'practice-list' };
     }
     panel.classList.remove('hidden');
@@ -1562,7 +1566,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const title = document.getElementById('practiceWorkspaceTitle');
     const subtitle = document.getElementById('practiceWorkspaceSubtitle');
     const eyebrow = document.getElementById('practiceWorkspaceEyebrow');
-    if(title) title.textContent = player ? 'Your Practice' : 'Practices';
+    if(title) title.textContent = player ? 'Assignments' : 'Practices';
     if(subtitle) subtitle.textContent = player
       ? 'Complete the situations assigned by your coach.'
       : 'Assign focused work and track each player’s progress.';
@@ -1572,7 +1576,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(!headingActions){headingActions=document.createElement('div');headingActions.id='trainingPracticeHeadingActions';headingActions.className='training-practice-heading-actions';practiceWorkspace.querySelector('.practice-workspace-header').append(headingActions);}
       headingActions.append(document.getElementById('practiceNewAssignment'),document.getElementById('practiceCoachRefresh'));
       document.getElementById('practiceNewAssignment').textContent='+ New practice';
-      const refresh=document.getElementById('practiceCoachRefresh');refresh.setAttribute('aria-label','Refresh practices');refresh.title='Refresh practices';refresh.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg>';
+      const refresh=document.getElementById('practiceCoachRefresh');refresh.setAttribute('aria-label','Refresh practices');refresh.title='Refresh practices';refresh.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     }
     if(headingActions)headingActions.hidden=player;
 
@@ -2590,8 +2594,8 @@ function computeRosterPlayerId(teamObj, playerObj){
       const sidebar = document.createElement('aside');
       sidebar.id = 'trainingSidebar'; sidebar.className = 'dd-workspace-sidebar';
       sidebar.setAttribute('aria-label','Training sections');
-      const icons = {overview:'M3 10 12 3l9 7v11h-6v-7H9v7H3Z',players:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87',practices:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',attempts:'M3 12a9 9 0 1 0 3-6M3 3v6h6M12 7v5l3 2',scope:'M3 21V7h6v14M9 21V3h6v18M15 21V11h6v10'};
-      sidebar.innerHTML = `<div class="dd-workspace-context"><h2>Training</h2></div><div id="trainingSidebarContext"></div><button type="button" class="dd-section-toggle" aria-expanded="false" aria-controls="trainingSectionNavigation">Sections <span aria-hidden="true">⌄</span></button><nav class="dd-workspace-nav" id="trainingSectionNavigation" aria-label="Training navigation">${Object.entries(trainingSections).map(([key,label])=>`<button type="button" data-training-section="${key}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${icons[key]}"/>${key==='players'?'<circle cx="9" cy="7" r="4"/>':''}</svg><span>${label}</span></button>`).join('')}</nav>`;
+      const icons = {overview:'M3 10 12 3l9 7v11h-6v-7H9v7H3Z',players:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M16 3a4 4 0 0 1 0 8M22 21v-2a4 4 0 0 0-3-3.87',practices:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z',attempts:'M16 2v4 M8 2v4 M3 10h18 M21 12V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h7 M23 18a5 5 0 1 1-10 0 5 5 0 0 1 10 0 M18 15v3l2 1',scope:'M17 21a5 5 0 00-10 0 M22 10.5a3.5 3.5 0 00-5.507-2.868 M7.507 7.632A3.5 3.5 0 002 10.5'};
+      sidebar.innerHTML = `<div class="dd-workspace-context"><h2>Training</h2></div><div id="trainingSidebarContext"></div><button type="button" class="dd-section-toggle" aria-expanded="false" aria-controls="trainingSectionNavigation">Sections <span aria-hidden="true">⌄</span></button><nav class="dd-workspace-nav" id="trainingSectionNavigation" aria-label="Training navigation">${Object.entries(trainingSections).map(([key,label])=>`<button type="button" data-training-section="${key}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="${icons[key]}"${key==='scope'?' stroke-linecap="round" stroke-linejoin="round"':''}/>${key==='players'?'<circle cx="9" cy="7" r="4"/>':key==='scope'?'<circle cx="12" cy="13" r="3"/><circle cx="18.5" cy="4.5" r="2.5"/><circle cx="5.5" cy="4.5" r="2.5"/>':''}</svg><span>${label}</span></button>`).join('')}</nav>`;
       workspace.prepend(sidebar);
       for(const [id,label] of [['trainingDashboard','Team overview'],['trainingPlayers','Players']]) {
         const panel = document.createElement('section'); panel.id=id;panel.className='training-page hidden';panel.setAttribute('aria-label',label);workspace.append(panel);
@@ -2698,7 +2702,7 @@ function computeRosterPlayerId(teamObj, playerObj){
 
   function trainingPrimary(){return trainingReadOnly?'': '<button class="dd-button" data-variant="primary" type="button" data-training-action="new">+ New practice</button>';}
   function trainingHeaderActions(){
-    return `<div class="training-header-actions">${trainingPrimary()}<button class="dd-button training-refresh-button" type="button" data-training-action="refresh" aria-label="Refresh ${trainingSection==='players'?'players':'activity'}" title="Refresh current page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div>`;
+    return `<div class="training-header-actions">${trainingPrimary()}<button class="dd-button training-refresh-button" type="button" data-training-action="refresh" aria-label="Refresh ${trainingSection==='players'?'players':'activity'}" title="Refresh current page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div>`;
   }
   function trainingDate(value){return value ? new Date(value).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}) : 'No activity in this period';}
   function trainingLink(action,id,label,navigation=false){
@@ -2851,12 +2855,12 @@ function computeRosterPlayerId(teamObj, playerObj){
         if (typeof toast === 'function') toast('No teams are available in your training scope.');
         return;
       }
-      document.querySelector('#coachCard .tools-panel-header strong').textContent = 'Training workspace';
+      document.querySelector('#coachCard .tools-panel-header strong').textContent = 'Training';
       setCoachMode(true, { role:'coach' });
       trainingOverviewRegion.value = '';
       window._diqRestoreTrainingLocation();
     } catch (error) {
-      reportDatabaseWriteError('Unable to open Training workspace.', error);
+      reportDatabaseWriteError('Unable to open Training.', error);
     }
   };
 
@@ -3755,7 +3759,7 @@ function updatePlayerHeaderButton(){
     if(tools){
       const fullLabel = tools.querySelector('.staff-tools-label-full');
       const shortLabel = tools.querySelector('.staff-tools-label-short');
-      const fullText = user?.role === 'coach' ? 'Training workspace' : user?.role === 'admin' ? 'Org workspace' : 'Workspace';
+      const fullText = user?.role === 'coach' ? 'Training' : user?.role === 'admin' ? 'Organization' : 'Workspace';
       const shortText = user?.role === 'coach' ? 'Coach' : user?.role === 'admin' ? 'Admin' : 'Tools';
       if(fullLabel) fullLabel.textContent = fullText;
       if(shortLabel) shortLabel.textContent = shortText;
@@ -3770,7 +3774,7 @@ function updatePlayerHeaderButton(){
     if(tools){
       tools.classList.toggle('hidden', !staff);
       tools.setAttribute('aria-hidden', String(!staff));
-      tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Org workspace' : '';
+      tools.title = user?.role === 'coach' ? 'Open Coach Tools' : user?.role === 'admin' ? 'Open Organization' : '';
     }
     if(account){
       account.classList.toggle('hidden', !user);
@@ -3778,6 +3782,7 @@ function updatePlayerHeaderButton(){
       account.classList.toggle('account-action-required', Boolean(user?.mustChangePassword));
       account.textContent = user?.mustChangePassword ? 'Change password' : 'Account';
     }
+    window._diqRefreshHeaderDestinations?.();
     updateWorkspaceNavigation();
     window._diqApplyGameAccess?.();
     updatePracticeNavigation();
@@ -4445,8 +4450,8 @@ function refreshGuideText(){
   const hasSequence = Boolean(currentSituation?.playSeq?.length);
   let stage, steps;
   if(practice && !practice.classList.contains('hidden')){
-    stage = 'Your Practice';
-    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Field in the top navigation to return to the situation. Playbook and Random are available when required practice is complete.'];
+    stage = 'Assignments';
+    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Play in the top navigation to return to the situation. Playbook and Random are available when required practice is complete.'];
   } else if(completed){
     stage = 'Situation complete';
     steps = ['Review the result and the expected throwing order in Play Review.', 'Use Reset to try this situation again, or choose another available situation.', 'For assigned practice, use the next-situation button when it appears.'];
@@ -4467,7 +4472,7 @@ function refreshGuideText(){
     steps = ['Drag the nine blue fielders into position. Gold runners are not draggable.', 'Select Check Positions to check your placement.', 'Use the remaining checks to adjust your fielders. The timer and animation pause while Guide is open.'];
   } else {
     stage = 'Getting started';
-    steps = ['Log in, then open Playbook to choose a situation, use Random, or open Your Practice for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
+    steps = ['Log in, then open Playbook to choose a situation, use Random, or open Assignments for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
   }
   const html = `<p><strong>${stage}</strong></p><ol>${steps.map(text=>`<li>${text}</li>`).join('')}</ol>`;
   if(howToBody.innerHTML !== html) howToBody.innerHTML = html;

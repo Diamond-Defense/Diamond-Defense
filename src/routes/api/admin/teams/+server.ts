@@ -18,7 +18,9 @@ export const GET: RequestHandler = async (event) => {
     'SELECT t.id AS teamId, r.id, r.organization_id AS organizationId FROM teams t JOIN regions r ON r.id = t.region_id',
   );
   const allowed = new Set(scopes.filter(scope => directsRegion(actor, scope)).map(scope => scope.teamId));
-  return json({ teams: teams.filter(team => allowed.has(team.id)) });
+  // Former participants are available as season snapshots, not live account
+  // records in a director's team payload after leaving their responsibility.
+  return json({ teams: teams.filter(team => allowed.has(team.id)).map(team=>({...team,roster:team.roster.filter(member=>member.active!==false)})) });
 
 };
 

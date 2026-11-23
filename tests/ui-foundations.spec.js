@@ -13,7 +13,7 @@ test('shared workspace components retain keyboard navigation, themes and full-wi
   await page.setViewportSize({ width: 1040, height: 768 });
   await page.goto('/workspace/design');
   const workspace = page.locator('#designWorkspace');
-  await expect(workspace.getByRole('heading', { name: 'Design workspace', exact: true })).toBeVisible();
+  await expect(workspace.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
   await expect(workspace.getByRole('region', { name: 'Global Library', exact: true })).toBeVisible();
   const selector = workspace.getByLabel('Library', { exact: true });
   await expect(selector).toHaveCSS('min-height', '40px');
@@ -68,13 +68,13 @@ test('library failures use persistent error feedback and recover without losing 
   }));
   await page.goto('/workspace/design');
   await expect(page.locator('#designWorkspace .dd-feedback[role="alert"]')).toHaveText('Library temporarily unavailable.');
-  await expect(page.getByRole('heading', { name: 'Design workspace', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Design', exact: true })).toBeVisible();
   await page.unroute('**/api/design?*');
   await page.reload();
   await expect(page.getByRole('region', { name: 'Global Library', exact: true })).toBeVisible();
   await expect(page.locator('#designWorkspace .dd-feedback')).toHaveAttribute('data-empty', 'true');
   await page.locator('#appHeader').evaluate(element => element.dataset.foundationMarker = 'mounted');
-  await page.getByRole('button', { name: 'Back to field', exact: true }).click();
+  await page.getByRole('button', { name: 'Back to Play', exact: true }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('#appHeader')).toHaveAttribute('data-foundation-marker', 'mounted');
   await expect(page.locator('#fieldImg')).toBeVisible();

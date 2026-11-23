@@ -4,7 +4,7 @@
 
 Build on preview commit 9043b80. Use a single navy application header, blue-gray canvas, white contextual gameplay panel, and restrained green actions. The approved reference is the main-page color-system mockup. No sidebar is installed in this increment.
 
-The header retains branding, permission-controlled destinations, and the existing account menu. Team/season context stays in the account and workspace selectors rather than being repeated beside the brand. Required-practice title and completion progress replace Free practice above the field. Field returns from practice/workspaces. Playbook and Random sit above the field and retain their existing IDs, restrictions and event handlers. Staff destinations remain available through the existing authorization-owned controls.
+The header retains branding, permission-controlled destinations, and the existing account menu. Team/season context stays in the account and workspace selectors rather than being repeated beside the brand. Required-practice title and completion progress replace Free practice above the field. Play returns from practice/workspaces. Playbook and Random sit above the field and retain their existing IDs, restrictions and event handlers. Staff destinations remain available through the existing authorization-owned controls.
 
 The field retains the real artwork and logical coordinate system. Width is bounded by both available space and viewport height; original resizing/overlay observers remain responsible for animation and token alignment. The light theme blends the field image's surrounding background into the canvas through CSS; no asset is edited. Dark and other existing themes remain available.
 

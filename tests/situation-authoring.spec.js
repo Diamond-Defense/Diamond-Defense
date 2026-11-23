@@ -77,12 +77,12 @@ test('Admin library opens the shared training stages and publishes a new situati
   await page.locator('#signInUsername').fill('admin');
   await page.locator('#signInPassword').fill('password');
   await page.locator('#signInPassword').press('Enter');
-  await page.getByRole('button', { name: 'Design workspace' }).click();
+  await page.getByRole('button', { name: 'Design' }).click();
   await page.getByRole('link', { name: 'Global library tools' }).click();
   await expect(page.locator('#designWorkspaceBtn')).toHaveAttribute('aria-current', 'true');
   await expect(page.locator('#staffToolsBtn')).not.toHaveAttribute('aria-current', 'true');
   await expect(page.getByRole('button', { name: 'Organizations', exact: true })).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Back to Design workspace' })).toHaveAttribute('href', '/design?type=global');
+  await expect(page.getByRole('link', { name: 'Back to Design' })).toHaveAttribute('href', '/design?type=global');
   await expect(page.locator('#situationLibrary')).toBeVisible();
   await page.locator('#situationLibrary').getByRole('button', { name: 'New situation', exact: true }).click();
   const stages = page.getByRole('navigation', { name: 'Editor tools' });

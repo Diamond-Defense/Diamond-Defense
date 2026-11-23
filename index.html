@@ -76,7 +76,7 @@
         <h2 id="coachResultsTitle">Team Reviews</h2>
         <p id="coachResultsSubtitle"></p>
       </div>
-      <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button" aria-label="Refresh attempt history" title="Refresh attempt history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button>
+      <button id="coachResultsRefreshBtn" class="btn btn-ghost" type="button" aria-label="Refresh attempt history" title="Refresh attempt history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
     <nav class="coach-review-views" aria-label="Review views">
       <button id="coachOverviewTab" type="button" class="btn-green" data-review-view="overview" aria-pressed="true">Summary</button>
@@ -179,15 +179,15 @@
     <div class="practice-workspace-header">
       <div>
         <span id="practiceWorkspaceEyebrow" class="eyebrow">Assigned practice</span>
-        <h2 id="practiceWorkspaceTitle">Your Practice</h2>
+        <h2 id="practiceWorkspaceTitle">Assignments</h2>
         <p id="practiceWorkspaceSubtitle">Complete the situations assigned by your coach.</p>
       </div>
-      <button id="practiceWorkspaceClose" class="btn btn-ghost" type="button">Back to field</button>
+      <button id="practiceWorkspaceClose" class="btn btn-ghost" type="button">Back to Play</button>
     </div>
 
     <div id="playerPracticeView" class="practice-role-view dd-workspace-layout">
-      <aside class="dd-workspace-sidebar" aria-label="Your Practice sections">
-        <div class="dd-workspace-context"><h2>Practice</h2></div>
+      <aside class="dd-workspace-sidebar" aria-label="Assignments sections">
+        <div class="dd-workspace-context"><h2>Assignments</h2></div>
         <button class="dd-section-toggle" type="button" aria-expanded="false" aria-controls="playerPracticeSections">Sections <span aria-hidden="true">⌄</span></button>
         <nav id="playerPracticeSections" class="dd-workspace-nav" aria-label="Practice sections">
           <button type="button" data-player-practice-view="pending" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="4" width="14" height="17" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h6"/></svg><span>To-do</span><span class="dd-nav-count" data-player-practice-count="pending">0</span></button>
@@ -382,13 +382,13 @@
       <div class="coachGrid">
   <div class="tools-panel-header workspace-heading">
     <div>
-      <strong class="workspace-heading-title">Training workspace</strong>
+      <strong class="workspace-heading-title">Training</strong>
       <div id="coachIdentity" class="workspace-heading-context">Not logged in</div>
       <span id="coachStatus" class="sr-only">locked</span>
     </div>
     <div class="tools-panel-actions">
       <button id="coachLogoutBtn" class="btn btn-ghost hidden" type="button">Log out</button>
-      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Field</button>
+      <button id="coachCardCloseBtn" class="btn btn-ghost" type="button">Play</button>
     </div>
   </div>
 
@@ -400,7 +400,7 @@
     </nav>
   </div>
   <section class="coach-view hidden" data-coach-view="overview" aria-labelledby="trainingOverviewHeading">
-    <div class="training-page-heading"><div><h2 id="trainingOverviewHeading">All teams</h2><p>Compare practice completion across teams you manage.</p></div><button id="trainingOverviewRefresh" class="dd-button training-refresh-button" type="button" aria-label="Refresh all teams"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M6 7a7 7 0 0 1 12-1l2 6M4 12l2 6a7 7 0 0 0 12-1"/></svg></button></div><div class="training-teams-toolbar"><label class="dd-field">Search teams<input id="trainingOverviewSearch" class="dd-control" type="search" placeholder="Team name"></label><label class="dd-field">Sort by<select id="trainingOverviewSort" class="dd-control"><option value="overdue">Overdue · highest first</option><option value="completion">Completion · lowest first</option><option value="name">Team name</option></select></label></div><p id="trainingOverviewRegionContext"></p>
+    <div class="training-page-heading"><div><h2 id="trainingOverviewHeading">All teams</h2><p>Compare practice completion across teams you manage.</p></div><button id="trainingOverviewRefresh" class="dd-button training-refresh-button" type="button" aria-label="Refresh all teams"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5" stroke-linecap="round" stroke-linejoin="round"/></svg></button></div><div class="training-teams-toolbar"><label class="dd-field">Search teams<input id="trainingOverviewSearch" class="dd-control" type="search" placeholder="Team name"></label><label class="dd-field">Sort by<select id="trainingOverviewSort" class="dd-control"><option value="overdue">Overdue · highest first</option><option value="completion">Completion · lowest first</option><option value="name">Team name</option></select></label></div><p id="trainingOverviewRegionContext"></p>
     <label class="field" id="trainingOverviewRegionField" hidden>Region
       <select class="select" id="trainingOverviewRegion"><option value="">All regions</option></select>
     </label>
@@ -605,19 +605,22 @@
   <div id="adminCard" class="card hidden">
     <div class="tools-panel-header workspace-heading">
       <div>
-        <strong class="workspace-heading-title">Org workspace</strong>
+        <strong class="workspace-heading-title">Organization</strong>
         <div class="muted workspace-heading-context">Teams, accounts, and published playbook</div>
         <span id="adminStatus" class="sr-only">locked</span>
       </div>
-      <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Back to field</button>
-      <a id="globalToolsBackLink" class="btn btn-ghost hidden" href="/workspace/design?type=global">Back to Design workspace</a>
+      <button id="orgWorkspaceRefresh" class="btn btn-ghost org-refresh" type="button" aria-label="Refresh organization workspace" title="Refresh"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8 M3 3v5h5 M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16 M16 16h5v5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button id="adminCardCloseBtn" class="btn btn-ghost" type="button">Back to Play</button>
+      <a id="globalToolsBackLink" class="btn btn-ghost hidden" href="/workspace/design?type=global">Back to Design</a>
       <div id="adminOperationStatus" class="operation-status" role="status" aria-live="polite"></div>
     </div>
 
     <div class="workspace-sections">
+      <h2 class="org-sidebar-title">Organization</h2>
+      <details class="org-context-switcher"><summary><span><strong id="orgContextLabel">Organizations</strong><small>Organization workspace</small></span><span aria-hidden="true">⌄</span></summary><div id="adminOrganizationList" class="admin-staff-directory"></div></details>
       <nav class="admin-tabs workspace-nav" id="org-sections" aria-label="Org sections">
         <button class="admin-tab is-active" type="button" data-admin-tab="teams">Organizations</button>
-        <button class="admin-tab" type="button" data-admin-tab="people">People &amp; access</button>
+        <button class="admin-tab" type="button" data-admin-tab="people">People</button>
         <button class="admin-tab" type="button" data-admin-tab="recovery">Recovery</button>
       </nav>
     </div>
@@ -640,7 +643,6 @@
     <section class="admin-view" data-admin-view="teams">
       <section id="adminWorkspaceDirectory" class="card admin-directory">
         <div class="admin-people-layout admin-organization-layout">
-          <div id="adminOrganizationList" class="admin-staff-directory"></div>
           <div class="admin-organization-detail">
             <nav id="adminDirectoryPath" class="admin-actions" aria-label="Organization hierarchy"></nav>
             <div class="admin-section-heading">
@@ -673,7 +675,7 @@
       <nav class="admin-team-tabs" aria-label="Team management sections">
         <button class="admin-team-tab is-active" type="button" data-admin-team-tab="roster">Roster</button>
         <button class="admin-team-tab" type="button" data-admin-team-tab="seasons">Seasons</button>
-        <button class="admin-team-tab" type="button" data-admin-team-tab="data">Data management</button>
+        <button class="admin-team-tab hidden" hidden type="button" data-admin-team-tab="data">Account &amp; team deletion</button>
       </nav>
 
       <section class="admin-team-view" data-admin-team-view="roster">
@@ -838,7 +840,7 @@
     <section class="admin-view hidden" data-admin-view="people">
       <section class="card admin-directory">
         <div class="admin-section-heading">
-          <div><h3>People &amp; access</h3><p>Find staff and manage their workspace access.</p></div>
+          <div><h3>Staff access</h3><p>Find staff and manage their workspace access.</p></div>
         </div>
         <section id="adminStaffCreate" class="hidden" aria-label="Add staff"></section>
         <div id="adminPeopleLayout" class="admin-people-layout">
@@ -894,10 +896,10 @@
     </section>
 
     <section class="admin-view hidden" data-admin-view="recovery">
-      <div class="admin-section-heading"><div><h3>Recovery</h3><p>Restore archived teams, accounts, or situations. Existing records and history are preserved.</p></div></div>
+      <div class="admin-section-heading"><div><h3>Recovery</h3><p>Restore archived teams and situations. Manage archived accounts from People.</p></div></div>
       <div class="admin-account-grid">
         <section class="admin-record-card recovery-card"><h3>Teams</h3><p>Restore an archived team so it can be managed again.</p><label class="field"><span>Archived team</span><select id="adminArchivedTeamSelect" class="select"><option value="">— No archived teams —</option></select></label><button id="adminRestoreTeamBtn" class="btn btn-ghost" type="button">Restore team</button></section>
-        <section class="admin-record-card recovery-card"><h3>Player & coach accounts</h3><p>Restore an archived account. Review its team membership afterward.</p><label class="field"><span>Archived player or coach</span><select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select></label><button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button">Restore account</button></section>
+        <section class="admin-record-card recovery-card" hidden><h3>Player & coach accounts</h3><p>Restore an archived account. Review its team membership afterward.</p><label class="field"><span>Archived player or coach</span><select id="adminArchivedMemberSelect" class="select"><option value="">— No archived members —</option></select></label><button id="adminRestoreMemberBtn" class="btn btn-ghost" type="button">Restore account</button></section>
         <section class="admin-record-card recovery-card"><h3>Situations</h3><p>Restore an archived situation to the playbook.</p><label class="field"><span>Archived situation</span><select id="adminArchivedSituationSelect" class="select"><option value="">— No archived situations —</option></select></label><button id="adminRestoreSituationBtn" class="btn btn-ghost" type="button">Restore situation</button><button id="adminDeleteSituationBtn" class="btn btn-danger" type="button">Delete permanently</button></section>
       </div>
     </section>

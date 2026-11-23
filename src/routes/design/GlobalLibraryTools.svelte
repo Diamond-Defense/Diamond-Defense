@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import Button from '$lib/components/ui/Button.svelte';
   import Feedback from '$lib/components/ui/Feedback.svelte';
   let { request, refresh, mode, destination } = $props();
   let file = $state(null);
@@ -10,10 +11,28 @@
   let confirmText = $state('');
   let records = $state([]);
   let query = $state('');
+  let difficulty = $state('');
+  let filtersOpen = $state(false);
+  let outs = $state('');
+  let runners = $state('');
+  let activity = $state('');
+  const extraFilterCount = $derived([outs,runners,activity].filter(value=>value!=='').length);
+  let category = $state('');
+  let savedKeys = $state([]);
+  let draggedKey = $state(null);
+  let dropKey = $state(null);
+  let announcement = $state('');
+  const label = value => String(value || '').replace(/[_-]/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+  const categoriesOf = item => [...new Set([item.primaryCategory, ...(item.relatedCategories || []), item.category].filter(Boolean))];
+  const categories = $derived([...new Set(records.flatMap(categoriesOf))].sort());
+  const dirty = $derived(Boolean(order && order.situations.map(item => item.key).join('|') !== savedKeys.join('|')));
+  const publishable = $derived(review?.rows.filter(item => ['new','changed'].includes(item.status)) || []);
+  const importCounts = $derived(review ? ['new','changed','unchanged','conflict'].map(value => ({value,count:review.rows.filter(item => item.status===value).length})) : []);
+
   let busy = $state(false);
   let status = $state('');
   let statusTone = $state('info');
-  const matching = $derived(records.filter(item => `${item.title} ${item.displayCode || ''}`.toLowerCase().includes(query.trim().toLowerCase())));
+  const matching = $derived(records.filter(item => `${item.title} ${item.displayCode || ''}`.toLowerCase().includes(query.trim().toLowerCase()) && (!difficulty || item.difficulty===difficulty) && (!category || categoriesOf(item).includes(category)) && (outs==='' || item.outs===Number(outs)) && (runners==='' || Object.values(item.runnersOn || {}).filter(Boolean).length===Number(runners)) && (!activity || item.active===(activity==='active'))));
   const blockers = $derived(previews.some(item => item.counts.blockingAssignments || item.counts.libraryReferences));
   const assignments = $derived([...new Map(previews.flatMap(item => item.blockingAssignments || []).map(item => [item.id,item])).values()]);
 
@@ -26,7 +45,7 @@
   }
   function load() {
     void run(async () => {
-      if (mode === 'reorder') order = await request('/api/admin/situations/order');
+      if (mode === 'reorder') {order = await request('/api/admin/situations/order'); savedKeys = order.situations.map(item => item.key);}
       if (mode === 'delete' || mode === 'transfer') {
         const result = await request('/api/admin/situations');
         records = mode === 'transfer' ? result.situations.filter(item => item.active) : result.situations;
@@ -117,100 +136,175 @@
     });
   }
   function move(index, offset) {
+    if (busy || index+offset < 0 || index+offset >= order.situations.length) return;
     const entries = [...order.situations];
     [entries[index],entries[index+offset]] = [entries[index+offset],entries[index]];
     order = {...order,situations:entries};
+    announcement = `${entries[index+offset].title} moved to position ${index+offset+1}.`;
+  }
+  function resetOrder() {
+    const byKey = new Map(order.situations.map(item => [item.key,item]));
+    order = {...order,situations:savedKeys.map(key => byKey.get(key))};
+    announcement = 'Order reset.';
+  }
+  function drop(event, key) {
+    event.preventDefault();
+    if (!busy && draggedKey && draggedKey!==key) {
+      const entries = [...order.situations];
+      const from = entries.findIndex(item => item.key===draggedKey);
+      const to = entries.findIndex(item => item.key===key);
+      const [item] = entries.splice(from,1);
+      entries.splice(to,0,item);
+      order = {...order,situations:entries};
+      announcement = `${item.title} moved to position ${to+1}.`;
+    }
+    draggedKey=null; dropKey=null;
+  }
+  function guardNavigation(event) {
+    if (!dirty) return;
+    const control = event.target.closest('a,button');
+    if (!control || control.closest('.global-tools')) return;
+    if (!window.confirm('Discard unsaved library order changes?')) {event.preventDefault();event.stopImmediatePropagation();}
+    else resetOrder();
   }
   function saveOrder() {
     return run(async () => {
       const result = await request('/api/admin/situations/order',json('PUT',{keys:order.situations.map(item => item.key),revision:order.revision}));
       order.revision = result.revision;
+      savedKeys = order.situations.map(item => item.key);
       await refresh();
       status = 'Library order saved.';
     });
   }
 </script>
 
-<section class="card global-tools" aria-label={destination.type === 'global' ? 'Manage Global Library' : 'Import situations'}>
-  <h2>{mode === 'transfer' ? 'Export situations' : mode === 'import' ? 'Import situations' : mode === 'reorder' ? 'Library order' : 'Delete situations'}</h2>
+<svelte:window onbeforeunload={event => {if(dirty){event.preventDefault();event.returnValue='';}}} />
+<svelte:document onclickcapture={guardNavigation} />
+
+{#snippet chevron(direction)}
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={direction==='up'?'m6 15 6-6 6 6':'m6 9 6 6 6-6'}/></svg>
+{/snippet}
+<section class="global-tools" aria-label={destination.type === 'global' ? 'Manage Global Library' : 'Import situations'}>
   <Feedback message={status} tone={statusTone} />
   {#if mode === 'import'}
-    <p>Destination {destination.name}</p>
-    <label class="field">Situation JSON file <input type="file" accept=".json,application/json" disabled={busy}
-      onchange={event => {file = event.currentTarget.files?.[0]; review = null;}}></label>
-    <button class="btn btn-ghost" disabled={!file || busy} onclick={reviewImport}>Review import</button>
+    <p class="tool-purpose">Review a JSON file before adding or updating situations.</p>
+    <div class="tool-upload">
+      <p>Destination: <strong>{destination.name}</strong></p>
+      <label class="field">Situation JSON file <input type="file" accept=".json,application/json" disabled={busy}
+        onchange={event => {file = event.currentTarget.files?.[0]; review = null; selected=[];}}></label>
+      <p class="muted">JSON files up to 5 MB.{file ? ` Selected: ${file.name} (${Math.ceil(file.size/1024)} KB)` : ''}</p>
+      <div class="tool-actions"><Button variant="primary" disabled={!file || busy} onclick={reviewImport}>Review</Button></div>
+    </div>
     {#if review}
-      <p>Import from {review.source} into {review.destinationLibrary} on {review.destination}.</p>
-      <div class="admin-actions">
-        <button class="btn btn-ghost" disabled={busy} onclick={() => selected = review.rows.filter(item => ['new','changed'].includes(item.status)).map(item => item.key)}>Select all publishable</button>
-        <button class="btn btn-brand" disabled={busy || !selected.length} onclick={publishImport}>Publish selected ({selected.length})</button>
-      </div>
-      {#each review.rows as item}
-        <div class="tool-row">
-          <label><input type="checkbox" value={item.key} bind:group={selected} disabled={busy || !['new','changed'].includes(item.status)}>
-            {item.title || item.key} · {item.status}</label>
-          {#if item.error}<p>{item.error}</p>{/if}
+      <p>From {review.source} into <strong>{review.destinationLibrary}</strong>.</p>
+      <div class="tool-summary">{#each importCounts as count}<span><strong>{count.count}</strong> {count.value==='unchanged'?'Duplicates':count.value==='changed'?'Updates':count.value==='conflict'?'Conflicts / invalid': 'New'}</span>{/each}</div>
+      <p class="muted">Duplicates are skipped. Conflicts and invalid entries cannot be selected. Review changed fields before importing updates.</p>
+      <div class="tool-actions"><Button disabled={busy || !publishable.length} onclick={() => selected = publishable.map(item => item.key)}>Select eligible</Button><Button disabled={busy || !selected.length} onclick={() => selected=[]}>Clear</Button><span>{selected.length} selected</span><Button variant="primary" disabled={busy || !selected.length} onclick={publishImport}>Import ({selected.length})</Button></div>
+      <div class="admin-access-table-wrap"><table class="tool-table" aria-label="Import preview"><thead><tr><th class="tool-check">Select</th><th>Situation</th><th>Status</th><th>Review</th></tr></thead><tbody>
+      {#each review.rows as item,index}
+        <tr><td><input aria-label={'Select '+(item.title || item.key)+' row '+(index+1)} type="checkbox" value={item.key} bind:group={selected} disabled={busy || !['new','changed'].includes(item.status)}></td><td>{item.title || item.key}</td><td><span class="design-status" data-status={item.status==='conflict'?'rejected':item.status==='new'?'approved':'pending'}>{item.status==='unchanged'?'Duplicate':label(item.status)}</span></td><td>
+          {#if item.error}<p class="tool-error">{item.error}</p>{/if}
           {#if item.warning}<p>{item.warning}</p>{/if}
-          {#if item.changes?.length}
-            <details><summary>Review changed fields</summary>
-              {#each item.changes as change}<pre>{change.field}{'\n'}Current: {JSON.stringify(change.before,null,2)}{'\n'}Incoming: {JSON.stringify(change.after,null,2)}</pre>{/each}
-            </details>
-          {/if}
-        </div>
+          {#if item.changes?.length}<details><summary>Changed fields ({item.changes.length})</summary>{#each item.changes as change}<pre>{change.field}{'\n'}Current: {JSON.stringify(change.before,null,2)}{'\n'}Incoming: {JSON.stringify(change.after,null,2)}</pre>{/each}</details>{/if}
+          {#if !item.error && !item.warning && !item.changes?.length}—{/if}
+        </td></tr>
       {/each}
+      </tbody></table></div>
     {/if}
   {:else if mode === 'reorder'}
+    <div class="tool-actions"><p class="tool-purpose">Drag a handle to reorder, or use the up and down arrows.</p><span class="tool-order-state">{dirty?'Unsaved changes':'Order saved'}</span><Button disabled={busy || !dirty} onclick={resetOrder}>Reset</Button><Button variant="primary" disabled={busy || !dirty} onclick={saveOrder}>Save order</Button></div>
+    <p class="sr-only" aria-live="polite">{announcement}</p>
     {#if order}
-      <button class="btn btn-brand" disabled={busy} onclick={saveOrder}>Save order</button>
-      <ol>
+      <ol class="tool-order" aria-label="Library order">
         {#each order.situations as item,index (item.key)}
-          <li class="tool-row">{item.title}
-            <button class="btn btn-ghost" aria-label={'Move up: ' + item.title} disabled={busy || index === 0} onclick={() => move(index,-1)}>Move up</button>
-            <button class="btn btn-ghost" aria-label={'Move down: ' + item.title} disabled={busy || index === order.situations.length - 1} onclick={() => move(index,1)}>Move down</button>
+          <li class:drop-target={dropKey===item.key} class:dragging={draggedKey===item.key} ondragover={event=>{if(draggedKey && !busy){event.preventDefault();dropKey=item.key;event.dataTransfer.dropEffect='move';}}} ondrop={event=>drop(event,item.key)}>
+            <button class="tool-drag" draggable={!busy} disabled={busy} aria-label={'Drag to reorder '+item.title} title="Drag to reorder" ondragstart={event=>{draggedKey=item.key;event.dataTransfer.effectAllowed='move';event.dataTransfer.setData('text/plain',item.key);}} ondragend={()=>{draggedKey=null;dropKey=null;}}><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">{#each [5,12,19] as y}<circle cx="9" cy={y} r="1.5"/><circle cx="15" cy={y} r="1.5"/>{/each}</svg></button>
+            <span class="tool-position">{index+1}</span><span class="tool-order-title">{item.title}</span>
+            <div class="tool-arrows"><Button aria-label={'Move up: '+item.title} title="Move up" disabled={busy || index===0} onclick={()=>move(index,-1)}>{@render chevron('up')}</Button><Button aria-label={'Move down: '+item.title} title="Move down" disabled={busy || index===order.situations.length-1} onclick={()=>move(index,1)}>{@render chevron('down')}</Button></div>
           </li>
         {/each}
       </ol>
     {/if}
   {:else}
-    <label class="field">Search situations <input type="search" bind:value={query} disabled={busy}></label>
-    <div class="admin-actions">
-      <button class="btn btn-ghost" disabled={busy || !matching.length} onclick={() => {selected = matching.map(item => item.key); previews = [];}}>Select matching</button>
-      <button class="btn btn-ghost" disabled={busy || !selected.length} onclick={() => {selected = []; previews = [];}}>Clear selection</button>
-      {#if mode === 'transfer'}
-        <button class="btn btn-brand" disabled={busy || !selected.length} onclick={exportSelected}>Download selected ({selected.length})</button>
-      {:else}
-        <button class="btn btn-danger" disabled={busy || !selected.length} onclick={previewDelete}>Review deletion ({selected.length})</button>
-      {/if}
+    <p class="tool-purpose">{mode==='transfer'?'Select situations to export as a JSON file.':'Permanently delete situations and their associated records. To retain history, use Remove from library in Situations instead.'}</p>
+    <div class="toolbar workspace-toolbar tool-search-toolbar">
+      <div class="filters">
+        <label class="field">Search situations <input class="input" type="search" bind:value={query} disabled={busy}></label>
+        <label class="field">Difficulty <select class="select" bind:value={difficulty} disabled={busy}><option value="">All difficulties</option>{#each ['foundational','intermediate','advanced'] as value}<option {value}>{label(value)}</option>{/each}</select></label>
+        <label class="field">Category <select class="select" bind:value={category} disabled={busy}><option value="">All categories</option>{#each categories as value}<option {value}>{label(value)}</option>{/each}</select></label>
+        <button class="design-filter-button" disabled={busy} aria-expanded={filtersOpen} aria-controls="manage-extra-filters" onclick={()=>filtersOpen=!filtersOpen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6"/></svg>Filters{extraFilterCount ? ' · '+extraFilterCount+' active' : ''}</button>
+        <button disabled={busy || !(query || difficulty || category || extraFilterCount)} onclick={()=>{query='';difficulty='';category='';outs='';runners='';activity='';}}>Clear filters</button>
+      </div>
+      <div class="design-extra-filters" id="manage-extra-filters" hidden={!filtersOpen}>
+        <label class="field">Outs <select class="select" bind:value={outs} disabled={busy}><option value="">All outs</option>{#each [0,1,2] as value}<option value={String(value)}>{value} {value===1?'out':'outs'}</option>{/each}</select></label>
+        <label class="field">Runners on base <select class="select" bind:value={runners} disabled={busy}><option value="">Any runners</option>{#each [0,1,2,3] as value}<option value={String(value)}>{value===0?'Bases empty':value===3?'Bases loaded':value+' '+(value===1?'runner':'runners')}</option>{/each}</select></label>
+        {#if mode==='delete'}<label class="field">Status <select class="select" bind:value={activity} disabled={busy}><option value="">All statuses</option><option value="active">Active</option><option value="archived">Archived</option></select></label>{/if}
+      </div>
+    </div>
+    <div class="tool-actions selection-toolbar">
+      <span>{matching.length} {matching.length===1?'situation':'situations'}</span>
+      <Button disabled={busy || !matching.length} onclick={()=>{selected=[...new Set([...selected,...matching.map(item=>item.key)])];previews=[];confirmText='';}}>Select matching ({matching.length})</Button>
+      <span>{selected.length} selected</span>
+      <Button disabled={busy || !selected.length} onclick={()=>{selected=[];previews=[];confirmText='';}}>Clear</Button>
+      {#if mode==='transfer'}<Button variant="primary" disabled={busy || !selected.length} onclick={exportSelected}>Export ({selected.length})</Button>
+      {:else}<Button disabled={busy || !selected.length} onclick={previewDelete}>Review deletion ({selected.length})</Button>{/if}
     </div>
     {#if previews.length}
-      <section aria-label="Deletion impact">
-        <h3>Permanent deletion impact</h3>
-        {#each previews as item}
-          <p>{item.title} · {item.counts.attempts} attempts · {item.counts.revisions} revisions · {item.counts.proposals} proposals ·
-            {item.counts.teamPlaybooks} team Playbook selections · {item.counts.inactiveAssignments} inactive assignments</p>
-          {#if item.counts.libraryReferences}<p>{item.counts.libraryReferences} library links, shares, or reviews reference this situation. Archive it from the library to preserve those records.</p>{/if}
-        {/each}
-        {#if assignments.length}
-          <p>Blocking assignments must be archived before deletion.</p>
-          <ul>{#each assignments as item}<li>{item.teamName} · {item.title}</li>{/each}</ul>
-          <button class="btn btn-ghost" disabled={busy} onclick={archiveBlocking}>Archive blocking assignments</button>
-        {/if}
-        {#if !blockers}
-          <label class="field">Type DELETE to confirm <input bind:value={confirmText} disabled={busy}></label>
-          <button class="btn btn-danger" disabled={busy || confirmText !== 'DELETE'} onclick={deleteSelected}>Delete permanently</button>
-        {/if}
+      <section class="tool-deletion" aria-label="Deletion impact">
+        <h3>Review permanent deletion</h3><p>This removes the selected situations and the associated records listed below. This cannot be undone.</p>
+        <div class="admin-access-table-wrap"><table class="tool-table" aria-label="Deletion impact"><thead><tr><th>Situation</th><th>Attempts</th><th>Revisions</th><th>Proposals</th><th>Team selections</th><th>Inactive assignments</th></tr></thead><tbody>
+        {#each previews as item}<tr><td>{item.title}{#if item.counts.libraryReferences}<p class="tool-error">Blocked: {item.counts.libraryReferences} library links, shares, or reviews. Remove from library instead to preserve these records.</p>{/if}</td><td>{item.counts.attempts}</td><td>{item.counts.revisions}</td><td>{item.counts.proposals}</td><td>{item.counts.teamPlaybooks}</td><td>{item.counts.inactiveAssignments}</td></tr>{/each}
+        </tbody></table></div>
+        {#if assignments.length}<p>Blocking assignments must be archived before deletion.</p><ul>{#each assignments as item}<li>{item.teamName} · {item.title}</li>{/each}</ul><div class="tool-actions"><Button disabled={busy} onclick={archiveBlocking}>Archive assignments</Button></div>{/if}
+        <div class="tool-actions">
+          <Button disabled={busy} onclick={()=>{previews=[];confirmText='';}}>Cancel</Button>
+          {#if !blockers}<label class="field">Type DELETE to confirm<input bind:value={confirmText} disabled={busy}></label><Button variant="danger" class="tool-delete-primary" disabled={busy || confirmText!=='DELETE'} onclick={deleteSelected}>Delete ({previews.length})</Button>{/if}
+        </div>
       </section>
     {/if}
-    {#each matching as item (item.key)}
-      <div class="tool-row"><label><input type="checkbox" bind:group={selected} value={item.key} disabled={busy}
-        onchange={() => {previews = []; confirmText = '';}}> {item.title}{item.active ? '' : ' · Archived'}</label></div>
-    {:else}<p>No matching situations.</p>{/each}
+    <div class="admin-access-table-wrap"><table class="tool-table" aria-label={mode==='transfer'?'Export situations':'Select situations for deletion'}><thead><tr><th class="tool-check"><input type="checkbox" aria-label="Select matching situations" disabled={busy || !matching.length} checked={matching.length>0 && matching.every(item=>selected.includes(item.key))} indeterminate={matching.some(item=>selected.includes(item.key)) && !matching.every(item=>selected.includes(item.key))} onchange={event=>{selected=event.currentTarget.checked?[...new Set([...selected,...matching.map(item=>item.key)])]:selected.filter(key=>!matching.some(item=>item.key===key));previews=[];confirmText='';}}></th><th>Situation</th><th>Difficulty</th><th>Category</th>{#if mode==='delete'}<th>Status</th>{/if}</tr></thead><tbody>
+      {#each matching as item (item.key)}<tr class:selected-row={selected.includes(item.key)}><td><input aria-label={'Select '+item.title} type="checkbox" bind:group={selected} value={item.key} disabled={busy} onchange={()=>{previews=[];confirmText='';}}></td><td>{item.title}</td><td>{label(item.difficulty) || '—'}</td><td>{categoriesOf(item).map(label).join(', ') || '—'}</td>{#if mode==='delete'}<td>{item.active?'Active':'Archived'}</td>{/if}</tr>
+      {:else}<tr><td colspan={mode==='delete'?5:4}>No situations match these filters.</td></tr>{/each}
+    </tbody></table></div>
   {/if}
 </section>
 
 <style>
-  .global-tools { padding: 1rem; margin: .75rem 0; display: grid; gap: .7rem; }
-  h2,h3,p { margin: 0; }
-  .tool-row { padding: .55rem 0; border-bottom: 1px solid var(--border); }
-  pre { overflow: auto; max-height: 15rem; }
+  .global-tools {display:grid;gap:16px;min-width:0;padding:0;margin:0;background:transparent;border:0;box-shadow:none;}
+  h3,p {margin:0;}
+  .tool-purpose,.muted,.tool-order-state {color:var(--text-secondary);}
+  .tool-actions {display:flex;align-items:center;flex-wrap:wrap;gap:12px;}
+  .tool-actions .tool-purpose {flex:1;min-width:220px;}
+  .tool-actions :global(button) {width:auto;flex:none;}
+  .tool-search-toolbar {background:transparent;border:0;border-radius:0;padding:0;}
+  .field {display:grid;gap:6px;margin:0;}
+  .field input,.field select {width:100%;box-sizing:border-box;}
+  .tool-check {width:44px;}
+  .tool-table {width:100%;min-width:620px;border-collapse:collapse;background:var(--surface);}
+  .tool-table thead {background:#29485f;color:white;}
+  .tool-table th,.tool-table td {padding:12px;text-align:left;vertical-align:middle;}
+  .tool-table td {border-bottom:1px solid var(--border);}
+  .tool-table tr.selected-row td {background:var(--selection-background);}
+  .tool-table tbody tr:hover td {background:var(--surface-hover);}
+  input[type=checkbox] {width:18px;height:18px;margin:0;accent-color:var(--selection-border);}
+  .tool-upload,.tool-deletion {display:grid;gap:16px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+  .tool-upload input[type=file] {padding:12px;border:1px dashed var(--border-emphasis);border-radius:8px;background:var(--surface-raised);}
+  .tool-summary {display:flex;flex-wrap:wrap;gap:12px;}
+  .tool-summary>span {padding:10px 16px;background:var(--surface);border:1px solid var(--border);border-radius:8px;}
+  .tool-error {color:var(--error);}
+  .tool-order {padding:0;margin:0;list-style:none;border:1px solid var(--border);border-radius:var(--radius-panel);overflow:hidden;background:var(--surface);}
+  .tool-order li {display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border);}
+  .tool-order li:last-child {border-bottom:0;}
+  .tool-order li.drop-target {box-shadow:inset 0 3px var(--selection-border);background:var(--selection-background);}
+  .tool-order li.dragging {opacity:.5;}
+  .tool-drag {display:flex;align-items:center;justify-content:center;padding:6px;min-height:32px;border:0;background:transparent;color:var(--text-secondary);cursor:grab;}
+  .tool-drag:active {cursor:grabbing;}
+  .tool-position {width:2rem;color:var(--text-secondary);text-align:right;flex:none;}
+  .tool-order-title {flex:1;min-width:0;overflow-wrap:anywhere;}
+  .tool-arrows {display:flex;gap:6px;}
+  .tool-arrows :global(button) {display:flex;align-items:center;justify-content:center;width:34px;min-height:34px;padding:6px;}
+  :global(#designWorkspace .tool-delete-primary[data-variant=danger]) {background:var(--error);border-color:var(--error);color:white;}
+  :global(#designWorkspace .tool-delete-primary[data-variant=danger]:hover:not(:disabled)) {background:var(--error);filter:brightness(.9);color:white;}
+  pre {overflow:auto;max-height:15rem;white-space:pre-wrap;overflow-wrap:anywhere;}
+  @media(max-width:600px) {.tool-upload,.tool-deletion {padding:12px;}}
 </style>

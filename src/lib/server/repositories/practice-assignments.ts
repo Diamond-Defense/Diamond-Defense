@@ -540,11 +540,11 @@ export class SqlitePracticeAssignmentRepository {
         [assignmentId, playerId, now],
       );
     } catch {
-      throw new RecordValidationError('Another practice assignment is already in progress. Reload Your Practice.');
+      throw new RecordValidationError('Another practice assignment is already in progress. Reload Assignments.');
     }
     const state = await this.playerState(playerId);
     if (state.lockedAssignmentId !== assignmentId || !state.nextSituation) {
-      throw new RecordValidationError('This practice assignment cannot be started. Reload Your Practice.');
+      throw new RecordValidationError('This practice assignment cannot be started. Reload Assignments.');
     }
     return state;
   }

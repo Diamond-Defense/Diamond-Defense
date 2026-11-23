@@ -7,6 +7,7 @@
   import '../styles/practice.css';
   import '../styles/training.css';
   import '../styles/design.css';
+  import '../styles/org.css';
 
   let { children } = $props();
 </script>

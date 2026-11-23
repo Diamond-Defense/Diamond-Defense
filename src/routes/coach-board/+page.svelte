@@ -1186,7 +1186,7 @@
   </div>
 {/snippet}
 <main hidden={!hasEditor} class="board-workspace" class:presentation={presenting}>
-  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:trainingMode?'Training situation':'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to field</a></div>{/if}</header>
+  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:trainingMode?'Training situation':'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to Play</a></div>{/if}</header>
   <div class="board-layout" bind:this={layout}>
   <div class="field-workspace" inert={busy}>
   {#if !presenting&&!savingSituation&&editorPanel==='timeline'}
@@ -1251,7 +1251,7 @@
           </div>
         {/if}
         <p class="save-status">{linkedSituation?`Editing ${linkedSituation.displayCode||linkedSituation.key} · `:''}{!boardId&&!linkedSituation?'New Board · Not saved':dirty?'Unsaved changes':'Saved'}</p>
-        <div class="save-actions"><button class="save-board" disabled={busy} onclick={()=>trainingMode?selectEditorPanel('review'):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
+        <div class="save-actions"><button class="save-board" class:review-open={trainingMode && editorPanel==='review'} disabled={busy} onclick={()=>trainingMode?selectEditorPanel('review'):save()}>{linkedSituation?'Save Situation Changes':'Save Board'}</button>
           <details class="board-more" bind:this={moreMenu}><summary aria-label="More actions">More ⋯</summary><div class="more-options">
             <button onclick={()=>moreAction(exportBoard)}>Export Board</button>
             {#if linkedSituation}<button onclick={()=>moreAction(boardCopy)}>Save a Board Copy</button>{:else if data.canPublish&&editorPanel!=='review'}<button onclick={()=>moreAction(()=>selectEditorPanel('review'))}>Save as Situation</button>{/if}
@@ -1340,7 +1340,7 @@
     </details>
     <div class="button-row"><button onclick={openPlayerPreview}>Preview as player</button><button onclick={()=>playerPreview(false)}>Preview opening hit</button><button onclick={()=>playerPreview(true)}>Preview solution</button><button onclick={stop}>Stop preview</button></div>
     <div class="board-controls">
-    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if data.canPublish}<button disabled={busy} onclick={publish}>{data.designDraft?.intent === 'propose' ? 'Submit proposed update' : data.designDraft?.intent === 'variation' ? 'Publish variation' : 'Publish Situation'}</button>{:else}<a data-sveltekit-reload href="/workspace/design">Open Design workspace</a>{/if}</div>
+    <label><input type="checkbox" bind:checked={confirmed} /> I confirm these play and runner outcomes</label>{#if data.canPublish}<button class="publish-situation" disabled={busy || !confirmed} onclick={publish}>{data.designDraft?.intent === 'propose' ? 'Submit proposed update' : data.designDraft?.intent === 'variation' ? 'Publish variation' : 'Publish Situation'}</button>{:else}<a data-sveltekit-reload href="/workspace/design">Open Design</a>{/if}</div>
   </section>
   {:else if editorPanel==='review'}
     <section class="board-controls mode-controls" aria-label="Board review">
@@ -1519,7 +1519,8 @@
   .board-save>label,.mode-controls>label:not(:has(input[type=checkbox])),.conversion label{width:100%;display:grid;gap:6px}
   .board-controls input:not([type=checkbox]),.board-controls select{width:100%;min-width:0;min-height:44px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary)}
   .board-controls button{min-height:44px}
-  .save-actions>.save-board,.preview-main>button:first-child{background:var(--accent-primary);color:var(--text-on-accent)}
+  .save-actions>.save-board:not(.review-open),.preview-main>button:first-child,.conversion .publish-situation{background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent)}
+  .conversion .publish-situation:hover:not(:disabled){background:var(--accent-primary-hover);border-color:var(--accent-primary-hover)}
   .board-save{position:sticky;top:-14px;z-index:14;background:var(--surface);padding-block:8px}
   .name-suggestion{display:grid;justify-items:start;gap:4px;width:100%}
   .name-suggestion p{font-size:12px;color:var(--text-muted);margin:0;overflow-wrap:anywhere}

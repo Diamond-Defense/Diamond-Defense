@@ -32,3 +32,10 @@ pixels wide; narrower or portrait screens display a larger-screen notice.
 
 Guide, account security, and staff drawers are mutually exclusive so only one
 navigation surface competes with the strategy board at a time.
+
+
+## Main navigation labels and icons
+
+The destination formerly named Field is **Play**, with Lucide's play icon. Keep “field” for the baseball surface and retain existing internal `field` route/state identifiers and DOM IDs. Return actions say **Back to Play**; navigation instructions refer to Play.
+
+Use icon plus text in this order: Coach Board (presentation), Play (play), Training (dumbbell), Design (pencil-ruler), Organization (building-2). Coach Board stays a separate top-level destination with extra space after it, hidden for players so Play comes first. Keep the role-dependent primary control icon and ordering synchronized after authentication. Keep permission-owned visibility, the green active underline, Guide (circle-help), and the account menu. Icons use 18px currentColor strokes, are decorative for assistive technology, and do not replace labels. The brand returns to Play through the existing navigation handler.

@@ -104,7 +104,7 @@ Status: implemented.
 - Coach-created draft and published assignments scoped to the coach's team.
 - Snapshot recipients for team-wide and individual assignments.
 - Ordered published situations pinned to immutable situation revisions.
-- Player-only **Your Practice** navigation and paginated queues.
+- Player-only **Assignments** navigation and paginated queues.
 - Server-authorized assignment access and attempt-linked progress.
 - Not-started, incomplete, completed, overdue, active, and archived lifecycle
   handling. Each situation requires one completed play-through.

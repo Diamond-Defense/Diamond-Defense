@@ -190,7 +190,7 @@ test('a pinned team revision moves through each required publication gate', asyn
     expect((await playerCatalog()).some(entry => entry.key === variation.key)).toBe(false);
     expect((await teamPlaybook(team.id)).some(entry => entry.key === global.key)).toBe(false);
     expect(await teamPlaybook(secondTeam.id)).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:changedGlobal.revision})]));
-    await page.getByRole('button',{name:'Training workspace',exact:true}).click();
+    await page.getByRole('button',{name:'Training',exact:true}).click();
     await expect(page.getByRole('heading',{name:'Team progress'})).toBeVisible();
     await page.getByRole('row').filter({has:page.getByRole('button',{name:team.name,exact:true})})
       .getByRole('button',{name:team.name,exact:true}).click();
@@ -220,7 +220,7 @@ test('a pinned team revision moves through each required publication gate', asyn
       action:'publish',type:'team',id:team.id,situation:{...local,key:`extra-${suffix}`,title:`Right-Center — New drill ${suffix}`},
     },201)).record;
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Design workspace' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Design' })).toBeVisible();
     const teamTable = page.getByRole('table',{name:'Team Library'});
     await page.getByRole('searchbox',{name:'Search situations'}).fill(`right center new drill ${suffix}`);
     const coachRow = teamTable.getByRole('row').filter({hasText:coachDrill.title});
@@ -320,7 +320,7 @@ test('a pinned team revision moves through each required publication gate', asyn
   }
 });
 
-test('Global Library management runs inside Design workspace', async ({ page, baseURL }) => {
+test('Global Library management runs inside Design', async ({ page, baseURL }) => {
   const headers = { Origin: new URL(baseURL).origin };
   expect((await page.request.post('/api/auth/login', {
     headers, data: { username:'admin', password:'password' },
@@ -456,7 +456,7 @@ test('staff workspaces share horizontal tabs and full-width panes', async ({page
   await page.locator('#appHeader').evaluate(header => { header.dataset.navTest = 'same-document'; });
   const org = page.getByRole('navigation',{name:'Org sections'});
   const orgPane = page.locator('#adminWorkspace');
-  await expectAttachedTabs(org,orgPane,'Organizations','People & access');
+  await expectAttachedTabs(org,orgPane,'Organizations','People');
   expect((await orgPane.boundingBox()).height).toBeLessThan(650);
   const organizations = orgPane.locator('#adminOrganizationList');
   const club = organizations.getByRole('button',{name:/Workspace Layout Club/});
@@ -468,10 +468,10 @@ test('staff workspaces share horizontal tabs and full-width panes', async ({page
   await orgPane.getByRole('navigation',{name:'Organization hierarchy'}).getByRole('button',{name:'Organizations'}).click();
   await expect(organizations).toBeVisible();
   await page.setViewportSize({width:1440,height:900});
-  await org.getByRole('button',{name:'People & access'}).click();
-  await expect(page.getByRole('heading',{name:'People & access'})).toBeVisible();
+  await org.getByRole('button',{name:'People'}).click();
+  await expect(page.getByRole('heading',{name:'People'})).toBeVisible();
 
-  await page.getByRole('button',{name:'Training workspace',exact:true}).click();
+  await page.getByRole('button',{name:'Training',exact:true}).click();
   await expect(page).toHaveURL(/\/workspace\/training$/);
   await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
   const training = page.getByRole('navigation',{name:'Training sections'});
@@ -481,7 +481,7 @@ test('staff workspaces share horizontal tabs and full-width panes', async ({page
   await expectAttachedTabs(training,page.locator('#coachResultsWorkspace'),'Team overview','Reviews');
   await expect(page.getByRole('heading',{name:'Team Reviews'})).toBeVisible();
 
-  await page.getByRole('button',{name:'Design workspace',exact:true}).click();
+  await page.getByRole('button',{name:'Design',exact:true}).click();
   await expect(page).toHaveURL(/\/workspace\/design$/);
   await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
   const design = page.getByRole('navigation',{name:'Design sections'});
@@ -501,7 +501,7 @@ test('staff workspaces share horizontal tabs and full-width panes', async ({page
   await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
   await page.goForward();
   await expect(design).toBeVisible();
-  await page.getByRole('button',{name:'Org workspace',exact:true}).click();
+  await page.getByRole('button',{name:'Organization',exact:true}).click();
   await expect(page).toHaveURL(/\/workspace\/org$/);
   await expect(org).toBeVisible();
   await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');

@@ -959,18 +959,7 @@ export class SqliteTeamRepository {
           params: [before.seasonId, userId, now],
         },
       ]);
-      await this.database.execute(
-        `UPDATE users SET active = 0, archived_at = ?2, archived_by = ?3,
-                          revision = revision + 1, updated_at = ?2
-          WHERE id = ?1 AND NOT EXISTS (
-            SELECT 1 FROM team_memberships
-             WHERE user_id = ?1 AND active = 1
-          ) AND NOT EXISTS (
-            SELECT 1 FROM workspace_assignments WHERE user_id = ?1
-             AND role IN ('organization_director', 'regional_director')
-          )`,
-        [userId, now, actorUserId],
-      );
+      // Ending membership does not archive the account; it becomes unassigned.
       await this.database.execute('DELETE FROM sessions WHERE user_id = ?1', [userId]);
     }
     const updated = await this.getMember(teamId, userId, true);

@@ -1,0 +1,335 @@
+/* Organization workspace follows the Training and Design workspace shell. */
+body.org-redesign-open #workspaceSituationToolbar {display:none!important;}
+body.org-redesign-open main#appWorkspace {display:grid!important;grid-template-columns:230px minmax(0,1fr)!important;grid-template-rows:auto 1fr!important;gap:0!important;align-items:start;margin:0;padding:0;max-width:none;min-width:0;background:var(--app-background);}
+body.org-redesign-open #appWorkspace > .tools-drawer,
+body.org-redesign-open #adminCard[data-workspace="org"] {display:contents!important;}
+body.org-redesign-open #adminCard[data-workspace="org"] > .workspace-sections {grid-column:1;grid-row:1/3;position:sticky;top:var(--app-header-height,64px);min-height:calc(100dvh - var(--app-header-height,64px));box-sizing:border-box;margin:0;padding:24px 16px;background:var(--surface);border:0;border-right:1px solid var(--border);border-radius:0;}
+.org-sidebar-title {font-size:18px;margin:0 8px 24px;}
+body.org-redesign-open #appWorkspace #adminCard[data-workspace="org"] > .workspace-heading {grid-column:2;grid-row:1;margin:0;padding:24px 32px 20px;background:transparent;border:0;border-radius:0;box-shadow:none;display:flex;align-items:center;gap:12px;}
+body.org-redesign-open .workspace-heading-title {font-size:28px;line-height:1.3;}
+body.org-redesign-open .workspace-heading-context {font-size:14px;margin-top:6px;color:var(--text-secondary);}
+body.org-redesign-open #adminCardCloseBtn {display:none;}
+body.org-redesign-open #orgWorkspaceRefresh {display:grid;place-items:center;width:36px;height:36px;min-height:36px;padding:0;margin-left:auto;flex:none;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);}
+body.org-redesign-open main#appWorkspace:has(#adminCard[data-workspace="org"]) > #adminWorkspace:not(.hidden) {grid-column:2;grid-row:2;margin:0;padding:0 32px 24px;border:0;border-radius:0;background:transparent;box-shadow:none;min-width:0;overflow:visible;}
+body.org-redesign-open #org-sections {display:flex;flex-direction:column;gap:6px;margin:24px 0 0;padding:0;border:0;background:transparent;}
+body.org-redesign-open #appWorkspace #org-sections > button {display:flex;align-items:center;justify-content:flex-start;gap:12px;width:100%;min-height:44px;padding:12px;border:0;border-left:3px solid transparent;border-radius:4px;background:transparent;color:var(--text-secondary);font-size:14px;font-weight:600;text-align:left;box-shadow:none;transform:none;}
+body.org-redesign-open #appWorkspace #org-sections > button.is-active {background:var(--selection-background);border-left-color:var(--selection-border);color:var(--selection-text);}
+body.org-redesign-open #appWorkspace #org-sections > button::after {display:none;}
+body.org-redesign-open #org-sections svg {width:20px;height:20px;flex:none;}
+.org-context-switcher {position:relative;}
+.org-context-switcher > summary {display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);list-style:none;cursor:pointer;}
+.org-context-switcher > summary::-webkit-details-marker {display:none;}
+.org-context-switcher summary strong {font-size:14px;display:block;}
+.org-context-switcher summary small {display:block;font-size:12px;color:var(--text-secondary);margin-top:6px;}
+body.org-redesign-open .org-context-switcher > #adminOrganizationList {position:absolute;z-index:60;left:0;top:calc(100% + 8px);width:min(320px,calc(100vw - 32px));max-height:65dvh;overflow:auto;box-sizing:border-box;padding:12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-panel);background:var(--surface);box-shadow:0 12px 32px #0b293326;}
+body.org-redesign-open #adminOrganizationList .admin-directory-list button {padding:12px;border:0;border-left:3px solid transparent;border-radius:4px;box-shadow:none;}
+body.org-redesign-open #adminOrganizationList button[aria-current="true"] {background:var(--selection-background);border-left-color:var(--selection-border);outline:0;}
+body.org-redesign-open #adminWorkspace :is(.card,.admin-directory,.admin-record-card,#adminTeamRecords,#adminPeopleAccess) {background:transparent;border:0;border-radius:0;box-shadow:none;}
+body.org-redesign-open #adminWorkspaceDirectory,body.org-redesign-open #adminPeopleAccess {padding:0;margin:0;}
+body.org-redesign-open .admin-organization-layout {display:block;}
+body.org-redesign-open .admin-organization-detail {min-width:0;}
+body.org-redesign-open #adminDirectoryPath {gap:6px;margin:0 0 20px;font-size:13px;color:var(--text-secondary);}
+body.org-redesign-open #adminDirectoryPath button {border:0;border-radius:0;padding:0;background:transparent;font-size:13px;font-weight:400;text-decoration:underline;text-underline-offset:3px;box-shadow:none;}
+body.org-redesign-open #adminDirectoryPath > :not(:last-child)::after {content:'›';display:inline-block;margin:0 8px;text-decoration:none;color:var(--text-secondary);}
+body.org-redesign-open #adminDirectoryTitle {font-size:22px;margin:0;}
+body.org-redesign-open .admin-section-heading {margin:0 0 16px;align-items:center;gap:16px;}
+body.org-redesign-open #adminTeamContext {padding:16px 0;margin:0;}
+body.org-redesign-open #adminTeamHeaderFields {max-width:560px;}
+body.org-redesign-open #adminTeamsResetBtn {display:none;}
+body.org-redesign-open #adminWorkspace .field {display:grid;gap:6px;min-width:0;}
+body.org-redesign-open #adminWorkspace .field > span {font-size:14px;font-weight:400;color:var(--text-primary);}
+body.org-redesign-open :is(#adminWorkspace,.org-context-switcher) :is(input:not([type="checkbox"]):not([type="file"]),select) {box-sizing:border-box;width:100%;height:40px;min-height:40px;padding:8px 12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font-size:14px;font-weight:400;box-shadow:none;}
+body.org-redesign-open input[type="search"] {-webkit-appearance:none;appearance:none;}
+body.org-redesign-open #adminWorkspace .btn {font-size:14px;font-weight:400;min-height:36px;padding:8px 12px;box-shadow:none;}
+body.org-redesign-open #adminWorkspace .btn-brand {background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);font-weight:600;}
+body.org-redesign-open #adminWorkspace .btn-danger {color:var(--error);border-color:var(--border-emphasis);background:var(--surface);}
+body.org-redesign-open #adminWorkspace .admin-team-tabs {display:flex;gap:16px;padding:0;margin:4px 0 20px;border:0;border-bottom:1px solid var(--border);border-radius:0;background:transparent;}
+body.org-redesign-open #adminWorkspace .admin-team-tabs > button {width:auto;min-width:0;padding:10px 4px;min-height:40px;background:transparent;border:0;border-bottom:3px solid transparent;border-radius:0;color:var(--text-secondary);font-size:14px;font-weight:500;box-shadow:none;}
+body.org-redesign-open #adminWorkspace .admin-team-tabs > button.is-active {color:var(--selection-text);border-bottom-color:var(--selection-border);font-weight:600;background:transparent;}
+body.org-redesign-open #adminTeamRecords .admin-team-view {padding:0;}
+body.org-redesign-open #adminWorkspace :is(.admin-roster-filters,.admin-record-grid) {gap:12px;align-items:end;}
+body.org-redesign-open #adminWorkspace .admin-roster-filters {display:flex;flex-wrap:wrap;align-items:end;}
+body.org-redesign-open .admin-roster-filters .field:first-child {flex:1.5 1 240px;max-width:420px;}
+body.org-redesign-open .admin-roster-filters .field:last-child {flex:1 1 160px;max-width:280px;}
+body.org-redesign-open #adminWorkspace table {width:100%;border-collapse:collapse;background:var(--surface);border-radius:var(--radius-panel);overflow:hidden;}
+body.org-redesign-open #adminWorkspace table thead {background:#29485f;color:white;}
+body.org-redesign-open #adminWorkspace table :is(th,td) {text-align:left;vertical-align:middle;padding:12px;border-bottom:1px solid var(--border);font-size:14px;}
+body.org-redesign-open #adminWorkspace table th {font-weight:600;}
+body.org-redesign-open #adminWorkspace table tbody tr:hover > td {background:var(--surface-hover);}
+body.org-redesign-open #adminWorkspace .admin-roster-table :is(th,td):first-child {width:44px;text-align:center;}
+body.org-redesign-open #adminWorkspace input[type="checkbox"] {width:18px;height:18px;margin:0;accent-color:var(--selection-border);}
+body.org-redesign-open .admin-directory-results {border:1px solid var(--border);border-radius:var(--radius-panel);overflow:hidden;background:var(--surface);}
+body.org-redesign-open .admin-directory-results button {box-shadow:none;}
+body.org-redesign-open #adminWorkspace .admin-season-card {padding:0;}
+body.org-redesign-open .admin-season-summary {gap:12px;}
+body.org-redesign-open #adminWorkspace .operation-status:empty {display:none;}
+body.org-redesign-open #adminWorkspace :is(.admin-record-card,.admin-bulk-actions):has(form) {max-width:100%;}
+@media(max-width:1000px) {
+ body.org-redesign-open main#appWorkspace {grid-template-columns:200px minmax(0,1fr)!important;}
+ body.org-redesign-open #appWorkspace #adminCard[data-workspace="org"] > .workspace-heading {padding:24px;}
+ body.org-redesign-open main#appWorkspace:has(#adminCard[data-workspace="org"]) > #adminWorkspace:not(.hidden) {padding:0 24px 24px;}
+}
+@media(max-width:760px) {
+ body.org-redesign-open main#appWorkspace {grid-template-columns:minmax(0,1fr)!important;}
+ body.org-redesign-open #adminCard[data-workspace="org"] > .workspace-sections {grid-column:1;grid-row:1;position:static;min-height:0;border-right:0;border-bottom:1px solid var(--border);padding:16px;}
+ body.org-redesign-open .org-sidebar-title {margin-bottom:12px;}
+ body.org-redesign-open #org-sections {flex-direction:row;flex-wrap:wrap;margin-top:12px;}
+ body.org-redesign-open #appWorkspace #org-sections > button {width:auto;}
+ body.org-redesign-open #appWorkspace #adminCard[data-workspace="org"] > .workspace-heading {grid-column:1;grid-row:2;}
+ body.org-redesign-open main#appWorkspace:has(#adminCard[data-workspace="org"]) > #adminWorkspace:not(.hidden) {grid-column:1;grid-row:3;}
+}
+/* Finish the shared page rhythm after legacy admin styles have applied. */
+body.org-redesign-open #appWorkspace #adminCard .workspace-heading-title {font-size:28px;font-weight:700;line-height:1.3;}
+body.org-redesign-open #appWorkspace #org-sections {margin-top:24px;}
+body.org-redesign-open #appWorkspace #org-sections > button {transition:none;}
+body.org-redesign-open #appWorkspace #adminWorkspace > .admin-view {background:transparent!important;border:0;padding:0;}
+body.org-redesign-open #appWorkspace #adminWorkspace .admin-directory {padding:0;background:transparent;}
+body.org-redesign-open #adminWorkspace [data-admin-view="people"] > .admin-directory > .admin-section-heading,
+body.org-redesign-open #adminWorkspace [data-admin-view="recovery"] > .admin-section-heading {display:none;}
+body.org-redesign-open #adminWorkspace #adminTeamName {width:280px;max-width:100%;}
+body.org-redesign-open #adminWorkspace #adminTeamRecords {margin-top:12px;}
+body.org-redesign-open #adminWorkspace #adminWorkspaceDirectory {min-height:0;}
+body.org-redesign-open #adminWorkspace .admin-organization-detail > :not(:first-child) {margin-top:12px;}
+body.org-redesign-open #adminWorkspace #adminPeopleLayout > .admin-staff-directory {padding:0;}
+body.org-redesign-open #adminWorkspace #adminPeopleLayout {gap:24px;}
+body.org-redesign-open #adminWorkspace .admin-account-grid > .admin-record-card {padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+/* Daylight palette adapters otherwise repaint the legacy workspace card white. */
+:root body.org-redesign-open #appWorkspace #adminWorkspace {background:transparent!important;}
+:root body.org-redesign-open #appWorkspace #adminWorkspace :is(#adminWorkspaceDirectory,#adminTeamRecords,.admin-directory,.admin-team-view) {background:transparent!important;}
+body.org-redesign-open #adminWorkspace .admin-team-tabs > button {transition:none;}
+/* Organization browsing uses the same neutral selector and table patterns. */
+body.org-redesign-open #appWorkspace #adminOrganizationList button[aria-current="true"] {background:var(--surface-hover);border-left-color:transparent;outline:0;color:var(--text-primary);}
+body.org-redesign-open #appWorkspace #adminOrganizationList button {border-left:0;border-radius:4px;}
+body.org-redesign-open #orgHeaderActions {margin-left:auto;gap:12px;flex-wrap:wrap;}
+body.org-redesign-open #orgHeaderActions[hidden] {display:none!important;}
+body.org-redesign-open #appWorkspace #orgWorkspaceRefresh {margin-left:0;}
+body.org-redesign-open #orgHeaderActions .btn {min-height:36px;padding:8px 12px;font-size:14px;box-shadow:none;}
+body.org-redesign-open #orgHeaderActions .btn-brand {background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);font-weight:600;}
+body.org-redesign-open .org-landing-heading {display:none;}
+body.org-redesign-open #adminDirectoryActions:empty {display:none;}
+body.org-redesign-open .org-directory-tabs {display:flex;gap:16px;margin:0 0 20px;padding:0;border-bottom:1px solid var(--border);}
+body.org-redesign-open #adminWorkspace .org-directory-tabs > button {padding:10px 4px;background:transparent;border:0;border-bottom:3px solid transparent;border-radius:0;color:var(--text-secondary);box-shadow:none;font-size:14px;font-weight:500;}
+body.org-redesign-open #adminWorkspace .org-directory-tabs > button[aria-pressed="true"] {color:var(--selection-text);border-bottom-color:var(--selection-border);font-weight:600;}
+body.org-redesign-open .org-directory-table {display:grid;gap:16px;min-width:0;}
+body.org-redesign-open .org-directory-table .admin-directory-search {width:100%;max-width:420px;margin:0;}
+body.org-redesign-open .org-result-count {margin:0;padding-top:12px;border-top:1px solid var(--border);font-size:13px;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-hierarchy-table {table-layout:fixed;min-width:440px;}
+body.org-redesign-open #adminWorkspace .org-hierarchy-table :is(th,td):first-child {width:55%;}
+body.org-redesign-open #adminWorkspace .org-hierarchy-table :is(th,td):last-child {width:6rem;}
+body.org-redesign-open #adminWorkspace .org-record-title {border:0;border-radius:0;background:transparent;padding:0;min-height:0;text-align:left;text-decoration:underline;text-underline-offset:3px;font-size:14px;font-weight:600;white-space:normal;overflow-wrap:anywhere;box-shadow:none;}
+body.org-redesign-open .org-menu-trigger {min-width:36px;font-weight:700;}
+body.org-redesign-open .org-action-menu {position:fixed;inset:auto;margin:0;box-sizing:border-box;width:220px;max-height:calc(100dvh - 24px);overflow:auto;padding:6px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);color:var(--text-primary);box-shadow:0 12px 32px #0b293326;}
+body.org-redesign-open #appWorkspace .org-action-menu > button {display:block;width:100%;border:0;border-radius:4px;padding:10px;background:transparent;color:var(--text-primary);font-size:13px;font-weight:600;text-align:left;box-shadow:none;}
+body.org-redesign-open #appWorkspace .org-action-menu > button:hover {background:var(--surface-hover);}
+body.org-redesign-open #appWorkspace .org-action-menu > .btn-danger {color:var(--error);border-top:1px solid var(--border);border-radius:0;margin-top:6px;}
+body.org-redesign-open #appWorkspace #adminWorkspace .org-directory-tabs > button,
+body.org-redesign-open #appWorkspace #adminWorkspace .org-directory-tabs > button:is(:hover,:active,[aria-pressed="true"]) {background:transparent!important;box-shadow:none;transform:none;transition:none;}
+
+/* Keep list navigation stable as the hierarchy opens underneath it. */
+body.org-redesign-open #adminWorkspace .org-directory-navigation {margin:0 0 20px;}
+body.org-redesign-open #adminWorkspace .org-directory-tabs {margin:0;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath {margin:0 0 20px;min-height:20px;align-items:center;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath[hidden] {display:none;}
+body.org-redesign-open #adminWorkspace .admin-organization-detail {display:block;}
+body.org-redesign-open #adminWorkspace .admin-organization-detail > :not(:first-child) {margin-top:0;}
+body.org-redesign-open #adminWorkspace #adminDirectoryItems {display:grid;gap:24px;}
+body.org-redesign-open #adminWorkspace .admin-section-heading {margin:0 0 20px;}
+body.org-redesign-open #adminWorkspace #adminTeamContextSummary {margin:4px 0 0;}
+body.org-redesign-open #adminWorkspace .org-browse-row {cursor:pointer;}
+body.org-redesign-open #adminWorkspace .org-record-title:focus-visible {outline:2px solid var(--selection-border);outline-offset:4px;}
+body.org-redesign-open #adminWorkspace :is(.org-support-panel,#adminTeamSettings,#adminTeamRecords .admin-record-card) {padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);box-shadow:none;}
+body.org-redesign-open #adminWorkspace .org-support-panel .admin-directory-group {margin:0;}
+body.org-redesign-open #adminWorkspace .org-support-panel h4 {font-size:16px;margin:0 0 12px;}
+body.org-redesign-open #adminWorkspace .org-support-panel p {margin:0;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-support-panel .admin-directory-list {margin:0;}
+body.org-redesign-open #adminWorkspace #adminTeamContext {padding:0;margin:0;}
+body.org-redesign-open #adminWorkspace #adminTeamSettings {display:grid;grid-template-columns:minmax(200px,1fr) auto;gap:12px 20px;align-items:end;}
+body.org-redesign-open #adminWorkspace #adminTeamSettings h4 {grid-column:1/-1;margin:0;font-size:16px;}
+body.org-redesign-open #adminWorkspace #adminTeamHeaderFields {margin:0;gap:12px;}
+body.org-redesign-open #adminWorkspace #adminTeamSettings > .admin-actions {margin:0;align-self:end;}
+body.org-redesign-open #adminWorkspace #adminTeamContext > .admin-actions:has(> .btn:not(.hidden)) {margin:12px 0 0;}
+body.org-redesign-open #adminWorkspace #adminTeamContext > .admin-actions:not(:has(> .btn:not(.hidden))) {display:none;}
+body.org-redesign-open #adminWorkspace #adminTeamRecords {margin-top:24px;padding:0;}
+body.org-redesign-open #adminWorkspace #adminTeamRecords .admin-team-tabs {padding:0;margin:0 0 20px;}
+body.org-redesign-open #adminWorkspace .admin-team-view:not(.hidden) {display:grid;gap:20px;}
+body.org-redesign-open #adminWorkspace .admin-team-view > .admin-section-heading {margin:0;}
+body.org-redesign-open #adminWorkspace .admin-season-card .admin-section-heading {margin-bottom:12px;}
+body.org-redesign-open #adminWorkspace .admin-season-summary {margin:16px 0;}
+body.org-redesign-open #adminWorkspace #adminDirectoryForm:not(.hidden) {margin-top:20px;padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+@media(max-width:1000px) {
+ body.org-redesign-open #adminWorkspace #adminTeamSettings {grid-template-columns:minmax(0,1fr);}
+ body.org-redesign-open #adminWorkspace #adminTeamSettings h4 {grid-column:auto;}
+}
+
+body.org-redesign-open #adminWorkspace #adminTeamSettings > #adminTeamHeaderFields {grid-column:auto;grid-row:auto;}
+body.org-redesign-open #adminWorkspace #adminTeamSettings:has(#adminInitialSeasonField:not(.hidden)) {grid-template-columns:minmax(0,1fr);}
+body.org-redesign-open #adminWorkspace #adminSeasonSummary {margin:16px 0;}
+body.org-redesign-open #adminWorkspace .org-support-panel .admin-directory-list button {background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-control);padding:12px;box-shadow:none;}
+body.org-redesign-open #adminWorkspace .org-support-panel .admin-directory-list button:hover {background:var(--surface-hover);}
+
+/* The parent view already supplies a 20px section gap. */
+body.org-redesign-open #adminWorkspace #adminTeamRecords {margin-top:4px;}
+body.org-redesign-open #adminWorkspace #adminAdvanceNewTeamFields {grid-template-columns:repeat(2,minmax(0,1fr));}
+@media(max-width:760px) {
+ body.org-redesign-open #adminWorkspace #adminAdvanceNewTeamFields {grid-template-columns:minmax(0,1fr);}
+}
+
+/* Compact team context; edits are opened from the heading action menu. */
+body.org-redesign-open #adminWorkspace #adminDirectoryPath {justify-content:flex-start;gap:4px;flex-wrap:wrap;font-size:13px;margin-bottom:16px;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath > button {min-height:0;padding:0;font-size:13px;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath > :not(:last-child)::after {margin:0 6px;}
+body.org-redesign-open #adminWorkspace #adminDirectoryActions {margin-left:auto;align-self:flex-start;}
+body.org-redesign-open #adminWorkspace .admin-section-heading:has(#adminDirectoryTitle) {align-items:flex-start;margin-bottom:16px;}
+body.org-redesign-open #adminWorkspace #adminTeamRecords {margin-top:0;}
+body.org-redesign-open #adminWorkspace #adminDirectoryItems:empty {display:none;}
+.org-rename-dialog {box-sizing:border-box;width:min(440px,calc(100vw - 32px));padding:24px;border:1px solid var(--border-emphasis);border-radius:var(--radius-panel);background:var(--surface);color:var(--text-primary);box-shadow:var(--shadow-raised);}
+.org-rename-dialog::backdrop {background:#0b293366;}
+.org-rename-dialog h3 {margin:0 0 20px;font-size:20px;}
+.org-rename-dialog .field {display:grid;gap:6px;font-size:14px;}
+.org-rename-dialog input {box-sizing:border-box;width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font:inherit;}
+.org-rename-dialog .admin-actions {justify-content:flex-end;margin-top:20px;gap:12px;}
+.org-rename-dialog .btn {min-height:36px;padding:8px 12px;font-size:14px;}
+.org-rename-dialog .operation-status:empty {display:none;}
+
+/* A single parent link replaces the full breadcrumb trail. */
+body.org-redesign-open #adminWorkspace #adminDirectoryPath {margin-bottom:16px;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath > button {font-weight:400;text-decoration:none;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath > button:hover {color:var(--text-primary);text-decoration:underline;text-underline-offset:3px;}
+body.org-redesign-open #adminWorkspace #adminDirectoryPath > :not(:last-child)::after {content:none;}
+body.org-redesign-open #adminWorkspace .org-team-location {margin:0 0 6px;font-size:12px;line-height:1.5;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-team-location[hidden] {display:none;}
+/* Shared staff sections for organization, region, and team access. */
+body.org-redesign-open #adminWorkspace .org-staff-section {display:grid;gap:14px;margin:0;min-width:0;}
+body.org-redesign-open #adminWorkspace .org-staff-heading {display:flex;align-items:center;gap:16px;justify-content:space-between;}
+body.org-redesign-open #adminWorkspace .org-staff-heading h4 {font-size:16px;margin:0;}
+body.org-redesign-open #adminWorkspace .org-staff-search {width:100%;max-width:420px;font-size:14px;}
+body.org-redesign-open #adminWorkspace #adminAdditionalStaff {margin-top:24px;}
+body.org-redesign-open #adminWorkspace #adminRosterRows tr:has(input[type="checkbox"]:not(:disabled)) {cursor:pointer;}
+body.org-redesign-open #adminWorkspace #adminRosterRows tr.is-selected > td {background:var(--selection-background);}
+body.org-redesign-open #adminWorkspace #adminRosterRows td:last-child {width:64px;min-width:64px;}
+.org-member-dialog {box-sizing:border-box;width:min(520px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;padding:24px;border:1px solid var(--border-emphasis);border-radius:var(--radius-panel);background:var(--surface);color:var(--text-primary);box-shadow:var(--shadow-raised);}
+.org-member-dialog::backdrop {background:#0b293366;}
+.org-member-dialog h3 {font-size:20px;margin:0 0 8px;}
+.org-member-dialog .org-dialog-context {font-size:13px;color:var(--text-secondary);margin:0 0 20px;}
+.org-member-dialog .org-dialog-content,.org-member-dialog form,.org-member-dialog .org-dialog-fields,.org-member-dialog .org-access-entries {display:grid;gap:14px;}
+.org-member-dialog .field {display:grid;gap:6px;font-size:14px;min-width:0;}
+.org-member-dialog :is(input:not([type="checkbox"]),select) {box-sizing:border-box;width:100%;min-height:40px;padding:8px 12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font:inherit;font-size:14px;}
+.org-member-dialog .admin-actions {display:flex;gap:12px;justify-content:flex-end;margin-top:6px;}
+.org-member-dialog .btn {min-height:36px;padding:8px 12px;font-size:14px;box-shadow:none;}
+.org-member-dialog .btn-brand {background:var(--accent-primary);border-color:var(--accent-primary);color:var(--text-on-accent);}
+.org-member-dialog .btn-danger {color:var(--error);background:var(--surface);border-color:var(--border-emphasis);}
+.org-member-dialog .operation-status:empty {display:none;}
+.org-member-dialog .org-access-entry {padding:12px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);font-size:14px;}
+.org-member-dialog p {font-size:13px;line-height:1.5;margin:0;}
+.org-member-dialog [hidden] {display:none!important;}
+.org-member-dialog .admin-record-grid {grid-template-columns:minmax(0,1fr);}
+
+/* Staff access uses the same compact table and row actions as the roster. */
+body.org-redesign-open #adminWorkspace .org-staff-table {min-width:560px;table-layout:fixed;}
+body.org-redesign-open #adminWorkspace .org-staff-table th:first-child {width:26%;}
+body.org-redesign-open #adminWorkspace .org-staff-table th:nth-child(2) {width:24%;}
+body.org-redesign-open #adminWorkspace .org-staff-table :is(th,td):last-child {width:72px;}
+body.org-redesign-open #adminWorkspace .org-staff-table td {overflow-wrap:anywhere;}
+body.org-redesign-open #adminWorkspace .org-staff-row {cursor:pointer;}
+body.org-redesign-open #adminWorkspace .org-staff-name {padding:0;border:0;background:transparent;color:var(--text-primary);font-size:14px;font-weight:600;text-align:left;text-decoration:underline;text-underline-offset:3px;white-space:normal;box-shadow:none;}
+body.org-redesign-open #adminWorkspace .org-staff-username {display:block;margin-top:4px;font-size:12px;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-staff-name:focus-visible {outline:2px solid var(--selection-border);outline-offset:4px;}
+/* Data management presents lists first and destructive details in review dialogs. */
+body.org-redesign-open #adminWorkspace .org-data-legacy[hidden] {display:none!important;}
+body.org-redesign-open #adminWorkspace .org-data-management {display:grid;gap:24px;min-width:0;}
+body.org-redesign-open #adminWorkspace .org-data-management > .admin-section-heading {margin:0;}
+body.org-redesign-open #adminWorkspace .org-data-section {display:grid;gap:14px;min-width:0;padding:0;margin:0;}
+body.org-redesign-open #adminWorkspace .org-data-section h4 {margin:0;font-size:16px;}
+body.org-redesign-open #adminWorkspace .org-data-section p {margin:0;font-size:13px;line-height:1.5;}
+body.org-redesign-open #adminWorkspace .org-data-toolbar {display:flex;align-items:end;gap:12px;flex-wrap:wrap;}
+body.org-redesign-open #adminWorkspace .org-data-toolbar .field {flex:1 1 240px;max-width:420px;}
+body.org-redesign-open #adminWorkspace .org-data-toolbar > .btn {flex:none;}
+body.org-redesign-open #adminWorkspace .org-data-search {max-width:420px;width:100%;}
+body.org-redesign-open #adminWorkspace :is(#orgSeasonDataRecords,#orgAccountData) {display:grid;gap:14px;}
+body.org-redesign-open #adminWorkspace .org-data-empty {padding:16px;border:1px solid var(--border);border-radius:var(--radius-panel);background:var(--surface);color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-data-empty[hidden],body.org-redesign-open #adminWorkspace #orgSeasonDataToolbar[hidden] {display:none;}
+body.org-redesign-open #adminWorkspace .org-data-table {min-width:500px;table-layout:fixed;}
+body.org-redesign-open #adminWorkspace .org-data-table :is(th,td):last-child {width:72px;}
+body.org-redesign-open #adminWorkspace .org-data-table td {overflow-wrap:anywhere;}
+body.org-redesign-open #adminWorkspace .org-team-deletion {display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}
+body.org-redesign-open #adminWorkspace .org-team-deletion h4 {margin-bottom:6px;}
+body.org-redesign-open #adminWorkspace .org-team-deletion .btn {flex:none;}
+.org-member-dialog .org-data-impact {display:grid;grid-template-columns:1fr auto;gap:8px 20px;margin:0;padding:14px;border:1px solid var(--border);border-radius:var(--radius-control);font-size:14px;}
+.org-member-dialog .org-data-impact dd {margin:0;font-weight:600;}
+.org-member-dialog .org-delete-option {display:flex;align-items:flex-start;gap:10px;font-size:13px;line-height:1.5;}
+.org-member-dialog .org-delete-option input {flex:none;width:18px;height:18px;margin:2px 0 0;accent-color:var(--error);}
+.org-member-dialog .btn-danger-strong {background:var(--error);border-color:var(--error);color:var(--text-on-accent);}
+.org-member-dialog ul {padding-left:20px;margin:0;font-size:13px;line-height:1.7;}
+@media(max-width:760px) {
+ body.org-redesign-open #adminWorkspace .org-team-deletion {align-items:flex-start;flex-direction:column;}
+}
+
+/* Parent navigation shares the heading action row. */
+body.org-redesign-open #adminWorkspace .org-heading-controls {display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-left:auto;flex:none;}
+body.org-redesign-open #adminWorkspace .org-heading-controls #adminDirectoryPath {margin:0;gap:0;min-height:0;}
+body.org-redesign-open #adminWorkspace .org-heading-controls #adminDirectoryPath > button {display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font-size:14px;font-weight:400;text-decoration:none;box-shadow:none;}
+body.org-redesign-open #adminWorkspace .org-heading-controls #adminDirectoryPath > button:hover {background:var(--surface-hover);text-decoration:none;}
+body.org-redesign-open #adminWorkspace .org-heading-controls #adminDirectoryActions {margin:0;align-self:center;}
+body.org-redesign-open #adminWorkspace .admin-section-heading:has(#adminDirectoryTitle) {flex-wrap:wrap;}
+@media(max-width:900px) {
+ body.org-redesign-open #adminWorkspace .org-heading-controls {flex-basis:100%;justify-content:flex-start;margin-left:0;}
+}
+/* Seasons follow the table / ellipsis / focused-dialog pattern. */
+body.org-redesign-open #adminWorkspace .org-seasons-legacy[hidden] {display:none!important;}
+body.org-redesign-open #adminWorkspace .org-seasons-page {display:grid;gap:16px;min-width:0;}
+body.org-redesign-open #adminWorkspace .org-seasons-heading {display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap;}
+body.org-redesign-open #adminWorkspace .org-seasons-heading h3 {margin:0 0 6px;font-size:20px;}
+body.org-redesign-open #adminWorkspace .org-seasons-heading p {margin:0;font-size:14px;}
+body.org-redesign-open #adminWorkspace .org-season-hint {margin:0;font-size:13px;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-season-search {width:100%;max-width:420px;font-size:14px;}
+body.org-redesign-open #adminWorkspace .org-seasons-table {table-layout:fixed;min-width:650px;}
+body.org-redesign-open #adminWorkspace .org-seasons-table th:first-child {width:30%;}
+body.org-redesign-open #adminWorkspace .org-seasons-table :is(th,td):last-child {width:72px;}
+body.org-redesign-open #adminWorkspace .org-seasons-table td {overflow-wrap:anywhere;}
+body.org-redesign-open #adminWorkspace .org-season-dates {display:block;margin-top:4px;font-size:12px;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-season-status {font-size:14px;font-weight:400;color:var(--text-secondary);}
+body.org-redesign-open #adminWorkspace .org-season-status.is-active {color:var(--success);}
+.org-member-dialog .org-season-date-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
+.org-advance-dialog {width:min(760px,calc(100vw - 32px));}
+.org-member-dialog .org-wizard-steps {display:flex;gap:20px;list-style:decimal inside;margin:0;padding:0 0 12px;border-bottom:1px solid var(--border);font-size:14px;color:var(--text-secondary);}
+.org-member-dialog .org-wizard-steps [aria-current="step"] {font-weight:600;color:var(--selection-text);}
+.org-member-dialog .org-wizard-panel {display:grid;gap:16px;}
+.org-member-dialog .org-wizard-panel[hidden] {display:none;}
+.org-member-dialog .org-wizard-panel h4 {margin:0;font-size:16px;}
+.org-member-dialog .org-wizard-filters {display:grid;grid-template-columns:2fr 1fr;gap:12px;}
+.org-member-dialog .org-wizard-table {border-collapse:collapse;width:100%;min-width:480px;font-size:14px;}
+.org-member-dialog .org-wizard-table thead {background:#29485f;color:white;}
+.org-member-dialog .org-wizard-table :is(th,td) {text-align:left;padding:10px;border-bottom:1px solid var(--border);}
+.org-member-dialog .org-wizard-table :is(th,td):first-child {width:44px;}
+.org-member-dialog .org-wizard-table :is(th,td):last-child {width:110px;}
+.org-member-dialog .org-wizard-table tr.is-selected {background:var(--selection-background);}
+.org-member-dialog .org-wizard-table tbody tr {cursor:pointer;}
+.org-member-dialog .org-wizard-table input[type="checkbox"] {width:18px;height:18px;accent-color:var(--selection-border);}
+.org-member-dialog .admin-access-table-wrap {overflow:auto;}
+@media(max-width:600px) {
+ .org-member-dialog .org-season-date-fields,.org-member-dialog .org-wizard-filters {grid-template-columns:minmax(0,1fr);}
+ .org-member-dialog .org-wizard-steps {gap:10px;font-size:12px;}
+}
+/* Season detail keeps roster and record actions in the selected season context. */
+body.org-redesign-open #adminWorkspace .org-season-browse-row {cursor:pointer;}
+body.org-redesign-open #adminWorkspace .org-season-roster-filters {display:flex;gap:12px;align-items:end;flex-wrap:wrap;}
+body.org-redesign-open #adminWorkspace .org-season-roster-filters .field:first-child {flex:1 1 240px;max-width:420px;}
+body.org-redesign-open #adminWorkspace .org-season-roster-filters .field:last-child {flex:1 1 160px;max-width:220px;}
+body.org-redesign-open #adminWorkspace #orgSeasonsPage > h4 {font-size:16px;margin:4px 0 0;}
+body.org-redesign-open #adminWorkspace #orgSeasonsPage > p {margin:0;font-size:14px;}
+body.org-redesign-open #adminWorkspace .org-seasons-heading .admin-actions {gap:12px;margin-left:auto;}
+/* People owns the entire account lifecycle; Recovery owns teams and situations. */
+body.org-redesign-open #adminWorkspace #orgPeopleLegacy[hidden],body.org-redesign-open #adminWorkspace [data-admin-team-tab="data"],body.org-redesign-open #adminWorkspace [data-admin-team-view="data"] {display:none!important;}
+body.org-redesign-open #adminWorkspace .org-people-hub {display:grid;gap:20px;min-width:0;}
+body.org-redesign-open #adminWorkspace .org-people-filters {display:flex;gap:12px;align-items:end;flex-wrap:wrap;}
+body.org-redesign-open #adminWorkspace .org-people-filters .field:first-child {flex:1 1 240px;max-width:420px;}
+body.org-redesign-open #adminWorkspace .org-people-filters .field:not(:first-child) {flex:1 1 160px;max-width:220px;}
+body.org-redesign-open #adminWorkspace .org-people-table {min-width:680px;table-layout:fixed;}
+body.org-redesign-open #adminWorkspace .org-people-table :is(th,td):last-child {width:72px;}
+body.org-redesign-open #adminWorkspace .org-people-table td {overflow-wrap:anywhere;}
+body.org-redesign-open #adminWorkspace .org-people-row {cursor:pointer;}
+.org-member-dialog .org-person-actions {display:flex;gap:10px;flex-wrap:wrap;}
+.org-member-dialog .org-person-danger {display:flex;gap:10px;flex-wrap:wrap;padding-top:16px;border-top:1px solid var(--border);}
+.org-member-dialog .admin-designer-setting {display:flex;align-items:center;gap:10px;margin:10px 0;}
+body.org-redesign-open #adminWorkspace [data-admin-view="recovery"] .admin-account-grid {display:block;max-width:720px;}
+body.org-redesign-open #adminWorkspace [data-admin-view="recovery"] .recovery-card:not([hidden]) {padding:20px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-panel);}

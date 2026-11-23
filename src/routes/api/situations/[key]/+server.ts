@@ -16,7 +16,7 @@ export const PUT: RequestHandler = async (event) => {
   situation.key = event.params.key;
   try {
     if (!await databaseFor(event).one("SELECT key FROM situations WHERE key=?1 AND library_scope='global'", [event.params.key])) {
-      return json({ error: 'Open the situation in its Design workspace.' }, { status: 404 });
+      return json({ error: 'Open the situation in Design.' }, { status: 404 });
     }
     const record = await new SqliteSituationRepository(databaseFor(event)).update(
       situation,
@@ -34,7 +34,7 @@ export const DELETE: RequestHandler = async (event) => {
   const user = await requireUser(event, ['admin']);
   try {
     if (!await databaseFor(event).one("SELECT key FROM situations WHERE key=?1 AND library_scope='global'", [event.params.key])) {
-      return json({ error: 'Open the situation in its Design workspace.' }, { status: 404 });
+      return json({ error: 'Open the situation in Design.' }, { status: 404 });
     }
     const record = await new SqliteSituationRepository(databaseFor(event)).setActive(
       event.params.key,

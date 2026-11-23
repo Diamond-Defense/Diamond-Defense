@@ -10,5 +10,5 @@ export function canAccessWorkspace(workspace: StaffWorkspace, user: WorkspaceAcc
 }
 
 export const workspaceLabels: Record<StaffWorkspace, string> = {
-  field: 'Field', org: 'Org workspace', training: 'Training workspace', design: 'Design workspace',
+  field: 'Play', org: 'Organization', training: 'Training', design: 'Design',
 };
