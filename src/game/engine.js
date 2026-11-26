@@ -1780,11 +1780,12 @@ function animateHit(style, options={}){
       ? authored.type : legacyTypes[style || situation.hitType] || 'line_drive',
     start: HOME_NATIVE,
     destination: situation.hit,
+    ...(options.useAuthoredType && authored?.bounce ? {bounce:authored.bounce} : {}),
   };
   const { sampleBattedBall, hitFlightDuration, hitBounceDuration, TEACHING_PLAYBACK_RATE } = window._diqPlayAnimation;
   const grounded = options.useAuthoredType && authored?.fielding === 'ground';
   const flightDuration = hitFlightDuration(hit.type);
-  const animationLength = flightDuration + (grounded ? hitBounceDuration(hit.type) : 0);
+  const animationLength = flightDuration + (grounded ? hitBounceDuration(hit) : 0);
   const rate = flightDuration / (hitFlightDuration(hit.type,true) / TEACHING_PLAYBACK_RATE);
   ballSvg.dataset.hitType = hit.type;
   const started = playNow();
@@ -2916,7 +2917,8 @@ function filteredPlaybookSituations(){
   return (SITUATIONS || []).filter((situation) => {
     const teachingCategories = playbookTeachingCategories(situation);
     const categoryLabels = teachingCategories.map(teachingCategoryLabel).join(' ');
-    const haystack = `${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key} ${situation.displayCode||''}`.toLowerCase();
+    const details=window._diqLibraryCards.libraryCardModel(situation,'situation');
+    const haystack = `${details.location} ${details.placement} ${details.fieldingMethod} ${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key} ${situation.displayCode||''}`.toLowerCase();
     const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
     return (!query || haystack.includes(query))
       && (!category || teachingCategories.includes(category))
@@ -2971,47 +2973,6 @@ function playbookCardTitle(situation){
   return [playbookBaseTitle(situation),situationVariationLabel(situation)].filter(Boolean).join(' · ');
 }
 
-function playbookStateGraphic(situation){
-  const state=document.createElement('span');state.className='playbook-card-state';
-  // The containing button announces the complete name, runners, and outs.
-  state.setAttribute('aria-hidden','true');
-  for(const kind of ['Runners','Outs']){
-    const group=document.createElement('span');group.className='playbook-state-group';
-    const label=document.createElement('span');label.className='playbook-state-label';label.textContent=kind;
-    const map=document.createElement('span');map.className=kind==='Runners'?'training-base-map':'training-out-map';
-    if(kind==='Runners'){
-      for(const base of ['first','second','third']){const marker=document.createElement('i');marker.dataset.marker=base;marker.classList.toggle('is-occupied',Boolean(situation.runnersOn?.[base]));map.append(marker);}
-    }else{
-      for(let index=0;index<2;index++){const marker=document.createElement('i');marker.classList.toggle('is-recorded',index<Number(situation.outs));map.append(marker);}
-    }
-    group.append(label,map);state.append(group);
-  }
-  return state;
-}
-
-function playbookCardMetadata(situation){
-  const metadata = document.createElement('span');
-  metadata.className = 'playbook-card-metadata';
-  const difficulty = document.createElement('span');
-  difficulty.className = 'playbook-card-difficulty';
-  difficulty.dataset.difficulty = situation.difficulty;
-  difficulty.textContent = difficultyLabel(situation.difficulty);
-  metadata.append(difficulty);
-  const variation = situationVariationLabel(situation);
-  if (variation) {
-    const badge = document.createElement('span');
-    badge.className = 'playbook-card-variation'; badge.textContent = variation;
-    metadata.append(badge);
-  }
-  const category = teachingCategoryLabel(situation.primaryCategory);
-  if (category) {
-    const label = document.createElement('span');
-    label.className = 'playbook-card-category'; label.textContent = category;
-    metadata.append(label);
-  }
-  return metadata;
-}
-
 function renderPlaybookBrowser(){
   if (!playbookBrowserList) return;
   if (playbookCategory) {
@@ -3022,9 +2983,11 @@ function renderPlaybookBrowser(){
     categories.forEach(category => playbookCategory.appendChild(new Option(category.label, category.id)));
     playbookCategory.value = categories.some(category=>category.id === selected) ? selected : '';
   }
-  const filtered = filteredPlaybookSituations();
+  const filtered = filteredPlaybookSituations().sort(window._diqLibraryCards.compareLibraryOrder);
+  playbookBrowserList.querySelectorAll('.playbook-situation-card').forEach(card=>window._diqLibraryCards.disconnectLibraryCard(card));
   playbookBrowserList.replaceChildren();
   filtered.forEach((situation) => {
+    const shell=document.createElement('article');shell.className='library-card-shell';
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'playbook-situation-card';
@@ -3039,25 +3002,14 @@ function renderPlaybookBrowser(){
     const outLabel = `${situation.outs} ${situation.outs === 1 ? 'out' : 'outs'}`;
     button.setAttribute('aria-label', `Select ${displayLabel}. ${runnerLabel}, ${outLabel}`);
 
-    const heading = document.createElement('span');
-    heading.className = 'playbook-card-heading';
-    const title = document.createElement('strong');
-    title.textContent = playbookBaseTitle(situation);
-    heading.append(title);
-    if (isCurrent) {
-      const current = document.createElement('span');
-      current.className = 'playbook-card-current';
-      const check = document.createElement('span');
-      check.setAttribute('aria-hidden', 'true');
-      check.textContent = '✓';
-      current.append(check, ' Current');
-      heading.append(current);
-    }
-    button.append(heading, playbookCardMetadata(situation));
-    if(situation.desc){const context=document.createElement('span');context.className='playbook-card-description';context.textContent=situation.desc;button.append(context);}
-    button.append(playbookStateGraphic(situation));
+    const card=window._diqLibraryCards.libraryCardModel(situation,'situation',{
+      id:situation.key,title:playbookBaseTitle(situation),current:isCurrent,
+      variationLabel:[situationVariationLabel(situation),situation.audience?.staffVariant].filter(Boolean).join(' · ')
+    });
+    shell.append(button);
+    window._diqLibraryCards.renderLibraryCardContent(button,card);
     button.addEventListener('click', () => choosePlaybookSituation(situation.key));
-    playbookBrowserList.appendChild(button);
+    playbookBrowserList.appendChild(shell);
   });
   const extraCount = [playbookHitOutcome, playbookRunners].filter(control=>control?.value).length;
   const extraLabel = document.getElementById('playbookMoreFilterCount');

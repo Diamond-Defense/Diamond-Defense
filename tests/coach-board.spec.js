@@ -46,7 +46,7 @@ test('coach board authors curved movement, replays, reloads and converts to exis
  await page.getByRole('button',{name:'Replay',exact:true}).click();await expect(page.locator('.board-field .seq-badge')).toHaveCount(0);
  await page.getByRole('button',{name:'Save Board',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Board saved.');
  await page.reload();await openLibraryPlay(page,'board',created.id,name);await expect(page.getByLabel('Board name')).toHaveValue(name);
- await boardAction(page,'Save as Situation');await page.getByRole('button',{name:'Create training draft',exact:true}).click();await page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name:'Review'}).click();await expect(page.getByRole('navigation',{name:'Authoring modes'})).toHaveCount(0);await expect(page.getByRole('region',{name:'Playback controls'})).toHaveCount(0);await page.getByRole('button',{name:'Publish Situation',exact:true}).click();await expect(page.getByRole('status')).toContainText('Confirm');
+ await boardAction(page,'Save as Situation');await page.getByRole('button',{name:'Create training draft',exact:true}).click();await page.getByRole('navigation',{name:'Editor tools'}).getByRole('button',{name:'Review'}).click();await expect(page.getByRole('navigation',{name:'Authoring modes'})).toHaveCount(0);await expect(page.getByRole('region',{name:'Playback controls'})).toHaveCount(0);await expect(page.getByRole('button',{name:'Publish Situation',exact:true})).toBeDisabled();
  await page.getByLabel('I confirm these play and runner outcomes').check();await page.getByRole('button',{name:'Publish Situation',exact:true}).click();await expect(page.getByRole('status')).toContainText('created.');
  const situation=(await (await page.request.get('/api/situations')).json()).find(s=>s.title===name);expect(situation.targets.SS.x).toBeCloseTo(boards.find(b=>b.id===created.id).board.movements.SS[0].path.at(-1).x);expect(situation.boardAnimation.version).toBe(2);expect(situation.batterAdvance).toBe(0);expect(situation.playOutcome).toMatchObject({result:'caught_fly',batterResult:'out',outsRecorded:1,batterOutType:'catch'});
  await page.getByRole('button',{name:'Back to play timeline',exact:true}).click();await page.getByRole('button',{name:'Present',exact:true}).click();await page.getByRole('region',{name:'Presentation controls'}).getByRole('button',{name:'Next Step',exact:true}).click();await page.getByRole('region',{name:'Presentation controls'}).getByRole('button',{name:'Replay',exact:true}).click();await page.getByRole('button',{name:'Exit Presentation',exact:true}).click();await expect(page.getByRole('button',{name:'Situation Details',exact:true})).toHaveCount(0);await openLibraryPlay(page,'situation',situation.key,situation.title);await expect(page.getByRole('status')).toContainText('Situation loaded');expect(errors).toEqual([]);await page.screenshot({path:'/tmp/coach-board-desktop.png',fullPage:true});
@@ -134,12 +134,15 @@ test('normal solution review consumes segmented metadata and reduced motion pres
  expect(await page.evaluate(()=>POS_IDS.every(id=>Math.hypot(tokens.get(id).pos.x-currentSituation.targets[id].x,tokens.get(id).pos.y-currentSituation.targets[id].y)<0.01))).toBe(true);
  await expect(page.locator('#wrap .relay-badge')).toHaveCount(0);
  await expect(page.locator('#wrap .ball.is-thrown')).toHaveCount(0);
- await expect(page.locator('#continueBtn')).toBeVisible();
- const ballAtHit=await page.evaluate(()=>{
-  const hit=nativeToCssPoint(currentSituation.hit);
-  return Math.hypot(parseFloat(ballEl.style.left)-hit.x,parseFloat(ballEl.style.top)-hit.y)<0.01;
+ expect(await page.evaluate(()=>_solutionReview.watched)).toBe(true);
+ const ballAtFieldingPoint=await page.evaluate(()=>{
+  const board=window._diqSituationAuthoring.positioningSolutionBoard(window._diqFromSituation(currentSituation));
+  const play=window._diqPlayAnimation.compilePlay(board,{showHitFlight:true});
+  if(play.throws.length)return false;
+  const point=renderedBallPoint(window._diqPlayAnimation.frameAt(play,play.duration));
+  return Math.hypot(parseFloat(ballEl.style.left)-point.x,parseFloat(ballEl.style.top)-point.y)<0.01;
  });
- expect(ballAtHit).toBe(true);
+ expect(ballAtFieldingPoint).toBe(true);
  expect(await page.evaluate(()=>JSON.stringify(currentSituation))).toBe(expected.before);
 });
 

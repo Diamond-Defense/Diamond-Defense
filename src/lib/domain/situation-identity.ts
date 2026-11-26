@@ -3,7 +3,7 @@ import type { Situation, SituationAudience } from './models';
 
 export const BALL_LOCATIONS = ['LF', 'Shallow LF', 'Deep LF', 'LF Line', 'Left-Center', 'CF', 'Shallow CF', 'Deep CF', 'Right-Center', 'RF', 'Shallow RF', 'Deep RF', 'RF Line', 'Third Base', 'Shortstop', 'Second Base', 'First Base', 'Pitcher', 'Catcher'] as const;
 type BallLocation = (typeof BALL_LOCATIONS)[number];
-const ballLocationAnchors = {
+export const ballLocationAnchors = {
   LF: DEFAULT_STARTS.LF,
   'Shallow LF': { x: 890, y: 850 },
   'Deep LF': { x: 640, y: 460 },

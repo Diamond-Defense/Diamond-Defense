@@ -102,13 +102,14 @@ export interface PlayMovementSegment {
 export interface SituationAnimation {
   version: 1 | 2;
   movements: Partial<Record<PositionId | 'batter' | StartingBase, PlayMovementSegment[]>>;
-  battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point;fielder?:PositionId | null;fielding?:'caught'|'ground';stepId?:string} | null;
+  battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point;fielder?:PositionId | null;fielding?:'caught'|'ground';bounce?:{durationMs:number;distance:number;height:number};stepId?:string} | null;
   steps?: {id:string;name:string;timing?:'pre_pitch'}[];
   throwSteps?: (string | null)[];
   runnerStarts?: Partial<Record<'batter' | StartingBase, Point>>;
   running?: {
     result: 'single' | 'double' | 'triple' | 'home_run' | 'out';
     destinations: Partial<Record<'batter' | StartingBase, StartingBase | 'hold' | 'home' | 'out'>>;
+    taggedUp?: Partial<Record<StartingBase, boolean>>;
   };
 }
 export interface Situation {

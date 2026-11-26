@@ -2772,8 +2772,8 @@ function computeRosterPlayerId(teamObj, playerObj){
     }catch(error){if(request===trainingDashboardRequest)panel.innerHTML=`<div class="dd-task-card"><p role="alert">${escapeHtml(error.message||'Unable to load team activity.')}</p><button class="dd-button" type="button" data-training-action="refresh">Try again</button></div>`;}
   }
 
-  window._diqRestoreTrainingLocation = () => {
-    const url=new URL(window.location.href);
+  window._diqRestoreTrainingLocation = (entry = window.location.href) => {
+    const url=new URL(entry);
     const requestedTeam=url.searchParams.get('team');
     if(requestedTeam&&trainingScopeTeams.some(team=>team.id===requestedTeam))trainingTeamId=requestedTeam;
     const section=url.searchParams.get('section');
@@ -2855,10 +2855,12 @@ function computeRosterPlayerId(teamObj, playerObj){
         if (typeof toast === 'function') toast('No teams are available in your training scope.');
         return;
       }
+      // Read the destination after the shell updates history, before legacy mode setup writes its default section.
+      const requestedLocation = window.location.href;
       document.querySelector('#coachCard .tools-panel-header strong').textContent = 'Training';
       setCoachMode(true, { role:'coach' });
       trainingOverviewRegion.value = '';
-      window._diqRestoreTrainingLocation();
+      window._diqRestoreTrainingLocation(requestedLocation);
     } catch (error) {
       reportDatabaseWriteError('Unable to open Training.', error);
     }

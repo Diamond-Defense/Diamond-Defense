@@ -16,7 +16,7 @@
       "SS",
       "2B"
     ],
-    "seqNote": "",
+    "seqNote": "Routine single, no runners on: LF fields the ball after it lands and bounces. Throw through SS to 2B to keep the batter at first. Coverage and backups move at contact.",
     "starts": {
       "P": {
         "x": 1570,
@@ -81,39 +81,237 @@
         "notes": "Move into position to cover 2B, receive throw. Give the runner a lane."
       },
       "SS": {
-        "x": 1112,
-        "y": 669,
+        "x": 1220,
+        "y": 852,
         "tol": 72,
-        "notes": "Move to cut/relay position between ball and 2B. Listen for communication."
+        "notes": "Line up between LF and 2B as the cut/relay. Listen for the call and relay to 2B when needed."
       },
       "3B": {
-        "x": 965,
-        "y": 1120,
+        "x": 1000,
+        "y": 1250,
         "tol": 67,
         "notes": "Stay close to 3B bag. Be ready for play."
       },
       "LF": {
-        "x": 803,
-        "y": 691,
+        "x": 900,
+        "y": 850,
         "tol": 67,
-        "notes": "Make a good, hard, low throw toward 2B. Keep it low enough for the cut/relay to handle."
+        "notes": "Charge the single, gather it off the ground, then make a firm, low throw through SS toward 2B."
       },
       "CF": {
-        "x": 881,
-        "y": 574,
+        "x": 990,
+        "y": 730,
         "tol": 108,
         "notes": "Sprint to back up LF."
       },
       "RF": {
-        "x": 2184,
-        "y": 718,
+        "x": 2000,
+        "y": 860,
         "tol": 109,
-        "notes": "Move toward infield to back up throw from LF."
+        "notes": "Move behind 2B in line with the throw from LF to back up an overthrow."
       }
     },
     "hit": {
-      "x": 679,
-      "y": 722
+      "x": 900,
+      "y": 850
+    },
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "first",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": [],
+    "boardAnimation": {
+      "version": 2,
+      "movements": {
+        "P": [
+          {
+            "path": [
+              {
+                "x": 1570,
+                "y": 1240
+              },
+              {
+                "x": 1827,
+                "y": 1016
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "C": [
+          {
+            "path": [
+              {
+                "x": 1578,
+                "y": 1833
+              },
+              {
+                "x": 2231,
+                "y": 1389
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1450
+          }
+        ],
+        "1B": [
+          {
+            "path": [
+              {
+                "x": 2081,
+                "y": 1172
+              },
+              {
+                "x": 2166,
+                "y": 1184
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1250
+          }
+        ],
+        "2B": [
+          {
+            "path": [
+              {
+                "x": 1934,
+                "y": 941
+              },
+              {
+                "x": 1595,
+                "y": 821
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "SS": [
+          {
+            "path": [
+              {
+                "x": 1202,
+                "y": 935
+              },
+              {
+                "x": 1220,
+                "y": 852
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 750
+          }
+        ],
+        "3B": [
+          {
+            "path": [
+              {
+                "x": 1047,
+                "y": 1170
+              },
+              {
+                "x": 1000,
+                "y": 1250
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 650
+          }
+        ],
+        "LF": [
+          {
+            "path": [
+              {
+                "x": 750,
+                "y": 679
+              },
+              {
+                "x": 900,
+                "y": 850
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 900
+          }
+        ],
+        "CF": [
+          {
+            "path": [
+              {
+                "x": 1570,
+                "y": 476
+              },
+              {
+                "x": 990,
+                "y": 730
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1100
+          }
+        ],
+        "RF": [
+          {
+            "path": [
+              {
+                "x": 2385,
+                "y": 683
+              },
+              {
+                "x": 2000,
+                "y": 860
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1000
+          }
+        ]
+      },
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 900,
+          "y": 850
+        },
+        "fielding": "ground",
+        "fielder": "LF",
+        "bounce": {
+          "durationMs": 350,
+          "distance": 150,
+          "height": 26
+        }
+      },
+      "running": {
+        "result": "single",
+        "destinations": {
+          "batter": "first"
+        }
+      }
     }
   },
   {
@@ -130,10 +328,10 @@
     "batterAdvance": 1,
     "playSeq": [
       "CF",
-      "SS",
-      "2B"
+      "2B",
+      "SS"
     ],
-    "seqNote": "",
+    "seqNote": "Routine single to CF, no runners on. This branch is on the 2B side: CF gathers after the bounce, 2B cuts/relays, and SS covers second. On the SS side, those two infield roles reverse. The batter holds at first.",
     "starts": {
       "P": {
         "x": 1570,
@@ -174,10 +372,10 @@
     },
     "targets": {
       "P": {
-        "x": 1544,
-        "y": 966,
+        "x": 1480,
+        "y": 990,
         "tol": 98,
-        "notes": "Move into backup position between mound and 2B."
+        "notes": "Back up the throw to second from behind the bag, between second and the mound. Stay clear of the runner."
       },
       "C": {
         "x": 2200,
@@ -192,45 +390,243 @@
         "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
       },
       "2B": {
-        "x": 1699,
-        "y": 730,
+        "x": 1650,
+        "y": 765,
         "tol": 67,
-        "notes": "If the ball is hit to the SS side of 2B, cover the bag. If the ball is hit to the 2B side of the field, you are the cut/relay."
+        "notes": "For this single on the 2B side, line up between CF and second as the cut/relay. For a ball on the SS side, cover second instead."
       },
       "SS": {
-        "x": 1589,
-        "y": 820,
+        "x": 1595,
+        "y": 821,
         "tol": 72,
-        "notes": "If ball is hit to SS side, become cut/relay. If hit to 2B side, cover the bag."
+        "notes": "Cover second and receive the relay from 2B for this ball on the 2B side. For a ball on the SS side, become the cut/relay instead."
       },
       "3B": {
-        "x": 965,
-        "y": 1120,
+        "x": 1000,
+        "y": 1250,
         "tol": 67,
-        "notes": "Stay close to 3B bag. Be ready for play."
+        "notes": "Stay close to third and be ready for a play."
       },
       "LF": {
-        "x": 1236,
-        "y": 450,
+        "x": 1370,
+        "y": 580,
         "tol": 108,
         "notes": "Sprint to back up CF."
       },
       "CF": {
-        "x": 1695,
-        "y": 562,
+        "x": 1710,
+        "y": 700,
         "tol": 82,
-        "notes": "Make a good, hard, low throw toward 2B. Keep it low enough for the cut/relay to handle."
+        "notes": "Charge the single, gather it off the ground after the bounce, and throw firmly through 2B toward SS covering second."
       },
       "RF": {
-        "x": 1999,
-        "y": 463,
+        "x": 1990,
+        "y": 580,
         "tol": 124,
         "notes": "Sprint to back up CF."
       }
     },
     "hit": {
       "x": 1710,
-      "y": 517
+      "y": 700
+    },
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "first",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": [],
+    "boardAnimation": {
+      "version": 2,
+      "movements": {
+        "P": [
+          {
+            "path": [
+              {
+                "x": 1570,
+                "y": 1240
+              },
+              {
+                "x": 1480,
+                "y": 990
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "C": [
+          {
+            "path": [
+              {
+                "x": 1578,
+                "y": 1833
+              },
+              {
+                "x": 2200,
+                "y": 1468
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1450
+          }
+        ],
+        "1B": [
+          {
+            "path": [
+              {
+                "x": 2087,
+                "y": 1155
+              },
+              {
+                "x": 2166,
+                "y": 1184
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1250
+          }
+        ],
+        "2B": [
+          {
+            "path": [
+              {
+                "x": 1944,
+                "y": 943
+              },
+              {
+                "x": 1650,
+                "y": 765
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 750
+          }
+        ],
+        "SS": [
+          {
+            "path": [
+              {
+                "x": 1202,
+                "y": 933
+              },
+              {
+                "x": 1595,
+                "y": 821
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "3B": [
+          {
+            "path": [
+              {
+                "x": 1004,
+                "y": 1147
+              },
+              {
+                "x": 1000,
+                "y": 1250
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 650
+          }
+        ],
+        "LF": [
+          {
+            "path": [
+              {
+                "x": 744,
+                "y": 660
+              },
+              {
+                "x": 1370,
+                "y": 580
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1100
+          }
+        ],
+        "CF": [
+          {
+            "path": [
+              {
+                "x": 1629,
+                "y": 427
+              },
+              {
+                "x": 1710,
+                "y": 700
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 900
+          }
+        ],
+        "RF": [
+          {
+            "path": [
+              {
+                "x": 2383,
+                "y": 665
+              },
+              {
+                "x": 1990,
+                "y": 580
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1100
+          }
+        ]
+      },
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1710,
+          "y": 700
+        },
+        "fielding": "ground",
+        "fielder": "CF",
+        "bounce": {
+          "durationMs": 350,
+          "distance": 150,
+          "height": 26
+        }
+      },
+      "running": {
+        "result": "single",
+        "destinations": {
+          "batter": "first"
+        }
+      }
     }
   },
   {

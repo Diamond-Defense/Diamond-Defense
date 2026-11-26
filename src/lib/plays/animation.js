@@ -55,7 +55,7 @@ export function compilePlay(input, options={}) {
   const coachBoard=!!options.coachBoard;
   const hit=board.battedBall;
   const fielding=hit&&(coachBoard||options.showHitFlight&&hit.fielding==='ground')?hitFielding(hit):null;
-  const groundPickupDelay=fielding==='ground'?150:0;
+  const groundPickupDelay=fielding==='ground'?(hit?.bounce?Math.max(150,hitBounceDuration(hit)+50):150):0;
   const authoredSteps=board.steps ? playSteps(board) : undefined;
   const order=new Map((authoredSteps || []).map((step,index)=>[step.id,index]));
   const hitOrder=order.get(hitStep(board));
@@ -203,6 +203,7 @@ export function compilePlay(input, options={}) {
         if(track.start>=contact)track.start=contact;
         track.duration=Math.max(0,contact-track.start);ends.set(track.key,contact);
       }
+      const runningStart=board.running?.taggedUp?.[id]?Math.max(contact,fieldingTime):contact;
       const destination=runningDestination(board,id);
       const path=automaticRoute(id,atContact[id],destination);
       if(path.length<2)continue;
@@ -218,8 +219,8 @@ export function compilePlay(input, options={}) {
         // Leave a visible lead at the bag without changing the authored throw.
         duration=Math.min(duration,Math.min(...arrival)-contact-75);
       }
-      tracks.push({key,id,index:(board.movements[id]||[]).length,path,geometry,duration,start:contact,condition:{event:'contact'},automatic:true});
-      ends.set(key,contact+duration);
+      tracks.push({key,id,index:(board.movements[id]||[]).length,path,geometry,duration,start:runningStart,condition:{event:runningStart>contact?'ball_fielded':'contact'},automatic:true});
+      ends.set(key,runningStart+duration);
     }
   }
   const throws=legs.map(leg=>{
@@ -267,10 +268,16 @@ const landingBounces = {
   fly_ball:{duration:120,distance:27,height:26},
   pop_fly:{duration:105,distance:10,height:18},
 };
-export const hitBounceDuration = type => landingBounces[type]?.duration ?? 0;
+function landingBounce(hit) {
+  const type=typeof hit==='string'?hit:hit?.type;
+  const fallback=landingBounces[type];
+  if(!fallback)return null;
+  return hit?.bounce ? {duration:hit.bounce.durationMs,distance:hit.bounce.distance,height:hit.bounce.height} : fallback;
+}
+export const hitBounceDuration = hit => landingBounce(hit)?.duration ?? 0;
 
 export function sampleBattedBall(hit,elapsed,flightDuration,{caught=false,grounded=false}={}){
-  const bounce=grounded?landingBounces[hit.type]:null;
+  const bounce=grounded?landingBounce(hit):null;
   const progress=Math.min(1,elapsed/(flightDuration||1));
   if(!bounce)return sampleHitFlight(hit,progress,caught);
 
@@ -301,7 +308,7 @@ export function frameAt(play,time) {
   if(play.coachBoard&&hit&&time<play.contactTime){ball=time<play.pitchStart?null:pointOnPath([play.pitchFrom,hit.start],(time-play.pitchStart)/(play.contactTime-play.pitchStart));}
   let hitTrail=[], ballShadow=null, scale=1;
   const grounded=play.fielding==='ground', caught=play.caught;
-  const bounceDuration=grounded?hitBounceDuration(hit.type):0;
+  const bounceDuration=grounded?hitBounceDuration(hit):0;
   if(play.showHitFlight&&hit&&time>=play.contactTime&&hitTime<play.ballDuration+bounceDuration){
     ({ball,ballShadow,hitTrail,scale}=sampleBattedBall(hit,hitTime,play.ballDuration,{caught,grounded}));
   }else if(caught&&ball&&time>=play.fieldingTime){

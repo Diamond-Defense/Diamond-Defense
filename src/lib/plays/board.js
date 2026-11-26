@@ -57,6 +57,10 @@ export function validateBoard(board) {
   const pointCount=Object.values(board.movements||{}).reduce((sum,segments)=>sum+(Array.isArray(segments)?segments.reduce((n,segment)=>n+(segment?.path?.length||0),0):0),0);
   if(pointCount>20000)issues.push('Too many movement points. Re-record shorter routes.');
   if (board.battedBall && (!BALL_TYPES.includes(board.battedBall.type) || !point(board.battedBall.start) || !point(board.battedBall.destination))) issues.push('Invalid batted ball.');
+  if(board.battedBall?.bounce!==undefined){
+    const bounce=board.battedBall.bounce;
+    if(!bounce||!Number.isFinite(bounce.durationMs)||bounce.durationMs<100||bounce.durationMs>2000||!Number.isFinite(bounce.distance)||bounce.distance<1||bounce.distance>400||!Number.isFinite(bounce.height)||bounce.height<1||bounce.height>100)issues.push('Choose a valid landing bounce (100–2000 ms, distance 1–400, height 1–100).');
+  }
   if(board.battedBall?.fielding!==undefined&&!['caught','ground'].includes(board.battedBall.fielding))issues.push('Choose a valid fielding outcome.');
   if(board.battedBall?.fielder!==undefined&&board.battedBall.fielder!==null&&!POSITIONS.includes(board.battedBall.fielder))issues.push('Choose a valid ball fielder.');
   for (const seq of [board.playSeq, board.playSeq2]) if (!Array.isArray(seq) || seq.length > 30 || !seq.every(id => POSITIONS.includes(id))) issues.push('Use defensive positions for throws.');
@@ -85,7 +89,7 @@ export function fromSituation(situation, {coachBoard = false} = {}) {
   for (const outcome of situation.runnerOutcomes || []) {
     const start = bases.indexOf(outcome.startingBase), end = outcome.result === 'home' ? 4 : bases.indexOf(outcome.result);
     if(outcome.result==='out'&&b.runners[outcome.startingBase]){const from=b.runners[outcome.startingBase],to=BASES_NATIVE[bases[start+1]],fraction={force:0.96,tag:0.68,catch:0.2}[outcome.outType]||0.76;b.movements[outcome.startingBase]=[{path:[clone(from),{x:from.x+(to.x-from.x)*fraction,y:from.y+(to.y-from.y)*fraction}]}];}
-    if (end > start && b.runners[outcome.startingBase]) b.movements[outcome.startingBase] = [{path:bases.slice(start,end+1).map(base=>clone(BASES_NATIVE[base]))}];
+    if (end > start && b.runners[outcome.startingBase]) b.movements[outcome.startingBase] = [{path:bases.slice(start,end+1).map(base=>clone(BASES_NATIVE[base])),...(outcome.taggedUp?{start:{event:'ball_fielded'}}:{})}];
   }
   b.battedBall = situation.hit ? { type: { grounder:'ground_ball', line:'line_drive', popup:'pop_fly' }[situation.hitType] || 'ground_ball', start:clone(BASES_NATIVE.home), destination:clone(situation.hit) } : null;
   b.playSeq = clone(situation.playSeq || []); b.playSeq2 = clone(situation.playSeq2 || []);
@@ -109,6 +113,10 @@ export function fromSituation(situation, {coachBoard = false} = {}) {
       }
     }
   }
+  // Derive explicit outcome flags without adding empty metadata or discarding
+  // authored tag-up settings for runners without a structured outcome.
+  const tagUps=Object.fromEntries((situation.runnerOutcomes||[]).filter(runner=>typeof runner.taggedUp==='boolean').map(runner=>[runner.startingBase,runner.taggedUp]));
+  if(Object.keys(tagUps).length)b.running.taggedUp={...b.running.taggedUp,...tagUps};
   if(b.battedBall&&situation.hit)b.battedBall.destination=clone(situation.hit);
   const canonicalType={grounder:'ground_ball',line:'line_drive',popup:'pop_fly'}[situation.hitType];
   if(b.battedBall&&canonicalType&&({ground_ball:'grounder',line_drive:'line',fly_ball:'popup',pop_fly:'popup'}[b.battedBall.type]!==situation.hitType))b.battedBall.type=canonicalType;

@@ -1,8 +1,9 @@
 import {openBattedBall,openLibraryPlay,boardAction,selectStage} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
-import {newBoard,clone} from '../src/lib/plays/board.js';
+import {newBoard,clone,fromSituation} from '../src/lib/plays/board.js';
 import {BASES_NATIVE as bases} from '../src/lib/plays/field.js';
 import {compilePlay,frameAt} from '../src/lib/plays/animation.js';
+import {consolidateSituationRelay} from '../src/lib/plays/authoring.js';
 import {presentationStatus} from '../src/lib/plays/presentation.js';
 
 function examples(){
@@ -14,12 +15,13 @@ function examples(){
 }
 for(const example of examples())test(example.board.title,async({page,baseURL})=>{
  await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{role:'admin',password:'password'}});
- const board=clone(example.board);board.title+=` ${Date.now()}`;const play=compilePlay(board,{coachBoard:true});
+ const board=clone(example.board);board.title+=` ${Date.now()}`;let play=compilePlay(board,{coachBoard:true});
  const response=await page.request.post('/api/boards',{headers:{Origin:new URL(baseURL).origin},data:{board}});expect(response.status()).toBe(201);const saved=await response.json();
  await page.goto('/coach-board?edit=1');await openLibraryPlay(page,'board',saved.id,board.title);
- await boardAction(page,'Save as Situation');await page.getByRole('button',{name:'Create training draft',exact:true}).click();await openBattedBall(page,{outcomes:true});await expect(page.getByRole('navigation',{name:'Authoring modes'})).toHaveCount(0);await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption(example.result);await page.getByRole('combobox',{name:'Batter result',exact:true}).selectOption(example.batter);await page.getByRole('combobox',{name:'Outs recorded',exact:true}).selectOption(example.outs);await page.getByRole('combobox',{name:`Runner on ${example.runner}`,exact:true}).selectOption(example.runnerResult);if(example.tagged)await page.getByLabel(`Runner on ${example.runner} tagged up`,{exact:true}).check();await selectStage(page,'Review');await page.getByLabel('I confirm these play and runner outcomes').check();
+ await boardAction(page,'Save as Situation');await page.getByRole('button',{name:'Create training draft',exact:true}).click();await openBattedBall(page,{outcomes:true});await expect(page.getByRole('navigation',{name:'Authoring modes'})).toHaveCount(0);await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption(example.result);if(await page.getByRole('combobox',{name:'Batter result',exact:true}).isEnabled())await page.getByRole('combobox',{name:'Batter result',exact:true}).selectOption(example.batter);else await expect(page.getByRole('combobox',{name:'Batter result',exact:true})).toHaveValue(example.batter);if(await page.getByRole('combobox',{name:'Outs recorded',exact:true}).isEnabled())await page.getByRole('combobox',{name:'Outs recorded',exact:true}).selectOption(example.outs);else await expect(page.getByRole('combobox',{name:'Outs recorded',exact:true})).toHaveValue(example.outs);await page.getByRole('combobox',{name:`Runner on ${example.runner}`,exact:true}).selectOption(example.runnerResult);if(example.tagged)await page.getByLabel(`Runner on ${example.runner} tagged up`,{exact:true}).check();await selectStage(page,'Review');await page.getByLabel('I confirm these play and runner outcomes').check();
  const created=page.waitForResponse(r=>r.url().endsWith('/api/situations')&&r.request().method()==='POST');await page.getByRole('button',{name:'Publish Situation',exact:true}).click();const published=await created;expect(published.status()).toBe(201);const {record}=await published.json();expect(record.playOutcome.result).toBe(example.result);expect(record.runnerOutcomes[0].result).toBe(example.runnerResult);expect(record.boardAnimation.version).toBe(2);
  await page.getByRole('button',{name:'Back to play timeline',exact:true}).click();await page.getByRole('button',{name:'Present',exact:true}).click();const controls=page.getByRole('region',{name:'Presentation controls'});
+ play=compilePlay(consolidateSituationRelay(fromSituation(record,{coachBoard:true})),{coachBoard:true});
  for(const time of play.steps.slice(1)){await controls.getByRole('button',{name:'Next Step',exact:true}).click();const expected=presentationStatus(play,frameAt(play,time)).split(' · ').sort();await expect.poll(async()=> (await controls.getByRole('status').innerText()).split(' · ').sort()).toEqual(expected);}
  await expect(controls.getByRole('status')).toContainText('Final state');await controls.getByRole('button',{name:'Replay',exact:true}).click();await expect(controls.getByRole('status')).toHaveText('Starting alignment');await page.getByRole('button',{name:'Exit Presentation',exact:true}).click();await expect(page.getByRole('complementary',{name:'Coach Board tools'})).toBeVisible();
  test.info().annotations.push({type:'checkpoint',description:JSON.stringify({steps:play.steps.length,outcome:record.playOutcome,runner:record.runnerOutcomes[0],tracks:play.tracks.map(t=>({actor:t.id,start:t.start,duration:t.duration}))})});

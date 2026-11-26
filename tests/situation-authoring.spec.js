@@ -50,17 +50,11 @@ test('legacy edits keep identity and stale revisions leave the unsaved draft int
  }finally{await page.request.delete(`/api/situations/${record.key}`,{headers:{...headers,'If-Match':String(record.revision)}});}
 });
 
-test('coach visual changes submit for review and preserve animation on approval',async({page,request,baseURL})=>{
- const headers={Origin:new URL(baseURL).origin};await request.post('/api/auth/login',{headers,data:{role:'admin',password:'password'}});
- const source=(await (await request.get('/api/situations')).json())[0];const created=await request.post('/api/situations',{headers,data:{...source,key:`coach-unified-${Date.now()}`,title:`Coach unified ${Date.now()}`,revision:undefined,displayCode:undefined}});expect(created.status()).toBe(201);let record=(await created.json()).record;
- await page.request.post('/api/auth/login',{headers,data:{role:'coach',teamId:'13u-black',coachId:'staff-coach',password:'password'}});
- try{
-  await page.goto('/coach-board?edit=1');await openLibraryPlay(page,'situation',record.key,record.title);await page.getByLabel('Situation name').fill('Coach visual proposal');
-  await page.getByRole('button',{name:'Save Situation Changes',exact:true}).click();await expect(page.getByRole('button',{name:'Publish Situation',exact:true})).toHaveCount(0);await page.getByLabel('Proposal reason').fill('Demonstrates the defensive responsibilities.');await page.getByRole('button',{name:'Submit for Review',exact:true}).click();await expect(page.getByRole('status')).toContainText('Proposal submitted');
-  const submission=(await (await page.request.get('/api/situation-submissions')).json()).submissions.find(s=>s.situationKey===record.key);expect(submission.submissionType).toBe('update');expect(submission.situation.boardAnimation.version).toBe(2);
-  expect((await page.request.put(`/api/situations/${record.key}`,{headers:{...headers,'If-Match':String(record.revision)},data:submission.situation})).status()).toBe(403);
-  const approved=await request.put(`/api/admin/situation-submissions/${submission.id}`,{headers,data:{decision:'approve',acceptedFields:['title','boardAnimation'],notes:'Approved'}});expect(approved.ok()).toBeTruthy();record=(await (await request.get('/api/situations')).json()).find(s=>s.key===record.key);expect(record.title).toBe('Coach visual proposal');expect(record.boardAnimation).toEqual(submission.situation.boardAnimation);
- }finally{await request.delete(`/api/situations/${record.key}`,{headers:{...headers,'If-Match':String(record.revision)}});}
+test('a coach without Designer retains Training but cannot open a scoped editor',async({page,baseURL})=>{
+ const headers={Origin:new URL(baseURL).origin};
+ expect((await page.request.post('/api/auth/login',{headers,data:{username:'jamie.rivera',password:'password'}})).ok()).toBe(true);
+ expect((await page.request.get('/api/training/scopes')).ok()).toBe(true);
+ expect((await page.request.get('/coach-board?design=team&id=13u-black')).status()).toBe(403);
 });
 
 test('a new Situation draft creates its first record only when published from Coach Board',async({page,baseURL})=>{
@@ -71,90 +65,22 @@ test('a new Situation draft creates its first record only when published from Co
  await page.getByRole('button',{name:'Save Situation Changes',exact:true}).click();await page.getByRole('button',{name:'Publish Situation',exact:true}).click();await expect(page.getByRole('status')).toHaveText('Situation created.');const saved=(await (await page.request.get('/api/situations')).json()).find(s=>s.key===draft.key);expect(saved.revision).toBe(1);await page.request.delete(`/api/situations/${saved.key}`,{headers:{...headers,'If-Match':'1'}});
 });
 
-test('Admin library opens the shared training stages and publishes a new situation', async ({ page }) => {
-  await page.goto('/');
-  await page.evaluate(() => window.__DIQ_READY__);
-  await page.locator('#signInUsername').fill('admin');
-  await page.locator('#signInPassword').fill('password');
-  await page.locator('#signInPassword').press('Enter');
-  await page.getByRole('button', { name: 'Design' }).click();
-  await page.getByRole('link', { name: 'Global library tools' }).click();
-  await expect(page.locator('#designWorkspaceBtn')).toHaveAttribute('aria-current', 'true');
-  await expect(page.locator('#staffToolsBtn')).not.toHaveAttribute('aria-current', 'true');
-  await expect(page.getByRole('button', { name: 'Organizations', exact: true })).toBeHidden();
-  await expect(page.getByRole('link', { name: 'Back to Design' })).toHaveAttribute('href', '/design?type=global');
-  await expect(page.locator('#situationLibrary')).toBeVisible();
-  await page.locator('#situationLibrary').getByRole('button', { name: 'New situation', exact: true }).click();
-  const stages = page.getByRole('navigation', { name: 'Editor tools' });
-  await expect(stages.getByRole('button')).toHaveText(['Details','Play timeline','Review']);
-  const timeline=page.getByRole('region',{name:'Play steps'});
-  await expect(timeline.getByRole('button',{name:'Starting alignment',exact:true})).toBeVisible();
-  await expect(timeline.getByRole('button',{name:'Contact',exact:true})).toHaveAttribute('aria-current','step');
-  const contact=page.getByRole('region',{name:'At contact',exact:true});
-  await expect(contact.getByRole('button',{name:'Edit batted ball action',exact:true})).toBeVisible();
-  const outcomeAction=contact.getByRole('button',{name:'Edit play outcomes',exact:true});
-  await expect(outcomeAction).toHaveAttribute('aria-expanded','false');
-  await expect(contact.getByText('Batter & runner movements',{exact:true})).toBeVisible();
-  await outcomeAction.click();
-  const playResult=contact.getByRole('combobox',{name:'Play result',exact:true});
-  await expect(playResult.locator('xpath=../following-sibling::*[1]')).toHaveText('Use recommended outcomes');
-  await outcomeAction.click();
-  await expect(page.getByRole('button',{name:'+ Add Step',exact:true})).toBeVisible();
-  const title = `Training stages ${Date.now()}`;
-  await page.getByLabel('Situation name').fill(title);
-  await stages.getByRole('button',{name:'Details',exact:true}).click();
-  await page.getByLabel('Difficulty').selectOption('advanced');
-  await stages.getByRole('button',{name:'Play timeline',exact:true}).click();
-  await page.getByRole('combobox', { name: 'Outs', exact: true }).selectOption('1');
-  await openBattedBall(page);
-  await page.getByLabel('Batted-ball type').selectOption('fly_ball');
-  await page.getByRole('button', { name: '+ Add Step', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Before the pitch', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Add pickoff throw', exact: true })).toHaveCount(0);
-  await page.getByRole('button',{name:'Blank step',exact:true}).click();
-  await page.getByRole('button',{name:'Rename',exact:true}).click();
-  await page.getByRole('textbox',{name:'Step name'}).fill('Back up the relay');
-  await page.getByRole('textbox',{name:'Step name'}).press('Enter');
-  await expect(page.getByRole('region',{name:'Play steps'}).getByRole('button',{name:'Back up the relay'})).toBeVisible();
-  await stages.getByRole('button', { name: 'Review', exact: true }).click();
-  await page.getByText('Scoring targets',{exact:true}).click();
-  await page.getByRole('spinbutton',{name:'Target tolerance',exact:true}).fill('125');
-  await page.getByRole('button', { name: 'Preview opening hit' }).click();
-  await expect(page.locator('.board-hit-path')).toBeVisible();
-  await page.getByRole('button', { name: 'Stop preview' }).click();
-  await page.getByLabel('I confirm these play and runner outcomes').check();
-  await page.getByRole('button', { name: 'Publish Situation', exact: true }).click();
-  await expect(page.getByRole('status')).toHaveText('Situation created.');
-  const situations = await (await page.request.get('/api/situations')).json();
-  const saved=situations.find(record=>record.title===title);
-  expect(saved).toMatchObject({
-    outs: 1, difficulty: 'advanced', targets: { P: { tol: 125 } },
-    boardAnimation: { battedBall: { type: 'fly_ball' },steps:expect.arrayContaining([expect.objectContaining({name:'Back up the relay'})]) },
-  });
-  await page.reload();
-  await openLibraryPlay(page,'situation',saved.key,saved.title);
-  await expect(page.getByRole('region',{name:'Play steps'}).getByRole('button',{name:'Back up the relay'})).toBeVisible();
+test('Design opens a new situation in the shared staged editor without publishing it',async({page,baseURL})=>{
+ const headers={Origin:new URL(baseURL).origin};await page.request.post('/api/auth/login',{headers,data:{username:'admin',password:'password'}});
+ const before=(await (await page.request.get('/api/situations')).json()).map(item=>item.key).sort();
+ await page.goto('/workspace/design?type=global');await page.getByRole('link',{name:'+ New situation',exact:true}).click();
+ const stages=page.getByRole('navigation',{name:'Editor tools'});await expect(stages).toBeVisible();
+ await page.getByLabel('Situation name').fill('Unpublished design draft');
+ await stages.getByRole('button',{name:'Review',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Publish Situation',exact:true})).toBeDisabled();
+ expect((await (await page.request.get('/api/situations')).json()).map(item=>item.key).sort()).toEqual(before);
 });
 
-test('Coach workspace opens the shared stages and submits edits as a proposal', async ({ page, baseURL }) => {
-  const auth = await page.request.post('/api/auth/login', {
-    headers: { Origin: new URL(baseURL).origin },
-    data: { role: 'coach', teamId: '13u-black', coachId: 'staff-coach', password: 'password' },
-  });
-  expect(auth.ok()).toBe(true);
-  await page.goto('/');
-  await page.evaluate(() => window.__DIQ_READY__);
-  await page.locator('#staffToolsBtn').click();
-  await page.getByRole('button', { name: 'Situation Proposals', exact: true }).click();
-  await page.locator('#situationLibrary').getByRole('button', { name: 'Propose changes', exact: true }).first().click();
-  const stages = page.getByRole('navigation', { name: 'Editor tools' });
-  await stages.getByRole('button', { name: 'Review', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Publish Situation' })).toHaveCount(0);
-  await expect(page.getByLabel('Player context')).toHaveCount(0);
-  await page.getByLabel('Proposal reason').fill('Clarifies the defensive teaching focus.');
-  await page.getByLabel('I confirm these play and runner outcomes').check();
-  await page.getByRole('button', { name: 'Submit for Review', exact: true }).click();
-  await expect(page.getByRole('status')).toContainText('Proposal submitted');
+test('Training no longer exposes the retired Situation Proposals editor',async({page,baseURL})=>{
+ const headers={Origin:new URL(baseURL).origin};await page.request.post('/api/auth/login',{headers,data:{username:'jamie.rivera',password:'password'}});
+ await page.goto('/workspace/training');await expect(page.locator('#trainingDashboard')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Situation Proposals',exact:true})).toHaveCount(0);
+ await expect(page.locator('#designWorkspaceBtn')).toBeHidden();
 });
 
 test('Review uses player opening hit and Watch Solution, returning the unpublished draft intact',async({page,baseURL})=>{
@@ -195,7 +121,8 @@ test('Review uses player opening hit and Watch Solution, returning the unpublish
     }
     await expect(page.locator('#watchSolutionBtn')).toBeVisible();
     expect(await page.evaluate(()=>_phase1Summary.scoreTotal)).toBe(8);
-    await page.locator('#watchSolutionBtn').click();
+    await page.emulateMedia({reducedMotion:'reduce'});
+    await page.locator('#watchSolutionBtn').press('Enter');
     await expect(page.locator('#wrap')).toHaveAttribute('data-solution-state','ready',{timeout:20000});
     await page.getByRole('button',{name:'Return to editor',exact:true}).click();
     await expect(page.getByLabel('Situation name')).toHaveValue('Unpublished player preview');
@@ -362,8 +289,16 @@ test('caught balls update the batter out and show applicable catch results',asyn
   await page.getByLabel('Batted-ball type').selectOption('fly_ball');
   await expect(playResult).toHaveValue('caught_fly');
   await playResult.selectOption('sacrifice_fly');
-  await expect(page.getByRole('combobox',{name:'Runner on first',exact:true})).toHaveValue('home');
-  await expect(page.getByLabel('Runner on first tagged up')).toBeChecked();
+  await expect(page.getByRole('combobox',{name:'Runner on first',exact:true})).toHaveValue('hold');
+  await expect(page.getByLabel('Runner on first tagged up')).not.toBeChecked();
+  await selectBoardStep(page,'Starting alignment');
+  await page.getByRole('checkbox',{name:'third',exact:true}).check();
+  await openBattedBall(page,{outcomes:true});
+  await playResult.selectOption('caught_fly');
+  await playResult.selectOption('sacrifice_fly');
+  await expect(page.getByRole('combobox',{name:'Runner on third',exact:true})).toHaveValue('home');
+  await expect(page.getByLabel('Runner on third tagged up')).toBeChecked();
+  await expect(page.getByRole('combobox',{name:'Runner on first',exact:true})).toHaveValue('hold');
   await selectBoardStep(page,'Starting alignment');
   await page.getByRole('combobox',{name:'Outs',exact:true}).selectOption('2');
   await openBattedBall(page,{outcomes:true});

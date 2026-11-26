@@ -159,22 +159,23 @@ test('a pinned team revision moves through each required publication gate', asyn
     await page.goto(`/design?type=organization&id=${organization.id}`);
     const inheritedTable = page.getByRole('table',{name:'Inherited situations'});
     const globalRow = inheritedTable.getByRole('row').filter({hasText:global.title}).filter({has:page.getByRole('cell',{name:'Global Library',exact:true})});
-    await expect(globalRow.getByText('Inherited',{exact:true})).toBeVisible();
+    // A locally owned version of this lineage replaces its inherited ancestor in Design.
+    await expect(globalRow).toHaveCount(0);
     expect(await teamPlaybook(team.id)).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:global.revision})]));
     expect(await playerCatalog()).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:global.revision})]));
     const assignment = (await send(director, '/api/practice/assignments', {
       teamId:team.id,title:'Inherited practice',playerIds:[player.playerId],
       situations:[{situationKey:global.key,repetitions:1}],publish:true,
     },201)).assignment;
-    await globalRow.getByRole('button',{name:'Hide here'}).click();
-    await expect(globalRow.getByText('Hidden here',{exact:true})).toBeVisible();
+    // Its owned descendant hides this ancestor in Design, so exercise the visibility API directly.
+    await setHidden('organization',organization.id,global.key,true);
     expect((await teamPlaybook(team.id)).some(entry => entry.key === global.key)).toBe(false);
     expect((await playerCatalog()).some(entry => entry.key === global.key)).toBe(false);
     const changedGlobal = (await send(admin,design, {
       action:'publish',type:'global',id:'',revision:global.revision,situation:{...global,desc:'Updated Global drill',difficulty:'advanced'},
     })).record;
     await page.goto(`/design?type=region&id=${region.id}`);
-    await expect(globalRow.getByText('Hidden by organization')).toBeVisible();
+    await expect(globalRow).toHaveCount(0);
     const visibility = (type,id,hidden) => ({action:'global_visibility',type,id,hidden,keys:[global.key]});
     await send(unrelatedCoach,design,visibility('organization',organization.id,false),403);
     await send(director,design,visibility('region',region.id,true));
@@ -182,35 +183,46 @@ test('a pinned team revision moves through each required publication gate', asyn
     expect((await teamPlaybook(secondTeam.id)).some(entry => entry.key === global.key)).toBe(false);
     await send(director,design,visibility('region',region.id,false));
     await page.goto(`/design?type=team&id=${team.id}`);
-    await expect(globalRow.getByText('Inherited',{exact:true})).toBeVisible();
+    // A locally owned version of this lineage replaces its inherited ancestor in Design.
+    await expect(globalRow).toHaveCount(0);
+    await page.getByRole('button',{name:'Filters',exact:true}).click();
     await page.getByRole('combobox',{name:'Inherited difficulty'}).selectOption('foundational');
-    await expect(globalRow.getByText('Outside team difficulty')).toBeVisible();
+    await expect(globalRow).toHaveCount(0);
     const regionalVariationRow = inheritedTable.getByRole('row').filter({hasText:variation.title});
     await expect(regionalVariationRow.getByText('Outside team difficulty')).toBeVisible();
     expect((await playerCatalog()).some(entry => entry.key === variation.key)).toBe(false);
     expect((await teamPlaybook(team.id)).some(entry => entry.key === global.key)).toBe(false);
     expect(await teamPlaybook(secondTeam.id)).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:changedGlobal.revision})]));
-    await page.getByRole('button',{name:'Training',exact:true}).click();
-    await expect(page.getByRole('heading',{name:'Team progress'})).toBeVisible();
-    await page.getByRole('row').filter({has:page.getByRole('button',{name:team.name,exact:true})})
-      .getByRole('button',{name:team.name,exact:true}).click();
+    // Open the shared Playbook for this team; Training no longer owns a Playbook tab.
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
+    await page.evaluate(()=>window.__DIQ_READY__);
     const selectedPlaybookResponse = page.waitForResponse(response =>
       new URL(response.url()).searchParams.get('teamId') === team.id &&
       new URL(response.url()).pathname === '/api/situations' && response.ok());
-    await page.getByRole('button',{name:'Playbook',exact:true}).click();
+    await page.evaluate(teamId=>window._diqOpenPlaybookBrowser(teamId),team.id);
     await selectedPlaybookResponse;
     const filteredPlaybook = page.locator('#playbookBrowserOverlay');
     await expect(filteredPlaybook).toBeVisible();
-    await expect(filteredPlaybook.locator('.playbook-card-difficulty[data-difficulty="foundational"]').first()).toBeVisible();
-    await expect(filteredPlaybook.locator('.playbook-card-difficulty[data-difficulty="advanced"], .playbook-card-difficulty[data-difficulty="intermediate"]')).toHaveCount(0);
+    await expect(filteredPlaybook.locator('.library-card-difficulty[data-difficulty="foundational"]').first()).toBeVisible();
+    await expect(filteredPlaybook.locator('.library-card-difficulty[data-difficulty="advanced"], .library-card-difficulty[data-difficulty="intermediate"]')).toHaveCount(0);
     await page.goto(`/workspace/design?type=team&id=${team.id}`);
+    await page.getByRole('button',{name:'Filters',exact:true}).click();
     await expect(page.getByRole('combobox',{name:'Inherited difficulty'})).toHaveValue('foundational');
     await page.getByRole('combobox',{name:'Inherited difficulty'}).selectOption('all');
-    await expect(globalRow.getByText('Inherited',{exact:true})).toBeVisible();
-    await globalRow.getByRole('button',{name:'Hide here'}).click();
-    await expect(globalRow.getByText('Hidden here')).toBeVisible();
-    await globalRow.getByRole('button',{name:'Show here'}).click();
-    await expect(globalRow.getByText('Inherited',{exact:true})).toBeVisible();
+    // A locally owned version of this lineage replaces its inherited ancestor in Design.
+    await expect(globalRow).toHaveCount(0);
+    // The inherited variation remains visible and exposes the current action menu.
+    await regionalVariationRow.getByRole('button',{name:'Actions for '+variation.title,exact:true}).click();
+    await regionalVariationRow.getByRole('button',{name:'Hide from this library',exact:true}).click();
+    await expect(regionalVariationRow.getByText('Hidden here',{exact:true})).toBeVisible();
+    expect((await teamPlaybook(team.id)).some(entry=>entry.key===variation.key)).toBe(false);
+    await regionalVariationRow.getByRole('button',{name:'Actions for '+variation.title,exact:true}).click();
+    await regionalVariationRow.getByRole('button',{name:'Show in this library',exact:true}).click();
+    await expect(regionalVariationRow.getByText('Inherited',{exact:true})).toBeVisible();
+    expect((await teamPlaybook(team.id)).some(entry=>entry.key===variation.key)).toBe(true);
+    // A locally owned version of this lineage replaces its inherited ancestor in Design.
+    await expect(globalRow).toHaveCount(0);
     expect(await teamPlaybook(team.id)).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:changedGlobal.revision})]));
     expect(await playerCatalog()).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:changedGlobal.revision})]));
     const savedAssignment = (await (await director.get(`/api/practice/assignments/${assignment.id}`)).json()).assignment;
@@ -338,27 +350,27 @@ test('Global Library management runs inside Design', async ({ page, baseURL }) =
   const tabs = page.getByRole('navigation', {name:'Design sections'});
   const toolsTabs = page.getByRole('navigation', {name:'Global Library tools'});
   const [tabsBox, toolsTabsBox, toolsBox] = await Promise.all([tabs.boundingBox(),toolsTabs.boundingBox(),tools.boundingBox()]);
-  expect(tabsBox.y + tabsBox.height).toBeLessThanOrEqual(toolsTabsBox.y);
-  expect(toolsTabsBox.y + toolsTabsBox.height).toBeLessThanOrEqual(toolsBox.y + 1);
+  expect(toolsTabsBox.x).toBeGreaterThanOrEqual(tabsBox.x+tabsBox.width-1);
+  expect(toolsBox.width).toBeGreaterThan(page.viewportSize().width-300);
   await tools.getByRole('searchbox', {name:'Search situations'}).fill(key);
-  await tools.getByRole('checkbox', {name:key}).check();
+  await tools.getByRole('checkbox', {name:'Select '+key,exact:true}).check();
   const download = page.waitForEvent('download');
-  await tools.getByRole('button', {name:'Download selected (1)'}).click();
+  await tools.getByRole('button', {name:'Export (1)',exact:true}).click();
   const bundle = await download;
   expect(bundle.suggestedFilename()).toBe('diamond-defence-situations.json');
   await toolsTabs.getByRole('button', {name:'Import',exact:true}).click();
   await tools.getByLabel('Situation JSON file').setInputFiles(await bundle.path());
-  await tools.getByRole('button', {name:'Review import'}).click();
-  await expect(tools.getByText(key + ' · unchanged')).toBeVisible();
+  await tools.getByRole('button', {name:'Review',exact:true}).click();
+  await expect(tools.getByRole('table',{name:'Import preview'}).getByRole('row').filter({hasText:key})).toContainText('Duplicate');
   await toolsTabs.getByRole('button', {name:'Reorder',exact:true}).click();
   await expect(tools.getByRole('button', {name:'Move up: ' + key})).toBeVisible();
   await toolsTabs.getByRole('button', {name:'Delete situations',exact:true}).click();
   await tools.getByRole('searchbox', {name:'Search situations'}).fill(key);
-  await tools.getByRole('checkbox', {name:key}).check();
+  await tools.getByRole('checkbox', {name:'Select '+key,exact:true}).check();
   await tools.getByRole('button', {name:'Review deletion (1)'}).click();
   await expect(tools.getByRole('region', {name:'Deletion impact'})).toBeVisible();
   await tools.getByLabel('Type DELETE to confirm').fill('DELETE');
-  await tools.getByRole('button', {name:'Delete permanently'}).click();
+  await tools.getByRole('button', {name:'Delete (1)',exact:true}).click();
   await expect(tools.getByRole('status')).toHaveText('Permanently deleted 1 situations.');
 });
 
@@ -386,12 +398,12 @@ test('Platform Admin can import a scoped copy without changing the Global Librar
   await importer.getByLabel('Situation JSON file').setInputFiles({
     name:'situations.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(bundle)),
   });
-  await importer.getByRole('button',{name:'Review import'}).click();
-  await expect(importer).toContainText('creates an independent copy');
+  await importer.getByRole('button',{name:'Review',exact:true}).click();
+  await expect(importer.getByRole('table',{name:'Import preview'})).toContainText(source.title);
   await expect(importer).toContainText(region.name);
-  await importer.getByRole('button',{name:'Select all publishable'}).click();
+  await importer.getByRole('button',{name:'Select eligible',exact:true}).click();
   page.once('dialog',dialog => dialog.accept());
-  await importer.getByRole('button',{name:'Publish selected (1)'}).click();
+  await importer.getByRole('button',{name:'Import (1)',exact:true}).click();
   await expect(importer.getByRole('status')).toHaveText('Published 1 situations.');
   const regionResult = await (await page.request.get('/api/design?' + scope)).json();
   const copy = regionResult.entries.find(item => item.title === source.title);
@@ -418,91 +430,26 @@ test('Platform Admin can import a scoped copy without changing the Global Librar
   } finally { await coach.dispose(); }
 });
 
-test('staff workspaces share horizontal tabs and full-width panes', async ({page,baseURL}) => {
-  await page.setViewportSize({width:1440,height:900});
-  expect((await page.request.post('/api/auth/login', {headers:{Origin:new URL(baseURL).origin},
-    data:{username:'admin',password:'password'}})).ok()).toBe(true);
-
-  async function expectAttachedTabs(workspace, pane, firstName, secondName) {
-    await expect(workspace).toBeVisible();
-    await expect(pane).toBeVisible();
-    const [navigation, content, first, second] = await Promise.all([
-      workspace.boundingBox(), pane.boundingBox(),
-      workspace.getByRole('button',{name:firstName,exact:true}).boundingBox(),
-      workspace.getByRole('button',{name:secondName,exact:true}).boundingBox(),
-    ]);
-    expect(Math.abs(navigation.y + navigation.height - content.y)).toBeLessThan(12);
-    expect(content.width).toBeGreaterThan(page.viewportSize().width * 0.9);
-    expect(Math.abs(first.y - second.y)).toBeLessThan(2);
-    expect(second.x).toBeGreaterThan(first.x + first.width - 1);
-    const inactive = workspace.getByRole('button',{name:secondName,exact:true});
-    await inactive.hover();
-    await expect(inactive).toHaveCSS('transform','none');
-    const [hovered, strip] = await Promise.all([inactive.boundingBox(), workspace.boundingBox()]);
-    expect(hovered.y - strip.y).toBeGreaterThanOrEqual(3);
-  }
-
-  const directoryHeaders = {Origin:new URL(baseURL).origin};
-  const organizationResponse = await page.request.post('/api/admin/workspace-directory', {
-    headers:directoryHeaders, data:{action:'create_organization',name:'Workspace Layout Club'},
-  });
-  expect(organizationResponse.ok()).toBe(true);
-  const organization = await organizationResponse.json();
-  expect((await page.request.post('/api/admin/workspace-directory', {
-    headers:directoryHeaders, data:{action:'create_region',organizationId:organization.id,name:'Workspace Layout Region'},
-  })).ok()).toBe(true);
-  await page.goto('/?workspace=org');
-  await expect(page).toHaveURL(/\/workspace\/org$/);
-  await page.locator('#appHeader').evaluate(header => { header.dataset.navTest = 'same-document'; });
-  const org = page.getByRole('navigation',{name:'Org sections'});
-  const orgPane = page.locator('#adminWorkspace');
-  await expectAttachedTabs(org,orgPane,'Organizations','People');
-  expect((await orgPane.boundingBox()).height).toBeLessThan(650);
-  const organizations = orgPane.locator('#adminOrganizationList');
-  const club = organizations.getByRole('button',{name:/Workspace Layout Club/});
-  await club.click();
-  await expect(club).toHaveAttribute('aria-current','true');
-  await expect(orgPane.getByRole('button',{name:/Workspace Layout Region/})).toBeVisible();
-  await page.setViewportSize({width:1040,height:740});
-  await expect(organizations).toBeHidden();
-  await orgPane.getByRole('navigation',{name:'Organization hierarchy'}).getByRole('button',{name:'Organizations'}).click();
-  await expect(organizations).toBeVisible();
-  await page.setViewportSize({width:1440,height:900});
-  await org.getByRole('button',{name:'People'}).click();
-  await expect(page.getByRole('heading',{name:'People'})).toBeVisible();
-
-  await page.getByRole('button',{name:'Training',exact:true}).click();
-  await expect(page).toHaveURL(/\/workspace\/training$/);
-  await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
-  const training = page.getByRole('navigation',{name:'Training sections'});
-  await expectAttachedTabs(training,page.locator('[data-coach-view="overview"]'),'Team overview','Reviews');
-  await page.setViewportSize({width:1040,height:740});
-  await training.getByRole('button',{name:'Reviews',exact:true}).click();
-  await expectAttachedTabs(training,page.locator('#coachResultsWorkspace'),'Team overview','Reviews');
-  await expect(page.getByRole('heading',{name:'Team Reviews'})).toBeVisible();
-
-  await page.getByRole('button',{name:'Design',exact:true}).click();
-  await expect(page).toHaveURL(/\/workspace\/design$/);
-  await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
-  const design = page.getByRole('navigation',{name:'Design sections'});
-  await page.setViewportSize({width:2560,height:1080});
-  await expectAttachedTabs(design,page.getByRole('region',{name:'Global Library',exact:true}),'Global Library','Manage library');
-  const nested = page.getByRole('navigation',{name:'Global Library tools'});
-  await expect(nested).toHaveCount(0);
-  await design.getByRole('button',{name:'Manage library'}).click();
-  await nested.getByRole('button',{name:'Import',exact:true}).click();
-  await expect(nested).toBeVisible();
-  await expect(page.getByRole('heading',{name:'Import situations'})).toBeVisible();
-  await design.getByRole('button',{name:'Global Library',exact:true}).click();
-  await expect(nested).toHaveCount(0);
-  await page.goBack();
-  await expect(page).toHaveURL(/\/workspace\/training$/);
-  await expect(training).toBeVisible();
-  await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
-  await page.goForward();
-  await expect(design).toBeVisible();
-  await page.getByRole('button',{name:'Organization',exact:true}).click();
-  await expect(page).toHaveURL(/\/workspace\/org$/);
-  await expect(org).toBeVisible();
-  await expect(page.locator('#appHeader')).toHaveAttribute('data-nav-test','same-document');
+test('staff sidebars preserve the application shell and keep content within the viewport',async({page,baseURL})=>{
+ expect((await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{username:'admin',password:'password'}})).ok()).toBe(true);
+ await page.goto('/workspace/org');await expect(page.locator('#adminWorkspace')).toBeVisible();
+ await page.locator('#appHeader').evaluate(el=>el.dataset.shellMarker='mounted');
+ for(const [button,path,content,nav] of [
+  ['Training','training','#coachCard','Training navigation'],
+  ['Design','design','#designWorkspace','Design sections'],
+  ['Organization','org','#adminWorkspace','Org sections']]){
+   await page.locator('#appHeader').getByRole('button',{name:button,exact:true}).click();
+   await expect(page).toHaveURL(new RegExp('/workspace/'+path));
+   const sectionNav=page.getByRole('navigation',{name:nav,exact:true});
+   await expect(page.locator(content)).toBeVisible();
+   await expect(sectionNav).toBeAttached();
+   if(!await sectionNav.isVisible())await page.getByRole('button',{name:'Sections',exact:true}).click();
+   await expect(sectionNav).toBeVisible();
+   await expect(page.locator('#appHeader')).toHaveAttribute('data-shell-marker','mounted');
+   for(const width of [1040,1440,2560]){
+    await page.setViewportSize({width,height:900});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-innerWidth)).toBeLessThanOrEqual(1);
+    await expect(page.locator(content)).toBeVisible();
+   }
+ }
 });

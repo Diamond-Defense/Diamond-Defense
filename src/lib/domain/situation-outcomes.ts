@@ -269,8 +269,7 @@ export function recommendedSituationOutcomes(situation: Pick<Situation, 'runners
   }else if(['caught_fly','caught_line'].includes(result)){outsRecorded=1;batterOutType='catch';batterOutOrder=1;}
   else if(result==='sacrifice_fly'){
     outsRecorded=1;batterOutType='catch';batterOutOrder=1;
-    const leadRunner=bases.at(-1);
-    if(leadRunner)runners.set(leadRunner,{startingBase:leadRunner,result:'home',taggedUp:true});
+    if(runners.has('third'))runners.set('third',{startingBase:'third',result:'home',taggedUp:true});
   }else if(result==='fielders_choice'){
     batterAdvance=1;outsRecorded=bases.length?1:0;
     const forcedOut=bases.includes('third')&&bases.includes('second')&&bases.includes('first')?'third':bases.includes('second')&&bases.includes('first')?'second':bases.includes('first')?'first':null;
@@ -283,4 +282,43 @@ export function recommendedSituationOutcomes(situation: Pick<Situation, 'runners
     batterOutType='batter_first';batterOutOrder=bases.includes('first')?2:1;
   }
   return {batterAdvance,playOutcome:{result,batterResult:batterResultFromAdvance(batterAdvance),outsRecorded,...(batterOutType?{batterOutType}:{}),...(batterOutOrder?{batterOutOrder}:{}),reviewStatus:'ready'},runnerOutcomes:[...runners.values()]};
+}
+
+
+/** Authoring suggestions, never automatic edits to saved situations. */
+export function suggestedOutfieldPlan(situation: Situation, kind: string, location: string): {
+  outcomes: NormalizedSituationOutcomes; target: string; note: string;
+} {
+ const current=situation.playOutcome?.result||'single';
+ const caught=kind==='caught'||kind==='current'&&['caught_fly','caught_line','sacrifice_fly'].includes(current);
+ const extra=kind==='past'||kind==='current'&&['double','triple','home_run','ground_rule_double'].includes(current);
+ const result: PlayResult=kind==='current'?current:caught?(situation.hitType==='line'?'caught_line':'caught_fly'):extra?'double':'single';
+ const outcomes=recommendedSituationOutcomes(situation,result);
+ const runners=situation.runnersOn;
+ const outs=Number(situation.outs||0);
+ let target='Second';
+ let note='Throw through the cutoff toward the target; redirect or hold when the play changes.';
+ if(caught){
+  target='Read the tag-up';
+  if(outs===2){
+   outcomes.playOutcome.result=situation.hitType==='line'?'caught_line':'caught_fly';
+   outcomes.playOutcome.outsRecorded=1;
+   for(const runner of outcomes.runnerOutcomes){runner.result='hold';runner.taggedUp=false;}
+   target='Inning over';note='The catch records the third out. No runner scores.';
+  }
+  else if(location.startsWith('Deep ')&&runners.third){
+   outcomes.playOutcome.result='sacrifice_fly';
+   const third=outcomes.runnerOutcomes.find(r=>r.startingBase==='third');
+   if(third){third.result='home';third.taggedUp=true;}
+   target='Home';note='Suggest a tag-up from third on this deep catch. Confirm the runner can beat the throw; other runners hold unless you choose otherwise.';
+  }else note='Runners hold by default. Choose a tag-up destination when the catch, runner speed, and throwing opportunity support it.';
+ }else if(extra){
+  target=runners.first?'Home':'Third';
+  note='Ball past the outfielder: suggest a double. Runners advance two bases by default; first-to-home is a coach decision. Set the relay toward the next threatened base.';
+  if(result==='home_run')target='No throw';
+ }else if(result==='single'){
+  target=runners.second?'Home':runners.first?'Third':'Second';
+  note+=' Two bases ahead uses the starting base of the lead runner still threatened by the play; a runner already scoring from third does not determine the target. First-to-third and second-to-home remain coach decisions.';
+ }else {target='Review the play';note='Keep the selected result and review the appropriate defensive target.';}
+ return {outcomes,target,note};
 }

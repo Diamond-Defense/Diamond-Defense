@@ -907,6 +907,7 @@ test.describe('portable SQLite API', () => {
 
   test('enforces temporary passwords, lockouts, password changes, and global sign-out', async ({ request, baseURL }) => {
     const origin = new URL(baseURL).origin;
+    const teamId = `security-team-${Date.now()}`;
     const userId = `account-security-${Date.now()}`;
     const temporaryPassword = 'Temporary-4821';
     const permanentPassword = 'Permanent-5932';
@@ -917,7 +918,10 @@ test.describe('portable SQLite API', () => {
     });
     expect(adminLogin.ok()).toBeTruthy();
 
-    const created = await request.post('/api/admin/teams/13u-black/members', {
+    const teamResponse=await request.post('/api/admin/teams',{headers:{Origin:origin},data:{id:teamId,name:teamId}});
+    expect(teamResponse.status()).toBe(201);const team=(await teamResponse.json()).record;
+
+    const created = await request.post(`/api/admin/teams/${teamId}/members`, {
       headers: { Origin: origin },
       data: {
         userId,
@@ -937,7 +941,7 @@ test.describe('portable SQLite API', () => {
         headers: { Origin: origin },
         data: {
           role: 'player',
-          teamId: '13u-black',
+          teamId,
           playerId: userId,
           password: temporaryPassword,
         },
@@ -961,7 +965,7 @@ test.describe('portable SQLite API', () => {
         headers: { Origin: origin },
         data: {
           role: 'player',
-          teamId: '13u-black',
+          teamId,
           playerId: userId,
           password: permanentPassword,
         },
@@ -980,7 +984,7 @@ test.describe('portable SQLite API', () => {
           headers: { Origin: origin },
           data: {
             role: 'player',
-            teamId: '13u-black',
+            teamId,
             playerId: userId,
             password: 'Definitely-Wrong',
           },
@@ -991,7 +995,7 @@ test.describe('portable SQLite API', () => {
         headers: { Origin: origin },
         data: {
           role: 'player',
-          teamId: '13u-black',
+          teamId,
           playerId: userId,
           password: permanentPassword,
         },
@@ -999,7 +1003,7 @@ test.describe('portable SQLite API', () => {
       expect(lockedCorrectLogin.status()).toBe(429);
 
       const reset = await request.put(
-        `/api/admin/teams/13u-black/members/${encodeURIComponent(userId)}/password`,
+        `/api/admin/teams/${teamId}/members/${encodeURIComponent(userId)}/password`,
         {
           headers: { Origin: origin },
           data: { password: resetPassword },
@@ -1012,7 +1016,7 @@ test.describe('portable SQLite API', () => {
         headers: { Origin: origin },
         data: {
           role: 'player',
-          teamId: '13u-black',
+          teamId,
           playerId: userId,
           password: resetPassword,
         },
@@ -1023,12 +1027,13 @@ test.describe('portable SQLite API', () => {
       await player.dispose();
       await secondDevice.dispose();
       const archived = await request.delete(
-        `/api/admin/teams/13u-black/members/${encodeURIComponent(userId)}`,
+        `/api/admin/teams/${teamId}/members/${encodeURIComponent(userId)}`,
         {
           headers: { Origin: origin, 'If-Match': String(createdRecord.revision) },
         },
       );
       expect(archived.ok()).toBeTruthy();
+      await request.delete(`/api/admin/teams/${teamId}`,{headers:{Origin:origin,'If-Match':String(team.revision)}});
     }
   });
 

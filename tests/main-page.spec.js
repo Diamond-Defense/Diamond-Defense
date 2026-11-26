@@ -37,7 +37,8 @@ test('top navigation and field fit desktop and tablet without changing field pro
 test('Playbook retains metadata and returns keyboard focus to the moved trigger',async({page,baseURL})=>{
  await login(page,baseURL);const trigger=page.locator('#playbookBrowserToggle');await trigger.click();
  const dialog=page.getByRole('dialog',{name:'Playbook',exact:true});await expect(dialog).toBeVisible();
- await expect(dialog.locator('.playbook-card-metadata').first()).not.toBeEmpty();
+ await expect(dialog.locator('.library-card-badges').first()).toContainText(/Foundational|Intermediate|Advanced/);
+ await expect(dialog.locator('.library-card-details').first()).not.toBeEmpty();
  await expect(dialog.locator('.training-base-map').first().locator('i')).toHaveCount(3);
  await expect(page.locator('#appHeader')).toHaveJSProperty('inert',true);
  await page.keyboard.press('Escape');await expect(dialog).toBeHidden();await expect(trigger).toBeFocused();

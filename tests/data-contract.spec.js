@@ -72,8 +72,9 @@ test.describe('static data contracts', () => {
     const situation = (key) => situations.find((item) => item.key === key);
 
     expect(situation('BD-02').targets['1B'].notes).toContain('possible back pick');
-    expect(situation('BD-02').targets['2B'].notes).toContain('SS side of 2B, cover the bag');
-    expect(situation('BD-02').targets['2B'].notes).toContain('2B side of the field, you are the cut/relay');
+    expect(situation('BD-02').targets['2B'].notes).toContain('For a ball on the SS side, cover second instead.');
+    expect(situation('BD-02').targets['2B'].notes).toContain('For this single on the 2B side, line up between CF and second as the cut/relay.');
+    expect(situation('BD-02').playSeq).toEqual(['CF', '2B', 'SS']);
     expect(situation('BD-04').playSeq).toEqual(['LF', 'SS', '3B']);
 
     expect(situation('BD-06').targets['1B']).toEqual(expect.objectContaining({ x: 2166, y: 1184 }));

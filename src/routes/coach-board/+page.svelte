@@ -3,7 +3,7 @@
   import {emptyHistory,recordHistory,stepHistory} from '$lib/plays/history.js';
   import {importBoardFile,exportBoardFile,boardFileName} from '$lib/plays/board-transfer.js';
   import { TEACHING_CATEGORIES, SITUATION_DIFFICULTIES } from '$lib/domain/situation-metadata';
-  import { validateSituationOutcomes, recommendedSituationOutcomes } from '$lib/domain/situation-outcomes';
+  import { validateSituationOutcomes, recommendedSituationOutcomes, suggestedOutfieldPlan } from '$lib/domain/situation-outcomes';
   import { inferBallLocation, suggestSituationName, normalizeAudience } from '$lib/domain/situation-identity';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
@@ -154,6 +154,7 @@
     return true;
   }
   function restoreSituation(situation, baseline=situation, reason='', panel='timeline'){
+    suggestionKind='current';suggestionsOpen=false;
     linkedSituation=clone(situation);
     situationBaseline=clone(baseline);
     pendingSituation=!situation.revision||JSON.stringify(situation)!==JSON.stringify(baseline);
@@ -209,6 +210,38 @@
       copy.variationTagged=true;
       restoreSituation(copy,null);
     }else restoreSituation(item);
+  }
+  let suggestionKind=$state('current');
+  let suggestionsOpen=$state(false);
+  const outfieldPlan=$derived.by(()=>board.battedBall?suggestedOutfieldPlan(draftSituation(),suggestionKind,inferBallLocation(board.battedBall.destination)):null);
+  const originalSuggestionRoutes=$derived(linkedSituation?fromSituation(linkedSituation,{coachBoard:true}).movements:{});
+  function protectedSuggestionRoute(id){
+    if(!hasCustomRunning(board,id))return false;
+    // Legacy projections generate straight base routes. They are not authored routes.
+    return !linkedSituation||!!linkedSituation.boardAnimation?.movements?.[id]||JSON.stringify(board.movements[id])!==JSON.stringify(originalSuggestionRoutes[id]);
+  }
+  function applyOutfieldSuggestions(){
+    if(!outfieldPlan)return;
+    edit();
+    const plan=outfieldPlan.outcomes;
+    for(const id of ['batter','first','second','third'])if(!protectedSuggestionRoute(id))useAutomaticRunning(board,id);
+    result=plan.playOutcome.result;
+    if(!protectedSuggestionRoute('batter')){
+      batterResult=plan.playOutcome.batterResult;
+      outDetails.batter={type:plan.playOutcome.batterOutType,order:plan.playOutcome.batterOutOrder};
+    }
+    outsRecorded=plan.playOutcome.outsRecorded;
+    for(const runner of plan.runnerOutcomes){
+      if(protectedSuggestionRoute(runner.startingBase))continue;
+      runnerResults[runner.startingBase]=runner.result;
+      taggedUp[runner.startingBase]=runner.taggedUp;
+      outDetails[runner.startingBase]={type:runner.outType,order:runner.outOrder};
+    }
+    if(suggestionKind!=='current'&&board.battedBall){
+      board.battedBall.fielding=suggestionKind==='caught'?'caught':'ground';
+    }
+    confirmed=false;updateRunningOutcomes();
+    message='Suggested outcomes applied to the draft. Custom running routes and their outcomes were preserved. Review before saving; defensive routes and throws were not replaced.';
   }
   function applyRecommendedOutcomes(){
     const defaults=recommendedSituationOutcomes(draftSituation(),caughtInAir&&result==='double_play'?catchResult:result);
@@ -279,7 +312,7 @@
     syncPlayOutcome();
   }
   function updateRunningOutcomes(){
-    board.running={result:RUN_RESULTS.includes(result)?result:batterResult==='out'?'out':'single',destinations:{
+    board.running={result:RUN_RESULTS.includes(result)?result:batterResult==='out'?'out':'single',taggedUp:{...taggedUp},destinations:{
       batter:batterResult,
       ...Object.fromEntries(['first','second','third'].filter(base=>board.runners[base]).map(base=>[base,runnerResults[base]||'hold'])),
     }};
@@ -963,6 +996,7 @@
     pendingSituation=false;cleanSnapshot=editorSnapshot();
   }
   function restoreBoard(item){
+    suggestionKind='current';suggestionsOpen=false;
     trainingDetails=null;linkedSituation=null;situationBaseline=null;pendingSituation=false;rationale='';
     hydrate(item.board);
     boardId=item.id;revision=item.revision;
@@ -1044,6 +1078,7 @@
                   {#if board.battedBall.type!=='ground_ball'}<option value="caught">Caught in the air</option>{/if}
                   <option value="ground">Fielded on the ground</option>
                 </select></label>
+                {#if board.battedBall.fielding===undefined}<button onclick={()=>changeHitField('fielding',hitFielding(board.battedBall))}>Confirm fielding method</button><p>This older play uses a default fielding method. Confirm it to clear the library review flag.</p>{/if}
                 <label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Nearest fielder</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
 {/snippet}
 {#snippet runningControls()}
@@ -1166,7 +1201,27 @@
 {/snippet}
 {#snippet outcomes()}
     <label>Play result <select value={result} onchange={e=>changePlayResult(e.currentTarget.value)}>{#each playResults as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
-    <button onclick={applyRecommendedOutcomes}>Use recommended outcomes</button>
+    <button aria-expanded={suggestionsOpen} onclick={()=>suggestionsOpen=!suggestionsOpen}>Review suggested outcomes</button>
+    {#if suggestionsOpen&&outfieldPlan}
+      <section class="outfield-suggestions" aria-label="Suggested outfield outcomes">
+        <label>Teaching setup <select bind:value={suggestionKind}>
+          <option value="current">Use selected play result</option>
+          <option value="routine">Routine single</option>
+          <option value="past">Ball past the outfielder</option>
+          <option value="caught" disabled={board.battedBall?.type==='ground_ball'}>Caught ball</option>
+        </select></label>
+        <p>Suggested result: <strong>{outfieldPlan.outcomes.playOutcome.result.replaceAll('_',' ')}</strong></p>
+        <table><caption>Proposed runner destinations</caption><thead><tr><th>Runner</th><th>Destination</th></tr></thead><tbody>
+          <tr><th>Batter</th><td>{protectedSuggestionRoute('batter')?'Keep custom route':outfieldPlan.outcomes.playOutcome.batterResult}</td></tr>
+          {#each outfieldPlan.outcomes.runnerOutcomes as runner}<tr><th>Runner on {runner.startingBase}</th><td>{protectedSuggestionRoute(runner.startingBase)?'Keep custom route':runner.result}{runner.taggedUp&&!protectedSuggestionRoute(runner.startingBase)?' (tag up)':''}</td></tr>{/each}
+        </tbody></table>
+        <p>Defensive target: <strong>{outfieldPlan.target}</strong></p>
+        <p>{outfieldPlan.note}</p>
+        <p>These are teaching suggestions. Runner speed, outfield arms, and the developing play may change the decision. Defensive routes and throws stay as authored.</p>
+        <button disabled={protectedSuggestionRoute('batter')||['first','second','third'].some(base=>board.runners[base]&&protectedSuggestionRoute(base)&&outfieldPlan.outcomes.playOutcome.result!==result)} onclick={applyOutfieldSuggestions}>Apply suggested outcomes</button>
+        {#if protectedSuggestionRoute('batter')||['first','second','third'].some(base=>board.runners[base]&&protectedSuggestionRoute(base)&&outfieldPlan.outcomes.playOutcome.result!==result)}<p>Keep the current result for custom routes, or switch those routes to automatic running before applying a different result.</p>{/if}
+      </section>
+    {/if}
     <label>Batter result <select bind:value={batterResult} disabled={caughtInAir} onchange={()=>confirmed=false}>{#each (caughtInAir?['out']:['out','first','second','third','home']) as value}<option value={value}>{value}</option>{/each}</select></label>
     {#if batterResult==='out'&&!caughtInAir}{@render outControls('batter','Batter')}{/if}
     <label>Outs recorded <select bind:value={outsRecorded} onchange={()=>confirmed=false}>{#each (caughtInAir?[1,2,3].slice(0,3-board.outs):[0,1,2,3]) as value}<option value={value}>{value}</option>{/each}</select></label>
@@ -1270,7 +1325,7 @@
     </nav>
   {#if editorPanel==='details'&&trainingMode}
     <section class="board-controls mode-controls" aria-label="Situation details">
-      <label>Staff variant <input bind:value={trainingDetails.audience.staffVariant} /></label>
+      <label>Variant name <input bind:value={trainingDetails.audience.staffVariant} /></label>
       <label>Player context <textarea bind:value={trainingDetails.desc}></textarea></label>
       <label>Primary teaching category <select bind:value={trainingDetails.primaryCategory}>{#each TEACHING_CATEGORIES as category}<option value={category.id}>{category.label}</option>{/each}</select></label>
       <label>Difficulty <select bind:value={trainingDetails.difficulty}>{#each SITUATION_DIFFICULTIES as difficulty}<option value={difficulty.id}>{difficulty.label}</option>{/each}</select></label>
@@ -1496,6 +1551,9 @@
 </main>
 {#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
 <style>
+ .outfield-suggestions{display:grid;gap:10px;border-left:3px solid var(--border-emphasis);padding:12px;min-width:0}
+ .outfield-suggestions table{width:100%;border-collapse:collapse;font-size:13px}.outfield-suggestions th,.outfield-suggestions td{text-align:left;padding:6px;border-bottom:1px solid var(--border)}.outfield-suggestions caption{text-align:left;font-weight:600;margin-bottom:6px}
+
   .action-category{margin-top:8px}.action-category>summary{cursor:pointer;padding:8px 0;font-weight:700}.action-category>summary:focus-visible{outline-offset:2px}
   .training-scoring-tools{margin-top:12px}.training-scoring-tools>summary{cursor:pointer;font-weight:700}
   .training-authoring-stages{display:flex;flex-wrap:wrap;gap:6px}

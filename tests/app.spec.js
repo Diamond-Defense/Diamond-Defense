@@ -318,7 +318,7 @@ test.describe('Diamond Defence regression behavior', () => {
     const directorSwitch = directorRow.getByRole('switch');
     await expect(directorSwitch).not.toBeChecked();
     await directorSwitch.check();
-    await expect(page.locator('#adminOperationStatus')).toHaveText('Designer setting saved.');
+    await expect(directorRow.getByRole('status')).toHaveText('Saved');
     await expect(directorSwitch).toBeChecked();
     await expect(access.locator('.org-access-entry').filter({ hasText: 'Coach' }).getByRole('switch')).not.toBeChecked();
 
@@ -727,24 +727,25 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(currentCard).toHaveCSS('border-left-color', await semanticColor(page, '--selection-border'));
     await expect(currentCard).toHaveCSS('box-shadow', 'none');
     await expect(currentCard).toHaveAttribute('aria-current', 'true');
-    await expect(currentCard.locator('.playbook-card-current')).toHaveText('✓ Current');
-    // Difficulty badges use the new restrained palette; labels still identify each level.
-    for (const [level, token] of [['foundational', '--success'], ['intermediate', '--text-secondary'], ['advanced', '--text-secondary']]) {
-      const label = browser.locator(`.playbook-card-difficulty[data-difficulty="${level}"]`).first();
-      await expect(label).toHaveCSS('color', await semanticColor(page, token));
+    await expect(currentCard.locator('.library-card-current')).toHaveText('✓ Current');
+    // Difficulty remains readable and each level has its approved distinct color.
+    const colors = [];
+    for (const [level, token] of [['foundational', '--success'], ['intermediate', '--info'], ['advanced', null]]) {
+      const label = browser.locator(`.library-card-difficulty[data-difficulty="${level}"]`).first();
+      await expect(label).toHaveText(level[0].toUpperCase()+level.slice(1));
+      if(token) await expect(label).toHaveCSS('color', await semanticColor(page, token));
+      colors.push(await label.evaluate(el=>getComputedStyle(el).color));
     }
+    expect(new Set(colors).size).toBe(3);
     const currentLayout = await currentCard.evaluate(card => {
-      const title = card.querySelector('.playbook-card-heading strong').getBoundingClientRect();
-      const label = card.querySelector('.playbook-card-current');
-      const bounds = label.getBoundingClientRect();
-      const height = card.getBoundingClientRect().height;
-      label.hidden = true;
-      const heightWithoutLabel = card.getBoundingClientRect().height;
-      label.hidden = false;
-      return { besideTitle: bounds.left >= title.right && bounds.top < title.bottom, height, heightWithoutLabel };
+      const title = card.querySelector('.library-card-title').getBoundingClientRect();
+      const label = card.querySelector('.library-card-current').getBoundingClientRect();
+      const badges = card.querySelector('.library-card-badges').getBoundingClientRect();
+      const bounds = card.getBoundingClientRect();
+      const overlaps = label.left<badges.right && label.right>badges.left && label.top<badges.bottom && label.bottom>badges.top;
+      return {aboveTitle:label.bottom<=title.top,overlaps,contained:label.left>=bounds.left&&label.right<=bounds.right};
     });
-    expect(currentLayout.besideTitle).toBe(true);
-    expect(currentLayout.height).toBe(currentLayout.heightWithoutLabel);
+    expect(currentLayout).toEqual({aboveTitle:true,overlaps:false,contained:true});
     const emptyCard=page.locator('.playbook-situation-card[data-situation-key="BD-01"]');
     await expect(emptyCard.locator('.training-base-map i')).toHaveCount(3);
     await expect(emptyCard.locator('.training-base-map .is-occupied')).toHaveCount(0);
@@ -752,8 +753,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(emptyCard).toHaveAttribute('aria-label', /Bases empty, 0 outs/);
     expect(await page.evaluate(()=>{
       const fixture={title:'Line Drive to LF — Runner on First',runnersOn:{first:true,second:false,third:false},outs:2};
-      const graphic=playbookStateGraphic(fixture);
-      return {short:playbookCardTitle(fixture),mismatch:playbookCardTitle({...fixture,runnersOn:{}}),custom:playbookCardTitle({...fixture,title:'Custom — Keep this wording'}),occupied:graphic.querySelectorAll('.is-occupied').length,outs:graphic.querySelectorAll('.is-recorded').length};
+      const shared=window._diqLibraryCards;
+      const shell=document.createElement('article'),graphic=document.createElement('button');shell.append(graphic);
+      shared.renderLibraryCardContent(graphic,shared.libraryCardModel(fixture));
+      const observed={short:shared.libraryCardModel(fixture).cardTitle,mismatch:shared.libraryCardModel({...fixture,runnersOn:{}}).cardTitle,custom:shared.libraryCardModel({...fixture,title:'Custom — Keep this wording'}).cardTitle,occupied:graphic.querySelectorAll('.is-occupied').length,outs:graphic.querySelectorAll('.is-recorded').length};
+      shared.disconnectLibraryCard(graphic);
+      return observed;
     })).toEqual({short:'Line Drive to LF',mismatch:'Line Drive to LF — Runner on First',custom:'Custom — Keep this wording',occupied:1,outs:2});
 
     const layout = await page.locator('.playbook-browser-list').evaluate((list) => {
@@ -791,10 +796,13 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(browser).toBeHidden();
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-14');
     await expect(page.locator('#descHud')).toHaveText('Hit to Left-Center Field');
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-heading strong')).toHaveText('Hit to Left-Center Field');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .library-card-title')).toHaveText('Hit to Left-Center Field');
     await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-reference')).toHaveCount(0);
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-difficulty')).toHaveText(/^(Foundational|Intermediate|Advanced)$/);
-    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .playbook-card-category')).toHaveText('Cutoffs & Relays');
+    await expect(page.locator('.playbook-situation-card[data-situation-key="BD-14"] .library-card-difficulty')).toHaveText(/^(Foundational|Intermediate|Advanced)$/);
+    const selectedShell=page.locator('.library-card-shell').filter({has:page.locator('.playbook-situation-card[data-situation-key="BD-14"]')});
+    await expect(selectedShell.locator('.playbook-card-category,.library-card-category,details')).toHaveCount(0);
+    await expect(selectedShell.locator('.library-card-placement')).not.toBeEmpty();
+    await expect(selectedShell.locator('.library-card-fielding')).not.toBeEmpty();
   });
 
   test('guides a player through required practice and restores free play when staff closes it', async ({ page, baseURL }) => {
@@ -2099,13 +2107,14 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.goto('/?workspace=global-tools');
     await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
     const original=(await (await page.request.get('/api/situations')).json())[0];
+    const expectedLocation=await page.evaluate(hit=>window._diqLibraryCards.libraryCardModel({hit}).location,original.hit);
     await isolatePublishedSituation(original);
     await page.goto('/coach-board');
     await openLibraryPlay(page,'situation',original.key,original.title);
     await page.getByLabel('Situation name').fill('Published field coverage');
     await selectStage(page,'Details');
     await page.getByLabel('Player context').fill('All editor changes persist');
-    await page.getByLabel('Staff variant').fill('Staff-only fixture');
+    await page.getByLabel('Variant name').fill('Staff-only fixture');
     await page.getByLabel('Difficulty').selectOption('advanced');
     await selectStage(page,'Starting situation');
     await page.getByRole('combobox',{name:'Outs',exact:true}).selectOption('1');
@@ -2114,7 +2123,12 @@ test.describe('Diamond Defence regression behavior', () => {
     await page.getByLabel('Batted-ball type').selectOption('ground_ball');
     await expect(page.getByLabel('Ball location')).toHaveCount(0);
     await page.getByRole('combobox',{name:'Play result',exact:true}).selectOption('double');
-    await page.getByRole('button',{name:'Use recommended outcomes'}).click();
+    await page.getByRole('button',{name:'Review suggested outcomes',exact:true}).click();
+    const suggestions=page.getByRole('region',{name:'Suggested outfield outcomes'});
+    await expect(suggestions).toBeVisible();
+    await expect(suggestions.getByLabel('Teaching setup')).toHaveValue('current');
+    await expect(suggestions.getByRole('row').filter({hasText:'Batter'})).toContainText('second');
+    await suggestions.getByRole('button',{name:'Apply suggested outcomes',exact:true}).click();
     await expect(page.getByLabel('Batter result')).toHaveValue('second');
     await selectStage(page,'Review');
     await page.getByText('Scoring targets',{exact:true}).click();
@@ -2130,7 +2144,7 @@ test.describe('Diamond Defence regression behavior', () => {
     const record=(await (await page.request.get('/api/situations')).json()).find(item=>item.key===original.key);
     expect(record).toMatchObject({
       title:'Published field coverage',desc:'All editor changes persist',audience:{staffVariant:'Staff-only fixture'},difficulty:'advanced',
-      ballLocation:'LF',outs:1,runnersOn:{first:true},hitType:'grounder',batterAdvance:2,
+      ballLocation:expectedLocation,hit:original.hit,outs:1,runnersOn:{first:true},hitType:'grounder',batterAdvance:2,
       playOutcome:{result:'double',batterResult:'second'},playSeq:['CF','SS','3B'],
       seqNote:'Published throw sequence note',targets:{P:{tol:125,notes:'Published pitcher coaching note'}}
     });
@@ -2548,18 +2562,8 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(download.suggestedFilename()).toBe('diamond-defense-13u-black-results.csv');
     await expect(page.locator('#coachResultsStatus')).toContainText('CSV export downloaded');
 
-    await page.getByRole('button', { name: 'Design' }).click();
-    await expect(page.locator('#coachResultsWorkspace')).toBeHidden();
-    await expect(page.locator('.field-card')).toBeHidden();
-    const inherited = page.getByRole('table', { name: 'Inherited situations', exact: true });
-    await expect(inherited).toBeVisible();
-    await inherited.locator('.situation-title').first().click();
-    // A coach without Designer can browse inherited plays but cannot propose changes.
-    await expect(page.getByRole('dialog').getByRole('link', { name: 'Propose update', exact: true })).toHaveCount(0);
-    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
-    await inherited.locator('tbody tr').first().getByRole('button', { name: /^Actions for / }).click();
-    await expect(page.getByRole('link', { name: 'Propose update', exact: true })).toHaveCount(0);
-    await page.keyboard.press('Escape');
+    await expect(page.locator('#designWorkspaceBtn')).toBeHidden();
+    expect((await page.request.get('/api/design')).status()).toBe(403);
     const admin = await requestFactory.newContext({ baseURL });
     const headers = { Origin: new URL(baseURL).origin };
     let originalGrant;
@@ -2571,7 +2575,8 @@ test.describe('Diamond Defence regression behavior', () => {
       expect((await admin.post('/api/admin/workspace-directory', { headers, data: {
         action: 'stage_access', userId: 'staff-coach', role: 'coach', scopeId: '13u-black', canDesign: true,
       } })).ok()).toBe(true);
-      await page.reload();
+      await page.goto('/workspace/design?type=team&id=13u-black');
+      const inherited=page.getByRole('table',{name:'Inherited situations',exact:true});
       await inherited.locator('tbody tr').first().getByRole('button', { name: /^Actions for / }).click();
       await page.getByRole('link', { name: 'Propose update', exact: true }).click();
       await expect(page.getByRole('navigation', { name: 'Editor tools' })).toBeVisible();

@@ -41,8 +41,8 @@ test.describe('release readiness', () => {
     expect(publicLayout.documentOverflow).toBeLessThanOrEqual(1);
     expect(publicLayout.bodyOverflow).toBeLessThanOrEqual(1);
 
-    await page.locator('#playerBtn').focus();
-    await page.keyboard.press('Enter');
+    // The signed-out entry opens Login automatically. Preserve its keyboard focus.
+    await expect(page.locator('#signInUsername')).toBeFocused();
     const dialog = page.locator('#playerModalOverlay');
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('role', 'dialog');
@@ -101,7 +101,7 @@ test.describe('release readiness', () => {
     await page.locator('#playerBtn').click();
     await Promise.all([page.waitForEvent('load'),page.locator('#accountLogoutBtn').click()]);
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Login');
-    await expect(page.getByRole('dialog',{name:'Login'}).getByLabel('Username')).toBeFocused();
+    await expect(page.locator('#signInUsername')).toBeFocused();
     expect((await page.request.get('/api/results/me')).status()).toBe(401);
   });
 
@@ -116,8 +116,13 @@ test.describe('release readiness', () => {
     expect(permissions).toEqual({ ownTeamReport: 200, administration: 403 });
 
     await page.locator('#staffToolsBtn').click();
+    await expect(page.locator('#trainingDashboard')).toBeVisible();
+    const attempts=page.locator('[data-training-section="attempts"]');
+    if(!await attempts.isVisible())await page.getByRole('button',{name:'Sections',exact:true}).click();
+    await attempts.click();
     await expect(page.locator('#coachResultsWorkspace')).toBeVisible();
     await expect(page.locator('#coachDevelopmentInsights')).toBeVisible();
+    await page.locator('#coachMoreFilters').click();
     await expect(page.locator('#coachPlayerPicker')).toBeVisible();
     await page.locator('#coachPlayerPicker > summary').click();
     await expect(page.locator('#coachPlayerChoices')).toBeVisible();

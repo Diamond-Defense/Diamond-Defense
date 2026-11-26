@@ -31,7 +31,7 @@ test('Organization uses the shared sidebar and keeps management pages inside the
  const position=await create.boundingBox();
  const refreshPosition=await page.locator('#orgWorkspaceRefresh').boundingBox();
  expect(Math.abs(position.y-refreshPosition.y)).toBeLessThan(8);
- await expect(page.locator('.org-directory-tabs button[aria-pressed="true"]')).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
+ await expect(page.getByRole('navigation',{name:'Organization lists'}).getByRole('button',{name:'Organizations',exact:true})).toHaveCSS('background-color','rgba(0, 0, 0, 0)');
  await check('organizations');
  const lists=page.getByRole('navigation',{name:'Organization lists'});
  const tabY=(await lists.boundingBox()).y;

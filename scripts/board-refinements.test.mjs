@@ -1,9 +1,9 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {newBoard,clone,validateBoard} from '../src/lib/plays/board.js';
-import {compilePlay,frameAt} from '../src/lib/plays/animation.js';
+import {compilePlay,frameAt,sampleBattedBall} from '../src/lib/plays/animation.js';
 import {emptyHistory,recordHistory,stepHistory} from '../src/lib/plays/history.js';
-function fixture(){const b=newBoard();b.battedBall={type:'line_drive',start:clone(b.runners.batter),destination:{x:1300,y:900}};b.playSeq=['SS','2B'];b.movements.SS=[{path:[b.defenders.SS,clone(b.battedBall.destination)],start:{event:'contact'},durationMs:5000}];return b;}
+function fixture(){const b=newBoard();b.battedBall={fielder:'SS',type:'line_drive',start:clone(b.runners.batter),destination:{x:1300,y:900}};b.playSeq=['SS','2B'];b.movements.SS=[{path:[b.defenders.SS,clone(b.battedBall.destination)],start:{event:'contact'},durationMs:5000}];return b;}
 test('board fielding waits for arrival and schedules later movement and throws from that event',()=>{
  const b=fixture(),snapshot=JSON.stringify(b);b.movements.C=[{path:[b.defenders.C,{x:1500,y:1600}],start:{event:'ball_fielded'}}];
  const play=compilePlay(b,{coachBoard:true}),fielded=play.events.find(e=>e.type==='ball_fielded').time;
@@ -11,7 +11,7 @@ test('board fielding waits for arrival and schedules later movement and throws f
  assert.equal(play.tracks.find(t=>t.id==='C').start,fielded);assert.ok(play.throws[0].start>=fielded);
  const before=frameAt(play,fielded-100);assert.ok(!before.events.some(e=>e.type==='ball_fielded'));assert.notDeepEqual(before.positions.SS,b.battedBall.destination);
  const arrived=frameAt(play,play.contactTime+play.ballDuration);
- assert.deepEqual(arrived.ball,b.battedBall.destination);
+ assert.deepEqual(arrived.ball,sampleBattedBall(b.battedBall,play.ballDuration,play.ballDuration,{grounded:true,caught:false}).ball);
  assert.ok(!arrived.events.some(e=>e.type==='ball_fielded'));
  const runner=play.tracks.find(track=>track.id==='batter');
  assert.equal(runner.start,play.contactTime);
@@ -50,9 +50,9 @@ test('board throws use quicker steady flight while normal app keeps existing thr
  assert.equal(leg.duration,350);assert.equal(compilePlay(b).throws[0].duration,700);
  for(const progress of [.25,.5,.75]){
   const frame=frameAt(play,leg.start+leg.duration*progress);
-  assert.equal(frame.arrows[0].progress,progress);
-  assert.ok(Math.abs(frame.ball.x-(leg.route.from.x+(leg.route.to.x-leg.route.from.x)*progress))<1e-8);
-  assert.ok(Math.abs(frame.ball.y-(leg.route.from.y+(leg.route.to.y-leg.route.from.y)*progress))<1e-8);
+  assert.equal(frame.ballThrow.index,leg.index);
+  assert.ok(Math.abs(frame.ball.x-(leg.from.x+(leg.to.x-leg.from.x)*progress))<1e-8);
+  assert.ok(Math.abs(frame.ball.y-(leg.from.y+(leg.to.y-leg.from.y)*progress))<1e-8);
  }
 });
 

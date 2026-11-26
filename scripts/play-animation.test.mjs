@@ -22,7 +22,7 @@ test('fielding starts subsequent movement while backup movement continues indepe
  assert.ok(play.throws[0].start<play.tracks.find(t=>t.id==='CF').duration);
  assert.deepEqual(frameAt(play,fielded).positions.SS,middle);
  assert.deepEqual(frameAt(play,play.duration).positions.SS,end);
- assert.equal(frameAt(play,play.duration).arrows.length,2);
+ assert.equal(frameAt(play,play.duration).relayOrder['1B'].at(-1),3);
 });
 test('specific throw start and receive events coordinate overlapping movement and live receivers',()=>{
  const b=fixture(),end1={x:1400,y:900},end2={x:1500,y:850};
@@ -51,8 +51,9 @@ test('segmented conversion retains all paths while correctness uses only the fin
  const b=fixture(),middle={x:1300,y:900},end={x:1500,y:850};b.movements.SS=[segment(b.defenders.SS,middle),segment(middle,end,'ball_fielded')];
  const s=toSituation(b,{playOutcome:{result:'single',batterResult:'first',outsRecorded:0,reviewStatus:'ready'},runnerOutcomes:[]});
  assert.equal(s.boardAnimation.version,2);assert.deepEqual({x:s.targets.SS.x,y:s.targets.SS.y},end);assert.equal(s.boardAnimation.movements.SS.length,2);assert.deepEqual(fromSituation(s).movements.SS,b.movements.SS);
- // Later Situation Builder edits remain authoritative for solution correctness.
- s.targets.SS.x=1600;assert.equal(fromSituation(s).movements.SS.at(-1).path.at(-1).x,1600);
+ // Correctness edits do not overwrite separately authored instructional paths.
+ s.targets.SS.x=1600;assert.equal(fromSituation(s).movements.SS.at(-1).path.at(-1).x,1500);
+ assert.equal(s.targets.SS.x,1600);
 });
 test('snapshots, steps, pause, speed, reduced motion and replay never mutate authored data',()=>{
  const b=fixture();b.movements.SS=[segment(b.defenders.SS,{x:1300,y:900})];const before=JSON.stringify(b),play=compilePlay(b);
@@ -72,8 +73,9 @@ test('runner segments wait independently for throws and repeated throw routes re
  assert.equal(track.start,play.throws[0].start+play.throws[0].duration);
  assert.deepEqual(frameAt(play,track.start).positions.first,middle);
  assert.deepEqual(frameAt(play,play.duration).positions.first,end);
- assert.notDeepEqual(play.throws[0].route,play.throws[2].route);
- assert.equal(frameAt(play,play.duration).arrows.length,3);
+ assert.notEqual(play.throws[0].start,play.throws[2].start);
+ assert.notEqual(play.throws[0].index,play.throws[2].index);
+ assert.equal(frameAt(play,play.duration).relayOrder['2B'].at(-1),4);
 });
 
 test('a pickoff plays before the pitch and a later hit uses its own fielder',()=>{

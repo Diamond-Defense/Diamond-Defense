@@ -39,5 +39,5 @@ test('movement trails show only distance already traveled through bends and wait
 test('CF to 1B throw stays straight when crossing 2B and a runner',()=>{
  const board=newBoard();board.defenders.CF={x:1600,y:450};board.defenders['1B']={x:1600,y:1250};board.defenders['2B']={x:1600,y:950};board.runners.second={x:1600,y:950};board.battedBall={type:'line_drive',start:{x:1600,y:1800},destination:board.defenders.CF};board.playSeq=['CF','1B'];
  const play=compilePlay(board),leg=play.throws[0];let previous=-Infinity;
- for(let i=1;i<=20;i++){const frame=frameAt(play,leg.start+leg.duration*i/20);assert.equal(frame.ball.x,1600);assert.ok(frame.ball.y>=previous);previous=frame.ball.y;assert.ok(frame.ball.y>=leg.route.from.y&&frame.ball.y<=leg.route.to.y);}
+ for(let i=1;i<=20;i++){const frame=frameAt(play,leg.start+leg.duration*i/20);assert.equal(frame.ball.x,1600);assert.ok(frame.ball.y>=previous);previous=frame.ball.y;assert.ok(frame.ball.y>=leg.from.y&&frame.ball.y<=leg.to.y);}
 });
