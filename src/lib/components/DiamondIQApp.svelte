@@ -26,7 +26,7 @@
   let playbookCurrentKey=$state('');
   let playbookLoading=$state(false),playbookError=$state('');
   let playbookScope=$state('default');
-  async function selectPlaybookItem(item:{id:string}){window._diqChoosePlaybookSituation?.(item.id);return true;}
+  async function selectPlaybookItem(item:{id:string}){return window._diqChoosePlaybookSituation?.(item.id) === true;}
   function closeSharedPlaybook(){window._diqClosePlaybookBrowser?.();}
   let boardLibraryOpen = $state(false);
   let boardLibraryTrigger: HTMLElement | null = null;

@@ -328,3 +328,21 @@ body.player-experience #fieldToolbar #randomSitBtn{display:inline-flex;align-ite
 #appHeader.has-shared-navigation{padding:0!important}
 #appHeader.has-shared-navigation>.header-shell{display:none!important}
 #appHeader.has-shared-navigation .shared-navigation-host{width:100%;min-width:0}
+
+/* Result persistence stays visible beside the player completion actions. */
+.result-save-status{margin-top:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);color:var(--text-primary);font-size:13px;line-height:1.4;}
+.result-save-status[hidden]{display:none;}
+.result-save-status p{margin:0;}
+.result-save-status[data-state=failed]{border-color:#b77919;}
+.result-save-status button{margin-top:8px;min-height:40px;}
+
+/* Completed results sit below the stage heading; detailed notes stay optional. */
+.player-completion-summary{margin:0 0 12px;padding:0;font-size:14px;line-height:1.5;}
+.player-completion-summary[hidden]{display:none;}
+.player-completion-summary dl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px 12px;margin:0;}
+.player-completion-summary dt{color:var(--text-secondary);}
+.player-completion-summary dd{margin:0;font-weight:600;}
+body.player-experience #trainingPanel.is-complete #trainingMetrics{display:none;}
+body.player-experience #trainingPanel.has-completion-summary #seqBody .training-feedback{display:none;}
+.sequence-coach-note summary{cursor:pointer;font-weight:650;color:var(--text-primary);min-height:24px;}
+.sequence-coach-note[open] summary{margin-bottom:8px;}

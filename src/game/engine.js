@@ -2827,6 +2827,10 @@ function resetStartsToDefaults(){
     setTimeout(()=> situationMsg.textContent = '', 1400);
   }
 }
+function confirmSituationSwitch(){
+  if(!window._diqHasActivePlayAttempt?.()) return true;
+  return window.confirm('Leave this attempt and switch situations? Your current attempt will be recorded as abandoned.');
+}
 function pickRandomSituation(){
   if(document.body.classList.contains('situation-player-preview')) return;
   if(!requireFreePlayAccess()) return;
@@ -2835,6 +2839,7 @@ function pickRandomSituation(){
   let keys = SITUATIONS.map(s=>s.key);
   if (cur && keys.length > 1) keys = keys.filter(k=>k !== cur);
   const key = keys[Math.floor(Math.random() * keys.length)];
+  if(!confirmSituationSwitch()) return;
   window._diqClearActivePracticeAssignment?.();
   setSituation(key);
 }
@@ -2880,11 +2885,12 @@ function populateSituationTeachingCategoryControls(){
 }
 
 function choosePlaybookSituation(key){
-  if (!key) return;
-  if(!requireFreePlayAccess()) return;
+  if (!key || !(SITUATIONS || []).some(situation=>situation.key===key)) return false;
+  if(!requireFreePlayAccess() || !confirmSituationSwitch()) return false;
   window._diqClearActivePracticeAssignment?.();
   setSituation(key);
   closePlaybookBrowser();
+  return true;
 }
 
 // Shorten only the generated runner suffix when it agrees with the saved state.
@@ -3019,6 +3025,7 @@ function setSituation(key, situationSnapshot=null){
     }
   }
   void window._diqAbandonCurrentPlayAttempt?.('situation_changed');
+  window._diqClearSavedResultStatus?.();
   clearSolutionReview();
   currentSituation = situationSnapshot
     ? normalizeSituation(situationSnapshot, 0)
@@ -3857,6 +3864,9 @@ function resetPlayers(reason='reset'){
     if(typeof toast === 'function') toast('Reset is unavailable during assigned practice. Complete this attempt to continue.');
     return;
   }
+  if(abandonReason === 'reset' && window._diqHasActivePlayAttempt?.()){
+    if(!window.confirm('Reset this attempt? Your current attempt will be recorded as abandoned. Select Start Situation to begin a new attempt.'))return;
+  }
   void window._diqAbandonCurrentPlayAttempt?.(abandonReason);
   wipePhase2StateUI();
   _phase2Ended = false;
@@ -4124,6 +4134,7 @@ else { window.addEventListener('load', init, { once:true }); }
 
 // Player presentation only: all actions continue to use the existing handlers and permissions.
 function refreshPlayerPresentation(){
+  window._diqRenderResultSaveStatus?.();
   refreshGuideText();
   const user = window.__DIQ_AUTH_USER__;
   // Shared field presentation only; role permissions remain in the account handlers.
@@ -4185,6 +4196,7 @@ function refreshPlayerPresentation(){
   const complete = _completedFreePlay || staffPositioningComplete || (_phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary));
   const beforeStart = !gameActive && !phase2Active && !startBtn?.disabled;
   panel?.classList.toggle('is-playing', !beforeStart && !complete);
+  panel?.classList.toggle('is-complete', !beforeStart && complete);
   panel?.classList.toggle('is-sequence', Boolean(phase2Active));
   const chooseNext = document.getElementById('chooseNextSituationBtn');
   if(chooseNext) chooseNext.classList.toggle('hidden', document.body.classList.contains('situation-player-preview') || !player || !(_completedFreePlay || (['coach','admin'].includes(user?.role) && complete)) || beforeStart);
@@ -4194,11 +4206,13 @@ function refreshPlayerPresentation(){
     : _solutionReview?.watched ? 'Explore position responsibilities'
     : _phase1Summary ? 'Watch the positioning solution' : 'Position the defense');
   const result = `${_phase1Summary?.scoreCorrect ?? scoreVal?.textContent ?? 0} of ${scoredPositionCount()} positions correct`;
+  const finalPositioningCheck = !coachUnlocked && gameActive && !phase2Active && remainingTries === 1 && !_phase1Summary;
   const text = beforeStart ? 'Start the situation, then drag each defender into position.' : complete ? ''
     : phase2Active ? 'Select defenders in throwing order, then verify your sequence.'
     : solution ? ''
     : !startBtn?.disabled ? ''
     : _phase1Summary ? ''
+    : finalPositioningCheck ? `${result}. One check left. Adjust your defenders before selecting Check Positions. This final check records your positioning result and moves to solution review.`
     : !unchecked ? `${result}. Adjust your defenders, then check again.`
     : 'Drag each defender into position, then check your positions.';
   const coachingAvailable = !beforeStart && !phase2Active && Boolean(wrap?.querySelector('.tgt.selectable'));
@@ -4220,7 +4234,9 @@ function refreshPlayerPresentation(){
   }
   const feedback = document.getElementById('contextBar');
   const instruction = document.getElementById('playerStepMessage');
-  if (feedback && instruction && instruction.nextElementSibling !== feedback) instruction.after(feedback);
+  const completionSummary = document.getElementById('playerCompletionSummary');
+  const feedbackAnchor = completionSummary && !completionSummary.hidden ? completionSummary : instruction;
+  if (feedback && feedbackAnchor && feedbackAnchor.nextElementSibling !== feedback) feedbackAnchor.after(feedback);
 
   const scoreLabel = document.querySelector('#scoreBadge .status-label');
   if(scoreLabel) scoreLabel.textContent = player ? 'Result' : 'Score';

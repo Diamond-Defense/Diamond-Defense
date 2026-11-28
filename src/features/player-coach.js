@@ -1066,6 +1066,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       DIQ_PRACTICE_ADVANCE_ACTION = { type:'practice-list' };
     }
     panel.classList.remove('hidden');
+    refreshGuideText();
   }
 
   async function startGuidedPractice(assignmentId){
@@ -4138,6 +4139,78 @@ function updatePlayerHeaderButton(){
 let RESULTS = emptyResults();
 
 let _activePlayAttempt = null;
+let completedAttemptSummary=null;
+function renderCompletionSummary(){
+  let panel=document.getElementById('playerCompletionSummary');
+  const instructions=document.getElementById('playerStepMessage');
+  if(!panel&&instructions){panel=document.createElement('section');panel.id='playerCompletionSummary';panel.className='player-completion-summary';panel.setAttribute('aria-label','Attempt summary');instructions.after(panel);}
+  if(!panel)return;
+  const record=completedAttemptSummary;
+  panel.hidden=!canRecordPlayerAttempt()||!record||record.playerId!==DIQ_AUTH_USER?.id||record.situationKey!==currentSituation?.key||!_roundHasStarted||Boolean(_activePlayAttempt);
+  document.getElementById('trainingPanel')?.classList.toggle('has-completion-summary',!panel.hidden);
+  if(panel.hidden)return;
+  const label=document.getElementById('playerStepLabel');
+  if(label&&label.nextElementSibling!==panel)label.after(panel);
+  const list=document.createElement('dl');
+  const row=(label,value)=>{const term=document.createElement('dt'),detail=document.createElement('dd');term.textContent=label;detail.textContent=value;list.append(term,detail);};
+  if(record.phase1)row('Positioning',`${record.phase1.scoreCorrect}/${record.phase1.scoreTotal} correct`);
+  const stages=record.sequenceStages||[];
+  if(stages.length){for(const stage of stages)row(stages.length>1?`Throw sequence ${stage.stage}`:'Throw sequence',stage.success?'Passed':'Not passed');}
+  else row('Throw sequence','Not required');
+  panel.replaceChildren(list);
+}
+window._diqRenderCompletionSummary=renderCompletionSummary;
+const pendingResultSaves = new Map();
+function renderResultSaveStatus(){
+  renderCompletionSummary();
+  let panel=document.getElementById('resultSaveStatus');
+  const footer=document.getElementById('trainingPanelFooter');
+  if(!panel&&footer){
+    panel=document.createElement('div');panel.id='resultSaveStatus';panel.className='result-save-status';
+    const text=document.createElement('p');text.setAttribute('role','status');text.setAttribute('aria-live','polite');panel.append(text);
+    const retry=document.createElement('button');retry.type='button';retry.className='btn btn-ghost';retry.textContent='Retry saving';
+    retry.addEventListener('click',()=>{
+      for(const item of pendingResultSaves.values())if(item.userId===DIQ_AUTH_USER?.id&&item.state==='failed')void sendAttemptResult(item).catch(()=>{});
+    });panel.append(retry);footer.append(panel);
+  }
+  if(!panel)return;
+  const items=[...pendingResultSaves.values()].filter(item=>item.userId===DIQ_AUTH_USER?.id&&(item.state!=='saved'||!item.dismissSaved));
+  const failed=items.filter(item=>item.state==='failed'),saving=items.filter(item=>item.state==='saving');
+  panel.hidden=!canRecordPlayerAttempt()||!items.length;
+  panel.dataset.state=failed.length?'failed':saving.length?'saving':'saved';
+  panel.querySelector('p').textContent=failed.length?`${failed.length===1?'Result save failed.':`${failed.length} results could not be saved.`} Retry saving before leaving or refreshing this page.`:saving.length?'Saving result…':'Result saved';
+  panel.querySelector('button').hidden=!failed.length;
+}
+window._diqRenderResultSaveStatus=renderResultSaveStatus;
+window._diqClearSavedResultStatus=()=>{
+  completedAttemptSummary=null;
+  for(const [id,item] of pendingResultSaves){
+    if(item.userId!==DIQ_AUTH_USER?.id)continue;
+    if(item.state==='saved')pendingResultSaves.delete(id);
+    else item.dismissSaved=true;
+  }
+  renderResultSaveStatus();
+};
+async function sendAttemptResult(item){
+  if(item.state==='saving'||item.userId!==DIQ_AUTH_USER?.id)return;
+  item.state='saving';renderResultSaveStatus();
+  try{
+    const response=await diqApiRequest('attempts',{method:'POST',body:JSON.stringify(item.entry),keepalive:item.options.keepalive===true});
+    item.state='saved';
+    if(item.userId===DIQ_AUTH_USER?.id){
+      if(response?.practice)applyPracticeState(response.practice);
+      if(item.entry.assignmentId&&response?.lifecycleStatus!=='incomplete'){
+        if(response.practiceProgressed || (response.created===false&&response.changed===false))showPracticeAdvance(DIQ_PRACTICE_STATE,{interrupted:item.entry.outcome==='abandoned'});
+        else{
+          hidePracticeAdvance();
+          if(typeof toast==='function'&&!item.options.quiet)toast('Your result was saved. Assigned practice availability has been updated.');
+        }
+      }
+    }
+    return response;
+  }catch(error){item.state='failed';console.error('[Database] Attempt save failed:',error);throw error;}
+  finally{renderResultSaveStatus();refreshGuideText();}
+}
 
 function newAttemptRunId(){
   try{ return crypto.randomUUID(); }
@@ -4214,25 +4287,11 @@ function recordAttempt(entry, options={}){
     RESULTS.bySituation[key] = next;
   }
 
-  const request = diqApiRequest('attempts', {
-    method:'POST',
-    body:JSON.stringify(e),
-    keepalive:options.keepalive === true,
-  });
-  request.then(response=>{
-    if(response?.practice) applyPracticeState(response.practice);
-    if(e.assignmentId && response?.lifecycleStatus !== 'incomplete'){
-      if(response.practiceProgressed) showPracticeAdvance(DIQ_PRACTICE_STATE, { interrupted:e.outcome === 'abandoned' });
-      else{
-        hidePracticeAdvance();
-        if(typeof toast === 'function' && !options.quiet) toast('This practice was ended by your coach. Your result was saved, and free-play access was updated.');
-      }
-    }
-  }).catch(()=>{});
-  request.catch(error=>{
-    if(!options.quiet) reportDatabaseWriteError('Attempt save failed', error);
-    else console.error('[Database] Attempt save failed:', error);
-  });
+  for(const [id,item] of pendingResultSaves)if(item.state==='saved')pendingResultSaves.delete(id);
+  const item={entry:e,options,userId:DIQ_AUTH_USER.id,state:'pending'};
+  pendingResultSaves.set(`${item.userId}:${e.runId}`,item);
+  const request=sendAttemptResult(item);
+  request.catch(()=>{});
   return request;
 }
 
@@ -4264,6 +4323,7 @@ function persistAttemptStart(active){
 
 function beginPlayAttempt(situation){
   if(!canRecordPlayerAttempt()) return null;
+  completedAttemptSummary=null;
   if(_activePlayAttempt && !_activePlayAttempt.finalized){
     void abandonCurrentPlayAttempt('new_attempt_started');
   }
@@ -4404,6 +4464,7 @@ function finalizePlayAttempt(outcome, reason='', options={}){
     sequenceSuccess:lastStage?.success ?? null,
     picked:copyAttemptValue(lastStage?.picked || []),
   };
+  if(outcome!=='abandoned')completedAttemptSummary={...copyAttemptValue(record),playerId:DIQ_AUTH_USER?.id};
   return recordAttempt(record, options);
 }
 
@@ -4418,6 +4479,7 @@ window._diqTrackSequenceCheck = trackSequenceCheck;
 window._diqCompleteSequenceStage = completeSequenceStage;
 window._diqFinalizePlayAttempt = finalizePlayAttempt;
 window._diqAbandonCurrentPlayAttempt = abandonCurrentPlayAttempt;
+window._diqHasActivePlayAttempt = () => Boolean(_activePlayAttempt && !_activePlayAttempt.finalized);
 window.addEventListener('pagehide', ()=>{
   void abandonCurrentPlayAttempt('page_closed', { keepalive:true, quiet:true });
 });
@@ -4450,13 +4512,20 @@ function refreshGuideText(){
   const completed = !beforeStart && _phase2Ended && !phase2Active && allowSeqPanel && Boolean(_phase1Summary);
   const solution = Boolean(_solutionReview?.watched);
   const hasSequence = Boolean(currentSituation?.playSeq?.length);
+  const advancePanel=document.getElementById('practiceAdvancePanel');
+  const advanceVisible=advancePanel&&!advancePanel.classList.contains('hidden');
+  const assignedPractice=DIQ_AUTH_USER?.role==='player'&&Boolean(DIQ_ACTIVE_PRACTICE_ASSIGNMENT_ID||playerHasPendingPractice()||advanceVisible);
+  const failedAssignedSave=[...pendingResultSaves.values()].some(item=>item.userId===DIQ_AUTH_USER?.id&&item.entry.assignmentId&&item.state==='failed');
+  const nextPracticeStep=failedAssignedSave?'Select Retry saving to save your result before continuing.':advanceVisible
+    ? DIQ_PRACTICE_ADVANCE_ACTION?.type==='continue'?'Select Next assigned situation to continue your practice.':'Select Back to Assignments to review your remaining assignments or completed practice.'
+    :'Wait for your result to save. The next assigned-practice action will appear when it is ready.';
   let stage, steps;
   if(practice && !practice.classList.contains('hidden')){
     stage = 'Assignments';
     steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Play in the top navigation to return to the situation. Situation Library and Random are available when required practice is complete.'];
   } else if(completed){
     stage = 'Situation complete';
-    steps = ['Review the result and the expected throwing order in Play Review.', 'Use Reset to try this situation again, or choose another available situation.', 'For assigned practice, use the next-situation button when it appears.'];
+    steps = ['Review the result and the expected throwing order in Play Review.', ...(assignedPractice?[nextPracticeStep,'Reset, Situation Library, and Random are unavailable while assigned practice is pending.']:['Use Reset to try this situation again, or choose another available situation.'])];
   } else if(phase2Active){
     stage = 'Choose the throw sequence';
     steps = ['Select the blue fielders in throwing order.', 'Select an unlocked chip again to remove it from your picks. Correct picks remain locked.', 'Select Verify Sequence to check your picks. Checks left and Time left show what remains.'];
@@ -4465,7 +4534,7 @@ function refreshGuideText(){
     steps = ['Close Guide to resume the solution animation.', 'When it finishes, select a target ring or its position label for coaching notes.'];
   } else if(solution){
     stage = hasSequence ? 'Review positions' : 'Positioning complete';
-    steps = ['Select a target ring or its position label to read coaching notes.', 'Dashed red ghosts mark incorrect submitted positions. Ivory rings show the solution.', hasSequence ? 'Select Continue to Throw Sequence when you are ready.' : 'This situation has no throw sequence. Use Reset to retry or choose another available situation.'];
+    steps = ['Select a target ring or its position label to read coaching notes.', 'Dashed red ghosts mark incorrect submitted positions. Ivory rings show the solution.', hasSequence ? 'Select Continue to Throw Sequence when you are ready.' : assignedPractice ? `This situation has no throw sequence. ${nextPracticeStep}` : 'This situation has no throw sequence. Use Reset to retry or choose another available situation.'];
   } else if(!beforeStart && _phase1Summary){
     stage = 'Review positions';
     steps = ['Your positioning check is finished. The Result shows your recorded score.', 'Select Watch Solution to see the correct defensive positions.', 'Coaching notes become available after the solution finishes.'];
@@ -4474,7 +4543,7 @@ function refreshGuideText(){
     steps = ['Drag the nine blue fielders into position. Gold runners are not draggable.', 'Select Check Positions to check your placement.', 'Use the remaining checks to adjust your fielders. The timer and animation pause while Guide is open.'];
   } else {
     stage = 'Getting started';
-    steps = ['Log in, then open Situation Library to choose a situation, use Random, or open Assignments for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
+    steps = assignedPractice?['Continue your assigned practice from Assignments. Complete all required practice to unlock Situation Library and Random.','Review the assigned situation title, Runners and Outs in the situation panel.','Select Start Situation, then position the defense.']:['Log in, then open Situation Library to choose a situation, use Random, or open Assignments for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
   }
   const html = `<p><strong>${stage}</strong></p><ol>${steps.map(text=>`<li>${text}</li>`).join('')}</ol>`;
   if(howToBody.innerHTML !== html) howToBody.innerHTML = html;
@@ -4541,10 +4610,10 @@ function showSeqPanel(textHTML){
 
   // Build note (if any) from the current situation
   const note = (currentSituation && typeof currentSituation.seqNote === 'string' && currentSituation.seqNote.trim())
-    ? `<div class="sequence-coach-note">
-         <strong>Coach Note</strong>
+    ? `<details class="sequence-coach-note" open>
+         <summary>Coach Note</summary>
          <div style="white-space:pre-wrap">${currentSituation.seqNote.trim().replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</div>
-       </div>`
+       </details>`
     : '';
 
   seqPanel.classList.remove('hidden');
