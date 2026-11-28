@@ -1,6 +1,7 @@
 import {SqliteSituationRepository} from '$lib/server/repositories/situations';
+import {filterLibraryItems,sortLibraryItems} from '$lib/plays/library-browser.js';
 import type {Situation} from '$lib/domain/models';
-import {libraryCardModel,compareLibraryOrder} from '$lib/plays/library-card.js';
+import {libraryCardModel} from '$lib/plays/library-card.js';
 import {error,json} from '@sveltejs/kit';
 import type {RequestHandler} from './$types';
 import {databaseFor} from '$lib/server/database/context';
@@ -11,8 +12,11 @@ export const GET:RequestHandler=async event=>{
  const p=event.url.searchParams;
  const type=p.get('type')||'';const ball=p.get('ball')||'';const sort=p.get('sort')||'starting';
  if(!['','board','situation'].includes(type)||!['','ground_ball','line_drive','air_ball'].includes(ball)||!['starting','updated','created','title'].includes(sort))throw error(400,'Invalid library filter.');
+ const difficulty=p.get('difficulty')||'',outcome=p.get('outcome')||'';
+ if(!['','foundational','intermediate','advanced'].includes(difficulty)||!['','Singles','Extra-base hits','General'].includes(outcome))throw error(400,'Invalid library filter.');
  const numeric=(name:string,max:number)=>{const raw=p.get(name);if(raw===null||raw==='')return null;if(!/^\d+$/.test(raw)||Number(raw)>max)throw error(400,`Invalid ${name} filter.`);return Number(raw);};
- const mask=numeric('runners',7),outs=numeric('outs',2),offset=numeric('offset',1000000)||0;
+ const runnersOn=p.get('runners')==='on';
+ const mask=runnersOn?null:numeric('runners',7),outs=numeric('outs',2),offset=numeric('offset',1000000)||0;
  const limit=Math.max(1,Math.min(50,numeric('limit',50)??20));
  const q=(p.get('q')||'').trim();if(q.length>120)throw error(400,'Search must be 120 characters or fewer.');
  const location=(p.get('location')||'').slice(0,80),concept=(p.get('concept')||'').slice(0,80);
@@ -41,18 +45,6 @@ export const GET:RequestHandler=async event=>{
  const tagged=await new SqliteSituationRepository(db).withTags(parsed.filter(entry=>entry.item.type==='situation').map(entry=>entry.record as Situation));
  const byKey=new Map(tagged.map(record=>[record.key,record]));
  const visible=parsed.map(({item,record})=>libraryCardModel(item.type==='situation'?byKey.get(record.key)||record:record,item.type,item));
- const filtered=visible.filter(item=>{
-  const haystack=[item.title,item.variationLabel,item.description,item.concept,item.location,item.placement,item.fieldingMethod,item.related,item.displayCode].join(' ').toLowerCase();
-  const related=JSON.parse(item.related||'[]');
-  return (!type||item.type===type)&&(!ball||item.ballType===ball)&&(mask===null||item.runners===mask)
-   &&(outs===null||Number(item.outs)===outs)&&(!location||item.location===location)
-   &&(!concept||item.concept===concept||related.includes(concept))&&(!q||haystack.includes(q.toLowerCase()));
- });
- filtered.sort((a,b)=>{
-  if(sort==='starting')return compareLibraryOrder(a,b);
-  const delta=sort==='title'?a.title.toLowerCase().localeCompare(b.title.toLowerCase()):
-   (Date.parse(sort==='created'?b.createdAt:b.updatedAt)||0)-(Date.parse(sort==='created'?a.createdAt:a.updatedAt)||0);
-  return delta||a.title.toLowerCase().localeCompare(b.title.toLowerCase())||a.type.localeCompare(b.type)||a.id.localeCompare(b.id);
- });
+ const filtered=sortLibraryItems(filterLibraryItems(visible,{q,type,runners:runnersOn?'on':mask===null?'':String(mask),outs:outs===null?'':String(outs),ball,location,concept,difficulty,outcome}),sort);
  return json({items:filtered.slice(offset,offset+limit),total:filtered.length,offset,limit},{headers:{'Cache-Control':'private, no-store'}});
 };

@@ -1,12 +1,14 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
+  import AppNavigation from '$lib/components/AppNavigation.svelte';
+  import PlayLibrary from '$lib/components/PlayLibrary.svelte';
+  import { importBoardFile } from '$lib/plays/board-transfer.js';
   import { pushState, replaceState } from '$app/navigation';
   import type { Situation } from '$lib/domain/models';
   import DesignWorkspace from '../../routes/design/DesignWorkspace.svelte';
   import { asset } from '$app/paths';
   import { canAccessWorkspace, workspaceLabels } from '$lib/ui/navigation';
   import Feedback from '$lib/components/ui/Feedback.svelte';
-  import { installPlaybookAccessibility } from '$lib/ui/playbook-accessibility';
   import softFieldImage from '$lib/assets/diamond-defense-soft-field.png';
   import legacyDocument from '../../../index.html?raw';
   import { loadLegacyRuntime } from '$lib/legacy/loadRuntime';
@@ -19,6 +21,54 @@
     `id="fieldImg" src="${softFieldImage}"`,
   );
 
+  let playbookOpen=$state(false);
+  let playbookCatalog=$state<Situation[] | null>(null);
+  let playbookCurrentKey=$state('');
+  let playbookLoading=$state(false),playbookError=$state('');
+  let playbookScope=$state('default');
+  async function selectPlaybookItem(item:{id:string}){window._diqChoosePlaybookSituation?.(item.id);return true;}
+  function closeSharedPlaybook(){window._diqClosePlaybookBrowser?.();}
+  let boardLibraryOpen = $state(false);
+  let boardLibraryTrigger: HTMLElement | null = null;
+  function openBoardLibrary(trigger?: HTMLElement) {
+    if (!['coach','admin'].includes(account?.role || '')) return;
+    window._diqClosePlaybookBrowser?.();
+    window._diqCloseAccountMenu?.();
+    boardLibraryTrigger = trigger || document.getElementById('coachBoardLink');
+    boardLibraryOpen = true;
+  }
+  async function closeBoardLibrary() {
+    boardLibraryOpen = false;
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('boardLibrary')) {
+      url.searchParams.delete('boardLibrary');
+      replaceState(url,{});
+    }
+    await tick();
+    boardLibraryTrigger?.focus();
+    boardLibraryTrigger = null;
+  }
+  async function boardLibraryAction(item: {type:string;id:string} | null, action:string, name?:string) {
+    const url = new URL('/coach-board',window.location.origin);
+    url.searchParams.set('edit','1');
+    if (item) {
+      url.searchParams.set('libraryType',item.type);
+      url.searchParams.set('libraryId',item.id);
+      url.searchParams.set('libraryAction',action);
+      if (name) url.searchParams.set('copyName',name);
+    }
+    window.location.assign(url);
+    return false;
+  }
+  function importLibraryBoard(text:string) {
+    const board = importBoardFile(text);
+    sessionStorage.setItem('diq-library-import',JSON.stringify({userId:account?.id,createdAt:Date.now(),board}));
+    window.location.assign('/coach-board?edit=1&import=1');
+    return false;
+  }
+
+  let sharedHeaderReady=$state(false);
+  let sharedHeaderHost=$state<HTMLDivElement>();
   let runtimeError = $state('');
   let active = $state<StaffWorkspace>('field');
   let account = $state<WorkspaceAccount | null>(null);
@@ -159,7 +209,16 @@
   onMount(() => {
     let disposed = false;
     let ready = false;
-    let removePlaybookAccessibility: (() => void) | undefined;
+    const updatePlaybook=(event:Event)=>{
+      const detail=(event as CustomEvent<{situations:Situation[];currentKey:string;teamId?:string;loading?:boolean;error?:string}>).detail;
+      playbookCatalog=detail.situations.slice();playbookCurrentKey=detail.currentKey;
+      playbookScope=detail.teamId||'default';playbookLoading=!!detail.loading;playbookError=detail.error||'';
+    };
+    const openPlaybook=(event:Event)=>{boardLibraryOpen=false;updatePlaybook(event);playbookOpen=true;};
+    const closePlaybook=()=>{playbookOpen=false;};
+    window.addEventListener('diq:playbook-open',openPlaybook);
+    window.addEventListener('diq:playbook-update',updatePlaybook);
+    window.addEventListener('diq:playbook-close',closePlaybook);
     window._diqNavigateWorkspace = workspace => navigate(workspace);
     window._diqTrainingLocationChanged = query => {
       if (!ready || restoringTrainingLocation || active !== 'training') return;
@@ -182,8 +241,11 @@
       }
     };
     window._diqStaffSessionChanged = user => {
+      if(account?.id!==user?.id){window._diqClosePlaybookBrowser?.();playbookCatalog=null;playbookOpen=false;}
       account = user ?? null;
+      if (!['coach','admin'].includes(account?.role || '')) boardLibraryOpen = false;
       if (!ready) return;
+
       if (!allowed(active,account)) navigate('field','replace');
       if (pendingEntry && allowed(workspaceAt(pendingEntry),account)) {
         navigate(workspaceAt(pendingEntry),'replace',pendingEntry);
@@ -193,6 +255,13 @@
     const onPop = () => { if (ready) restoreLocation(); };
     const onHeaderClick = (event: Event) => {
       if (!(event.target instanceof Element)) return;
+      const boardButton = event.target.closest<HTMLElement>('#coachBoardLink');
+      if (boardButton && ['coach','admin'].includes(account?.role || '')) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        openBoardLibrary(boardButton);
+        return;
+      }
       const playbook = event.target.closest('#playbookBrowserToggle');
       let teamId: string | null | undefined;
       if (active === 'training' && playbook) teamId = window._diqStaffTeamId?.();
@@ -207,12 +276,30 @@
     };
     window.addEventListener('popstate',onPop);
     document.addEventListener('click',onHeaderClick,true);
-    void loadLegacyRuntime().then(() => {
+    let sharedHeaderObserver:ResizeObserver|undefined;
+    void loadLegacyRuntime().then(async () => {
       if (disposed) return;
       account = window.__DIQ_AUTH_USER__ ?? null;
+      sharedHeaderReady=true;
+      await tick();
+      if(disposed)return;
+      const header=document.getElementById('appHeader');
+      if(header&&sharedHeaderHost){
+        header.prepend(sharedHeaderHost);
+        header.classList.add('has-shared-navigation');
+        const menu=document.getElementById('accountMenu');
+        const accountActions=sharedHeaderHost.querySelector('.account-actions');
+        if(menu&&accountActions)accountActions.append(menu);
+        const practice=document.getElementById('practiceToggle');
+        if(practice&&accountActions)accountActions.prepend(practice);
+        sharedHeaderObserver=new ResizeObserver(()=>document.documentElement.style.setProperty('--app-header-height',`${Math.ceil(header.getBoundingClientRect().height)}px`));
+        sharedHeaderObserver.observe(header);
+      }
       ready = true;
-      removePlaybookAccessibility = installPlaybookAccessibility();
+
+
       restoreLocation(true);
+      if (new URL(window.location.href).searchParams.get('boardLibrary') === '1') openBoardLibrary();
     }).catch(error => {
       if (disposed) return;
       runtimeError = error instanceof Error ? error.message : String(error);
@@ -220,7 +307,10 @@
     });
     return () => {
       disposed = true;
-      removePlaybookAccessibility?.();
+      sharedHeaderObserver?.disconnect();
+      window.removeEventListener('diq:playbook-open',openPlaybook);
+      window.removeEventListener('diq:playbook-update',updatePlaybook);
+      window.removeEventListener('diq:playbook-close',closePlaybook);
       window.removeEventListener('popstate',onPop);
       document.removeEventListener('click',onHeaderClick,true);
       delete window._diqNavigateWorkspace;
@@ -238,7 +328,7 @@
   <title>{active === 'field' ? 'Diamond Defence' : `${workspaceLabels[active]} | Diamond Defence`}</title>
   <meta
     name="description"
-    content="Diamond Defence is a baseball situation simulator and interactive playbook trainer for players and coaches."
+    content="Diamond Defence is a baseball situation simulator and interactive baseball situation trainer for players and coaches."
   />
 </svelte:head>
 
@@ -247,6 +337,19 @@
 {/if}
 
 {@html markup}
+{#if sharedHeaderReady}
+  <div bind:this={sharedHeaderHost} class="shared-navigation-host">
+    <AppNavigation user={account} {active} onboard={()=>openBoardLibrary()} onworkspace={workspace=>navigate(workspace)} onguide={()=>document.getElementById('playbookToggle')?.click()} onaccount={()=>document.getElementById('playerBtn')?.click()} />
+  </div>
+{/if}
+{#if boardLibraryOpen}<PlayLibrary stateKey={`${account?.id}:management`} onclose={closeBoardLibrary} onaction={boardLibraryAction} onimport={importLibraryBoard} />{/if}
+{#if playbookCatalog}
+ {#key `${account?.id}:${playbookScope}`}
+  <PlayLibrary mode="playbook" stateKey={`${account?.id}:playbook:${playbookScope}`} open={playbookOpen}
+   catalog={playbookCatalog} sourceLoading={playbookLoading} sourceError={playbookError} onretry={()=>window._diqOpenPlaybookBrowser?.(playbookScope==='default'?undefined:playbookScope)} currentKey={playbookCurrentKey} allowCreate={['coach','admin'].includes(account?.role||'')}
+   onclose={closeSharedPlaybook} onaction={selectPlaybookItem} />
+ {/key}
+{/if}
 {#if active === 'design' && designUrl && account}
   <div hidden={Boolean(testing)}>
     <DesignWorkspace entryUrl={designUrl} isAdmin={account.role === 'admin'} onPlayTest={playTest}

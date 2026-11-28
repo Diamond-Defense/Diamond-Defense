@@ -34,9 +34,9 @@ test('top navigation and field fit desktop and tablet without changing field pro
  await page.locator('#practiceToggle').click();await expect(page.locator('#practiceWorkspace')).toBeVisible();
  await page.locator('#fieldNavigationButton').click();await expect(page.locator('#practiceWorkspace')).toBeHidden();await expect(page.locator('#fieldImg')).toBeVisible();
 });
-test('Playbook retains metadata and returns keyboard focus to the moved trigger',async({page,baseURL})=>{
+test('Situation Library retains metadata and returns keyboard focus to the moved trigger',async({page,baseURL})=>{
  await login(page,baseURL);const trigger=page.locator('#playbookBrowserToggle');await trigger.click();
- const dialog=page.getByRole('dialog',{name:'Playbook',exact:true});await expect(dialog).toBeVisible();
+ const dialog=page.getByRole('dialog',{name:'Situation Library',exact:true});await expect(dialog).toBeVisible();
  await expect(dialog.locator('.library-card-badges').first()).toContainText(/Foundational|Intermediate|Advanced/);
  await expect(dialog.locator('.library-card-details').first()).not.toBeEmpty();
  await expect(dialog.locator('.training-base-map').first().locator('i')).toHaveCount(3);
@@ -134,7 +134,7 @@ test('sliding navigation indicator follows destinations and stays put for Guide'
  expect(finalHeader).toEqual(header);
 });
 
-test('Playbook scrolls a large admin catalog without overlapping cards',async({page,baseURL})=>{
+test('Situation Library scrolls a large admin catalog without overlapping cards',async({page,baseURL})=>{
  const response=await page.request.post('/api/auth/login',{headers:{Origin:new URL(baseURL).origin},data:{username:'admin',password:'password'}});
  expect(response.ok()).toBe(true);
  const catalog=await (await page.request.get('/api/situations')).json();
@@ -148,8 +148,11 @@ test('Playbook scrolls a large admin catalog without overlapping cards',async({p
  const playbookResponse=page.waitForResponse(response=>{const url=new URL(response.url());return url.pathname==='/api/situations' && url.searchParams.get('catalog')==='playbook';});
  await page.locator('#playbookBrowserToggle').click();
  expect(await (await playbookResponse).json()).toHaveLength(32);
+ await expect(page.locator('#playbookBrowserOverlay header #playbookRandomFiltered')).toHaveAttribute('aria-label','Choose a random situation from filtered results');
+ await expect(page.locator('#playbookBrowserOverlay .summary #playbookRandomFiltered')).toHaveCount(0);
  const cards=page.locator('#playbookBrowserList .playbook-situation-card');
- await expect(cards).toHaveCount(32);
+ await expect(cards).toHaveCount(20);
+ await expect(page.getByRole('button',{name:'Next Page',exact:true})).toHaveCount(0);
  const geometry=await page.locator('#playbookBrowserList').evaluate(list=>{
   const cards=[...list.querySelectorAll('.playbook-situation-card')];
   const boxes=cards.map(card=>card.getBoundingClientRect());
@@ -164,8 +167,30 @@ test('Playbook scrolls a large admin catalog without overlapping cards',async({p
   };
  });
  expect(geometry).toEqual({scrolls:true,contentsFit:true,rowsSeparate:true});
- await cards.last().scrollIntoViewIfNeeded();
- await expect(cards.last()).toBeInViewport();
+ await page.locator('#playbookBrowserList').evaluate(list=>{list.scrollTop=list.scrollHeight;});
+ await expect(cards).toHaveCount(32);
+ const loadedKeys=await cards.evaluateAll(nodes=>nodes.map(node=>node.dataset.situationKey));
+ const previousScroll=await page.locator('#playbookBrowserList').evaluate(list=>list.scrollTop);
+ expect(previousScroll).toBeGreaterThan(0);
+ await page.locator('#playbookBrowserClose').click();
+ await page.locator('#playbookBrowserToggle').click();
+ await expect(cards).toHaveCount(32);
+ expect(await cards.evaluateAll(nodes=>nodes.map(node=>node.dataset.situationKey))).toEqual(loadedKeys);
+ await expect.poll(()=>page.locator('#playbookBrowserList').evaluate(list=>list.scrollTop)).toBe(previousScroll);
+ await page.locator('#playbookSearch').fill('Long library situation 31');
+ await expect(cards).toHaveCount(1);
+ await expect(page.getByRole('button',{name:'Previous Page',exact:true})).toHaveCount(0);
+ await page.locator('#playbookClearFilters').click();
+ await expect(cards).toHaveCount(20);
+ const lastKey=await page.evaluate(()=>{
+  const shared=window._diqLibraryCards;
+  const models=SITUATIONS.map(s=>shared.libraryCardModel(s,'situation')).sort(shared.compareLibraryOrder);
+  window.__originalLibraryRandom=Math.random;Math.random=()=>0.999999;
+  return models.at(-1).id;
+ });
+ await page.locator('#playbookRandomFiltered').click();
+ await expect.poll(()=>page.evaluate(()=>currentSituation.key)).toBe(lastKey);
+ await page.evaluate(()=>{Math.random=window.__originalLibraryRandom;delete window.__originalLibraryRandom;});
 });
 
 test('floating field controls use the same layout for players coaches and admins',async({browser,baseURL})=>{

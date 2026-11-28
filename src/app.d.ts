@@ -35,6 +35,7 @@ declare global {
     _diqCloseAccountMenu?: () => void;
     _diqCloseAccountSecurity?: () => void;
     _diqStaffTeamId?: () => string;
+    _diqChoosePlaybookSituation?: (key:string) => void;
     _diqOpenPlaybookBrowser?: (teamId?: string) => Promise<void>;
     _diqPlayTestSituation?: (snapshot: import('$lib/domain/models').Situation) => () => void;
     _diqClosePlaybookBrowser?: () => void;

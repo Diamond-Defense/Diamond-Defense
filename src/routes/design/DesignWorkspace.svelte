@@ -1,5 +1,8 @@
 <script>
   import { onMount, tick } from 'svelte';
+  import SituationSummary from '$lib/components/SituationSummary.svelte';
+  import {qualifiedSituationLabel} from '$lib/domain/situation-identity';
+  import {libraryCardModel} from '$lib/plays/library-card.js';
   import GlobalLibraryTools from './GlobalLibraryTools.svelte';
   import Button from '$lib/components/ui/Button.svelte';
   import PageHeader from '$lib/components/ui/PageHeader.svelte';
@@ -377,7 +380,7 @@
   {/if}
   {#if editable}
     <button class="design-remove-action" disabled={busy} title="Archive this situation from its owning library" onclick={() => {
-      if (window.confirm(`Archive “${entry.title}” from ${library.name}? It will no longer be available from this library. Existing records are retained.`)) void action({action:'archive',type:library.type,id:library.id,...source(entry)},'Situation archived.');
+      if (window.confirm(`Archive “${qualifiedSituationLabel(entry)}” from ${library.name}? It will no longer be available from this library. Existing records are retained.`)) void action({action:'archive',type:library.type,id:library.id,...source(entry)},'Situation archived.');
     }}>Remove from library</button>
   {/if}
   {#if full}
@@ -535,7 +538,7 @@
                           <input type="checkbox" bind:group={marked} value={entryId(entry)} disabled={busy} aria-label={'Select ' + entry.title}>
                         {/if}
                       </td>{/if}
-                      <td><h3><button class="situation-title" aria-haspopup="dialog" onclick={() => openDetails(entry)}>{entry.title}</button></h3>
+                      <td><h3><button class="situation-title" aria-haspopup="dialog" onclick={() => openDetails(entry)}>{qualifiedSituationLabel(entry)}</button></h3><small>{libraryCardModel(entry).placement} · {libraryCardModel(entry).fieldingMethod}</small>
                       </td><td>{entry.difficulty?displayLabel(entry.difficulty):'—'}</td>
                       <td>{sourceName(entry)}</td><td>{entry.revision}</td>
                       <td>{entry.sourceType ? (entry.hiddenScope ? (entry.hiddenScope === library.type ? 'Hidden here' : 'Hidden by ' + (entry.hiddenScope === 'organization' ? 'organization' : 'region')) : entry.difficultyFiltered ? 'Outside team difficulty' : 'Inherited')
@@ -567,13 +570,13 @@
         <p class="design-review-context">Pending reviews for <strong>{library.name}</strong></p>
         <div class="admin-access-table-wrap"><table class="design-review-table" aria-label="Pending publication reviews"><thead><tr><th scope="col">Situation</th><th scope="col">Source</th><th scope="col">Type</th><th scope="col">Revision</th><th scope="col">Actions</th></tr></thead><tbody>
         {#each listing.changeReviews.filter(item => item.canReview && item.status === 'pending') as item}
-          <tr><td><button class="situation-title" onclick={() => changeReview=item}>{item.original.title}</button></td><td>—</td><td>Proposed update</td><td>{item.revision}</td><td>{@render proposalMenu(item)}</td></tr>
+          <tr><td><button class="situation-title" onclick={() => changeReview=item}>{qualifiedSituationLabel(item.original)}</button></td><td>—</td><td>Proposed update</td><td>{item.revision}</td><td>{@render proposalMenu(item)}</td></tr>
         {/each}
         {#if library.type==='global' && isAdmin}{#each historical as item (item.id)}
-          <tr><td><button class="situation-title" onclick={()=>openHistoricalReview(item)}>{item.situation.title}</button></td><td>{item.submitterName}</td><td>{item.submissionType==='create'?'New situation':'Update'}</td><td>—</td><td><button onclick={()=>openHistoricalReview(item)}>Review proposal</button></td></tr>
+          <tr><td><button class="situation-title" onclick={()=>openHistoricalReview(item)}>{qualifiedSituationLabel(item.situation)}</button></td><td>{item.submitterName}</td><td>{item.submissionType==='create'?'New situation':'Update'}</td><td>—</td><td><button onclick={()=>openHistoricalReview(item)}>Review proposal</button></td></tr>
         {/each}{/if}
         {#each listing.incoming as item}
-          <tr><td><button class="situation-title" onclick={()=>startReview(item)}>{item.sourceTitle}</button></td><td>{item.sourceLibraryName || '—'}</td><td>{item.stale?'Source changed':item.existing?'Publication update':'New publication'}</td><td>{item.source_revision}</td><td>{#if item.existing || item.stale}<button onclick={()=>startReview(item)}>Review changes</button>{:else}
+          <tr><td><button class="situation-title" onclick={()=>startReview(item)}>{item.incoming?qualifiedSituationLabel({...item.incoming,key:item.source_key}):item.source_key+' · '+item.sourceTitle}</button></td><td>{item.sourceLibraryName || '—'}</td><td>{item.stale?'Source changed':item.existing?'Publication update':'New publication'}</td><td>{item.source_revision}</td><td>{#if item.existing || item.stale}<button onclick={()=>startReview(item)}>Review changes</button>{:else}
             <button class="design-menu-trigger" aria-label={'Actions for '+item.sourceTitle} aria-haspopup="true" popovertarget={'publication-actions-'+item.id} onclick={event=>{event.preventDefault();togglePublicationMenu(event,item);}}>•••</button>
             <div id={'publication-actions-'+item.id} class="design-publication-menu" popover="auto">
               <button disabled={busy || !item.incoming} onclick={()=>{closePublicationMenu(item);playTest({...item.incoming,key:item.source_key,revision:item.source_revision});}}>Preview situation</button>
@@ -597,7 +600,7 @@
         </div>
         <div class="admin-access-table-wrap"><table class="design-candidate-table" aria-label="Eligible situations"><thead><tr><th scope="col">Situation</th><th scope="col">Source library</th><th scope="col">Difficulty</th><th scope="col">Revision</th><th scope="col">Actions</th></tr></thead><tbody>
           {#each listing.sourceEntries.filter(group=>!candidateSource || scopeKey(group.scope)===candidateSource).flatMap(group=>group.entries.filter(entry=>searchText(entry.title).includes(searchText(candidateQuery)) && (!candidateDifficulty || entry.difficulty===candidateDifficulty)).map(entry=>({entry,group}))) as candidate}
-            <tr><td><button class="situation-title" disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>{candidate.entry.title}</button></td><td>{candidate.group.path} · {scopeLabel[candidate.group.scope.type]}</td><td>{candidate.entry.difficulty?displayLabel(candidate.entry.difficulty):'—'}</td><td>{candidate.entry.revision}</td><td><div class="actions row-actions"><button disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>Preview</button><button class="dd-button" data-variant="primary" disabled={busy} onclick={()=>cherryPick(candidate.entry)}>Add to library</button></div></td></tr>
+            <tr><td><button class="situation-title" disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>{qualifiedSituationLabel(candidate.entry)}</button></td><td>{candidate.group.path} · {scopeLabel[candidate.group.scope.type]}</td><td>{candidate.entry.difficulty?displayLabel(candidate.entry.difficulty):'—'}</td><td>{candidate.entry.revision}</td><td><div class="actions row-actions"><button disabled={busy} onclick={()=>playTestCandidate(candidate.entry)}>Preview</button><button class="dd-button" data-variant="primary" disabled={busy} onclick={()=>cherryPick(candidate.entry)}>Add to library</button></div></td></tr>
           {:else}<tr><td colspan="5">No eligible situations match these filters.</td></tr>{/each}
         </tbody></table></div>
       </section>
@@ -609,10 +612,10 @@
         {/if}
         <div class="admin-access-table-wrap"><table aria-label="Sent submissions"><thead><tr><th scope="col">Situation</th><th scope="col">Destination</th><th scope="col">Type</th><th scope="col">Revision</th><th scope="col">Status</th><th scope="col">Actions</th></tr></thead><tbody>
         {#each listing.changeReviews.filter(item=>item.submittedByYou && (!submissionStatus || item.status===submissionStatus)) as item}
-          <tr><td>{item.proposed.title || item.original.title}</td><td>{item.destinationName || scopeLabel[item.destination_scope] || '—'}</td><td>Proposed update</td><td>{item.revision}</td><td><span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></td><td>—</td></tr>
+          <tr><td>{qualifiedSituationLabel({...item.original,...item.proposed})}</td><td>{item.destinationName || scopeLabel[item.destination_scope] || '—'}</td><td>Proposed update</td><td>{item.revision}</td><td><span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></td><td>—</td></tr>
         {/each}
         {#each listing.outgoing.filter(item=>!submissionStatus || item.status===submissionStatus) as item}
-          <tr><td>{item.source_title}</td><td>{item.destination_name}</td><td>Publication</td><td>{item.source_revision}</td><td><span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></td><td>
+          <tr><td>{item.sourceLabel || item.source_key+' · '+item.source_title}</td><td>{item.destination_name}</td><td>Publication</td><td>{item.source_revision}</td><td><span class="design-status" data-status={item.status}>{displayLabel(item.status)}</span></td><td>
             {#if item.canWithdraw}<button disabled={busy} onclick={() => {
               if(window.confirm('Withdraw this submission? You can submit this revision again.'))void action({action:'withdraw_submission',promotionId:item.id},'Submission withdrawn.');
             }}>Withdraw</button>{:else if item.status === 'rejected' && item.review_notes}<button onclick={() => openRejection(item, true)}>View explanation</button>{:else}—{/if}
@@ -624,8 +627,8 @@
     {/if}
     {#if historicalReview}
       <section aria-label="Review legacy proposal">
-        <h2>{historicalReview.situation.title}</h2>
-        <p>{historicalReview.rationale}</p>
+        <h2>{qualifiedSituationLabel(historicalReview.situation)}</h2>
+        <SituationSummary record={historicalReview.situation} /><p>{historicalReview.rationale}</p>
         {#if historicalReview.submissionType === 'update'}
           {#each historicalChanges as field}
             <label><input type="checkbox" value={field} bind:group={historicalFields}> Apply {displayLabel(field)}</label>
@@ -647,7 +650,8 @@
     {/if}
     {#if changeReview}
       <section class="inset" aria-label="Review proposed update">
-        <div class="proposal-comparison-heading"><h2>{changeReview.original.title}</h2><div class="actions">{@render proposalMenu(changeReview,'-comparison')}<button onclick={()=>changeReview=null}>Close</button></div></div>
+        <div class="proposal-comparison-heading"><h2>{qualifiedSituationLabel(changeReview.original)}</h2><div class="actions">{@render proposalMenu(changeReview,'-comparison')}<button onclick={()=>changeReview=null}>Close</button></div></div>
+        <div class="comparison"><div><h3>Published</h3><SituationSummary record={changeReview.original} /></div><div><h3>Proposed</h3><SituationSummary record={{...changeReview.original,...changeReview.proposed}} /></div></div>
         <p>Published revision {changeReview.revision} compared with the proposed update. Only changed fields are shown.</p>
         {#if changeReview.stale}<p role="alert">The published revision changed after this draft started. A new proposal is needed before approval.</p>{/if}
         <div class="admin-access-table-wrap"><table class="proposal-changes-table" aria-label="Proposed changes"><thead><tr><th>What changed</th><th>Published</th><th>Proposed</th></tr></thead><tbody>
@@ -674,10 +678,10 @@
       <dialog class="situation-detail dd-detail-panel" bind:this={detailDialog} aria-labelledby="situation-detail-title"
         onclose={() => detail = null}>
         <div class="detail-heading">
-          <h2 id="situation-detail-title">{detail.entry.title}</h2>
+          <h2 id="situation-detail-title">{qualifiedSituationLabel(detail.entry)}</h2>
           <Button variant="ghost" onclick={closeDetails}>Close</Button>
         </div>
-        {#if detail.entry.desc}<p>{detail.entry.desc}</p>{/if}
+        <SituationSummary record={detail.entry} />{#if detail.entry.desc}<p>{detail.entry.desc}</p>{/if}
         <dl>
           <div><dt>Source library</dt><dd>{sourceName(detail.entry)}</dd></div>
           <div><dt>Revision</dt><dd>{detail.entry.revision}</dd></div>
@@ -689,13 +693,13 @@
     {/if}
     {#if review}
       <section class="inset" aria-label="Review publication">
-        <h2>{review.sourceTitle}</h2>
+        <h2>{review.incoming?qualifiedSituationLabel({...review.incoming,key:review.source_key}):review.sourceTitle}</h2>{#if review.incoming}<SituationSummary record={review.incoming} />{/if}
         <dl class="design-review-metadata"><div><dt>Source library</dt><dd>{review.sourceLibraryName || '—'}</dd></div><div><dt>Destination</dt><dd>{library.type === 'global' ? scopeLabel.global : library.name + ' · ' + scopeLabel[library.type]}</dd></div><div><dt>Revision</dt><dd>{review.source_revision}</dd></div></dl>
         {#if review.incoming?.desc}<p class="design-review-description">{review.incoming.desc}</p>{/if}
         {#if review.stale}<p>The source revision or its scope changed. Review the latest revision before approving.</p>{/if}
         {#if review.existing}
           <div class="comparison">
-            <details open><summary>Current · revision {review.existing.revision}</summary><p>{review.existing.desc}</p><pre>{JSON.stringify(review.existing, null, 2)}</pre></details>
+            <details open><summary>Current · revision {review.existing.revision}</summary><SituationSummary record={review.existing} /><p>{review.existing.desc}</p><pre>{JSON.stringify(review.existing, null, 2)}</pre></details>
             <details open><summary>Incoming · revision {review.source_revision}</summary><p>{review.incoming?.desc}</p><pre>{JSON.stringify(review.incoming, null, 2)}</pre></details>
           </div>
           <label>Variation name <input bind:value={variationName}></label>

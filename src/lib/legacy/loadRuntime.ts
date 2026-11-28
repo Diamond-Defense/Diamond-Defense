@@ -1,3 +1,4 @@
+import { headerIcons } from '../ui/navigation-icons.js';
 import { recommendedSituationOutcomes } from '../domain/situation-outcomes';
 import * as situationAuthoring from '../plays/authoring.js';
 import { paintHitVisuals } from '../plays/hit-visuals.js';
@@ -44,7 +45,7 @@ function loadClassicScript(source: string): Promise<void> {
 }
 
 export async function loadLegacyRuntime(): Promise<void> {
-  Object.assign(window, { _diqLibraryCards: libraryCards, _diqRecommendedSituationOutcomes: recommendedSituationOutcomes, _diqSituationAuthoring: situationAuthoring, _diqPlayAnimation: playAnimation, _diqPaintHitVisuals: paintHitVisuals, _diqFromSituation: fromSituation, _diqNewBoard: newBoard, _diqFieldGeometry: fieldGeometry, _diqTokenPresentation: tokenPresentation, _diqOpenCoachReview: openCoachReview, _diqBallLocations: BALL_LOCATIONS, _diqSuggestSituationName: suggestSituationName, _diqAudienceLabel: audienceLabel, _diqNormalizeAudience: normalizeAudience });
+  Object.assign(window, { _diqHeaderIcons: headerIcons, _diqLibraryCards: libraryCards, _diqRecommendedSituationOutcomes: recommendedSituationOutcomes, _diqSituationAuthoring: situationAuthoring, _diqPlayAnimation: playAnimation, _diqPaintHitVisuals: paintHitVisuals, _diqFromSituation: fromSituation, _diqNewBoard: newBoard, _diqFieldGeometry: fieldGeometry, _diqTokenPresentation: tokenPresentation, _diqOpenCoachReview: openCoachReview, _diqBallLocations: BALL_LOCATIONS, _diqSuggestSituationName: suggestSituationName, _diqAudienceLabel: audienceLabel, _diqNormalizeAudience: normalizeAudience });
   for (const source of runtimeSources) {
     await loadClassicScript(source);
   }

@@ -1,4 +1,4 @@
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/security/authorization';
 import { databaseFor } from '$lib/server/database/context';
 import { accessibleSituationRevision, designWorkspaces } from '$lib/server/security/design-scopes';
@@ -6,8 +6,9 @@ import { SqliteSituationRepository } from '$lib/server/repositories/situations';
 
 export const load = async (event) => {
   const user = await requireUser(event, ['coach','admin']);
+  if (!event.url.searchParams.has('design') && event.url.searchParams.get('edit') !== '1') throw redirect(307,'/?boardLibrary=1');
   const type = event.url.searchParams.get('design');
-  const base = { userId: user.id, role: user.role, canPublish: user.role === 'admin' };
+  const base = { userId: user.id, role: user.role, canPublish: user.role === 'admin', navigationUser: {id:user.id,displayName:user.displayName,role:user.role,canAccessDesign:user.canAccessDesign,directorScopes:user.directorScopes,coachedTeamIds:user.coachedTeamIds,teamId:user.teamId,mustChangePassword:user.mustChangePassword} };
   if (!type) return { ...base, startInLibrary: event.url.searchParams.get('edit') !== '1', designScope: null, initialSituation: null };
   const database = databaseFor(event);
   const id = event.url.searchParams.get('id') || '';

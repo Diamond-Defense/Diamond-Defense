@@ -1,3 +1,7 @@
+import {readFileSync} from 'node:fs';
+import {fromSituation,boardAnimation,validateBoard} from '../src/lib/plays/board.js';
+import {syncSituationAnimation} from '../src/lib/plays/authoring.js';
+import {exportBoardFile,importBoardFile} from '../src/lib/plays/board-transfer.js';
 import {selectBoardStep,openRunnerAdvances} from './helpers/play-library.js';
 import {openLibraryPlay} from './helpers/play-library.js';
 import {test,expect} from '@playwright/test';
@@ -174,5 +178,47 @@ test('airborne hits fielded on the ground touch down, bounce, and settle before 
   expect(catchPlay.fieldingTime).toBe(catchPlay.contactTime+catchPlay.ballDuration);
   expect(catchPlay.caught).toBe(true);
   expect(frameAt(catchPlay,catchPlay.fieldingTime+50).ballShadow).toBeNull();
+ }
+});
+
+
+test('S01 ground pickup follows its bounce and its shorter relay retains a transfer',()=>{
+ const situation=JSON.parse(readFileSync(new URL('../situations.json',import.meta.url),'utf8')).find(item=>item.key==='BD-01');
+ for(const coachBoard of [true,false]){
+  const board=fromSituation(situation,{coachBoard});
+  const play=compilePlay(board,{coachBoard,showHitFlight:true});
+  const landed=play.contactTime+play.ballDuration;
+  const settled=landed+hitBounceDuration(board.battedBall);
+  expect(play.fieldingWarning).toBe('');
+  expect(play.fieldingTime).toBeGreaterThan(settled);
+  expect(frameAt(play,settled).positions.LF).not.toEqual(board.battedBall.destination);
+  const bounce=frameAt(play,landed+hitBounceDuration(board.battedBall)/2);
+  expect(bounce.ballShadow).not.toBeNull();
+  expect(Math.hypot(bounce.ball.x-bounce.positions.LF.x,bounce.ball.y-bounce.positions.LF.y)).toBeGreaterThan(50);
+  expect(play.throws[0].start-play.fieldingTime).toBe(90);
+  expect(play.throws[1].start-(play.throws[0].start+play.throws[0].duration)).toBe(70);
+  expect(play.throws[1].duration).toBeLessThan(play.throws[0].duration);
+  expect(boardAnimation(board).throwTimings).toEqual(situation.boardAnimation.throwTimings);
+  expect(importBoardFile(exportBoardFile(board)).throwTimings).toEqual(board.throwTimings);
+  expect(syncSituationAnimation(situation).boardAnimation.throwTimings).toEqual(board.throwTimings);
+  expect(validateBoard({...board,throwTimings:[{from:'LF',to:'SS',durationMs:-1,transferMs:0}]})).not.toEqual([]);
+ }
+});
+
+
+test('runner display spacing keeps occupied-base chips legible without mutating routes',async()=>{
+ const {positionRunnerChip,tokenMetrics}=await import('../src/lib/plays/token-presentation.js');
+ const {BASES_NATIVE}=await import('../src/lib/plays/field.js');
+ for(const width of [1000,1800]){
+  const metrics=tokenMetrics(width,width*2133/3200);
+  for(const [base,id] of [['first','1B'],['second','2B'],['third','3B']]){
+   const point={...BASES_NATIVE[base]},positions={[id]:{...point}};
+   const before=JSON.stringify({point,positions});
+   const shown=positionRunnerChip(point,positions,metrics);
+   const separation=Math.hypot((shown.x-point.x)*metrics.width/3200,(shown.y-point.y)*metrics.height/2133);
+   expect(separation).toBeGreaterThanOrEqual((metrics.defender+metrics.runner)/2+5);
+   expect(JSON.stringify({point,positions})).toBe(before);
+   const midfield={x:1570,y:1240};expect(positionRunnerChip(midfield,positions,metrics)).toEqual(midfield);
+  }
  }
 });

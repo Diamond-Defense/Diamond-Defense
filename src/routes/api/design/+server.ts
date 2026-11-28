@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import type { Situation } from '$lib/domain/models';
+import { qualifiedSituationLabel } from '$lib/domain/situation-identity';
 import { databaseFor } from '$lib/server/database/context';
 import type { SqlCommand } from '$lib/server/database/adapter';
 import { writeAudit } from '$lib/server/repositories/audit';
@@ -99,8 +100,8 @@ export const GET: RequestHandler = async event => {
     canReview ? db.all<Promotion>(
       "SELECT * FROM situation_promotions WHERE destination_scope=?1 AND destination_id=?2 AND status='pending' ORDER BY created_at",
       [selected.type, selected.id]) : [],
-    db.all<Promotion & { destination_name: string; source_title: string }>(`SELECT p.*,
-      COALESCE(r.name,o.name,'Global Library') AS destination_name, s.title AS source_title
+    db.all<Promotion & { destination_name: string; source_title: string; source_payload: string; source_code: string }>(`SELECT p.*,
+      COALESCE(r.name,o.name,'Global Library') AS destination_name, s.title AS source_title, s.payload_json AS source_payload, s.display_code AS source_code
       FROM situation_promotions p JOIN situations s ON s.key=p.source_key
       LEFT JOIN regions r ON p.destination_scope='region' AND r.id=p.destination_id
       LEFT JOIN organizations o ON p.destination_scope='organization' AND o.id=p.destination_id
@@ -158,7 +159,7 @@ export const GET: RequestHandler = async event => {
     canReview: selected.canDesign && Boolean(is_owned),
   }));
   return json({ selected, entries, ownKeys, sourceEntries: candidates, incoming: reviews,
-    outgoing:outgoing.map(item => ({...item,canWithdraw:item.status === 'pending' && item.submitted_by === user.id})),
+    outgoing:outgoing.map(({source_payload,source_code,...item}) => ({...item,sourceLabel:qualifiedSituationLabel({...JSON.parse(source_payload),key:item.source_key,displayCode:source_code}),canWithdraw:item.status === 'pending' && item.submitted_by === user.id})),
     canReview, canCherryPick:sourceScopes.length > 0, changeReviews, inherited, maximumDifficulty: difficultyRule?.maximum || 'all',
   }, { headers: { 'Cache-Control': 'no-store' } });
 };

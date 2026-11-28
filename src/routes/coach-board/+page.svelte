@@ -5,10 +5,12 @@
   import { TEACHING_CATEGORIES, SITUATION_DIFFICULTIES } from '$lib/domain/situation-metadata';
   import { validateSituationOutcomes, recommendedSituationOutcomes, suggestedOutfieldPlan } from '$lib/domain/situation-outcomes';
   import { inferBallLocation, suggestSituationName, normalizeAudience } from '$lib/domain/situation-identity';
+  import AppNavigation from '$lib/components/AppNavigation.svelte';
+  import SituationSummary from '$lib/components/SituationSummary.svelte';
   import PlayLibrary from '$lib/components/PlayLibrary.svelte';
   import { copyLibraryPlay } from '$lib/plays/library.js';
   let libraryOpen=$state(false), libraryReturnToMain=$state(false);
-  function closeLibrary(){libraryOpen=false;if(!presenting&&(!hasEditor||libraryReturnToMain)){leaving=true;window.location.assign('/');return;}requestAnimationFrame(()=>document.getElementById(presenting?(presentationOrigin==='library'?'backToLibrary':'exitPresentation'):'browseLibrary')?.focus());}
+  function closeLibrary(){libraryOpen=false;if(!presenting&&(!hasEditor||libraryReturnToMain)){leaving=true;window.location.assign('/');return;}requestAnimationFrame(()=>document.getElementById(presenting?'presentationLibrary':'browseLibrary')?.focus());}
   function browseLibrary(){
     if (data.designScope) {
       if (!allowReplace()) return;
@@ -21,7 +23,7 @@
   import { asset } from '$app/paths';
   import { paintHitVisuals } from '$lib/plays/hit-visuals.js';
   import fieldImage from '$lib/assets/diamond-defense-soft-field.png';
-  import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, positionThrownBall } from '$lib/plays/token-presentation.js';
+  import { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, positionThrownBall, positionRunnerChip } from '$lib/plays/token-presentation.js';
   import { BASES_NATIVE, IMG_W, IMG_H } from '$lib/plays/field.js';
   import { newBoard, clone, POSITIONS, BALL_TYPES, hitFielding, cleanPath, fromSituation, toSituation, upgradeBoard } from '$lib/plays/board.js';
   import {RUN_RESULTS,hasCustomRunning,runningDestination,useAutomaticRunning} from '$lib/plays/running.js';
@@ -29,12 +31,24 @@
   import { throwLegs, MAX_SEGMENTS, segmentStart, reconcileSegments, eventOptions, conditionValue, parseCondition } from '$lib/plays/segments.js';
   import { consolidateSituationRelay, situationDraft, situationPlayIssues, writeHandoff, readHandoff, clearHandoff } from '$lib/plays/authoring.js';
   import { presentationStatus } from '$lib/plays/presentation.js';
+  import {newDesignerBoard,applyMissingGroundDefaults,designerBaselineWarnings} from '$lib/plays/designer-defaults.js';
+  import {TIMING_PROFILE,THROW_DISTANCE_TABLE,NORMAL_SECOND,suggestedTransferDuration} from '$lib/plays/timing.js';
+  import {groundFieldingSuggestion,applyGroundFieldingSuggestion,timingReview,createTimingBaseline,compareTimingBaseline} from '$lib/plays/timing-review.js';
   import { compilePlay, hitFlightDuration, frameAt, traveledPath, createPlayback, TEACHING_PLAYBACK_RATE, movementDuration } from '$lib/plays/animation.js';
   let hitOverlay = $state();
+  const presentationCorners=$derived.by(()=>{
+    const width=metrics.width||800,height=metrics.height||width*IMG_H/IMG_W;
+    const inset=Math.max(8,Math.min(16,width*.012));
+    const summaryWidth=Math.min(280,width*.24),controlsWidth=Math.min(260,width*.24);
+    // Conservative lower-corner boundary: y/H = .43 + 1.12*(x/W - .03).
+    // Its top-right (or mirrored top-left) is the closest rectangle point to play.
+    const clearHeight=cornerWidth=>Math.max(0,Math.floor(height-inset-(.43+1.12*((inset+cornerWidth)/width-.03))*height-16));
+    return {inset,summaryWidth,controlsWidth,summaryHeight:clearHeight(summaryWidth),controlsHeight:clearHeight(controlsWidth)};
+  });
   $effect(() => { if (hitOverlay) paintHitVisuals(hitOverlay, frame, board.battedBall?.type); });
   let {data} = $props();
   let hasEditor=$state(false);
-  let board=$state(newBoard()), ballType=$state('ground_ball');
+  let board=$state(newDesignerBoard()), ballType=$state('ground_ball');
   let newHitResult=$state('');
   let stepId=$state(null), stepBall=$state(false), stepThrowFrom=$state(null), selectingThrow=$state(false);
   const steps=$derived(playSteps(board));
@@ -46,6 +60,8 @@
   let field, tools, layout, playback,moreMenu;
   let movementEditor=$state(null), throwEditor=$state(null), ballEditor=$state(false), outcomesOpen=$state(false);
   let drag=$state(null), ballDrag=$state(null);
+  let presentationControlsOpen=$state(false);
+  function togglePresentationControls(){playback?.pause();presentationControlsOpen=!presentationControlsOpen;if(!presentationControlsOpen)requestAnimationFrame(()=>document.querySelector('.presentation-controls-toggle')?.focus());}
   let presenting=$state(false), presentationWidth=$state(800), presentationPlay=$state(null);
   let presentationOrigin=$state('board'), presentationReturn, previousOverflow='';
   let focusPlayers=$state([]), showTargets=$state(false), showMovementPaths=$state(false);
@@ -65,9 +81,9 @@
       presentationPlay=compilePlay(board,{coachBoard:true});
       presentationReturn={savingSituation};presentationOrigin=origin;
       stop();playback=createPlayback(presentationPlay,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});
-      playback.setSpeed(Number(speed));playback.restart();presenting=true;
+      playback.setSpeed(Number(speed));playback.restart();presentationControlsOpen=false;presenting=true;
       previousOverflow=document.body.style.overflow;document.body.style.overflow='hidden';
-      requestAnimationFrame(()=>document.getElementById(origin==='library'?'backToLibrary':'exitPresentation')?.focus());
+      requestAnimationFrame(()=>document.getElementById('presentationLibrary')?.focus());
       return true;
     }catch(e){message=e.message;return false;}
   }
@@ -80,7 +96,7 @@
       requestAnimationFrame(()=>document.querySelector('nav[aria-label="Editor tools"] button[aria-current="page"]')?.focus());
     }else requestAnimationFrame(()=>document.getElementById('presentBoard')?.focus());
   }
-  function teach(action){if(action==='toggle'){if(running)playback.pause();else playback.play();}else if(action==='previous')playback.step(-1);else if(action==='next')playback.step(1);else playback.restart();}
+  function teach(action){if(presenting&&presentationControlsOpen)return;if(action==='toggle'){if(running)playback.pause();else playback.play();}else if(action==='previous')playback.step(-1);else if(action==='next')playback.step(1);else playback.restart();}
 
   const brandLogo = asset('/diamond-defence-classic.png');
 
@@ -149,7 +165,7 @@
   function newPlay(){
     if(!allowReplace())return false;
     libraryReturnToMain=false;hasEditor=true;
-    restoreBoard({board:newBoard(),id:'',revision:0});
+    restoreBoard({board:newDesignerBoard(),id:'',revision:0});
     message='New Board.';
     return true;
   }
@@ -305,6 +321,7 @@
     if(board.battedBall.type==='ground_ball'&&board.battedBall.fielding==='caught'){
       board.battedBall.fielding='ground';
     }
+    if(wasCaught&&!caughtInAir)board=applyMissingGroundDefaults(board);
     if(trainingMode&&wasCaught&&!caughtInAir&&result==='double_play'){
       applyRecommendedOutcomes();
       updateRunningOutcomes();
@@ -400,6 +417,8 @@
 
   const suggestedName=$derived(trainingMode&&board.battedBall?suggestSituationName(draftSituation()):'');
 
+  function navigateFromPresentation(event){if(!allowReplace()){event.preventDefault();return;}playback?.pause();leaving=true;}
+
   function backToField(event){if(dirty&&!window.confirm('Leave without saving these edits?')){event.preventDefault();return;}leaving=true;}
 
   let metrics=$state(tokenMetrics(800,800*IMG_H/IMG_W));
@@ -419,6 +438,9 @@
     }
     return starts;
   });
+  const displayPositions=$derived.by(()=>Object.fromEntries(Object.entries(positions).map(([id,p])=>[
+    id, !POSITIONS.includes(id)&&(presenting||frame)?positionRunnerChip(p,positions,metrics):p
+  ])));
   const beforePitchStep=$derived(currentStep?.timing==='pre_pitch'||stepId==='pre_pitch');
   const canAddHit=$derived(!board.battedBall&&!beforePitchStep&&!stepThrows.length);
   const actionInProgress=$derived(recordingMovement||stepBall||selectingThrow||ballEditor||!!movementEditor||throwEditor!==null||!!drag);
@@ -709,6 +731,23 @@
       }
       clearHandoff(sessionStorage);
     }
+    if(new URL(window.location.href).searchParams.get('import')==='1'){
+      const raw=sessionStorage.getItem('diq-library-import');
+      sessionStorage.removeItem('diq-library-import');
+      if(raw)try{
+        const imported=JSON.parse(raw);
+        if(imported.userId===data.userId&&Date.now()-imported.createdAt<5*60*1000){
+          restoreBoard({board:imported.board,id:'',revision:0});pendingSituation=true;
+          message='Board imported as a new draft. Review its name and play, then Save Board.';
+        }
+      }catch{message='Unable to restore the imported Board. Please import it again.';}
+    }
+    const entry=new URL(window.location.href).searchParams;
+    if(['board','situation'].includes(entry.get('libraryType'))&&entry.get('libraryId')&&['edit','present','duplicate'].includes(entry.get('libraryAction'))){
+      busy=true;
+      void libraryAction({type:entry.get('libraryType'),id:entry.get('libraryId')},entry.get('libraryAction'),entry.get('copyName'))
+        .catch(error=>message=error.message).finally(()=>{busy=false;});
+    }
     cleanSnapshot=editorSnapshot();
     if(presentationTransfer)enterPresentation('details');
     else if(!transfer&&data.startInLibrary)libraryOpen=true;
@@ -720,7 +759,7 @@
       }
       if(event.key==='Escape'){const picker=document.querySelector('.focus-picker[open],.board-more[open]');if(picker){event.preventDefault();picker.removeAttribute('open');picker.querySelector('summary')?.focus();return;}}
       if(!presenting||event.altKey||event.ctrlKey||event.metaKey)return;
-      if(event.key==='Escape'){event.preventDefault();exitPresentation(presentationOrigin==='library'?'library':'editor');return;}
+      if(event.key==='Escape'){event.preventDefault();if(presentationControlsOpen){presentationControlsOpen=false;requestAnimationFrame(()=>document.querySelector('.presentation-controls-toggle')?.focus());}else exitPresentation(presentationOrigin==='library'?'library':'editor');return;}
       if(event.target.closest('input,select,textarea')||(event.key===' '&&event.target.closest('button')))return;
       const action={ArrowLeft:'previous',ArrowRight:'next',' ':'toggle',r:'restart',R:'restart'}[event.key];if(action){event.preventDefault();teach(action);}
     };
@@ -842,6 +881,7 @@
       stepId='contact';
     }else board.steps=[...steps];
     board.battedBall={...existing,type:ballType,start:clone(BASES_NATIVE.home),destination:point(event),stepId};
+    if(!existing)board=applyMissingGroundDefaults(board);
     syncPlayOutcome();
     ballEditor=true;
     stepBall=false;
@@ -909,6 +949,49 @@
     if(!event.currentTarget.reportValidity())return;
     const duration=Math.round(Number(event.currentTarget.value)*1000*TEACHING_PLAYBACK_RATE);
     if(duration<250||duration>30000)return;edit();segment.durationMs=duration;
+  }
+  let reviewView=$state('coach'),showPickupSuggestion=$state(false),baselineName=$state(''),loadedBaseline=$state(null),baselineError=$state('');
+  const baselineWarnings=$derived(designerBaselineWarnings(board));
+  function applySharedBaselineDefaults(){edit();board=applyMissingGroundDefaults(board);board.timingProfile=TIMING_PROFILE;message='Shared timing defaults applied. Authored throw overrides, bounce settings and existing routes were preserved. Preview before saving.';}
+  const pickupSuggestion=$derived(groundFieldingSuggestion(board));
+  const timingReport=$derived.by(()=>{try{return timingReview(board,{coachBoard:reviewView==='coach'});}catch{return null;}});
+  const timingComparison=$derived.by(()=>{try{return loadedBaseline&&timingReport?compareTimingBaseline(loadedBaseline,timingReport):null;}catch{return null;}});
+  function previewPickupSuggestion(){
+    if(!pickupSuggestion)return;
+    try{
+      stop();const preview=applyGroundFieldingSuggestion(board,pickupSuggestion);
+      const play=compilePlay(preview,{coachBoard:true});
+      playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,endTime:play.fieldingTime,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});
+      playback.setSpeed(Number(speed));playback.play();
+      message='Previewing the suggested ground pickup. The draft has not changed; use Stop preview to return.';
+    }catch(error){message=error.message;}
+  }
+  function applyPickupSuggestion(){
+    const suggestion=pickupSuggestion;if(!suggestion)return;
+    edit();board=applyGroundFieldingSuggestion(board,suggestion);showPickupSuggestion=false;
+    message=suggestion.existing?'Suggested fielder and bounce applied. Existing routes were preserved; preview the approach before saving.':'Suggested fielder, ground travel and approach applied to the draft. Preview before saving.';
+  }
+  function timingFor(leg){return board.throwTimings?.find(item=>item.from===leg.from&&item.to===leg.to);}
+  function defaultTransfer(leg){return board.timingProfile===TIMING_PROFILE?suggestedTransferDuration(leg.index===1&&board.battedBall&&hitFielding(board.battedBall)==='ground'):0;}
+  function setThrowTiming(leg,field,value){
+    const seconds=Number(value);if(!Number.isFinite(seconds))return;
+    const bounds=field==='durationMs'?[.2,20]:[0,8];if(seconds<bounds[0]||seconds>bounds[1])return;
+    const current=fieldingSummary?.throws.find(item=>item.index===leg.index);
+    const timing=timingFor(leg)||{from:leg.from,to:leg.to,durationMs:current?.duration||220,transferMs:defaultTransfer(leg)};
+    edit();board.throwTimings=[...(board.throwTimings||[]).filter(item=>item.from!==leg.from||item.to!==leg.to),{...timing,[field]:Math.round(seconds*NORMAL_SECOND)}];
+  }
+  function clearThrowTiming(leg){edit();board.throwTimings=(board.throwTimings||[]).filter(item=>item.from!==leg.from||item.to!==leg.to);}
+  function downloadTimingBaseline(){
+    try{
+      const baseline=createTimingBaseline(board,baselineName||board.title);
+      const url=URL.createObjectURL(new Blob([JSON.stringify(baseline,null,2)],{type:'application/json'}));
+      const link=document.createElement('a');link.href=url;link.download='situation-timing-baseline.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),0);
+    }catch(error){baselineError=error.message;}
+  }
+  async function loadTimingBaseline(event){
+    const file=event.currentTarget.files?.[0];if(!file)return;
+    try{if(file.size>1000000)throw new Error('Choose a baseline smaller than 1 MB.');const baseline=JSON.parse(await file.text());compareTimingBaseline(baseline,timingReport);loadedBaseline=baseline;baselineError='';}
+    catch(error){loadedBaseline=null;baselineError=error.message;}finally{event.currentTarget.value='';}
   }
   const fieldingSummary=$derived.by(()=>{try{return compilePlay(board,{coachBoard:true});}catch{return null;}});
   function controls(){if(stepPreview)stop();if(!playback){const play=compilePlay(board,{coachBoard:true});playback=createPlayback(play,value=>frame=value,value=>running=value,{rate:TEACHING_PLAYBACK_RATE,reducedMotion:window.matchMedia('(prefers-reduced-motion: reduce)').matches});frame=frameAt(play,0);playback.setSpeed(Number(speed));}return playback;}
@@ -979,7 +1062,7 @@
       const creating=!Number.isInteger(Number(situation.revision))||Number(situation.revision)<1;
       if(!data.designScope&&data.role==='coach'&&!creating){
         const usage=await request(`/api/situations/${encodeURIComponent(situation.key)}/usage`);
-        if(!window.confirm(`Publish changes to the shared Situation? Team Playbooks using it: ${(usage.teams||[]).map(t=>t.name).join(', ')||'None'}.`))return;
+        if(!window.confirm(`Publish changes to the shared Situation? Team Situation Libraries using it: ${(usage.teams||[]).map(t=>t.name).join(', ')||'None'}.`))return;
       }
       if (data.designScope) {
         value = await request('/api/design', { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1048,7 +1131,7 @@
     busy=true;
     try{
       await request(`/api/play-library/board/${encodeURIComponent(boardId)}`,{method:'DELETE',headers:{'If-Match':String(revision)}});
-      hydrate(newBoard());
+      hydrate(newDesignerBoard());
       boardId='';
       revision=0;
       pendingSituation=false;
@@ -1064,7 +1147,7 @@
   async function archiveSituation(){
     busy=true;try{
       const usage=await request(`/api/situations/${encodeURIComponent(linkedSituation.key)}/usage`);
-      if(!window.confirm(`Archive Situation “${linkedSituation.title}”? Team Playbooks using it: ${(usage.teams||[]).map(team=>team.name).join(', ')||'None'}. Existing history is retained; the open draft will remain available.`))return;
+      if(!window.confirm(`Archive Situation “${linkedSituation.title}”? Team Situation Libraries using it: ${(usage.teams||[]).map(team=>team.name).join(', ')||'None'}. Existing history is retained; the open draft will remain available.`))return;
       await request(`/api/situations/${encodeURIComponent(linkedSituation.key)}`,{method:'DELETE',headers:{'If-Match':String(linkedSituation.revision)}});
       const copy=copyLibraryPlay('situation',draftSituation(),board.title,`copy-${crypto.randomUUID()}`);linkedSituation=copy;situationBaseline=null;board.sourceSituation=clone(copy);pendingSituation=true;message='Situation archived. The open draft can be published as a new Situation.';
     }catch(e){message=e.message;}finally{busy=false;}
@@ -1074,12 +1157,43 @@
 
 <svelte:head><title>Coach Board — Diamond Defence</title></svelte:head>
 {#snippet fieldingControls()}
-                <label>How it’s fielded <select value={hitFielding(board.battedBall)} onchange={e=>changeHitField('fielding',e.currentTarget.value)}>
+                <label>Fielding method <select value={hitFielding(board.battedBall)} onchange={e=>changeHitField('fielding',e.currentTarget.value)}>
                   {#if board.battedBall.type!=='ground_ball'}<option value="caught">Caught in the air</option>{/if}
                   <option value="ground">Fielded on the ground</option>
                 </select></label>
                 {#if board.battedBall.fielding===undefined}<button onclick={()=>changeHitField('fielding',hitFielding(board.battedBall))}>Confirm fielding method</button><p>This older play uses a default fielding method. Confirm it to clear the library review flag.</p>{/if}
                 <label>Ball fielder <select value={board.battedBall.fielder||''} onchange={e=>{edit();if(e.currentTarget.value)board.battedBall.fielder=e.currentTarget.value;else delete board.battedBall.fielder;}}><option value="">Nearest fielder</option>{#each POSITIONS as id}<option value={id}>{id}</option>{/each}</select></label>
+                {#if baselineWarnings.length}<ul aria-label="Ground pickup and relay suggestions">{#each baselineWarnings as warning}<li>{warning}</li>{/each}</ul>{/if}
+                {#if pickupSuggestion}
+                  <div class="pickup-suggestion">
+                    <p><strong>{pickupSuggestion.assigned?'Assigned':'Suggested'} ground pickup: {pickupSuggestion.fielder}</strong></p>
+                    <p>{pickupSuggestion.bounce?'Landing and a low forward bounce lead into the pickup point.':'The ground ball rolls into the pickup point.'} {pickupSuggestion.existing?'Existing fielder routes will be preserved.':'Adds an approach after ground travel settles.'}</p>
+                    <div class="button-row"><button aria-pressed={showPickupSuggestion} onclick={()=>showPickupSuggestion=!showPickupSuggestion}>{showPickupSuggestion?'Hide points':'Show landing / pickup'}</button><button onclick={previewPickupSuggestion}>Preview suggested pickup</button><button onclick={stop}>Stop preview</button><button onclick={applyPickupSuggestion}>Apply ground pickup suggestion</button></div>
+                  </div>
+                {/if}
+{/snippet}
+{#snippet timingBaselineControls()}
+ <details class="timing-review"><summary>Timing baseline · provisional</summary>
+  <p>Normal teaching playback seconds, measured from contact. Keep #1 as a reference while reviewing #2 and a longer outfield play.</p>
+  <label>Throw timing defaults <select value={board.timingProfile||'existing'} onchange={e=>{edit();if(e.currentTarget.value===TIMING_PROFILE)board.timingProfile=TIMING_PROFILE;else delete board.timingProfile;}}><option value="existing">Existing timing</option><option value={TIMING_PROFILE}>Distance suggestions v1 (provisional)</option></select></label>
+  <p>Authored throw overrides take priority.</p>
+  <button onclick={applySharedBaselineDefaults}>Apply missing baseline defaults</button>
+  {#if baselineWarnings.length}<ul aria-label="Animation baseline suggestions">{#each baselineWarnings as warning}<li>{warning}</li>{/each}</ul>{/if}
+  <label>Timing viewpoint <select bind:value={reviewView}><option value="coach">Coach Board</option><option value="main">Main app full animation</option></select></label>
+  <details><summary>Suggested throw distance table</summary><table><thead><tr><th>Distance (field units)</th><th>Flight (seconds)</th></tr></thead><tbody>{#each THROW_DISTANCE_TABLE as row}<tr><td>{row.distance} · {row.label}</td><td>{row.seconds.toFixed(1)}</td></tr>{/each}</tbody></table><p>Times interpolate smoothly between distances. Ground pickup gather: 0.36 s; relay transfer: 0.28 s. These are teaching defaults, not measured baseball standards.</p></details>
+  {#if timingReport}
+   <table><caption>{timingReport.view} event timing</caption><thead><tr><th>Event</th><th>Seconds</th>{#if timingComparison}<th>Change</th>{/if}</tr></thead><tbody>{#each timingComparison||timingReport.rows as row}<tr><td>{row.event} {row.details}</td><td>{row.seconds.toFixed(2)}</td>{#if timingComparison}<td>{row.delta===null?'New':`${row.delta>0?'+':''}${row.delta.toFixed(2)} s`}</td>{/if}</tr>{/each}</tbody></table>
+   {#if timingReport.readiness?.length}<table><caption>Ready before responsibility becomes relevant</caption><thead><tr><th>Player / responsibility</th><th>Arrival</th><th>Needed by</th><th>Status</th></tr></thead><tbody>{#each timingReport.readiness as check}<tr><td>{check.actor} · {check.duty}</td><td>{check.arrivalSeconds.toFixed(2)} s</td><td>{check.dueSeconds.toFixed(2)} s</td><td>{check.status}</td></tr>{/each}</tbody></table><p>Suggested coaching checkpoints inferred from routes. These do not change scoring or make the relay wait for backups.</p>{/if}
+   <table><caption>Throw legs</caption><thead><tr><th>Leg</th><th>Distance</th><th>Flight</th><th>Wait before release</th></tr></thead><tbody>{#each timingReport.throws as leg}<tr><td>{leg.from} → {leg.to}<small>{leg.source}</small></td><td>{leg.distance}</td><td>{leg.flightSeconds.toFixed(2)} s</td><td>{leg.transferSeconds.toFixed(2)} s</td></tr>{/each}</tbody></table>
+   {#if timingReport.separation.length}<table><caption>Ball-to-fielder separation (field units)</caption><thead><tr><th>Moment</th><th>Separation</th></tr></thead><tbody>{#each timingReport.separation as sample}<tr><td>{sample.label}</td><td>{sample.distance}{sample.distance<timingReport.clearance?' · Review overlap':''}</td></tr>{/each}</tbody></table><p>Overlap is a visual review cue, not a failed play. Check landing and bounce in playback.</p>{/if}
+   {#if timingReport.warning}<p role="note">{timingReport.warning}</p>{/if}
+   <label>Baseline name <input bind:value={baselineName} placeholder="S01 · ground pickup v1" maxlength="120" /></label>
+   <button onclick={downloadTimingBaseline}>Download timing baseline</button>
+   <label>Compare saved baseline <input type="file" accept=".json,application/json" onchange={loadTimingBaseline} /></label>
+   {#if loadedBaseline}<p>Comparing with {loadedBaseline.name}</p><button onclick={()=>loadedBaseline=null}>Clear timing comparison</button>{/if}
+  {/if}
+  {#if baselineError}<p role="alert">{baselineError}</p>{/if}
+ </details>
 {/snippet}
 {#snippet runningControls()}
       <label>Hit result <select value={board.running?.result||'single'} onchange={e=>changeRunningResult(e.currentTarget.value)}>{#each RUN_RESULTS as value}<option value={value}>{value.replaceAll('_',' ')}</option>{/each}</select></label>
@@ -1158,9 +1272,15 @@
     <li class:action-open={throwEditor===leg.index}>
       <button aria-expanded={throwEditor===leg.index} onclick={()=>{stop();throwEditor=throwEditor===leg.index?null:leg.index;ballEditor=false;movementEditor=null;}} aria-label={`${leg.from} → ${leg.to}`}><span><strong>{!canThrowAfterHit&&leg.from==='P'?'Pickoff':'Throw'}</strong><small>{leg.from} → {leg.to}</small></span><span class="action-edit">{throwEditor===leg.index?'Done':'Edit'}</span></button>
       {#if throwEditor===leg.index}
+          {@const timing=timingFor(leg)}
+          {@const compiled=fieldingSummary?.throws.find(item=>item.index===leg.index)}
         <div class="board-controls inline-fields">
           <label>Thrower <select value={leg.from} onchange={e=>editThrow(leg,'from',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.to||id===board[key][vertex-2]}>{id}</option>{/each}</select></label>
           <label>Receiver <select value={leg.to} onchange={e=>editThrow(leg,'to',e.currentTarget.value)}>{#each POSITIONS as id}<option value={id} disabled={id===leg.from||id===board[key][vertex+1]}>{id}</option>{/each}</select></label>
+          <p>Timing at Normal teaching playback. {timing?'Authored override':board.timingProfile===TIMING_PROFILE?'Distance suggestion':'Existing default'}.</p>
+          <label>Throw flight (seconds) <input type="number" min="0.2" max="20" step="0.05" value={(timing?.durationMs||compiled?.duration||220)/NORMAL_SECOND} onchange={e=>setThrowTiming(leg,'durationMs',e.currentTarget.value)} /></label>
+          <label>Gather / transfer (seconds) <input type="number" min="0" max="8" step="0.05" value={(timing?.transferMs??defaultTransfer(leg))/NORMAL_SECOND} onchange={e=>setThrowTiming(leg,'transferMs',e.currentTarget.value)} /></label>
+          {#if timing}<button onclick={()=>clearThrowTiming(leg)}>Use default throw timing</button>{/if}
           <button onclick={()=>deleteThrow(leg)}>Delete throw</button>
         </div>
       {/if}
@@ -1233,16 +1353,28 @@
       <label><input type="checkbox" bind:checked={taggedUp[base]} onchange={()=>confirmed=false} /> Runner on {base} tagged up</label>
     {/each}
 {/snippet}
-{#snippet teachingTools()}
+{#snippet presentationPlayback()}
+  <div class="presentation-corner-playback" role="group" aria-label="Presentation playback">
+    <button class="presentation-quick-play" disabled={presentationControlsOpen} aria-label={running?'Pause presentation':'Play presentation'} title={running?'Pause':'Play'} onclick={()=>teach('toggle')}><svg viewBox="0 0 24 24" aria-hidden="true">{#if running}<path d="M9 5H5v14h4zM19 5h-4v14h4z"/>{:else}<path d="m8 5 11 7-11 7z"/>{/if}</svg><span>{running?'Pause':'Play'}</span></button>
+    <button class="presentation-quick-replay" disabled={presentationControlsOpen} aria-label="Replay presentation" title="Replay" onclick={()=>teach('restart')}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11a9 9 0 1 1 2.6 6.4M3 4v7h7"/></svg><span>Replay</span></button>
+  </div>
+{/snippet}
+{#snippet teachingTools(compact=false)}
   <div class="teaching-tools" role="group" aria-label="Teaching views">
     <details class="focus-picker"><summary>Focus: {focusPlayers.length?focusPlayers.join(', '):'All Players'}</summary><div class="focus-options" role="group" aria-label="Focus positions"><button onclick={()=>focusPlayers=[]}>All Players</button>{#each POSITIONS as id}<label><input type="checkbox" value={id} bind:group={focusPlayers} />{id}</label>{/each}</div></details>
+    {#if compact}<label class="teaching-speed">Speed <select bind:value={speed} onchange={()=>playback.setSpeed(Number(speed))}><option value={0.5}>Slow · 0.5×</option><option value={1}>Normal · 1×</option><option value={2}>Fast · 2×</option></select></label>{/if}
     <label><input type="checkbox" bind:checked={showTargets} /> Show Targets</label>
     <label><input type="checkbox" bind:checked={showMovementPaths} /> Show Movement Paths</label>
   </div>
 {/snippet}
-<main hidden={!hasEditor} class="board-workspace" class:presentation={presenting}>
-  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{presenting?board.title:trainingMode?'Training situation':'Coach Board'}</h1><p>{presenting?'Coach Presentation':'Design and demonstrate the correct baseball play.'}</p></div></div>{#if presenting}<div class="presentation-navigation">{#if presentationOrigin!=='library'}<button id="exitPresentation" class="board-return" onclick={()=>exitPresentation()}>Exit Presentation</button>{/if}<button id="backToLibrary" class="board-return" onclick={()=>exitPresentation('library')}>Back to Library</button></div>{:else}<div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to Play</a></div>{/if}</header>
+<main hidden={!hasEditor} class="board-workspace" class:presentation={presenting} class:controls-collapsed={presenting&&!presentationControlsOpen}>
+  {#if presenting}
+    <div class="presentation-app-header"><AppNavigation user={data.navigationUser} onboard={()=>exitPresentation('library')} onnavigate={navigateFromPresentation}/></div>
+  {:else}
+  <header class="board-header"><div class="board-brand"><img src={brandLogo} alt="" /><div><h1>{trainingMode?'Training situation':'Coach Board'}</h1><p>Design and demonstrate the correct baseball play.</p></div></div><div class="presentation-navigation"><button id="browseLibrary" class="board-return" aria-label="Back to Library" onclick={browseLibrary}>Back to Library</button><a class="board-return" href="/" data-sveltekit-reload onclick={backToField}>Back to Play</a></div></header>
+  {/if}
   <div class="board-layout" bind:this={layout}>
+
   <div class="field-workspace" inert={busy}>
   {#if !presenting&&!savingSituation&&editorPanel==='timeline'}
   <section class="board-controls playback-controls" aria-label="Playback controls">
@@ -1261,8 +1393,34 @@
         : redraw?`Drag the ${redraw.id} chip to redraw its route.`:recordingMovement?'Drag a fielder or runner to record a move.':ballEditor?'Drag the ball to change its landing spot.':'Choose Add movement to record a route.'}</p>
   {/if}
   {/if}
-  <div class="board-field" class:placing-point={stepBall} style:width={presenting?`${presentationWidth}px`:undefined} bind:this={field} role="group" aria-label="Baseball play field">
+  <div class="board-field" class:placing-point={stepBall} style:width={presenting?`${presentationWidth}px`:undefined} style:--corner-inset={`${presentationCorners.inset}px`} style:--corner-summary-width={`${presentationCorners.summaryWidth}px`} style:--corner-summary-height={`${presentationCorners.summaryHeight}px`} style:--corner-controls-width={`${presentationCorners.controlsWidth}px`} style:--corner-controls-height={`${presentationCorners.controlsHeight}px`} bind:this={field} role="group" aria-label="Baseball play field">
     <img src={fieldImage} alt="Baseball field" draggable="false" />
+  {#if presenting}
+    <div class="presentation-field-toolbar">
+      <span class="presentation-mode-label">Coach Board</span>
+      <div class="presentation-field-actions">
+        <button id="presentationLibrary" onclick={()=>exitPresentation('library')}>Situation Library</button>
+
+        <button class="presentation-controls-toggle" aria-label={presentationControlsOpen?'Hide presentation controls':'Show presentation controls'} title={presentationControlsOpen?'Hide controls':'Show controls'} aria-expanded={presentationControlsOpen} aria-controls="presentationControlsPanel" onclick={togglePresentationControls}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21v-7m0-4V3m8 18v-9m0-4V3m8 18v-5m0-4V3M1 14h6m2-6h6m2 8h6"/></svg></button>
+      </div>
+      <aside id="presentationControlsPanel" hidden={!presentationControlsOpen} class="presentation-controls" aria-label="Coach controls">
+        <div class="presentation-controls-heading"><h2>Coach controls</h2><button aria-label="Close coach controls" onclick={togglePresentationControls}>×</button></div>
+        <div class="presentation-panel-content">
+          <p role="status" aria-live="polite" class="presentation-status">{teachingStatus}</p>
+          {@render teachingTools(true)}
+          {#if trainingMode&&trainingDetails.desc?.trim()}<details class="presentation-notes"><summary>Situation notes</summary><p>{trainingDetails.desc}</p></details>{/if}
+          {#if presentationOrigin!=='library'}<button class="presentation-edit-return" onclick={()=>exitPresentation()}>Back to Designer</button>{/if}
+        </div>
+      </aside>
+    </div>
+  {/if}
+    {#if presenting}
+      <section class="presentation-corner-summary" aria-label="Current situation details">
+        {#if trainingMode&&board.battedBall}<SituationSummary record={draftSituation()} showCategory={false} />{:else}<h2>{board.title}</h2>{/if}
+      </section>
+      {@render presentationPlayback()}
+
+    {/if}
     <button class="field-surface" aria-label="Set batted-ball destination" tabindex={presenting||(!stepBall||(!board.battedBall&&!newHitResult))?-1:0} aria-disabled={presenting||(!stepBall||(!board.battedBall&&!newHitResult))} onclick={destination}></button>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true" bind:this={hitOverlay}></svg>
     <svg class="board-throws" viewBox={`0 0 ${IMG_W} ${IMG_H}`} aria-hidden="true">
@@ -1274,8 +1432,12 @@
       {/each}
     {/if}
     {#each finalTargets as [id,p] (id)}<span class="ghost-target" style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} style:width={`${metrics.defender}px`} style:height={`${metrics.defender}px`} style:font-size={`${metrics.defenderFont}px`} aria-label={`${id} final target`}>{id}</span>{/each}
-    {#each Object.entries(positions) as [id,p] (id)}<button class:board-runner={!POSITIONS.includes(id)} class:movement-ready={(recordingMovement||redraw?.id===id)&&!presenting&&!frame} class={`board-token ${POSITIONS.includes(id)?'chip '+(['P','C'].includes(id)?'Battery':['LF','CF','RF'].includes(id)?'Outfield':'Infield'):'baseRunner'}`} class:chosen={!presenting&&(movementEditor?.id===id||selectingThrow&&stepThrowFrom===id)} class:relay-highlight={frame?.relayHighlights.has(id)||inspectedThrow?.from===id||inspectedThrow?.to===id} class:teaching-focus={focusPlayers.includes(id)} class:teaching-secondary={!!focusPlayers.length&&POSITIONS.includes(id)&&!focusPlayers.includes(id)} data-fielding-number={FIELDING_NUMBERS[id]} style:width={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:height={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:font-size={`${metrics.defenderFont}px`} style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} aria-label={`${id} token`} tabindex={presenting?-1:0} aria-disabled={presenting} onpointerdown={e=>down(e,id)} onpointermove={move} onpointerup={up} onpointercancel={cancel} onclick={e=>tokenClick(e,id)}>{#if POSITIONS.includes(id)}{id}{#if frame?.relayOrder[id]}<span class="seq-badge" aria-hidden="true">{frame.relayOrder[id].join(', ')}</span>{/if}{:else}<span class="rlabel" style:font-size={`${metrics.runnerFont}px`}>{board.offenseNumbers[id]}</span>{/if}</button>{/each}
-    {#if frame?.fieldingLabel}
+    {#each Object.entries(displayPositions) as [id,p] (id)}<button class:board-runner={!POSITIONS.includes(id)} class:movement-ready={(recordingMovement||redraw?.id===id)&&!presenting&&!frame} class={`board-token ${POSITIONS.includes(id)?'chip '+(['P','C'].includes(id)?'Battery':['LF','CF','RF'].includes(id)?'Outfield':'Infield'):'baseRunner'}`} class:chosen={!presenting&&(movementEditor?.id===id||selectingThrow&&stepThrowFrom===id)} class:relay-highlight={frame?.relayHighlights.has(id)||inspectedThrow?.from===id||inspectedThrow?.to===id} class:teaching-focus={focusPlayers.includes(id)} class:teaching-secondary={!!focusPlayers.length&&POSITIONS.includes(id)&&!focusPlayers.includes(id)} data-fielding-number={FIELDING_NUMBERS[id]} style:width={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:height={`${POSITIONS.includes(id)?metrics.defender:metrics.runner}px`} style:font-size={`${metrics.defenderFont}px`} style:left={`${p.x/IMG_W*100}%`} style:top={`${p.y/IMG_H*100}%`} aria-label={`${id} token`} tabindex={presenting?-1:0} aria-disabled={presenting} onpointerdown={e=>down(e,id)} onpointermove={move} onpointerup={up} onpointercancel={cancel} onclick={e=>tokenClick(e,id)}>{#if POSITIONS.includes(id)}{id}{#if frame?.relayOrder[id]}<span class="seq-badge" aria-hidden="true">{frame.relayOrder[id].join(', ')}</span>{/if}{:else}<span class="rlabel" style:font-size={`${metrics.runnerFont}px`}>{board.offenseNumbers[id]}</span>{/if}</button>{/each}
+    {#if showPickupSuggestion&&pickupSuggestion&&!frame&&!presenting}
+      <span class="pickup-preview" style:left={`${pickupSuggestion.landing.x/IMG_W*100}%`} style:top={`${pickupSuggestion.landing.y/IMG_H*100}%`}>Landing</span>
+      <span class="pickup-preview" style:left={`${pickupSuggestion.pickup.x/IMG_W*100}%`} style:top={`${pickupSuggestion.pickup.y/IMG_H*100}%`}>{pickupSuggestion.fielder} pickup</span>
+    {/if}
+    {#if !presenting&&frame?.fieldingLabel}
       <span class="fielding-label">{frame.fieldingLabel}</span>
     {:else if inspectedThrow}
       <span class="fielding-label">{inspectedThrow.from} → {inspectedThrow.to}</span>
@@ -1325,6 +1487,7 @@
     </nav>
   {#if editorPanel==='details'&&trainingMode}
     <section class="board-controls mode-controls" aria-label="Situation details">
+      {#if board.battedBall}<SituationSummary record={draftSituation()} />{/if}
       <label>Variant name <input bind:value={trainingDetails.audience.staffVariant} /></label>
       <label>Player context <textarea bind:value={trainingDetails.desc}></textarea></label>
       <label>Primary teaching category <select bind:value={trainingDetails.primaryCategory}>{#each TEACHING_CATEGORIES as category}<option value={category.id}>{category.label}</option>{/each}</select></label>
@@ -1348,6 +1511,7 @@
   {:else if editorPanel==='review'&&trainingMode}
   <section class="conversion" id="situation-conversion" aria-label="Save Situation options"><div class="conversion-heading"><h2>Save Situation Changes</h2><button onclick={()=>selectEditorPanel('timeline')}>Back to play timeline</button></div>
     <p>Preview as player to test the opening hit, positioning checks and Watch Solution with this unpublished draft.</p>
+    {@render timingBaselineControls()}
     {#if reviewIssues.length}<ul aria-label="Review issues">{#each reviewIssues as issue}<li>{issue}</li>{/each}</ul>{/if}
     {#if reviewWarnings.length}<details><summary>Coaching suggestions ({reviewWarnings.length})</summary><ul>{#each reviewWarnings as warning}<li>{warning}</li>{/each}</ul></details>{/if}
     {#if relatedLoadError}<p role="status">{relatedLoadError}</p>{/if}
@@ -1399,6 +1563,7 @@
   </section>
   {:else if editorPanel==='review'}
     <section class="board-controls mode-controls" aria-label="Board review">
+      {@render timingBaselineControls()}
       {#if boardReviewIssue}<p role="alert">{boardReviewIssue}</p>{/if}
       <div class="button-row"><button onclick={()=>running?playback.pause():playbackAction('play')}>{running?'Pause':'Preview'}</button><button id="presentBoard" onclick={()=>enterPresentation()}>Present</button></div>
       {#if data.canPublish}<button onclick={convertBoard}>Create training draft</button>{/if}
@@ -1540,17 +1705,14 @@
   <p role="status" class="board-message">{message}</p>
     </aside>
   </div>
-  {#if presenting}
-  <section class="presentation-controls" aria-label="Presentation controls">
-    <p role="status" aria-live="polite" class="presentation-status">{teachingStatus}</p>
-    <div class="presentation-actions"><button disabled={!frame?.time} onclick={()=>teach('previous')}>Previous Step</button><button class="presentation-play" onclick={()=>teach('toggle')}>{running?'Pause':'Play'}</button><button disabled={frame?.time>=presentationPlay.duration} onclick={()=>teach('next')}>Next Step</button><button onclick={()=>teach('restart')}>Replay</button></div>
-    {@render teachingTools()}
-    <div class="presentation-options"><label>Speed <select bind:value={speed} onchange={()=>playback.setSpeed(Number(speed))}><option value={0.5}>Slow · 0.5×</option><option value={1}>Normal · 1×</option><option value={2}>Fast · 2×</option></select></label></div>
-  </section>
-  {/if}
+
 </main>
-{#if libraryOpen}<PlayLibrary onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
+{#if libraryOpen}<PlayLibrary stateKey={`${data.userId}:management`} onnewSituation={()=>{if(!allowReplace())return false;leaving=true;return true;}} onclose={closeLibrary} onaction={libraryAction} onimport={importBoard} />{/if}
 <style>
+ .pickup-suggestion{padding:10px;border:1px solid var(--border);border-radius:var(--radius-control);display:grid;gap:8px}
+ .pickup-preview{position:absolute;transform:translate(-50%,-100%);z-index:12;background:var(--surface-raised);border:2px dashed var(--border-emphasis);padding:4px 6px;border-radius:6px;color:var(--text-primary);font-size:12px;pointer-events:none}
+ .timing-review{min-width:0;overflow-x:auto}.timing-review table{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0}.timing-review caption{text-align:left;font-weight:700}.timing-review th,.timing-review td{text-align:left;padding:6px;border-bottom:1px solid var(--border)}.timing-review small{display:block}.timing-review>p{margin:10px 0}
+
  .outfield-suggestions{display:grid;gap:10px;border-left:3px solid var(--border-emphasis);padding:12px;min-width:0}
  .outfield-suggestions table{width:100%;border-collapse:collapse;font-size:13px}.outfield-suggestions th,.outfield-suggestions td{text-align:left;padding:6px;border-bottom:1px solid var(--border)}.outfield-suggestions caption{text-align:left;font-weight:600;margin-bottom:6px}
 
@@ -1560,7 +1722,7 @@
   .ghost-target.training-scoring-target{aspect-ratio:1;border:2px solid #83ed83;background:rgba(46,170,70,.2);box-shadow:0 0 0 1px #163820}
   .focus-picker{position:relative}.focus-picker summary{cursor:pointer;min-height:40px;padding:8px 12px;box-sizing:border-box;border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}.focus-options{position:absolute;bottom:100%;left:0;z-index:10;background:var(--surface);border:1px solid var(--border-emphasis);border-radius:var(--radius-control);padding:12px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;min-width:240px}.focus-options button{grid-column:1/-1}.focus-options label{min-height:36px}
   .teaching-tools{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;padding:8px 0}.teaching-tools label{display:flex;align-items:center;gap:6px}
-  .board-token.teaching-focus{outline:3px solid var(--accent-primary);outline-offset:4px;z-index:5}.board-token.teaching-secondary{opacity:0.65}
+  .board-token.teaching-focus{outline:3px solid #65ddff;outline-offset:4px;box-shadow:0 0 0 8px #082740;z-index:5}.board-token.teaching-secondary{opacity:0.65}
   .ghost-target{position:absolute;transform:translate(-50%,-50%);border:2px dashed var(--accent-primary);border-radius:50%;color:var(--baseball-line);background:rgba(7,23,34,.55);display:flex;align-items:center;justify-content:center;box-sizing:border-box;pointer-events:none;font-weight:700}
 
   .board-workspace{padding:16px;max-width:1800px;margin:auto}
@@ -1661,20 +1823,75 @@
   .board-message{white-space:pre-line;margin:0;min-height:24px}
   .board-tools[hidden],.board-workspace[hidden]{display:none}
   .presentation-navigation{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
-  .presentation{position:fixed;inset:0;z-index:1000;max-width:none;width:100%;height:100dvh;box-sizing:border-box;background:var(--app-background);display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px;padding:12px;overflow:hidden}
-  .presentation .board-header{margin:0;border:0}.presentation .board-brand,.presentation .board-brand>div{min-width:0}.presentation .board-header h1{overflow-wrap:anywhere}.presentation .board-header h1{font-size:clamp(18px,2vw,28px)}.presentation .board-header p{font-size:12px}
-  .presentation .board-layout{display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
+  .presentation{position:fixed;inset:0;z-index:1000;max-width:none;width:100%;height:100dvh;box-sizing:border-box;background:var(--app-background);display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:12px;padding:0 12px 12px;overflow:hidden}
+  .presentation.controls-collapsed{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+  .presentation-controls[hidden]{display:none}
+  .presentation-field-actions{display:flex;align-items:center;gap:8px;min-width:0}
+  .presentation-field-actions>button:first-child{min-width:0}
+  .presentation-corner-playback .presentation-quick-play{background:var(--accent-primary);color:var(--text-on-accent);border-color:var(--accent-primary)}
+  .presentation-corner-playback .presentation-quick-play:hover{background:var(--accent-primary-hover)}
+  .presentation-field-actions .presentation-controls-toggle{width:40px;height:40px;padding:9px;flex:none}
+  .presentation-field-actions svg,.presentation-corner-playback svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .presentation-quick-play svg{fill:currentColor}
+  @media(pointer:coarse){.presentation-field-actions .presentation-controls-toggle{width:44px;height:44px}}
+  .presentation-app-header{grid-column:1/-1;min-width:0;margin:0 -12px}
+  .presentation-field-toolbar{position:absolute;top:0;right:0;z-index:20;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:100%;padding:4px;background:var(--app-background);border-radius:8px;box-sizing:border-box}
+  .presentation-mode-label{font-size:13px;color:var(--text-secondary)}
+  .presentation-mode-label::before{content:'';display:inline-block;width:6px;height:6px;margin-right:8px;background:var(--success);border-radius:50%}
+  .presentation-field-toolbar button{min-height:40px;padding:8px 12px;font-size:14px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary);font-weight:650;white-space:normal}
+  .presentation .board-header{grid-column:1/-1;margin:0;border:0}.presentation .board-brand,.presentation .board-brand>div{min-width:0}.presentation .board-header h1{overflow-wrap:anywhere}.presentation .board-header h1{font-size:clamp(18px,2vw,28px)}.presentation .board-header p{font-size:12px}
+  .presentation .board-layout{position:relative;grid-column:1;grid-row:2;min-width:0;height:100%;display:flex;align-items:center;justify-content:center;min-height:0;overflow:hidden}
   .presentation .field-workspace{position:static;display:contents}
-  .presentation .board-field{position:relative;top:auto;max-width:100%;max-height:100%;flex:none}
+  .presentation .board-field{position:relative;top:auto;max-width:100%;max-height:100%;flex:none;border:0;border-radius:0;box-shadow:none}
   .presentation .board-token{cursor:default}.presentation .field-surface{cursor:default}
-  .presentation-controls{display:grid;gap:8px;max-width:1100px;width:100%;margin:auto}
+  .presentation-corner-summary{position:absolute;left:var(--corner-inset);bottom:var(--corner-inset);z-index:18;width:var(--corner-summary-width);max-height:var(--corner-summary-height);box-sizing:border-box;padding:10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);overflow:auto;overscroll-behavior:contain}
+  .presentation-corner-summary h2{margin:0;font-size:16px;overflow-wrap:anywhere}
+  .presentation-corner-summary :global(.library-card-content){gap:5px}
+  .presentation-corner-summary :global(.library-card-meta){font-size:11px}
+  .presentation-corner-summary :global(.library-card-title){font-size:16px!important;line-height:1.3!important}
+  .presentation-corner-summary :global(.library-card-details){font-size:11px;gap:3px 8px}
+  .presentation-corner-summary :global(.library-card-details svg){width:13px;height:13px}
+  .presentation-corner-summary :global(.library-card-state){padding:6px 0 0!important;gap:4px}
+  .presentation-corner-summary :global(.playbook-state-group){gap:3px}
+  .presentation-corner-summary :global(.training-base-map),.presentation-corner-summary :global(.training-out-map){height:26px;min-height:26px}
+  .presentation-corner-summary :global(.library-card-state-caption){font-size:11px}
+  .presentation-corner-playback{position:absolute;right:var(--corner-inset);bottom:var(--corner-inset);z-index:21;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px;width:var(--corner-controls-width);max-width:var(--corner-controls-width)}
+  .presentation-corner-playback button{display:flex;align-items:center;justify-content:center;gap:8px;width:auto;max-width:100%;height:48px;min-height:48px;flex:1 1 100px;padding:10px 12px;font-size:14px;font-weight:650;white-space:nowrap;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface);color:var(--text-primary)}
+  .presentation-controls{position:absolute;right:4px;top:calc(100% + 8px);bottom:auto;z-index:22;display:flex;flex-direction:column;min-width:0;min-height:0;width:var(--corner-controls-width);height:auto;max-height:none;margin:0;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);overflow:visible}
+  .presentation-corner-playback button:disabled{opacity:.45;cursor:not-allowed}
+  .presentation-controls-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex:none;padding:6px 10px;border-bottom:1px solid var(--border)}
+  .presentation-controls-heading h2{font-size:14px;margin:0}
+  .presentation-controls-heading button{width:32px;height:32px;min-height:32px;padding:2px;font-size:22px}
+  .presentation-controls .presentation-edit-return{margin-top:10px;min-height:36px;font-size:12px}
+  .presentation-panel-content{flex:0 0 auto;min-height:0;padding:10px;overflow:visible}
+  .presentation-notes{margin-top:12px;font-size:14px}
+  .presentation-notes summary{cursor:pointer;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;box-sizing:border-box;font-weight:700;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface-raised);list-style:none}
+  .presentation-notes summary::-webkit-details-marker{display:none}
+  .presentation-notes summary::after{content:'';width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(45deg);flex:none}
+  .presentation-notes[open] summary::after{transform:rotate(225deg)}
+  .presentation-notes summary:hover{background:var(--selection-background)}
+  .presentation-notes p{white-space:pre-line;overflow-wrap:anywhere;line-height:1.5;margin:8px 0}
+  .presentation-teaching{margin-top:12px}
   .presentation-status{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
-  .presentation-actions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-  .presentation-actions button,.presentation .board-return{min-height:56px;font-size:18px;font-weight:700;white-space:normal}
-  .presentation-play{background:var(--accent-primary);color:var(--text-on-accent)}
-  .presentation-options{display:flex;justify-content:center;align-items:center;gap:24px;flex-wrap:wrap}
-  .presentation-options label{display:flex;align-items:center;gap:8px}.presentation-options select{min-height:44px;padding:6px 12px;background:var(--surface);color:var(--text-primary);border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}
-  @media(max-width:620px){.presentation-actions button{font-size:14px;padding:6px}.presentation .board-brand img{display:none}.presentation .board-header{gap:8px}.presentation .board-return{font-size:14px}.presentation-options{gap:12px}.presentation{padding:8px}}
+  .presentation .teaching-tools{display:grid;grid-template-columns:minmax(0,1fr);align-items:start;gap:8px;padding:0}
+  .presentation .teaching-tools>label{min-height:36px;font-size:13px;margin:0}
+  .presentation .teaching-tools>label:not(.teaching-speed){grid-column:1/-1}
+  .presentation .focus-picker{width:100%;min-width:0}
+  .presentation .focus-picker summary{font-size:13px;padding:10px 12px;line-height:20px;overflow-wrap:anywhere}
+  .presentation .focus-options{padding:8px;gap:6px;box-sizing:border-box;width:100%}
+  .presentation .focus-options label{display:flex;align-items:center;gap:6px;min-width:0;min-height:36px;padding:4px;margin:0;font-size:13px;white-space:nowrap;box-sizing:border-box}
+  .presentation .focus-options button{min-height:36px;padding:6px 8px;font-size:13px}
+  .presentation .teaching-tools input[type=checkbox]{width:16px;height:16px;min-width:16px;min-height:16px;padding:0;margin:0;flex:0 0 16px}
+  .presentation .teaching-speed{display:flex;flex-direction:row;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+  .presentation .teaching-speed select{min-height:36px;width:140px;max-width:65%;padding:6px 8px;background:var(--surface);color:var(--text-primary);border:1px solid var(--border-emphasis);border-radius:var(--radius-control)}
+  .presentation .focus-options{position:static;min-width:0;margin-top:6px;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .presentation .board-return{min-height:44px;font-size:16px;font-weight:700;white-space:normal}
+
+  @media(max-width:620px){.presentation .board-brand img{display:none}.presentation .board-header{gap:8px}.presentation .board-return{font-size:14px}.presentation{padding:0 8px 8px}.presentation-app-header{margin:0 -8px}}
   @media(min-width:1100px){.board-layout{grid-template-columns:minmax(0,1fr) 380px}.board-field{max-width:calc((100dvh - 166px)*1.50023);justify-self:center}}
   @media(max-width:899px){.board-layout{grid-template-columns:minmax(0,1fr)}.board-tools,.field-workspace{grid-column:1;max-height:none}.field-workspace{grid-row:1;position:relative;top:auto}.board-tools{position:relative;top:auto;grid-row:2}.board-save{position:static}.playback-controls{position:static}.board-workspace{padding:8px}.board-header p{font-size:12px}.board-header h1{font-size:20px}.board-brand img{width:36px;height:36px}}
+  @media(max-width:700px){
+    .presentation{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);overflow:hidden}
+  }
+
 </style>

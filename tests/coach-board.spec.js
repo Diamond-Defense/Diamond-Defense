@@ -23,7 +23,7 @@ test('coach board authors curved movement, replays, reloads and converts to exis
  await page.request.post('/api/auth/login',{headers,data:{role:'admin',password:'password'}});
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');await page.evaluate(()=>window.__DIQ_READY__);await expect(page.locator('#fieldImg')).toBeVisible();
- await Promise.all([page.waitForEvent('load'),page.getByRole('button',{name:'Coach Board',exact:true}).click()]);
+ await page.getByRole('button',{name:'Coach Board',exact:true}).click();
  await expect(page.getByRole('dialog')).toBeVisible();await page.getByRole('dialog').getByRole('button',{name:'New Board',exact:true}).click();await expect(page.getByRole('heading',{name:'Coach Board',exact:true})).toBeVisible();
  const name=`UI Board ${Date.now()}`;await page.getByLabel('Board name').fill(name);
  const token=page.getByRole('button',{name:'SS token',exact:true});

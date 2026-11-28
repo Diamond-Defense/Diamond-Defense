@@ -28,6 +28,14 @@ export const GET: RequestHandler = async (event) => {
   const situations = user?.role === 'player' || catalogTeam
     ? await repository.listTeamPlaybook(catalogTeam || '')
     : await repository.list();
+  // Sorting metadata is attached only after the authorized catalog has been selected.
+  if(event.url.searchParams.get('catalog')==='playbook'&&situations.length){
+    const timestamps=await db.all<{key:string;createdAt:string;updatedAt:string}>(
+      'SELECT key,created_at AS createdAt,updated_at AS updatedAt FROM situations WHERE key IN (SELECT value FROM json_each(?1))',
+      [JSON.stringify(situations.map(situation=>situation.key))]);
+    const byKey=new Map(timestamps.map(({key,...value})=>[key,value]));
+    return json(situations.map(situation=>({...situation,...byKey.get(situation.key)})),{headers:{'Cache-Control':'private, no-store'}});
+  }
   return json(situations,{headers:{'Cache-Control':'private, no-store'}});
 };
 

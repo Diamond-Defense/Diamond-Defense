@@ -5,8 +5,8 @@ test('team hides restrict free play while assigned snapshots stay accessible',as
  let team;
  try{
   expect((await request.post('/api/auth/login',{headers,data:{role:'admin',password:'password'}})).ok()).toBeTruthy();
-  const created=await request.post('/api/admin/teams',{headers,data:{id:teamId,name:'Playbook test'}});expect(created.status()).toBe(201);team=(await created.json()).record;
-  expect((await request.post(`/api/admin/teams/${teamId}/members`,{headers,data:{userId:playerId,name:'Playbook player',number:'7',role:'player',password:'Temp-1234'}})).status()).toBe(201);
+  const created=await request.post('/api/admin/teams',{headers,data:{id:teamId,name:'Situation Library test'}});expect(created.status()).toBe(201);team=(await created.json()).record;
+  expect((await request.post(`/api/admin/teams/${teamId}/members`,{headers,data:{userId:playerId,name:'Situation Library player',number:'7',role:'player',password:'Temp-1234'}})).status()).toBe(201);
   expect((await player.post('/api/auth/login',{headers,data:{role:'player',teamId,playerId,password:'Temp-1234'}})).ok()).toBeTruthy();
   expect((await player.put('/api/auth/password',{headers,data:{currentPassword:'Temp-1234',newPassword:'Changed-1234'}})).ok()).toBeTruthy();
   const state=await (await request.get(`/api/teams/${teamId}/playbook`)).json();

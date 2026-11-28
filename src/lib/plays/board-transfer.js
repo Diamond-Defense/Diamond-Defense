@@ -2,7 +2,7 @@ import {clone,upgradeBoard,validateBoard} from './board.js';
 import {compilePlay} from './animation.js';
 export const BOARD_FILE_FORMAT='diamond-defence-coach-board';
 export const MAX_BOARD_FILE_BYTES=1000000;
-const fields=['version','title','outs','offenseNumbers','defenders','runners','running','movements','battedBall','playSeq','playSeq2','animation','situationMetadata','steps','throwSteps'];
+const fields=['version','title','outs','offenseNumbers','defenders','runners','running','movements','battedBall','playSeq','playSeq2','animation','situationMetadata','steps','throwSteps','throwTimings','timingProfile'];
 function portableBoard(value){
  if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('The file does not contain a Board.');
  const board=Object.fromEntries(fields.filter(key=>Object.hasOwn(value,key)).map(key=>[key,clone(value[key])]));

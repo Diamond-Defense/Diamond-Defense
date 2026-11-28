@@ -17,7 +17,6 @@
 .library-card-context{font-size:13px;line-height:1.35;color:var(--text-secondary);display:-webkit-box;-webkit-line-clamp:2;line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;}
 .library-card-content .library-card-state{margin:8px 0 0!important;margin-top:auto!important;padding-top:10px!important;border-top:1px solid var(--border);width:100%;box-sizing:border-box;}
 .library-card-state-caption{font-size:12px;color:var(--text-secondary);}
-#playbookBrowserOverlay .playbook-browser-list{grid-auto-rows:max-content;grid-template-columns:repeat(3,minmax(0,1fr));}
 
 .library-card-content>.library-card-title{flex:none;}
 .library-card-content .library-card-state{display:grid;grid-template-columns:1fr 1fr;min-height:0;flex:none;}
@@ -26,13 +25,49 @@
 
 /* Shared card shell; browsing never exposes coaching or solution notes. */
 .library-card-shell{display:flex;flex-direction:column;min-width:0;overflow:hidden;border:1px solid var(--border);border-radius:13px;background:var(--surface);}
-#playbookBrowserOverlay .library-card-shell>.playbook-situation-card{border:0;background:transparent;border-radius:0;box-shadow:none;}
-#playbookBrowserOverlay .library-card-shell.is-current{border-color:var(--selection-border);background:var(--selection-background);}
 .library-card-meta{flex-wrap:wrap;}
 .library-card-badges{display:inline-flex;align-items:center;gap:6px;margin-left:auto;white-space:nowrap;}
 .library-card-current{font-size:12px;margin-left:auto;}
 
 /* Keep the same maximum column count in both views. */
-@media(max-width:1050px){#playbookBrowserOverlay .playbook-browser-list{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:650px){#playbookBrowserOverlay .playbook-browser-list{grid-template-columns:minmax(0,1fr);}}
 .library-card-context{font-size:12px;font-weight:500;line-height:1.4;color:var(--text-secondary);}
+
+/* One action hierarchy for both library headers. */
+.library-header-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:8px;flex:none}
+.library-header-actions .dd-button{box-sizing:border-box;min-height:40px;height:40px;padding:8px 12px;font-size:13px;line-height:22px;font-weight:500;border-radius:var(--radius-control);box-shadow:none;white-space:nowrap}
+.library-header-actions .dd-button[data-variant="ghost"]{color:var(--text-secondary)}
+@media(pointer:coarse){.library-header-actions .dd-button{height:44px;min-height:44px}}
+
+.library-card-shell.is-current{border-color:var(--selection-border);background:var(--selection-background)}
+
+/* Situation summaries reuse library metadata without interactive card chrome. */
+.situation-summary .library-card-content{display:flex;flex-direction:column;gap:10px;padding:0;min-width:0}
+.situation-summary .library-card-category{font-size:11px;font-weight:750;letter-spacing:.1em;text-transform:uppercase;color:var(--text-secondary,#435b70)}
+.situation-summary .library-card-meta{justify-content:space-between;gap:8px;flex-wrap:wrap}
+.situation-summary .library-card-title{font-size:20px!important;line-height:1.3!important;margin:0;white-space:normal}
+.situation-summary .library-card-details{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;white-space:normal}
+.situation-summary .library-fielding-full{display:inline!important;position:static;width:auto;height:auto;overflow:visible;clip-path:none;white-space:normal}
+.situation-summary .library-fielding-short{display:none!important}
+.situation-summary .library-card-state{margin:0;padding:10px 0;gap:8px}
+.situation-summary .library-card-state-caption{font-size:12px}
+.situation-summary .playbook-state-label{font-size:10px}
+.situation-summary .library-card-context{font-size:12px}
+.situation-summary #situationNotes{font-size:13px;margin-top:8px}
+/* Summary and notes take only the space their content needs. */
+body.player-experience #trainingPanel #trainingHud.has-library-summary{height:auto;min-height:0;flex:0 0 auto;overflow:visible;display:block}
+body.player-experience #trainingPanel #situationNotes[open] #playerSituationContext{overflow-wrap:anywhere;white-space:pre-line}
+body.player-experience #trainingHud.has-library-summary > :not(.player-library-summary){display:none!important}
+
+body:not(.player-experience) .player-library-summary{display:none}
+
+.player-library-summary .library-card-content{gap:6px}
+.player-library-summary .library-card-state{padding:6px 0!important}
+.player-library-summary .playbook-state-group{gap:4px}
+.player-library-summary .training-base-map,.player-library-summary .training-out-map{height:28px;min-height:28px}
+.player-library-summary #situationNotes{margin-top:4px}
+.player-library-summary #situationNotes>summary{min-height:36px;padding:0;font-size:13px}
+
+body.player-experience #trainingPanel #trainingHud #situationNotes{margin-top:12px}
+body.player-experience #trainingPanel #trainingHud #situationNotes>summary{min-height:44px;padding:8px 12px;border:1px solid var(--border-emphasis);border-radius:var(--radius-control);background:var(--surface-raised);color:var(--text-primary);font-size:14px;font-weight:700;box-sizing:border-box}
+body.player-experience #trainingPanel #trainingHud #situationNotes>summary:hover{background:var(--selection-background)}
+body.player-experience #trainingPanel #trainingHud #situationNotes #playerSituationContext{margin:10px 0 0;line-height:1.5}

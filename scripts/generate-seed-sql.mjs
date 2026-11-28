@@ -1,3 +1,4 @@
+import { catalogCleanupSql } from './lib/catalog-cleanup.mjs';
 import { pbkdf2Sync, randomBytes } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -98,6 +99,7 @@ for (const rawSituation of situations) {
 
 // Test fixtures use the same pinned sharing and adoption model as the app.
 const fixtureTeamIds = teams.map(team => quote(team.id)).join(', ');
+statements.push(catalogCleanupSql);
 const fixtureSituationKeys = situations.map(situation => quote(situation.key)).join(', ');
 const fixtureGlobalSituations = `library_scope='global' AND situations.active=1 AND situations.key IN (${fixtureSituationKeys})`;
 statements.push(`INSERT OR IGNORE INTO situation_versions(situation_key,revision,title,category,difficulty,payload_json,created_at)

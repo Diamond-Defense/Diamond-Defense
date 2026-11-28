@@ -525,7 +525,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(page.locator('#accountMenuTriggerLabel')).toHaveText('Administrator');
     // Empty-library presentation hides Start; still verify gameplay is disabled.
     await expect(page.locator('#startBtn')).toBeDisabled();
-    await expect(page.getByRole('button', { name: /Random/ })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Choose a random situation', exact: true })).toBeDisabled();
     await page.locator('#staffToolsBtn').click();
     await page.goto('/?workspace=global-tools');
     await expect(page.getByRole('region', { name: 'Manage Global Library', exact: true })).toBeVisible();
@@ -692,7 +692,7 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(values).toContain('BD-01');
     expect(values).toContain('BD-20');
 
-    await page.getByRole('button', { name: 'Playbook', exact: true }).click();
+    await page.getByRole('button', { name: 'Situation Library', exact: true }).click();
     await page.locator('.playbook-situation-card[data-situation-key="BD-02"]').click();
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).toBe('BD-02');
     await expect(page.locator('#descHud')).not.toHaveText('');
@@ -710,17 +710,19 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect.poll(() => page.evaluate(() => currentSituation?.key)).not.toBe('BD-02');
   });
 
-  test('Playbook browser filters database situations and selects one for practice', async ({ page }) => {
+  test('Situation Library browser filters database situations and selects one for practice', async ({ page }) => {
     await page.setViewportSize({ width: 1180, height: 820 });
     await openCleanApp(page);
     await loginAsSeedPlayer(page);
 
-    await page.getByRole('button', { name: 'Playbook', exact: true }).click();
-    const browser = page.getByRole('dialog', { name: 'Playbook' });
+    await page.getByRole('button', { name: 'Situation Library', exact: true }).click();
+    const browser = page.getByRole('dialog', { name: 'Situation Library' });
     await expect(browser).toBeVisible();
-    await expect(page.locator('#playbookResultCount')).toHaveText('22 situations');
+    const expectedCatalog=await (await page.request.get('/api/situations?catalog=playbook')).json();
+    await expect(page.locator('#playbookResultCount')).toHaveText(`${expectedCatalog.length} situations`);
+    await expect(browser.locator('.playbook-situation-card')).toHaveCount(Math.min(20,expectedCatalog.length));
     const categoryOptions = page.locator('#playbookCategory option');
-    await expect(categoryOptions).toHaveText(['All categories', 'Cutoffs & Relays', 'Backups & Rotations', 'Base Coverage']);
+    await expect(categoryOptions).toHaveText(await page.evaluate(()=>['All categories',...window.DIQ_TEACHING_CATEGORIES.map(category=>category.label)]));
     expect(await page.evaluate(() => window.DIQ_TEACHING_CATEGORIES.length)).toBeGreaterThan(3);
     const currentCard = browser.locator('.playbook-situation-card.is-current');
     await expect(currentCard).toHaveCSS('background-color', await semanticColor(page, '--selection-background'));
@@ -761,7 +763,7 @@ test.describe('Diamond Defence regression behavior', () => {
       return observed;
     })).toEqual({short:'Line Drive to LF',mismatch:'Line Drive to LF — Runner on First',custom:'Custom — Keep this wording',occupied:1,outs:2});
 
-    const layout = await page.locator('.playbook-browser-list').evaluate((list) => {
+    const layout = await page.locator('#playbookBrowserList').evaluate((list) => {
       const cards = [...list.querySelectorAll('.playbook-situation-card')].slice(0, 2);
       const [first, second] = cards.map((card) => card.getBoundingClientRect());
       return {
@@ -776,10 +778,10 @@ test.describe('Diamond Defence regression behavior', () => {
     expect(layout).toEqual({ pageOverflows: false, cardsOverlap: false });
 
     await page.locator('#playbookDifficulty').selectOption('advanced');
-    await expect(page.locator('.playbook-situation-card')).toHaveCount(9);
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(Math.min(20,expectedCatalog.filter(item=>item.difficulty==='advanced').length));
     await page.locator('#playbookClearFilters').click();
     await page.locator('#playbookCategory').selectOption('cutoffs-relays');
-    await expect(page.locator('.playbook-situation-card')).toHaveCount(22);
+    await expect(page.locator('.playbook-situation-card')).toHaveCount(Math.min(20,expectedCatalog.filter(item=>[item.primaryCategory,...(item.relatedCategories||[])].includes('cutoffs-relays')).length));
     await page.locator('#playbookMoreFilters').click();
     await expect(page.locator('#playbookMoreFilters')).toHaveAttribute('aria-expanded', 'true');
     await expect(page.locator('#playbookExtraFilters')).toBeVisible();
@@ -1010,7 +1012,7 @@ test.describe('Diamond Defence regression behavior', () => {
     await expect(guideButton).toHaveCSS('background-color', await semanticColor(page, '--header-control-hover'));
     await expect(page.locator('.playbook-rail-heading')).toContainText('Guide');
     await expect(page.locator('#howToCard .howto-body')).toBeVisible();
-    await expect(page.locator('#howToCard .howto-body')).toContainText('open Playbook');
+    await expect(page.locator('#howToCard .howto-body')).toContainText('open Situation Library');
     await expect(page.locator('#howToCard .howto-body')).not.toContainText('dropdown');
     await page.getByRole('button', { name: 'Close Guide' }).click();
     await expect(page.locator('.playbook-rail')).not.toBeVisible();

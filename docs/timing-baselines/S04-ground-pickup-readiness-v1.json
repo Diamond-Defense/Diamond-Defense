@@ -1,0 +1,731 @@
+{
+  "format": "diamond-defence-timing-baseline",
+  "version": 1,
+  "name": "BD-04 · ground pickup and readiness v1",
+  "board": {
+    "version": 2,
+    "offenseNumbers": {
+      "batter": 60,
+      "first": 68,
+      "second": 14,
+      "third": 92
+    },
+    "title": "Line Drive to LF — Runner on First",
+    "outs": 0,
+    "defenders": {
+      "P": {
+        "x": 1570,
+        "y": 1240
+      },
+      "C": {
+        "x": 1578,
+        "y": 1833
+      },
+      "1B": {
+        "x": 2040,
+        "y": 1253
+      },
+      "2B": {
+        "x": 1928,
+        "y": 907
+      },
+      "SS": {
+        "x": 1275,
+        "y": 895
+      },
+      "3B": {
+        "x": 1093,
+        "y": 1200
+      },
+      "LF": {
+        "x": 749,
+        "y": 674
+      },
+      "CF": {
+        "x": 1633,
+        "y": 445
+      },
+      "RF": {
+        "x": 2379,
+        "y": 683
+      }
+    },
+    "runners": {
+      "batter": {
+        "x": 1577,
+        "y": 1734
+      },
+      "first": {
+        "x": 2170,
+        "y": 1304
+      }
+    },
+    "running": {
+      "result": "single",
+      "destinations": {
+        "batter": "first",
+        "first": "second"
+      },
+      "taggedUp": {
+        "first": false
+      }
+    },
+    "movements": {
+      "P": [
+        {
+          "path": [
+            {
+              "x": 1570,
+              "y": 1240
+            },
+            {
+              "x": 1107,
+              "y": 1592
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "C": [
+        {
+          "path": [
+            {
+              "x": 1578,
+              "y": 1833
+            },
+            {
+              "x": 1577,
+              "y": 1668
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 700
+        }
+      ],
+      "1B": [
+        {
+          "path": [
+            {
+              "x": 2040,
+              "y": 1253
+            },
+            {
+              "x": 2205,
+              "y": 1307
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 850
+        }
+      ],
+      "2B": [
+        {
+          "path": [
+            {
+              "x": 1928,
+              "y": 907
+            },
+            {
+              "x": 1578,
+              "y": 848
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "SS": [
+        {
+          "path": [
+            {
+              "x": 1275,
+              "y": 895
+            },
+            {
+              "x": 850,
+              "y": 1080
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "3B": [
+        {
+          "path": [
+            {
+              "x": 1093,
+              "y": 1200
+            },
+            {
+              "x": 960,
+              "y": 1320
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "LF": [
+        {
+          "path": [
+            {
+              "x": 749,
+              "y": 674
+            },
+            {
+              "x": 753,
+              "y": 878
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 850
+        }
+      ],
+      "CF": [
+        {
+          "path": [
+            {
+              "x": 1633,
+              "y": 445
+            },
+            {
+              "x": 990,
+              "y": 650
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 800
+        }
+      ],
+      "RF": [
+        {
+          "path": [
+            {
+              "x": 2379,
+              "y": 683
+            },
+            {
+              "x": 1977,
+              "y": 709
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "batter": [
+        {
+          "path": [
+            {
+              "x": 1577,
+              "y": 1734
+            },
+            {
+              "x": 2170,
+              "y": 1304
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ],
+      "first": [
+        {
+          "path": [
+            {
+              "x": 2170,
+              "y": 1304
+            },
+            {
+              "x": 1572,
+              "y": 854
+            }
+          ],
+          "start": {
+            "event": "contact"
+          }
+        }
+      ]
+    },
+    "battedBall": {
+      "type": "line_drive",
+      "start": {
+        "x": 1577,
+        "y": 1734
+      },
+      "destination": {
+        "x": 757,
+        "y": 881
+      },
+      "fielding": "ground",
+      "fielder": "LF",
+      "bounce": {
+        "durationMs": 220,
+        "distance": 220,
+        "height": 18
+      }
+    },
+    "playSeq": [
+      "LF",
+      "3B"
+    ],
+    "playSeq2": [],
+    "animation": {
+      "version": 2
+    },
+    "sourceSituation": {
+      "key": "BD-04",
+      "variationNumber": 1,
+      "variationTagVersion": 2,
+      "variationTagged": false,
+      "title": "Line Drive to LF — Runner on First",
+      "desc": "Single to LF with a runner on first. The lead runner advances to second and holds; LF throws through the cutoff toward third to discourage another advance.",
+      "audience": {},
+      "suggestedDivisions": [],
+      "category": "Singles",
+      "difficulty": "intermediate",
+      "primaryCategory": "cutoffs-relays",
+      "relatedCategories": [
+        "backups-rotations",
+        "base-coverage"
+      ],
+      "outs": 0,
+      "runnersOn": {
+        "first": true,
+        "second": false,
+        "third": false
+      },
+      "starts": {
+        "P": {
+          "x": 1570,
+          "y": 1240
+        },
+        "C": {
+          "x": 1578,
+          "y": 1833
+        },
+        "1B": {
+          "x": 2040,
+          "y": 1253
+        },
+        "2B": {
+          "x": 1928,
+          "y": 907
+        },
+        "SS": {
+          "x": 1275,
+          "y": 895
+        },
+        "3B": {
+          "x": 1093,
+          "y": 1200
+        },
+        "LF": {
+          "x": 749,
+          "y": 674
+        },
+        "CF": {
+          "x": 1633,
+          "y": 445
+        },
+        "RF": {
+          "x": 2379,
+          "y": 683
+        }
+      },
+      "targets": {
+        "P": {
+          "x": 1107,
+          "y": 1592,
+          "tol": 125,
+          "notes": "Move to back up position between 3B and home. Read the play to back up 3B or possibly home plate."
+        },
+        "C": {
+          "x": 1577,
+          "y": 1668,
+          "tol": 95,
+          "notes": "Stay ready near home plate while leaving the runner a clear lane. Be available if the play develops toward home."
+        },
+        "1B": {
+          "x": 2205,
+          "y": 1307,
+          "tol": 100,
+          "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
+        },
+        "2B": {
+          "x": 1578,
+          "y": 848,
+          "tol": 90,
+          "notes": "Cover 2B. Be ready for possible throw/play on back runner."
+        },
+        "SS": {
+          "x": 850,
+          "y": 1080,
+          "tol": 88,
+          "notes": "Line up between LF and third. In this demonstration let the accurate throw travel through to 3B; cut or redirect only when called."
+        },
+        "3B": {
+          "x": 960,
+          "y": 1320,
+          "tol": 90,
+          "notes": "Cover 3B. Be ready for possible throw from LF."
+        },
+        "LF": {
+          "x": 753,
+          "y": 878,
+          "tol": 67,
+          "notes": "Make a good, hard, low throw to 3B. Make the throw low enough for the cut/relay to handle."
+        },
+        "CF": {
+          "x": 990,
+          "y": 650,
+          "tol": 155,
+          "notes": "Back up LF from deeper in left-center. Take a direct supporting route and leave room to stop a ball that gets through."
+        },
+        "RF": {
+          "x": 1977,
+          "y": 709,
+          "tol": 145,
+          "notes": "Move to back up position near 2B."
+        }
+      },
+      "hit": {
+        "x": 757,
+        "y": 881
+      },
+      "hitType": "line",
+      "batterAdvance": 1,
+      "playOutcome": {
+        "result": "single",
+        "batterResult": "first",
+        "outsRecorded": 0,
+        "reviewStatus": "ready"
+      },
+      "runnerOutcomes": [
+        {
+          "startingBase": "first",
+          "result": "second",
+          "taggedUp": false
+        }
+      ],
+      "playSeq": [
+        "LF",
+        "3B"
+      ],
+      "seqNote": "",
+      "boardAnimation": {
+        "version": 2,
+        "movements": {
+          "LF": [
+            {
+              "path": [
+                {
+                  "x": 749,
+                  "y": 674
+                },
+                {
+                  "x": 753,
+                  "y": 878
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 850
+            }
+          ],
+          "CF": [
+            {
+              "path": [
+                {
+                  "x": 1633,
+                  "y": 445
+                },
+                {
+                  "x": 990,
+                  "y": 650
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 800
+            }
+          ],
+          "C": [
+            {
+              "path": [
+                {
+                  "x": 1578,
+                  "y": 1833
+                },
+                {
+                  "x": 1577,
+                  "y": 1668
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 700
+            }
+          ],
+          "1B": [
+            {
+              "path": [
+                {
+                  "x": 2040,
+                  "y": 1253
+                },
+                {
+                  "x": 2205,
+                  "y": 1307
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 850
+            }
+          ]
+        },
+        "battedBall": {
+          "type": "line_drive",
+          "start": {
+            "x": 1577,
+            "y": 1734
+          },
+          "destination": {
+            "x": 757,
+            "y": 881
+          },
+          "fielding": "ground",
+          "fielder": "LF",
+          "bounce": {
+            "durationMs": 220,
+            "distance": 220,
+            "height": 18
+          }
+        },
+        "timingProfile": "distance-v1"
+      }
+    },
+    "timingProfile": "distance-v1"
+  },
+  "reports": [
+    {
+      "version": "timing-review-v1",
+      "view": "Coach Board",
+      "profile": "distance-v1",
+      "rows": [
+        {
+          "event": "Contact",
+          "seconds": 0,
+          "details": ""
+        },
+        {
+          "event": "Landing",
+          "seconds": 1.8,
+          "details": ""
+        },
+        {
+          "event": "Bounce / ground travel ends",
+          "seconds": 2.68,
+          "details": ""
+        },
+        {
+          "event": "Pickup",
+          "seconds": 3.4,
+          "details": "LF"
+        },
+        {
+          "event": "LF → 3B release",
+          "seconds": 3.76,
+          "details": ""
+        },
+        {
+          "event": "LF → 3B reception",
+          "seconds": 4.548,
+          "details": ""
+        },
+        {
+          "event": "Play complete",
+          "seconds": 4.548,
+          "details": ""
+        }
+      ],
+      "throws": [
+        {
+          "from": "LF",
+          "to": "3B",
+          "distance": 488.1,
+          "flightSeconds": 0.788,
+          "transferSeconds": 0.36,
+          "source": "Distance suggestion"
+        }
+      ],
+      "separation": [
+        {
+          "label": "Landing",
+          "distance": 302.4
+        },
+        {
+          "label": "Bounce midpoint",
+          "distance": 125.5
+        },
+        {
+          "label": "Ground travel ends",
+          "distance": 46.5
+        },
+        {
+          "label": "Minimum during bounce / ground travel",
+          "distance": 46.5
+        }
+      ],
+      "readiness": [
+        {
+          "actor": "1B",
+          "duty": "Be ready at first before the batter arrives",
+          "arrivalSeconds": 3.4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.995,
+          "status": "Ready"
+        },
+        {
+          "actor": "CF",
+          "duty": "Back up LF's ground pickup",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 3.4,
+          "marginSeconds": 0.2,
+          "status": "Ready"
+        },
+        {
+          "actor": "3B",
+          "duty": "Receive LF's throw",
+          "arrivalSeconds": 2,
+          "dueSeconds": 4.548,
+          "marginSeconds": 2.548,
+          "status": "Ready"
+        }
+      ],
+      "clearance": 80,
+      "warning": "",
+      "note": "Seconds at Normal teaching playback, measured from contact. Separation uses rendered ball coordinates and native field units; review visually before approval."
+    },
+    {
+      "version": "timing-review-v1",
+      "view": "Main app solution",
+      "profile": "distance-v1",
+      "rows": [
+        {
+          "event": "Contact",
+          "seconds": 0,
+          "details": ""
+        },
+        {
+          "event": "Landing",
+          "seconds": 1.8,
+          "details": ""
+        },
+        {
+          "event": "Bounce / ground travel ends",
+          "seconds": 2.68,
+          "details": ""
+        },
+        {
+          "event": "Pickup",
+          "seconds": 3.4,
+          "details": "LF"
+        },
+        {
+          "event": "LF → 3B release",
+          "seconds": 3.76,
+          "details": ""
+        },
+        {
+          "event": "LF → 3B reception",
+          "seconds": 4.548,
+          "details": ""
+        },
+        {
+          "event": "Play complete",
+          "seconds": 4.548,
+          "details": ""
+        }
+      ],
+      "throws": [
+        {
+          "from": "LF",
+          "to": "3B",
+          "distance": 488.1,
+          "flightSeconds": 0.788,
+          "transferSeconds": 0.36,
+          "source": "Distance suggestion"
+        }
+      ],
+      "separation": [
+        {
+          "label": "Landing",
+          "distance": 302.4
+        },
+        {
+          "label": "Bounce midpoint",
+          "distance": 125.5
+        },
+        {
+          "label": "Ground travel ends",
+          "distance": 46.5
+        },
+        {
+          "label": "Minimum during bounce / ground travel",
+          "distance": 46.5
+        }
+      ],
+      "readiness": [
+        {
+          "actor": "1B",
+          "duty": "Be ready at first before the batter arrives",
+          "arrivalSeconds": 3.4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.995,
+          "status": "Ready"
+        },
+        {
+          "actor": "CF",
+          "duty": "Back up LF's ground pickup",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 3.4,
+          "marginSeconds": 0.2,
+          "status": "Ready"
+        },
+        {
+          "actor": "3B",
+          "duty": "Receive LF's throw",
+          "arrivalSeconds": 2,
+          "dueSeconds": 4.548,
+          "marginSeconds": 2.548,
+          "status": "Ready"
+        }
+      ],
+      "clearance": 80,
+      "warning": "",
+      "note": "Seconds at Normal teaching playback, measured from contact. Separation uses rendered ball coordinates and native field units; review visually before approval."
+    }
+  ]
+}

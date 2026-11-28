@@ -1393,6 +1393,9 @@
         ? `${proposal.submitterName} submitted a ${proposal.submissionType} for ${proposal.situationKey} on ${new Date(proposal.createdAt).toLocaleString()}. Base revision: ${proposal.baseRevision ?? 'new situation'}.${proposal.rationale ? ` Reason: ${proposal.rationale}` : ''}`
         : 'Select a proposal to review its details.';
     }
+    let summary = document.getElementById('adminProposalSummary');
+    if (!summary && proposalDetails) { summary=document.createElement('div');summary.id='adminProposalSummary';summary.className='situation-summary';proposalDetails.after(summary); }
+    if(summary){summary.hidden=!proposal;if(proposal)window._diqLibraryCards?.renderLibraryCardContent(summary,window._diqLibraryCards.libraryCardModel(proposal.situation),{summary:true});else summary.replaceChildren();}
     if (proposalNotes) proposalNotes.value = '';
     setEnabled(
       [byId('adminProposalApproveBtn'), byId('adminProposalRejectBtn'), proposalPreview],
@@ -1411,7 +1414,7 @@
       proposalSelect?.appendChild(
         option(
           proposal.id,
-          `${proposal.submissionType === 'create' ? 'New' : 'Update'}: ${proposal.situation.title} — ${proposal.submitterName}`,
+          `${proposal.submissionType === 'create' ? 'New' : 'Update'}: ${window._diqLibraryCards?.qualifiedSituationLabel(proposal.situation) || proposal.situation.title} — ${proposal.submitterName}`,
         ),
       ),
     );
@@ -3882,7 +3885,7 @@
               await diqApiRequest(item.status === 'new' ? 'situations' : `situations/${encodeURIComponent(item.key)}`, { method: item.status === 'new' ? 'POST' : 'PUT', headers: item.revision ? { 'If-Match': String(item.revision) } : {}, body: JSON.stringify(item.situation) });
               count++; check.checked = false; check.disabled = true; check.nextElementSibling.textContent += ' — Published';
             }
-            status.textContent = `Published ${count} situations. Refreshing the playbook…`;
+            status.textContent = `Published ${count} situations. Refreshing the Situation Library…`;
             await reloadPublishedSituation(currentSituation?.key);
             library.querySelector('input[type=search]')?.dispatchEvent(new Event('input'));
             status.textContent = `Published ${count} situations to ${review.destination}.`;
@@ -3903,7 +3906,7 @@
   function openTeamPlaybook(library) {
     library.replaceChildren();
     const heading = document.createElement('h2');
-    heading.textContent = 'Team Playbook';
+    heading.textContent = 'Team Situation Library';
     const guidance = document.createElement('p');
     guidance.textContent = 'Manage inherited situations and difficulty in Design.';
     const link = document.createElement('a');
@@ -3921,7 +3924,7 @@
     try{
       const preview=await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{cache:'no-store'});
       if(preview.counts.blockingAssignments){await requestConfirmation({title:'Situation is used by assignments',message:`${preview.counts.blockingAssignments} assignments still reference this situation: ${(preview.blockingAssignments || []).map(assignmentBlockerLabel).join("; ")}. Closed, completed, and draft assignments must also be archived before deleting their situations.`,confirmLabel:'OK'});return;}
-      if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Playbooks. It also removes this situation and its progress from ${preview.counts.inactiveAssignments || 0} canceled or archived assignments, which will no longer include it if restored. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
+      if(!await requestConfirmation({title:'Permanently delete situation?',message:`Delete “${preview.title}”? This permanently removes ${preview.counts.attempts} saved attempts, ${preview.counts.revisions} revisions, ${preview.counts.proposals} proposals, and selections in ${preview.counts.teamPlaybooks} team Situation Libraries. It also removes this situation and its progress from ${preview.counts.inactiveAssignments || 0} canceled or archived assignments, which will no longer include it if restored. This cannot be undone. Export a copy first if needed.`,confirmLabel:'Delete permanently',requiredText:preview.title}))return;
       await diqApiRequest(`admin/situations/${encodeURIComponent(key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(preview.revision)},body:JSON.stringify({confirmation:preview.title})});
       await loadSituationsFromDatabase();
       if(currentSituation?.key===key){if(SITUATIONS.length)setSituation(SITUATIONS[0].key);else clearCurrentSituation();}
@@ -3994,7 +3997,7 @@
           return;
         }
         const total=field=>previews.reduce((sum,item)=>sum+Number(item.counts[field]||0),0);
-        const confirmed=await requestConfirmation({title:`Delete ${previews.length} situations permanently?`,message:`${previews.map(item=>`${item.title} (${item.key})`).join('; ')}. This removes ${total('attempts')} saved attempts, ${total('revisions')} revisions, ${total('proposals')} proposals, ${total('teamPlaybooks')} team Playbook selections, and ${total('inactiveAssignments')} references and associated progress in canceled or archived assignments. Restoring assignments will not restore these situations. Deletions happen one at a time; if one fails, earlier deletions remain. This cannot be undone. Export a copy first if needed. Type DELETE to confirm.`,confirmLabel:'Delete permanently',requiredText:'DELETE'});
+        const confirmed=await requestConfirmation({title:`Delete ${previews.length} situations permanently?`,message:`${previews.map(item=>`${item.title} (${item.key})`).join('; ')}. This removes ${total('attempts')} saved attempts, ${total('revisions')} revisions, ${total('proposals')} proposals, ${total('teamPlaybooks')} team Situation Library selections, and ${total('inactiveAssignments')} references and associated progress in canceled or archived assignments. Restoring assignments will not restore these situations. Deletions happen one at a time; if one fails, earlier deletions remain. This cannot be undone. Export a copy first if needed. Type DELETE to confirm.`,confirmLabel:'Delete permanently',requiredText:'DELETE'});
         if(!confirmed)return;
         for(const item of previews){
           await diqApiRequest(`admin/situations/${encodeURIComponent(item.key)}/permanent`,{method:'DELETE',headers:{'If-Match':String(item.revision)},body:JSON.stringify({confirmation:item.title})});
@@ -4080,7 +4083,7 @@
     if(window.__DIQ_AUTH_USER__?.canPublishSituations || editorRole==='admin'){
       let usage=byId('situationPublicationUsage');if(!usage){usage=document.createElement('p');usage.id='situationPublicationUsage';publishSituation?.before(usage);}
       const key=currentSnapshot()?.key;usage.textContent='Publishing changes the shared library. Use Create variation for a team-specific approach.';
-      if(key)diqApiRequest(`situations/${encodeURIComponent(key)}/usage`,{cache:'no-store'}).then(result=>{if(currentSnapshot()?.key===key)usage.textContent=`Team Playbooks using this situation: ${(result.teams||[]).map(team=>team.name).join(', ')||'None'}. Use Create variation for a team-specific approach.`;}).catch(error=>{usage.textContent=`Could not load affected teams: ${error.message}`;});
+      if(key)diqApiRequest(`situations/${encodeURIComponent(key)}/usage`,{cache:'no-store'}).then(result=>{if(currentSnapshot()?.key===key)usage.textContent=`Team Situation Libraries using this situation: ${(result.teams||[]).map(team=>team.name).join(', ')||'None'}. Use Create variation for a team-specific approach.`;}).catch(error=>{usage.textContent=`Could not load affected teams: ${error.message}`;});
     }else byId('situationPublicationUsage')?.remove();
   }
   function openSituationEditorPane(){
@@ -4391,7 +4394,7 @@
 
   async function confirmSharedPublication(snapshot){
     const usage=await diqApiRequest(`situations/${encodeURIComponent(snapshot.key)}/usage`,{cache:'no-store'});
-    return requestConfirmation({title:'Publish to the shared library?',message:`${snapshot.title}. Team Playbooks using this situation: ${(usage.teams||[]).map(team=>team.name).join(', ') || 'None'}. Changes affect the shared published situation. For a team-specific approach, cancel and choose Create variation in the library.`,confirmLabel:'Publish situation'});
+    return requestConfirmation({title:'Publish to the shared library?',message:`${snapshot.title}. Team Situation Libraries using this situation: ${(usage.teams||[]).map(team=>team.name).join(', ') || 'None'}. Changes affect the shared published situation. For a team-specific approach, cancel and choose Create variation in the library.`,confirmLabel:'Publish situation'});
   }
   async function publishCurrentSituation() {
     const snapshot = ensureReadyToSave();

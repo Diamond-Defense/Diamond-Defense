@@ -1,3 +1,4 @@
+import {TIMING_PROFILE} from './timing.js';
 import { stepIssues } from './steps.js';
 import { startCondition, reconcileSegments, MAX_SEGMENTS, throwLegs, distance } from './segments.js';
 import { createOffenseNumbers } from './token-presentation.js';
@@ -56,6 +57,13 @@ export function validateBoard(board) {
   }
   const pointCount=Object.values(board.movements||{}).reduce((sum,segments)=>sum+(Array.isArray(segments)?segments.reduce((n,segment)=>n+(segment?.path?.length||0),0):0),0);
   if(pointCount>20000)issues.push('Too many movement points. Re-record shorter routes.');
+  if(board.timingProfile!==undefined&&board.timingProfile!==TIMING_PROFILE)issues.push('Choose a supported timing profile.');
+  if(board.throwTimings!==undefined){
+    if(!Array.isArray(board.throwTimings)||board.throwTimings.length>30||board.throwTimings.some(timing=>
+      !POSITIONS.includes(timing?.from)||!POSITIONS.includes(timing?.to)||timing.from===timing.to||
+      !Number.isFinite(timing.durationMs)||timing.durationMs<50||timing.durationMs>5000||
+      !Number.isFinite(timing.transferMs)||timing.transferMs<0||timing.transferMs>2000))issues.push('Choose valid throw flight and transfer timings.');
+  }
   if (board.battedBall && (!BALL_TYPES.includes(board.battedBall.type) || !point(board.battedBall.start) || !point(board.battedBall.destination))) issues.push('Invalid batted ball.');
   if(board.battedBall?.bounce!==undefined){
     const bounce=board.battedBall.bounce;
@@ -98,6 +106,8 @@ export function fromSituation(situation, {coachBoard = false} = {}) {
     b.movements = {...b.movements,...clone(situation.boardAnimation.movements)};
     b.battedBall = clone(situation.boardAnimation.battedBall);
     if (situation.boardAnimation.steps !== undefined) b.steps = clone(situation.boardAnimation.steps);
+    if (situation.boardAnimation.timingProfile !== undefined) b.timingProfile=situation.boardAnimation.timingProfile;
+    if (situation.boardAnimation.throwTimings !== undefined) b.throwTimings=clone(situation.boardAnimation.throwTimings);
     if (situation.boardAnimation.throwSteps !== undefined) {
       b.throwSteps = clone(situation.boardAnimation.throwSteps);
     }
@@ -134,7 +144,9 @@ export function boardAnimation(board) {
     runnerStarts: board.runners,
     running: board.running,
     steps: board.steps,
-    throwSteps: board.throwSteps
+    throwSteps: board.throwSteps,
+    ...(board.timingProfile !== undefined && {timingProfile:board.timingProfile}),
+    ...(board.throwTimings !== undefined && {throwTimings:board.throwTimings})
   });
 }
 export function toSituation(board, metadata) {

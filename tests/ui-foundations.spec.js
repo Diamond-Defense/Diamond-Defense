@@ -32,16 +32,23 @@ test('Design sidebar retains keyboard navigation, themes and available content w
  await situations.click();
  for(const theme of ['classic-ballpark','cobalt-daylight','midnight']){
   await page.locator('html').evaluate((el,value)=>el.dataset.theme=value,theme);
-  const colors=await workspace.locator('a.dd-button[data-variant="primary"]').evaluate(el=>{
+  // Theme changes animate the control; retry until it reaches the new token color.
+  await expect.poll(()=>workspace.locator('a.dd-button[data-variant="primary"]').evaluate(el=>{
    const probe=document.createElement('span');probe.style.backgroundColor='var(--accent-primary)';document.body.append(probe);
-   const expected=getComputedStyle(probe).backgroundColor;probe.remove();return {actual:getComputedStyle(el).backgroundColor,expected};
-  });expect(colors.actual).toBe(colors.expected);
+   const expected=getComputedStyle(probe).backgroundColor;probe.remove();return getComputedStyle(el).backgroundColor===expected;
+  })).toBe(true);
  }
  for(const width of [1040,1440,2560]){
   await page.setViewportSize({width,height:900});
-  const boxes=await workspace.evaluate(el=>({sidebar:el.querySelector('.design-sidebar').getBoundingClientRect().toJSON(),header:el.querySelector('.dd-page-header').getBoundingClientRect().toJSON(),content:el.querySelector('.workspace-frame').getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth-innerWidth}));
+  const boxes=await workspace.evaluate(el=>{
+   const header=el.querySelector('.dd-page-header'),rect=header.getBoundingClientRect(),style=getComputedStyle(header);
+   return {sidebar:el.querySelector('.design-sidebar').getBoundingClientRect().toJSON(),
+    headerContent:{left:rect.left+parseFloat(style.paddingLeft),right:rect.right-parseFloat(style.paddingRight)},
+    content:el.querySelector('.workspace-frame').getBoundingClientRect().toJSON(),overflow:document.documentElement.scrollWidth-innerWidth};
+  });
   expect(boxes.content.x).toBeGreaterThanOrEqual(boxes.sidebar.right-1);expect(boxes.content.right).toBeLessThanOrEqual(width+1);
-  expect(Math.abs(boxes.header.width-boxes.content.width)).toBeLessThan(2);expect(boxes.content.width).toBeGreaterThan(width-300);expect(boxes.overflow).toBeLessThanOrEqual(1);
+  expect(Math.abs(boxes.headerContent.left-boxes.content.left)).toBeLessThan(2);
+  expect(Math.abs(boxes.headerContent.right-boxes.content.right)).toBeLessThan(2);expect(boxes.content.width).toBeGreaterThan(width-300);expect(boxes.overflow).toBeLessThanOrEqual(1);
  }
 });
 

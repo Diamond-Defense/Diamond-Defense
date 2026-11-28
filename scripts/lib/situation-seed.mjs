@@ -1,3 +1,4 @@
+import { catalogCleanupSql } from './catalog-cleanup.mjs';
 function quote(value) {
   if (value === null || value === undefined) return 'NULL';
   return `'${String(value).replaceAll("'", "''")}'`;
@@ -218,5 +219,5 @@ export function buildSituationSeedSql(situations, createdAt = new Date().toISOSt
     });
   }
 
-  return `${statements.join('\n')}\n`;
+  return `${statements.join('\n')}\n${catalogCleanupSql}`;
 }

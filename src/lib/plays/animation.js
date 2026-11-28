@@ -1,3 +1,6 @@
+export {solutionTeachingEnd} from './readiness.js';
+import {TEACHING_PLAYBACK_RATE,TIMING_PROFILE,suggestedThrowDuration,suggestedTransferDuration} from './timing.js';
+export {TEACHING_PLAYBACK_RATE} from './timing.js';
 import {BASES_NATIVE} from './field.js';
 import {RUNNERS,hasCustomRunning,runningDestination,automaticRoute,movementPhase} from './running.js';
 import { clone, upgradeBoard, validateBoard, POSITIONS, hitFielding } from './board.js';
@@ -50,7 +53,7 @@ export function compilePlay(input, options={}) {
   const board=upgradeBoard(input),issues=validateBoard(board);
   if(issues.length)throw new Error(issues.join('\n'));
   if(options.coachBoard)board.runners.batter ||= clone(BASES_NATIVE.home);
-  const ballDuration=hitFlightDuration(board.battedBall?.type,options.coachBoard);
+  const ballDuration=hitFlightDuration(board.battedBall?.type,options.coachBoard||board.timingProfile===TIMING_PROFILE);
   const nodes=new Map(),tracks=[],legs=throwLegs(board);
   const coachBoard=!!options.coachBoard;
   const hit=board.battedBall;
@@ -91,7 +94,7 @@ export function compilePlay(input, options={}) {
       : (!coachBoard&&['pre_pitch','pitch_started'].includes(start.event)?'contact':eventKey(start));
     const deps=[...(previous?[previous]:[]),...(start.event==='previous_movement'?[]:[trigger]),...(step&&isAuthoredStep(step.id)&&!['pre_pitch','pitch_started'].includes(start.event)?[startKey(step.id)]:[])];
     const geometry=measurePath(segment.path);
-    const duration=movementDuration(segment,coachBoard);
+    const duration=movementDuration(segment,coachBoard||board.timingProfile===TIMING_PROFILE);
     if(step)nodes.get(endKey(step.id)).deps.push(key);
     nodes.set(key,{duration,deps});tracks.push({key,id,index:i,path:segment.path,geometry,duration,condition:start});
   }
@@ -163,17 +166,50 @@ export function compilePlay(input, options={}) {
       const later=actionOrder!==undefined && stepIndex!==undefined && actionOrder>stepIndex;
       if(!later && readyBefore(id,i,leg.index))deps.push(`movement:${id}:${i}`);
     });
-    nodes.set(`throw_started:${leg.index}`,{duration:0,deps});
-    nodes.set(`throw_received:${leg.index}`,{duration:coachBoard?350:700,deps:[`throw_started:${leg.index}`]});
+    // Pair-specific timings survive sequence edits without applying to a different throw.
+    const timing=board.throwTimings?.find(timing=>timing.from===leg.from&&timing.to===leg.to);
+    const automatic=board.timingProfile===TIMING_PROFILE;
+    nodes.set(`throw_started:${leg.index}`,{duration:timing?.transferMs??(automatic?suggestedTransferDuration(leg===firstHitThrow&&fielding==='ground'):0),deps});
+    nodes.set(`throw_received:${leg.index}`,{duration:timing?.durationMs??(automatic?release=>distanceFlight(leg,release):(coachBoard?350:700)),deps:[`throw_started:${leg.index}`]});
     if(step)nodes.get(endKey(step.id)).deps.push(`throw_received:${leg.index}`);
   }
   const resolving=new Set(),ends=new Map(),begins=new Map();
+  // Evaluate distance after prerequisite movements resolve. For a receiver moving
+  // on this throw's release, solve flight time against their predicted arrival position.
+  function releasePosition(id,time,leg,release){
+    let position=board.defenders[id];
+    const actorTracks=tracks.filter(track=>track.id===id);
+    function predictedStart(track){
+      if(begins.has(track.key))return begins.get(track.key);
+      if(track.condition.event==='throw_started'&&track.condition.throwIndex===leg.index)return release;
+      if(track.condition.event==='previous_movement'){
+        const previous=actorTracks.find(candidate=>candidate.index===track.index-1);
+        if(previous){const start=predictedStart(previous);if(start!==undefined)return start+previous.duration;}
+      }
+    }
+    for(const track of actorTracks){
+      const start=predictedStart(track),duration=ends.has(track.key)?ends.get(track.key)-start:track.duration;
+      if(start!==undefined&&time>=start)position=pointOnPath(track.path,duration?(time-start)/duration:1,track.geometry);
+    }
+    return position;
+  }
+  function distanceFlight(leg,release){
+    const from=releasePosition(leg.from,release,leg,release);
+    let duration=suggestedThrowDuration(Math.hypot(from.x-board.defenders[leg.to].x,from.y-board.defenders[leg.to].y));
+    for(let i=0;i<12;i++){
+      const to=releasePosition(leg.to,release+duration,leg,release);
+      const next=suggestedThrowDuration(Math.hypot(from.x-to.x,from.y-to.y));
+      if(Math.abs(next-duration)<=1)return next;
+      duration=(duration+next)/2;
+    }
+    return Math.round(duration);
+  }
   function resolve(key) {
     if(ends.has(key))return ends.get(key);
     if(resolving.has(key))throw new Error('Movement start events create a circular dependency. Choose an earlier baseball event.');
     const node=nodes.get(key);if(!node)throw new Error(`Unavailable animation event: ${key}.`);
     resolving.add(key);const start=Math.max(0,...node.deps.map(resolve));
-    const end=Math.max(start+node.duration,node.finishAfter?resolve(node.finishAfter):0);
+    const end=Math.max(start+(typeof node.duration==='function'?node.duration(start):node.duration),node.finishAfter?resolve(node.finishAfter):0);
     begins.set(key,start);ends.set(key,end);resolving.delete(key);return end;
   }
   for(const key of nodes.keys())resolve(key);
@@ -333,7 +369,7 @@ export function frameAt(play,time) {
       if(time<=receivedAt+120)relayHighlights.add(leg.toId);
     }
     if(time<receivedAt)relayHighlights.add(leg.fromId);
-    const p=Math.min(1,(time-leg.start)/leg.duration),eased=play.coachBoard?p:1-Math.pow(1-p,3);
+    const p=Math.min(1,(time-leg.start)/leg.duration),eased=play.coachBoard||play.board.timingProfile===TIMING_PROFILE?p:1-Math.pow(1-p,3);
     if(!leg.beforeContact||!hit||time<play.pitchStart){
       ballThrow=leg;
       // The ball stays with the receiver while they move before the next throw.
@@ -344,7 +380,7 @@ export function frameAt(play,time) {
   return {time,activeStep,positions,ball,ballShadow,hitTrail,fieldingLabel,ballThrow,scale:ballThrow?1:scale,relayOrder,relayHighlights,events:play.events.filter(event=>event.time<=time)};
 }
 // Teaching views use a shared quarter-speed clock; authored event times stay unchanged.
-export const TEACHING_PLAYBACK_RATE = 0.25;
+
 export function createPlayback(play,onFrame,onState=()=>{},options={}) {
   const rate=Number.isFinite(options.rate)&&options.rate>0?options.rate:1;
   const start=options.startTime??0;

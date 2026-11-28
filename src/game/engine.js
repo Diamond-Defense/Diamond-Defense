@@ -18,6 +18,7 @@ let _allTargetsCorrect = false;
 let _solutionReview = null;
 let _solutionAnimationFrame = null;
 let _sharedSolutionPlayback = null;
+let _solutionTrailingTargets = null;
 let _sharedSequencePlayback = null;
 let _solutionAnimationRun = 0;
 
@@ -46,7 +47,7 @@ let ballSvg=null, ballEl=null, hitMarker=null;
 let animReq=null;
 
 let liveRunners = { first:false, second:false, third:false };
-const { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, MARKER_SIZES, positionThrownBall } = window._diqTokenPresentation;
+const { FIELDING_NUMBERS, tokenMetrics, createOffenseNumbers, MARKER_SIZES, positionThrownBall, positionRunnerChip } = window._diqTokenPresentation;
 const offenseNumbersBySituation = new Map();
 let runnerIdentityAtBase = {first:'first',second:'second',third:'third'};
 let runnersAtDestination = new Set();
@@ -123,23 +124,8 @@ const ballLayer=document.getElementById('ballLayer');
 
 const randomSitBtn = document.getElementById('randomSitBtn');
 const playbookBrowserToggle = document.getElementById('playbookBrowserToggle');
-const playbookBrowserOverlay = document.getElementById('playbookBrowserOverlay');
-const playbookBrowserClose = document.getElementById('playbookBrowserClose');
-const playbookSearch = document.getElementById('playbookSearch');
-const playbookCategory = document.getElementById('playbookCategory');
-const playbookHitOutcome = document.getElementById('playbookHitOutcome');
-const playbookDifficulty = document.getElementById('playbookDifficulty');
-const playbookRunners = document.getElementById('playbookRunners');
-document.getElementById('playbookMoreFilters')?.addEventListener('click',event=>{
-  const panel=document.getElementById('playbookExtraFilters');
-  panel.hidden=!panel.hidden;
-  event.currentTarget.setAttribute('aria-expanded',String(!panel.hidden));
-});
-const playbookClearFilters = document.getElementById('playbookClearFilters');
-const playbookRandomFiltered = document.getElementById('playbookRandomFiltered');
-const playbookBrowserList = document.getElementById('playbookBrowserList');
-const playbookBrowserEmpty = document.getElementById('playbookBrowserEmpty');
-const playbookResultCount = document.getElementById('playbookResultCount');
+let playbookBrowserVisible=false;
+let playbookTeamId;
 const startBtn=document.getElementById('startBtn');
 const resetBtn=document.getElementById('resetBtn');
 const checkBtn=document.getElementById('checkBtn');
@@ -378,7 +364,7 @@ const ensureHeaderGrouping = () => {
   if (!brandCopy.querySelector('.brand-descriptor')) {
     const descriptor = document.createElement('span');
     descriptor.className = 'brand-descriptor';
-    descriptor.textContent = 'Interactive Playbook Trainer';
+    descriptor.textContent = 'Interactive Situation Trainer';
     brandCopy.appendChild(descriptor);
   }
 
@@ -717,14 +703,7 @@ const ensureHeaderGrouping = () => {
     utilityActions.prepend(fieldNav);
   }
   // Header destinations share Lucide stroke styling and retain text labels.
-  const headerIcons={
-    play:'<path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/>',
-    training:'<path d="M17.596 12.768a2 2 0 1 0 2.829-2.829l-1.768-1.767a2 2 0 0 0 2.828-2.829l-2.828-2.828a2 2 0 0 0-2.829 2.828l-1.767-1.768a2 2 0 1 0-2.829 2.829z M2.5 21.5l1.4-1.4 M20.1 3.9l1.4-1.4 M5.343 21.485a2 2 0 1 0 2.829-2.828l1.767 1.768a2 2 0 1 0 2.829-2.829l-6.364-6.364a2 2 0 1 0-2.829 2.829l1.768 1.767a2 2 0 0 0-2.828 2.829z M9.6 14.4l4.8-4.8"/>',
-    design:'<path d="M13 7 8.7 2.7a2.41 2.41 0 0 0-3.4 0L2.7 5.3a2.41 2.41 0 0 0 0 3.4L7 13 M8 6l2-2 M18 16l2-2 M17 11l4.3 4.3c.94.94.94 2.46 0 3.4l-2.6 2.6c-.94.94-2.46.94-3.4 0L11 17 M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z M15 5l4 4"/>',
-    organization:'<path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2 M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2 M10 6h4 M10 10h4 M10 14h4 M10 18h4"/>',
-    board:'<path d="M2 3h20 M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3 M7 21l5-5 5 5"/>',
-    guide:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3 M12 17h.01"/>',
-  };
+  const headerIcons=window._diqHeaderIcons;
   function headerDestination(button,label,icon){
     if(!button)return;
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
@@ -1582,7 +1561,8 @@ function renderBaseRunners(state, exclude = new Set()){
     m.className='baseRunner';
     m.dataset.base = baseName;
     labelOffensiveChip(m, runnerIdentityAtBase[baseName] || baseName);
-    const css=unitToCss(pos);
+    const display=positionRunnerChip(pos,Object.fromEntries([...tokens].map(([id,rec])=>[id,rec.pos])),tokenMetrics(imgRect.width,imgRect.height));
+    const css=unitToCss(display);
     m.style.left=css.left+'px';
     m.style.top =css.top +'px';
     wrap.appendChild(m);
@@ -1784,7 +1764,7 @@ function animateHit(style, options={}){
   };
   const { sampleBattedBall, hitFlightDuration, hitBounceDuration, TEACHING_PLAYBACK_RATE } = window._diqPlayAnimation;
   const grounded = options.useAuthoredType && authored?.fielding === 'ground';
-  const flightDuration = hitFlightDuration(hit.type);
+  const flightDuration = hitFlightDuration(hit.type,situation.boardAnimation?.timingProfile==='distance-v1');
   const animationLength = flightDuration + (grounded ? hitBounceDuration(hit) : 0);
   const rate = flightDuration / (hitFlightDuration(hit.type,true) / TEACHING_PLAYBACK_RATE);
   ballSvg.dataset.hitType = hit.type;
@@ -2619,7 +2599,7 @@ function situationDisplayCode(key, displayCode){
 
 function situationDisplayLabel(situation){
   if (!situation) return '';
-  return [String(situation.title || situation.desc || 'Unnamed situation').trim(), situationVariationLabel(situation)].filter(Boolean).join(' · ');
+  return [window._diqLibraryCards?.qualifiedSituationLabel(situation) || situation.title, situationVariationLabel(situation)].filter(Boolean).join(' · ');
 }
 window._diqSituationDisplayLabel = situationDisplayLabel;
 
@@ -2628,7 +2608,7 @@ function updateDescriptionHudText(){
   if (!el) return;
   if (!currentSituation){
     el.textContent = window.__DIQ_AUTH_USER__?.role === 'player'
-      ? 'Your team Playbook is empty' : 'No published situations';
+      ? 'Your team Situation Library is empty' : 'No published situations';
     el.removeAttribute('title');
     return;
   }
@@ -2641,7 +2621,7 @@ function updateDescriptionHudText(){
 /// @diq:begin [A9] Situation lifecycle
 function updateCurrentOptionLabel(){
   if (!currentSituation) return;
-  if (playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')) renderPlaybookBrowser();
+  if (playbookBrowserVisible) renderPlaybookBrowser();
 }
 
 function syncSituationInputsFromCurrent(){
@@ -2899,35 +2879,6 @@ function populateSituationTeachingCategoryControls(){
   }
 }
 
-function playbookRunnerLabel(situation){
-  const runners = runnersStateToArray(normalizeRunnersOn(situation?.runnersOn));
-  return runners.length ? runners.join(', ') : 'Bases empty';
-}
-
-function playbookTeachingCategories(situation){
-  return [situation.primaryCategory, ...(situation.relatedCategories || [])];
-}
-
-function filteredPlaybookSituations(){
-  const query = String(playbookSearch?.value || '').trim().toLowerCase();
-  const category = String(playbookCategory?.value || '');
-  const hitOutcome = String(playbookHitOutcome?.value || '');
-  const difficulty = String(playbookDifficulty?.value || '');
-  const runners = String(playbookRunners?.value || '');
-  return (SITUATIONS || []).filter((situation) => {
-    const teachingCategories = playbookTeachingCategories(situation);
-    const categoryLabels = teachingCategories.map(teachingCategoryLabel).join(' ');
-    const details=window._diqLibraryCards.libraryCardModel(situation,'situation');
-    const haystack = `${details.location} ${details.placement} ${details.fieldingMethod} ${situation.title} ${situation.desc} ${situation.category} ${categoryLabels} ${situation.key} ${situation.displayCode||''}`.toLowerCase();
-    const hasRunners = Object.values(normalizeRunnersOn(situation.runnersOn)).some(Boolean);
-    return (!query || haystack.includes(query))
-      && (!category || teachingCategories.includes(category))
-      && (!hitOutcome || situation.category === hitOutcome)
-      && (!difficulty || situation.difficulty === difficulty)
-      && (!runners || (runners === 'on' ? hasRunners : !hasRunners));
-  });
-}
-
 function choosePlaybookSituation(key){
   if (!key) return;
   if(!requireFreePlayAccess()) return;
@@ -2974,57 +2925,12 @@ function playbookCardTitle(situation){
 }
 
 function renderPlaybookBrowser(){
-  if (!playbookBrowserList) return;
-  if (playbookCategory) {
-    const represented = new Set((SITUATIONS || []).flatMap(playbookTeachingCategories));
-    const categories = (window.DIQ_TEACHING_CATEGORIES || []).filter(category => represented.has(category.id));
-    const selected = playbookCategory.value;
-    playbookCategory.replaceChildren(new Option('All categories', ''));
-    categories.forEach(category => playbookCategory.appendChild(new Option(category.label, category.id)));
-    playbookCategory.value = categories.some(category=>category.id === selected) ? selected : '';
-  }
-  const filtered = filteredPlaybookSituations().sort(window._diqLibraryCards.compareLibraryOrder);
-  playbookBrowserList.querySelectorAll('.playbook-situation-card').forEach(card=>window._diqLibraryCards.disconnectLibraryCard(card));
-  playbookBrowserList.replaceChildren();
-  filtered.forEach((situation) => {
-    const shell=document.createElement('article');shell.className='library-card-shell';
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'playbook-situation-card';
-    button.dataset.situationKey = situation.key;
-    const isCurrent = situation.key === currentSituation?.key;
-    if (isCurrent) {
-      button.classList.add('is-current');
-      button.setAttribute('aria-current', 'true');
-    }
-    const displayLabel = situationDisplayLabel(situation);
-    const runnerLabel = playbookRunnerLabel(situation);
-    const outLabel = `${situation.outs} ${situation.outs === 1 ? 'out' : 'outs'}`;
-    button.setAttribute('aria-label', `Select ${displayLabel}. ${runnerLabel}, ${outLabel}`);
-
-    const card=window._diqLibraryCards.libraryCardModel(situation,'situation',{
-      id:situation.key,title:playbookBaseTitle(situation),current:isCurrent,
-      variationLabel:[situationVariationLabel(situation),situation.audience?.staffVariant].filter(Boolean).join(' · ')
-    });
-    shell.append(button);
-    window._diqLibraryCards.renderLibraryCardContent(button,card);
-    button.addEventListener('click', () => choosePlaybookSituation(situation.key));
-    playbookBrowserList.appendChild(shell);
-  });
-  const extraCount = [playbookHitOutcome, playbookRunners].filter(control=>control?.value).length;
-  const extraLabel = document.getElementById('playbookMoreFilterCount');
-  if(extraLabel) extraLabel.textContent = extraCount ? `· ${extraCount} active` : '';
-  if(playbookClearFilters) playbookClearFilters.disabled = ![playbookSearch, playbookCategory, playbookDifficulty, playbookHitOutcome, playbookRunners].some(control=>control?.value);
-  if (playbookResultCount) playbookResultCount.textContent = `${filtered.length} ${filtered.length === 1 ? 'situation' : 'situations'}`;
-  if(playbookBrowserEmpty)playbookBrowserEmpty.textContent=!SITUATIONS.length?'Your team Playbook is empty. Ask your coach about availability, or open your assigned practice.':'No situations match these filters.';
-  playbookBrowserEmpty?.classList.toggle('hidden', filtered.length > 0);
-  if (playbookRandomFiltered) playbookRandomFiltered.disabled = filtered.length === 0;
+ if(playbookBrowserVisible)window.dispatchEvent(new CustomEvent('diq:playbook-update',{detail:{situations:SITUATIONS,currentKey:currentSituation?.key||'',teamId:playbookTeamId}}));
 }
 
 let playbookOpenRequest = 0;
 async function openPlaybookBrowser(eventOrTeam){
   if(document.body.classList.contains('situation-player-preview')) return;
-  if (!playbookBrowserOverlay) return;
   if(!requireFreePlayAccess()) return;
   window._diqCloseAccountMenu?.();
   window._diqCloseAccountSecurity?.();
@@ -3033,27 +2939,31 @@ async function openPlaybookBrowser(eventOrTeam){
   const teamId = typeof eventOrTeam === 'string' ? eventOrTeam : undefined;
   const request = ++playbookOpenRequest;
   const isCurrent = () => request === playbookOpenRequest && window.__DIQ_AUTH_USER__?.id === user?.id;
+  playbookTeamId=teamId;
+  playbookBrowserVisible=true;
+  document.body.classList.add('playbook-browser-open');
+  playbookBrowserToggle?.setAttribute('aria-expanded','true');
+  window.dispatchEvent(new CustomEvent('diq:playbook-open',{detail:{situations:[],currentKey:currentSituation?.key||'',teamId,loading:true}}));
   try {
     await loadSituationsFromDatabase(teamId,isCurrent,true);
   } catch (error) {
-    if (isCurrent()) toast(error.message || 'Unable to load the Team Playbook.');
+    if(isCurrent())window.dispatchEvent(new CustomEvent('diq:playbook-update',{detail:{situations:[],currentKey:currentSituation?.key||'',teamId,error:error.message||'Unable to load the Team Situation Library.'}}));
     return;
   }
   if (!isCurrent() || !requireFreePlayAccess()) return;
   renderPlaybookBrowser();
-  playbookBrowserOverlay.classList.remove('hidden');
-  document.body.classList.add('playbook-browser-open');
-  playbookBrowserToggle?.setAttribute('aria-expanded', 'true');
-  requestAnimationFrame(() => playbookSearch?.focus());
 }
 
 function closePlaybookBrowser(){
   playbookOpenRequest++;
-  playbookBrowserOverlay?.classList.add('hidden');
+  const wasOpen=playbookBrowserVisible;
+  playbookBrowserVisible=false;
+  if(wasOpen)window.dispatchEvent(new CustomEvent('diq:playbook-close'));
   document.body.classList.remove('playbook-browser-open');
   playbookBrowserToggle?.setAttribute('aria-expanded', 'false');
 }
 
+window._diqChoosePlaybookSituation = choosePlaybookSituation;
 window._diqOpenPlaybookBrowser = openPlaybookBrowser;
 window._diqClosePlaybookBrowser = closePlaybookBrowser;
 window._diqSelectPracticeSituation = (key, assignmentId, situationSnapshot) => {
@@ -3063,7 +2973,7 @@ window._diqSelectPracticeSituation = (key, assignmentId, situationSnapshot) => {
 };
 
 function populateSituations(selectedKey){
-  if (playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')) renderPlaybookBrowser();
+  if (playbookBrowserVisible) renderPlaybookBrowser();
   return (SITUATIONS || []).some((situation) => situation.key === selectedKey)
     ? selectedKey
     : (currentSituation?.key || SITUATIONS?.[0]?.key || '');
@@ -3728,6 +3638,7 @@ function renderSolutionGhosts(){
 }
 
 function cancelSolutionAnimation(){
+  if(_solutionTrailingTargets){for(const [id,pos] of Object.entries(_solutionTrailingTargets)){const rec=tokens.get(id);if(rec){rec.pos={...pos};placeToken(id);}}_solutionTrailingTargets=null;}
   _solutionAnimationRun += 1;
   _sharedSolutionPlayback?.dispose();_sharedSolutionPlayback=null;
   if(ballEl){ballEl.style.scale='1';ballEl.classList.remove('is-thrown');}
@@ -3763,7 +3674,7 @@ function clearSolutionReview(){
   }
 }
 
-function finishSolutionAnimation(run,lastThrow){
+function finishSolutionAnimation(run,lastThrow,movingIds=[]){
   if(run !== _solutionAnimationRun || !_solutionReview) return;
   _solutionAnimationFrame = null;
   _solutionReview.animating = false;
@@ -3774,7 +3685,7 @@ function finishSolutionAnimation(run,lastThrow){
   POS_IDS.forEach((id)=>{
     const target = currentSituation?.targets?.[id];
     const rec = tokens.get(id);
-    if(!target || target.enabled===false || !rec) return;
+    if(!target || target.enabled===false || !rec || movingIds.includes(id)) return;
     rec.pos = { x:Number(target.x), y:Number(target.y) };
     placeToken(id);
   });
@@ -3874,15 +3785,35 @@ function watchSolution(){
   wrap.querySelectorAll('.baseRunner').forEach(el=>el.remove());
   for(const id of Object.keys(playBoard.runners)){
     let el;
-    if(id==='batter'){ensureRunner();el=runnerEl;el.style.display='block';}
-    else{el=document.createElement('div');el.className='movingRunner';wrap.appendChild(el);labelOffensiveChip(el,id);}
+    if(id==='batter'){ensureRunner();el=runnerEl;}
+    else{el=document.createElement('div');el.className='movingRunner';labelOffensiveChip(el,id);}
+    // Position every mover before it can paint: otherwise a new base runner
+    // briefly appears at the field container's origin before the first frame.
+    const initial=window._diqPlayAnimation.frameAt(play,0);
+    const point=positionRunnerChip(initial.positions[id],initial.positions,tokenMetrics(imgRect.width,imgRect.height));
+    const css=nativeToCssPoint(point);
+    el.style.left=css.x+'px';el.style.top=css.y+'px';el.style.display='block';
+    if(id!=='batter')wrap.appendChild(el);
     el.style.opacity='1';movers.set(id,el);
   }
   scaleMarkers();
+  const teachingEnd=window._diqPlayAnimation.solutionTeachingEnd(play);
+  let teachingFinished=false;
+  function finishTeaching(){
+    if(teachingFinished||run!==_solutionAnimationRun)return;
+    teachingFinished=true;
+    for(const [id,el] of movers)if(id!=='batter')el.remove();
+    if(ballEl)ballEl.style.scale='1';
+    applyResolvedSituationOutcome(resolvedOutcome);
+    const trailing=teachingEnd<play.duration;
+    if(trailing)_solutionTrailingTargets={C:{...window._diqPlayAnimation.frameAt(play,play.duration).positions.C}};
+    finishSolutionAnimation(run,play.throws.at(-1),trailing?['C']:[]);
+  }
   _sharedSolutionPlayback=window._diqPlayAnimation.createPlayback(play,value=>{
     if(run!==_solutionAnimationRun)return;
+    if(teachingFinished){const rec=tokens.get('C');if(rec&&_solutionTrailingTargets){rec.pos={...value.positions.C};placeToken('C');}return;}
     for(const id of POS_IDS){const rec=tokens.get(id);if(rec){rec.pos={...value.positions[id]};placeToken(id);}}
-    for(const [id,el] of movers){const pos=nativeToCssPoint(value.positions[id]);el.style.left=pos.x+'px';el.style.top=pos.y+'px';
+    for(const [id,el] of movers){const pos=nativeToCssPoint(positionRunnerChip(value.positions[id],value.positions,tokenMetrics(imgRect.width,imgRect.height)));el.style.left=pos.x+'px';el.style.top=pos.y+'px';
       const retired=id==='batter'?resolvedOutcome.batterResult==='out':resolvedOutcome.runnerOutcomes?.some(outcome=>outcome.startingBase===id&&outcome.result==='out');
       if(retired){const track=play.tracks.filter(track=>track.id===id).at(-1);if(track){const progress=Math.min(1,(value.time-track.start)/(track.duration||1));el.style.opacity=String(progress<0.82?1:Math.max(0,1-(progress-0.82)/0.18));}}
     }
@@ -3891,15 +3822,14 @@ function watchSolution(){
       window._diqPaintHitVisuals(ballSvg,value,playBoard.battedBall.type,nativeToCssPoint);
     }
     window._diqTokenPresentation.renderRelayCue(tokens,value,true);
+    if(value.time>=teachingEnd)finishTeaching();
   },()=>{}, {
     now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,reducedMotion:duration===0,
     rate:window._diqPlayAnimation.TEACHING_PLAYBACK_RATE,
     onComplete:()=>{
       if(run!==_solutionAnimationRun)return;
-      for(const [id,el] of movers)if(id!=='batter')el.remove();
-      if(ballEl)ballEl.style.scale='1';
-      applyResolvedSituationOutcome(resolvedOutcome);
-      finishSolutionAnimation(run,play.throws.at(-1));
+      finishTeaching();
+      _solutionTrailingTargets=null;
       if(play.throws.length)playDelay(()=>{
         if(run===_solutionAnimationRun)window._diqTokenPresentation.renderRelayCue(tokens,null);
       },300);
@@ -4245,6 +4175,7 @@ function refreshPlayerPresentation(){
   if(contextElement) contextElement.hidden = !context;
   const situationNotes = document.getElementById('situationNotes');
   if (situationNotes) situationNotes.hidden = !context;
+  if(player && currentSituation) window._diqLibraryCards?.renderPlayerSituationSummary(situationHud,currentSituation);
   setText('playbookClose', '×');
   const solution = Boolean(_solutionReview?.watched || wrap?.classList.contains('is-showing-solution'));
   const unchecked = !phase2Active && !solution && (!startBtn?.disabled || (gameActive && remainingTries === MAX_TRIES));

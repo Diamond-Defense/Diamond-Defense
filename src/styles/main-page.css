@@ -1,3 +1,4 @@
+:root{--workspace-header-height:64px;--workspace-panel-width:280px}
 /* Main field shell: one navigation row, native gameplay controls and board coordinates. */
 :root[data-theme="classic-ballpark"] {
   --app-background:#eef3f7; --surface-raised:#eaf0f5; --surface-interactive:#eaf0f5;
@@ -15,7 +16,7 @@
 .player-practice-context {font-size:13px;line-height:1.5;color:var(--text-secondary);margin:0;}
 @media(min-width:1024px) and (orientation:landscape) {
  body.player-experience #appHeader {margin:0;padding:0 24px;background:var(--header-background);}
- body.player-experience #appHeader .header-shell {min-height:64px;grid-template-columns:minmax(0,1fr) auto;gap:16px;}
+ body.player-experience #appHeader .header-shell {min-height:var(--workspace-header-height);grid-template-columns:minmax(0,1fr) auto;gap:16px;}
  body.player-experience #trainingNavigation {display:flex;flex-direction:row;align-items:center;flex-wrap:nowrap;gap:24px;min-width:0;}
  body.player-experience #trainingNavigation .brand-area {gap:12px;flex-shrink:0;}
  body.player-experience #trainingNavigation .brand-mark {width:44px;height:44px;}
@@ -67,7 +68,7 @@
  body.player-experience #trainingNavigation .utility-actions {gap:8px;}
  body.player-experience #trainingNavigation .brand-copy h1 {font-size:14px;}
  body.player-experience #appWorkspace {padding:16px;}
- body.player-experience #appWorkspace>.training-board {--training-panel-width:280px;column-gap:12px;height:calc(100dvh - var(--app-header-height) - 16px);}
+ body.player-experience #appWorkspace>.training-board {--training-panel-width:var(--workspace-panel-width);column-gap:12px;height:calc(100dvh - var(--app-header-height) - 16px);}
  body.player-experience #trainingPanel {padding:18px;}
  body.player-experience .training-board #wrap {width:min(100%,calc((100dvh - var(--app-header-height) - 16px) * 1.5002344));}
 }
@@ -110,7 +111,7 @@
 /* Narrow desktop gameplay panel trial — remove this block to restore
    the prior 304px panel with 24px padding. Tablet layout is unchanged. */
 @media(min-width:1201px) and (orientation:landscape) {
- body.player-experience #appWorkspace>.training-board {--training-panel-width:280px;}
+ body.player-experience #appWorkspace>.training-board {--training-panel-width:var(--workspace-panel-width);}
  body.player-experience #trainingPanel {padding-inline:18px;}
 }
 
@@ -224,7 +225,7 @@ body.player-experience #trainingPanel #fieldToolbar .player-practice-context {fl
  body.player-experience #appWorkspace>.training-board>#fieldToolbar.is-floating {
   position:absolute;inset:0 calc(var(--training-panel-width) + 16px) auto auto;
   z-index:4;display:flex;flex-direction:column;align-items:stretch;justify-content:flex-start;
-  box-sizing:border-box;width:220px;height:auto;gap:8px;margin:0;padding:8px;
+  box-sizing:border-box;width:max-content;max-width:calc(100% - var(--training-panel-width) - 32px);height:auto;gap:8px;margin:0;padding:8px;
   border:0;border-radius:var(--radius-control);background:var(--app-background);
  }
  body.player-experience #fieldToolbar.is-floating .situation-controls {min-width:0;flex:0 0 auto;margin:0;}
@@ -303,3 +304,27 @@ body.player-experience #trainingPanel.is-practice-blocked #trainingMetrics {disp
 @media(min-width:1024px) and (max-width:1200px) {
  #appHeader #trainingNavigation .utility-actions > #coachBoardLink {margin-left:0;margin-right:8px;}
 }
+
+/* Compact shuffle stays beside the library selector, with a full touch target. */
+#randomSitBtn::before{content:none!important}
+body.player-experience #fieldToolbar.is-floating .situation-controls{display:flex;flex-direction:row;flex-wrap:nowrap;gap:8px;align-items:center}
+body.player-experience #fieldToolbar #randomSitBtn{display:inline-flex;align-items:center;justify-content:center;flex:0 0 44px;width:44px;min-width:44px;height:44px;min-height:44px;padding:0;border:1px solid var(--border-emphasis);background:var(--surface);color:var(--text-primary)}
+#randomSitBtn svg{display:block;flex:none}
+
+/* Keep laptop-width selection controls inside the clear upper-right corner. */
+@media(min-width:1024px) and (max-width:1440px) and (orientation:landscape) {
+ body.player-experience #appWorkspace>.training-board>#fieldToolbar.is-floating {
+  gap:4px;padding:0;background:transparent;
+ }
+ body.player-experience #fieldToolbar.is-floating .situation-controls {gap:6px;}
+ body.player-experience #fieldToolbar.is-floating #playbookBrowserToggle {
+  min-height:44px;padding:8px 10px;font-size:13px;line-height:18px;white-space:nowrap;
+ }
+ body.player-experience #fieldToolbar.is-floating #fieldPracticeLabel {font-size:12px;line-height:16px;}
+}
+
+/* Both Play and Coach Presentation mount AppNavigation; legacy controls remain
+   connected for existing actions but do not render a second header. */
+#appHeader.has-shared-navigation{padding:0!important}
+#appHeader.has-shared-navigation>.header-shell{display:none!important}
+#appHeader.has-shared-navigation .shared-navigation-host{width:100%;min-width:0}

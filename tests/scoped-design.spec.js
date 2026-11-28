@@ -188,12 +188,14 @@ test('a pinned team revision moves through each required publication gate', asyn
     await page.getByRole('button',{name:'Filters',exact:true}).click();
     await page.getByRole('combobox',{name:'Inherited difficulty'}).selectOption('foundational');
     await expect(globalRow).toHaveCount(0);
+    // The inherited library is paginated; search for this fixture before inspecting its row.
+    await page.getByRole('searchbox',{name:'Search situations',exact:true}).fill(variation.title);
     const regionalVariationRow = inheritedTable.getByRole('row').filter({hasText:variation.title});
     await expect(regionalVariationRow.getByText('Outside team difficulty')).toBeVisible();
     expect((await playerCatalog()).some(entry => entry.key === variation.key)).toBe(false);
     expect((await teamPlaybook(team.id)).some(entry => entry.key === global.key)).toBe(false);
     expect(await teamPlaybook(secondTeam.id)).toEqual(expect.arrayContaining([expect.objectContaining({key:global.key,revision:changedGlobal.revision})]));
-    // Open the shared Playbook for this team; Training no longer owns a Playbook tab.
+    // Open the shared Situation Library for this team; Training no longer owns a Situation Library tab.
     await page.goto('/');
     await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
     await page.evaluate(()=>window.__DIQ_READY__);
@@ -212,6 +214,7 @@ test('a pinned team revision moves through each required publication gate', asyn
     await page.getByRole('combobox',{name:'Inherited difficulty'}).selectOption('all');
     // A locally owned version of this lineage replaces its inherited ancestor in Design.
     await expect(globalRow).toHaveCount(0);
+    await page.getByRole('searchbox',{name:'Search situations',exact:true}).fill(variation.title);
     // The inherited variation remains visible and exposes the current action menu.
     await regionalVariationRow.getByRole('button',{name:'Actions for '+variation.title,exact:true}).click();
     await regionalVariationRow.getByRole('button',{name:'Hide from this library',exact:true}).click();
@@ -236,11 +239,14 @@ test('a pinned team revision moves through each required publication gate', asyn
     const teamTable = page.getByRole('table',{name:'Team Library'});
     await page.getByRole('searchbox',{name:'Search situations'}).fill(`right center new drill ${suffix}`);
     const coachRow = teamTable.getByRole('row').filter({hasText:coachDrill.title});
-    await expect(coachRow.getByRole('button',{name:'Submit for review'})).toBeVisible();
+    await expect(coachRow).toBeVisible();
     await page.getByRole('button',{name:'Select matching (1)'}).click();
     await expect(coachRow.getByRole('checkbox')).toBeChecked();
     await page.getByRole('button',{name:'Submit selected for review (1)'}).click();
-    await expect(coachRow.getByText('In review')).toBeVisible();
+    await expect(page.getByRole('status')).toHaveText('Submitted 1 of 1 to the Regional Library for review.');
+    await coachRow.getByRole('button',{name:'Actions for '+coachDrill.title,exact:true}).click();
+    await expect(coachRow.getByText('In review',{exact:true})).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(page.getByRole('status')).toHaveText('Submitted 1 of 1 to the Regional Library for review.');
     const regionQueue = await (await director.get(`/api/design?type=region&id=${region.id}`)).json();
     expect(regionQueue.incoming).toEqual(expect.arrayContaining([expect.objectContaining({source_key:coachDrill.key})]));
@@ -248,31 +254,40 @@ test('a pinned team revision moves through each required publication gate', asyn
     await send(admin,design,{action:'withdraw_submission',promotionId:queuedPromotion.id},409);
     await page.getByRole('button',{name:'Submissions',exact:true}).click();
     page.once('dialog', dialog => dialog.accept());
-    await page.getByRole('button',{name:'Withdraw submission'}).click();
+    await page.getByRole('button',{name:'Withdraw',exact:true}).click();
     await expect(page.getByRole('status')).toHaveText('Submission withdrawn.');
     const withdrawn = await (await director.get(`/api/design?type=region&id=${region.id}`)).json();
     expect(withdrawn.incoming.some(item => item.source_key === coachDrill.key)).toBe(false);
-    await page.getByRole('button',{name:'Team Library',exact:true}).click();
-    await coachRow.getByRole('button',{name:'Submit for review'}).click();
-    await expect(coachRow.getByText('In review')).toBeVisible();
+    await page.getByRole('navigation',{name:'Design sections'}).getByRole('button',{name:'Situations',exact:true}).click();
+    await page.getByRole('searchbox',{name:'Search situations',exact:true}).fill(coachDrill.title);
+    await coachRow.getByRole('button',{name:'Actions for '+coachDrill.title,exact:true}).click();
+    await coachRow.getByRole('button',{name:'Submit for review',exact:true}).click();
+    await expect(page.getByRole('status')).toHaveText('Submitted 1 of 1 to the Regional Library for review.');
+    await coachRow.getByRole('button',{name:'Actions for '+coachDrill.title,exact:true}).click();
+    await expect(coachRow.getByText('In review',{exact:true})).toBeVisible();
+    await page.keyboard.press('Escape');
     expect((await unrelatedCoach.get(`/api/situations?teamId=${team.id}`)).status()).toBe(403);
-    await page.getByRole('button', { name: 'Playbook', exact: true }).click();
+    // Design has no visible Situation Library button; open the shared browser with this team's scope.
+    await page.goto('/');
+    await expect(page.locator('html')).toHaveAttribute('data-diq-runtime','loaded');
+    await page.evaluate(()=>window.__DIQ_READY__);
+    await page.evaluate(teamId=>window._diqOpenPlaybookBrowser(teamId),team.id);
     const playbook = page.locator('#playbookBrowserOverlay');
     await expect(playbook).toBeVisible();
     await expect(playbook.locator('.playbook-situation-card').filter({hasText:coachDrill.title})).toBeVisible();
     await page.goto(`/design?type=team&id=${team.id}`);
     await expect(page.getByRole('button', { name: 'Coach Board' })).toBeVisible();
 
-    await page.getByRole('link', { name: 'New situation' }).click();
+    await page.getByRole('link', { name: '+ New situation',exact:true }).click();
     await expect(page.getByRole('heading', { name: 'Training situation' })).toBeVisible();
     await expect(page.getByLabel('Situation name')).toHaveValue('New situation');
 
     await send(page.request, '/api/auth/login', {username:'admin',password:'password'});
     await page.goto(`/workspace/design?type=region&id=${region.id}&view=submissions`);
-    await page.getByRole('button',{name:/View incoming reviews/}).click();
-    const queued = page.getByRole('article').filter({hasText:coachDrill.title});
+    await page.getByRole('button',{name:/^Incoming reviews/}).click();
+    const queued = page.getByRole('table',{name:'Pending publication reviews'}).getByRole('row').filter({hasText:coachDrill.title});
     await expect(queued).toContainText(team.name);
-    await queued.getByRole('button',{name:'Review submission'}).click();
+    await queued.getByRole('button',{name:coachDrill.title,exact:true}).click();
     await page.getByRole('button',{name:'Play-test incoming revision'}).click();
     await expect(page.locator('.situation-preview-bar')).toContainText(coachDrill.title);
     await expect(page.locator('#descHud')).toContainText(coachDrill.title);
@@ -288,28 +303,43 @@ test('a pinned team revision moves through each required publication gate', asyn
 
     await send(page.request, '/api/auth/login', {username:account.username,password:'Design-493821'});
     await page.goto(`/workspace/design?type=organization&id=${organization.id}`);
-    await page.getByRole('button',{name:'Cherry-pick',exact:true}).click();
-    const candidateSearch = page.getByRole('searchbox',{name:'Search eligible situations'});
+    await page.getByRole('button',{name:'Add from libraries',exact:true}).click();
+    const candidates=page.getByRole('region',{name:'Add from libraries',exact:true});
+    const candidateSearch = candidates.getByRole('searchbox',{name:'Search situations',exact:true});
     await candidateSearch.fill(suffix + ' no match');
-    await expect(page.getByText('No eligible situations match.')).toBeVisible();
+    await expect(page.getByText('No eligible situations match these filters.')).toBeVisible();
     await candidateSearch.fill(coachDrill.title);
-    const teamSource = page.getByRole('group',{name:new RegExp(team.name + ' · Team Library')});
-    await teamSource.getByRole('button',{name:'Cherry-pick into Organization Library'}).click();
+    // Publication replaces the team-owned candidate with its regional successor.
+    const regionalSource = page.getByRole('table',{name:'Eligible situations'}).getByRole('row')
+      .filter({has:page.getByRole('button',{name:coachDrill.title,exact:true})})
+      .filter({has:page.getByRole('cell',{name:organization.name+' / '+region.name+' · Regional Library',exact:true})});
+    await expect(regionalSource).toHaveCount(1);
+    await regionalSource.getByRole('button',{name:'Add to library',exact:true}).click();
     await expect(page.getByRole('status')).toHaveText('Revision published to this library.');
 
+    const organizationCatalog = await (await director.get(`/api/design?type=organization&id=${organization.id}`)).json();
+    const organizationDrill = organizationCatalog.entries.find(entry=>entry.title===coachDrill.title);
+    expect(organizationDrill).toBeTruthy();
     await send(page.request, '/api/auth/login', {username:'admin',password:'password'});
     await page.goto('/workspace/design?type=global&view=cherry-pick');
     await candidateSearch.fill(coachDrill.title);
-    await teamSource.getByRole('button',{name:'Play-test',exact:true}).click();
+    const organizationSource = page.getByRole('table',{name:'Eligible situations'}).getByRole('row')
+      .filter({has:page.getByRole('button',{name:coachDrill.title,exact:true})})
+      .filter({has:page.getByRole('cell',{name:organization.name+' · Organization Library',exact:true})});
+    await expect(organizationSource).toHaveCount(1);
+    await organizationSource.getByRole('button',{name:'Preview',exact:true}).click();
     await expect(page.locator('.situation-preview-bar')).toContainText(coachDrill.title);
     await page.getByRole('button',{name:'Back to review'}).click();
     await expect(candidateSearch).toHaveValue(coachDrill.title);
-    await teamSource.getByRole('button',{name:'Cherry-pick into Global Library'}).click();
+    await organizationSource.getByRole('button',{name:'Add to library',exact:true}).click();
     await expect(page.getByRole('status')).toHaveText('Revision published to this library.');
-    const teamHistory = await (await director.get(`/api/design?type=team&id=${team.id}`)).json();
-    expect(teamHistory.outgoing).toEqual(expect.arrayContaining([
-      expect.objectContaining({source_key:coachDrill.key,destination_scope:'organization',status:'approved'}),
-      expect.objectContaining({source_key:coachDrill.key,destination_scope:'global',status:'approved'}),
+    const regionalHistory = await (await director.get(`/api/design?type=region&id=${region.id}`)).json();
+    expect(regionalHistory.outgoing).toEqual(expect.arrayContaining([
+      expect.objectContaining({source_key:regionalDrill.key,destination_scope:'organization',status:'approved'}),
+    ]));
+    const organizationHistory = await (await director.get(`/api/design?type=organization&id=${organization.id}`)).json();
+    expect(organizationHistory.outgoing).toEqual(expect.arrayContaining([
+      expect.objectContaining({source_key:organizationDrill.key,destination_scope:'global',status:'approved'}),
     ]));
     const updatedDrill = (await send(director,design,{
       action:'publish',type:'team',id:team.id,revision:coachDrill.revision,

@@ -1,0 +1,34 @@
+-- S03/S04: shared ground pickup, believable backup routes, and role-specific target tolerance.
+UPDATE situations SET payload_json=json_patch(payload_json,'{"hit":{"x":2463,"y":779},"targets":{"P":{"x":1302,"y":1055,"tol":125,"notes":"Move into backup position between mound and SS position."},"C":{"x":2200,"y":1468,"tol":120,"notes":"Trail the batter-runner into first-base backup, arriving just after the runner. Stay clear of the running lane."},"1B":{"x":2197,"y":1310,"tol":100,"notes":"After seeing the runner touch 1B, cover the bag. Give the runner a lane."},"2B":{"x":1987,"y":823,"tol":85,"notes":"Move to cut/relay position between ball and 2B. Listen for communication."},"SS":{"x":1580,"y":861,"tol":90,"notes":"Cover 2B. Be ready for throw and tag play."},"3B":{"x":962,"y":1315,"tol":90,"notes":"Maintain position to possibly back up throw from RF, then cover 3B."},"LF":{"x":946,"y":894,"tol":140,"notes":"Back up the throw to second from beyond SS, in line with the incoming throw. Allow space to stop an overthrow."},"CF":{"x":2250,"y":620,"tol":165,"notes":"Back up RF from deeper in right-center. Leave room to stop a ball that gets through rather than crowding the pickup."},"RF":{"x":2464,"y":778,"tol":67,"notes":"Make a good, hard, low throw toward 2B. Keep it low enough for the cut/relay to handle."}},"boardAnimation":{"version":2,"movements":{"RF":[{"path":[{"x":2383,"y":665},{"x":2464,"y":778}],"start":{"event":"contact"},"durationMs":850}],"CF":[{"path":[{"x":1629,"y":427},{"x":2250,"y":620}],"start":{"event":"contact"},"durationMs":800}],"C":[{"path":[{"x":1578,"y":1833},{"x":2200,"y":1468}],"start":{"event":"contact"},"durationMs":1150}],"1B":[{"path":[{"x":2087,"y":1155},{"x":2197,"y":1310}],"start":{"event":"contact"},"durationMs":850}]},"battedBall":{"type":"line_drive","start":{"x":1577,"y":1734},"destination":{"x":2463,"y":779},"fielding":"ground","fielder":"RF","bounce":{"durationMs":220,"distance":220,"height":18}},"timingProfile":"distance-v1"},"starts":{"P":{"x":1570,"y":1240},"C":{"x":1578,"y":1833},"1B":{"x":2087,"y":1155},"2B":{"x":1944,"y":943},"SS":{"x":1202,"y":933},"3B":{"x":1004,"y":1147},"LF":{"x":744,"y":660},"CF":{"x":1629,"y":427},"RF":{"x":2383,"y":665}},"playOutcome":{"result":"single","batterResult":"first","outsRecorded":0,"reviewStatus":"ready"},"runnerOutcomes":[]}'),revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key='BD-03' AND library_scope='global';
+UPDATE situations SET payload_json=json_patch(payload_json,'{"hit":{"x":757,"y":881},"targets":{"P":{"x":1107,"y":1592,"tol":125,"notes":"Move to back up position between 3B and home. Read the play to back up 3B or possibly home plate."},"C":{"x":1577,"y":1668,"tol":95,"notes":"Stay ready near home plate while leaving the runner a clear lane. Be available if the play develops toward home."},"1B":{"x":2205,"y":1307,"tol":100,"notes":"After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."},"2B":{"x":1578,"y":848,"tol":90,"notes":"Cover 2B. Be ready for possible throw/play on back runner."},"SS":{"x":850,"y":1080,"tol":88,"notes":"Line up between LF and third. In this demonstration let the accurate throw travel through to 3B; cut or redirect only when called."},"3B":{"x":960,"y":1320,"tol":90,"notes":"Cover 3B. Be ready for possible throw from LF."},"LF":{"x":753,"y":878,"tol":67,"notes":"Make a good, hard, low throw to 3B. Make the throw low enough for the cut/relay to handle."},"CF":{"x":990,"y":650,"tol":155,"notes":"Back up LF from deeper in left-center. Take a direct supporting route and leave room to stop a ball that gets through."},"RF":{"x":1977,"y":709,"tol":145,"notes":"Move to back up position near 2B."}},"boardAnimation":{"version":2,"movements":{"LF":[{"path":[{"x":749,"y":674},{"x":753,"y":878}],"start":{"event":"contact"},"durationMs":850}],"CF":[{"path":[{"x":1633,"y":445},{"x":990,"y":650}],"start":{"event":"contact"},"durationMs":800}],"C":[{"path":[{"x":1578,"y":1833},{"x":1577,"y":1668}],"start":{"event":"contact"},"durationMs":700}],"1B":[{"path":[{"x":2040,"y":1253},{"x":2205,"y":1307}],"start":{"event":"contact"},"durationMs":850}]},"battedBall":{"type":"line_drive","start":{"x":1577,"y":1734},"destination":{"x":757,"y":881},"fielding":"ground","fielder":"LF","bounce":{"durationMs":220,"distance":220,"height":18}},"timingProfile":"distance-v1"},"starts":{"P":{"x":1570,"y":1240},"C":{"x":1578,"y":1833},"1B":{"x":2040,"y":1253},"2B":{"x":1928,"y":907},"SS":{"x":1275,"y":895},"3B":{"x":1093,"y":1200},"LF":{"x":749,"y":674},"CF":{"x":1633,"y":445},"RF":{"x":2379,"y":683}},"playOutcome":{"result":"single","batterResult":"first","outsRecorded":0,"reviewStatus":"ready"},"runnerOutcomes":[{"startingBase":"first","result":"second","taggedUp":false}],"desc":"Single to LF with a runner on first. The lead runner advances to second and holds; LF throws through the cutoff toward third to discourage another advance."}'),description='Single to LF with a runner on first. The lead runner advances to second and holds; LF throws through the cutoff toward third to discourage another advance.',revision=revision+1,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE key='BD-04' AND library_scope='global';
+
+INSERT OR IGNORE INTO situation_versions
+  (situation_key, revision, title, category, difficulty, payload_json, created_at)
+SELECT key, revision, title, category, difficulty_level, payload_json, updated_at
+  FROM situations
+ WHERE key IN ('BD-03','BD-04') AND library_scope='global';
+
+INSERT OR IGNORE INTO situation_version_teaching_categories
+  (situation_key, situation_revision, category_id, is_primary, sort_order)
+SELECT stc.situation_key, s.revision, stc.category_id, stc.is_primary, stc.sort_order
+  FROM situation_teaching_categories stc
+  JOIN situations s ON s.key = stc.situation_key
+ WHERE stc.situation_key IN ('BD-03','BD-04') AND s.library_scope='global';
+
+INSERT OR IGNORE INTO situation_version_play_outcomes
+  (situation_key, situation_revision, play_result, batter_result,
+   outs_recorded, batter_out_type, batter_out_order, review_status)
+SELECT spo.situation_key, s.revision, spo.play_result, spo.batter_result,
+       spo.outs_recorded, spo.batter_out_type, spo.batter_out_order, spo.review_status
+  FROM situation_play_outcomes spo
+  JOIN situations s ON s.key = spo.situation_key
+ WHERE spo.situation_key IN ('BD-03','BD-04') AND s.library_scope='global';
+
+INSERT OR IGNORE INTO situation_version_runner_outcomes
+  (situation_key, situation_revision, starting_base, runner_result,
+   out_type, out_order, tagged_up)
+SELECT sro.situation_key, s.revision, sro.starting_base, sro.runner_result,
+       sro.out_type, sro.out_order, sro.tagged_up
+  FROM situation_runner_outcomes sro
+  JOIN situations s ON s.key = sro.situation_key
+ WHERE sro.situation_key IN ('BD-03','BD-04') AND s.library_scope='global';

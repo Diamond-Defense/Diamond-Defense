@@ -65,7 +65,7 @@ export function syncSituationAnimation(situation) {
   if(!situation)return null;
   const draft=clone(situation);
   if(draft.boardAnimation){
-    const { running, runnerStarts, steps, throwSteps } = draft.boardAnimation;
+    const { running, runnerStarts, steps, throwSteps, throwTimings, timingProfile } = draft.boardAnimation;
     const board=fromSituation(draft,{coachBoard:true});
     draft.boardAnimation={
       version:2,
@@ -74,7 +74,9 @@ export function syncSituationAnimation(situation) {
       ...(running && {running:board.running}),
       ...(runnerStarts && {runnerStarts:board.runners}),
       ...(steps !== undefined && {steps:board.steps}),
-      ...(throwSteps !== undefined && {throwSteps:board.throwSteps})
+      ...(throwSteps !== undefined && {throwSteps:board.throwSteps}),
+      ...(timingProfile !== undefined && {timingProfile:board.timingProfile}),
+      ...(throwTimings !== undefined && {throwTimings:board.throwTimings})
     };
   }
   return draft;

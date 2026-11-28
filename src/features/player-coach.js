@@ -1012,7 +1012,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     }
     if(playbook){
       playbook.disabled = Boolean(pending);
-      playbook.title = pending ? 'Complete all assigned practice before opening the Playbook.' : '';
+      playbook.title = pending ? 'Complete all assigned practice before opening the Situation Library.' : '';
     }
     if(random){
       random.disabled = !user || Boolean(pending);
@@ -1101,7 +1101,7 @@ function computeRosterPlayerId(teamObj, playerObj){
   function practiceSituationLabel(situation){
     const code = practiceSituationCode(situation?.key || situation?.situationKey, situation?.displayCode);
     const title = String(situation?.title || situation?.desc || 'Situation').trim();
-    return title;
+    return window._diqLibraryCards?.qualifiedSituationLabel(situation) || [code,title].filter(Boolean).join(' · ');
   }
 
   function practiceDueLabel(assignment){
@@ -2804,7 +2804,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     trainingReadOnly = !canWriteTraining(user, team);
     document.querySelector('[data-coach-tab="assignments"]')?.classList.toggle('hidden', trainingReadOnly);
     if (trainingReadOnly && mode === 'assignments') {mode = 'reviews';trainingSection='overview';}
-    if (mode === 'assignments') void loadTrainingCatalog(teamId).catch(error => reportDatabaseWriteError('Unable to load the Team Playbook.', error));
+    if (mode === 'assignments') void loadTrainingCatalog(teamId).catch(error => reportDatabaseWriteError('Unable to load the Team Situation Library.', error));
     const overviewActive = mode === 'overview' && hasTrainingOverview(user);
     document.querySelector('[data-coach-tab="overview"]')?.classList.toggle('hidden', !hasTrainingOverview(user));
     document.querySelector('[data-coach-view="overview"]')?.classList.toggle('hidden', !overviewActive);
@@ -3641,7 +3641,7 @@ function updatePlayerHeaderButton(){
 
   function closeAccountMenu({ returnFocus = false } = {}){
     const menu = document.getElementById('accountMenu');
-    const trigger = document.getElementById('playerBtn');
+    const trigger = document.getElementById('sharedAccountTrigger') || document.getElementById('playerBtn');
     if(!menu) return;
     menu.classList.add('hidden');
     menu.setAttribute('aria-hidden', 'true');
@@ -3652,7 +3652,7 @@ function updatePlayerHeaderButton(){
   function openAccountMenu(){
     const user = DIQ_AUTH_USER || window.__DIQ_AUTH_USER__ || null;
     const menu = document.getElementById('accountMenu');
-    const trigger = document.getElementById('playerBtn');
+    const trigger = document.getElementById('sharedAccountTrigger') || document.getElementById('playerBtn');
     if(!user || !menu || !trigger) return;
     if(user.mustChangePassword){
       openAccountSecurity({ required:true });
@@ -3689,7 +3689,7 @@ function updatePlayerHeaderButton(){
       workspaceToolbar = document.createElement('div'); workspaceToolbar.id = 'workspaceSituationToolbar';
       document.getElementById('appWorkspace')?.before(workspaceToolbar);
     }
-    // A local toolbar keeps staff Playbook access clear of the account menu.
+    // A local toolbar keeps staff Situation Library access clear of the account menu.
     const destination = coachOpen || adminPanel || designOpen ? workspaceToolbar : fieldToolbar;
     if (controls && destination && controls.parentElement !== destination) destination.append(controls);
     if (destination === fieldToolbar) {
@@ -3973,8 +3973,8 @@ function updatePlayerHeaderButton(){
 
   document.addEventListener('click', event=>{
     const menu = document.getElementById('accountMenu');
-    const actions = document.querySelector('.account-actions');
-    if(menu?.classList.contains('hidden') || actions?.contains(event.target)) return;
+    const actions = event.target instanceof Element ? event.target.closest('.account-actions') : null;
+    if(menu?.classList.contains('hidden') || actions) return;
     closeAccountMenu();
   });
 
@@ -4453,7 +4453,7 @@ function refreshGuideText(){
   let stage, steps;
   if(practice && !practice.classList.contains('hidden')){
     stage = 'Assignments';
-    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Play in the top navigation to return to the situation. Playbook and Random are available when required practice is complete.'];
+    steps = ['Choose an available assignment to start or continue your practice.', 'If no practice is assigned, your coach’s assignments will appear here.', 'Select Play in the top navigation to return to the situation. Situation Library and Random are available when required practice is complete.'];
   } else if(completed){
     stage = 'Situation complete';
     steps = ['Review the result and the expected throwing order in Play Review.', 'Use Reset to try this situation again, or choose another available situation.', 'For assigned practice, use the next-situation button when it appears.'];
@@ -4474,7 +4474,7 @@ function refreshGuideText(){
     steps = ['Drag the nine blue fielders into position. Gold runners are not draggable.', 'Select Check Positions to check your placement.', 'Use the remaining checks to adjust your fielders. The timer and animation pause while Guide is open.'];
   } else {
     stage = 'Getting started';
-    steps = ['Log in, then open Playbook to choose a situation, use Random, or open Assignments for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
+    steps = ['Log in, then open Situation Library to choose a situation, use Random, or open Assignments for assigned work.', 'Review the situation title, Runners and Outs in the situation panel.', 'Select Start Situation, then position the defense.'];
   }
   const html = `<p><strong>${stage}</strong></p><ol>${steps.map(text=>`<li>${text}</li>`).join('')}</ol>`;
   if(howToBody.innerHTML !== html) howToBody.innerHTML = html;
@@ -5239,6 +5239,8 @@ async function animateSequenceThrows(order){
   board.playSeq=(order||[]).filter(id=>POS_IDS.includes(id));
   if(board.playSeq.length<2)return;
   for(const id of POS_IDS)board.defenders[id]={...tokens.get(id)?.pos||DEFAULT_STARTS[id]};
+  if(currentSituation?.boardAnimation?.timingProfile)board.timingProfile=currentSituation.boardAnimation.timingProfile;
+  if(currentSituation?.boardAnimation?.throwTimings)board.throwTimings=structuredClone(currentSituation.boardAnimation.throwTimings);
   const play=window._diqPlayAnimation.compilePlay(board);
   if(ballEl){const p=nativeToCssPoint(board.defenders[board.playSeq[0]]);ballEl.style.display='block';ballEl.style.left=p.x+'px';ballEl.style.top=p.y+'px';}
   const playback=window._diqPlayAnimation.createPlayback(play,frame=>{
@@ -5247,6 +5249,7 @@ async function animateSequenceThrows(order){
   },()=>{}, {
     now:playNow,requestFrame:requestPlayFrame,cancelFrame:cancelPlayFrame,
     reducedMotion:getPlayAnimationDuration()===0,
+    rate:board.throwTimings||board.timingProfile?window._diqPlayAnimation.TEACHING_PLAYBACK_RATE:1,
     onComplete:()=>playDelay(()=>{
       if(_sharedSequencePlayback===playback)cleanupSeqThrowViz();
     },300),
@@ -5292,32 +5295,6 @@ function wireOnce(){
   // --- everything from your “/* Wiring */” block goes here ---
   if (randomSitBtn) randomSitBtn.addEventListener('click', pickRandomSituation);
   if (playbookBrowserToggle) playbookBrowserToggle.addEventListener('click', openPlaybookBrowser);
-  if (playbookBrowserClose) playbookBrowserClose.addEventListener('click', closePlaybookBrowser);
-  if (playbookBrowserOverlay) playbookBrowserOverlay.addEventListener('click', (event)=>{
-    if(event.target === playbookBrowserOverlay) closePlaybookBrowser();
-  });
-  [playbookSearch, playbookCategory, playbookHitOutcome, playbookDifficulty, playbookRunners].forEach(control=>{
-    control?.addEventListener(control === playbookSearch ? 'input' : 'change', renderPlaybookBrowser);
-  });
-  if (playbookClearFilters) playbookClearFilters.addEventListener('click', ()=>{
-    if(playbookSearch) playbookSearch.value = '';
-    if(playbookCategory) playbookCategory.value = '';
-    if(playbookHitOutcome) playbookHitOutcome.value = '';
-    if(playbookDifficulty) playbookDifficulty.value = '';
-    if(playbookRunners) playbookRunners.value = '';
-    renderPlaybookBrowser();
-  });
-  if (playbookRandomFiltered) playbookRandomFiltered.addEventListener('click', ()=>{
-    const filtered = filteredPlaybookSituations();
-    if(filtered.length) choosePlaybookSituation(filtered[Math.floor(Math.random() * filtered.length)].key);
-  });
-  document.addEventListener('keydown', (event)=>{
-    if(event.key === 'Escape' && playbookBrowserOverlay && !playbookBrowserOverlay.classList.contains('hidden')){
-      closePlaybookBrowser();
-      playbookBrowserToggle?.focus();
-    }
-  });
-
   if (resetBtn)  resetBtn.addEventListener('click', ()=>resetPlayers('reset'));
   if (checkBtn)  checkBtn.addEventListener('click', checkPositions);
   if (watchSolutionBtn) watchSolutionBtn.addEventListener('click', ()=>window._diqWatchSolution?.());

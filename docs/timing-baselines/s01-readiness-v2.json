@@ -1,0 +1,886 @@
+{
+  "format": "diamond-defence-timing-baseline",
+  "version": 1,
+  "name": "BD-01 · responsibility readiness v2 · provisional",
+  "board": {
+    "version": 2,
+    "offenseNumbers": {
+      "batter": 20,
+      "first": 82,
+      "second": 92,
+      "third": 98
+    },
+    "title": "Situation #1",
+    "outs": 0,
+    "defenders": {
+      "P": {
+        "x": 1570,
+        "y": 1240
+      },
+      "C": {
+        "x": 1578,
+        "y": 1833
+      },
+      "1B": {
+        "x": 2081,
+        "y": 1172
+      },
+      "2B": {
+        "x": 1934,
+        "y": 941
+      },
+      "SS": {
+        "x": 1202,
+        "y": 935
+      },
+      "3B": {
+        "x": 1047,
+        "y": 1170
+      },
+      "LF": {
+        "x": 750,
+        "y": 679
+      },
+      "CF": {
+        "x": 1570,
+        "y": 476
+      },
+      "RF": {
+        "x": 2385,
+        "y": 683
+      }
+    },
+    "runners": {
+      "batter": {
+        "x": 1577,
+        "y": 1734
+      }
+    },
+    "running": {
+      "result": "single",
+      "destinations": {
+        "batter": "first"
+      }
+    },
+    "movements": {
+      "P": [
+        {
+          "path": [
+            {
+              "x": 1570,
+              "y": 1240
+            },
+            {
+              "x": 1827,
+              "y": 1016
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 800
+        }
+      ],
+      "C": [
+        {
+          "path": [
+            {
+              "x": 1578,
+              "y": 1833
+            },
+            {
+              "x": 2231,
+              "y": 1389
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1000
+        }
+      ],
+      "1B": [
+        {
+          "path": [
+            {
+              "x": 2081,
+              "y": 1172
+            },
+            {
+              "x": 2166,
+              "y": 1184
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1000
+        }
+      ],
+      "2B": [
+        {
+          "path": [
+            {
+              "x": 1934,
+              "y": 941
+            },
+            {
+              "x": 1595,
+              "y": 821
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 800
+        }
+      ],
+      "SS": [
+        {
+          "path": [
+            {
+              "x": 1202,
+              "y": 935
+            },
+            {
+              "x": 1220,
+              "y": 852
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 750
+        }
+      ],
+      "3B": [
+        {
+          "path": [
+            {
+              "x": 1047,
+              "y": 1170
+            },
+            {
+              "x": 1000,
+              "y": 1250
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 650
+        }
+      ],
+      "LF": [
+        {
+          "path": [
+            {
+              "x": 750,
+              "y": 679
+            },
+            {
+              "x": 900,
+              "y": 850
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 850
+        }
+      ],
+      "CF": [
+        {
+          "path": [
+            {
+              "x": 1570,
+              "y": 476
+            },
+            {
+              "x": 990,
+              "y": 730
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 800
+        }
+      ],
+      "RF": [
+        {
+          "path": [
+            {
+              "x": 2385,
+              "y": 683
+            },
+            {
+              "x": 2000,
+              "y": 860
+            }
+          ],
+          "start": {
+            "event": "contact"
+          },
+          "durationMs": 1000
+        }
+      ]
+    },
+    "battedBall": {
+      "type": "line_drive",
+      "start": {
+        "x": 1577,
+        "y": 1734
+      },
+      "destination": {
+        "x": 900,
+        "y": 850
+      },
+      "fielding": "ground",
+      "fielder": "LF",
+      "bounce": {
+        "durationMs": 220,
+        "distance": 220,
+        "height": 18
+      }
+    },
+    "playSeq": [
+      "LF",
+      "SS",
+      "2B"
+    ],
+    "playSeq2": [],
+    "animation": {
+      "version": 2
+    },
+    "sourceSituation": {
+      "key": "BD-01",
+      "title": "Situation #1",
+      "desc": "Single to LF",
+      "outs": 0,
+      "runnersOn": {
+        "first": false,
+        "second": false,
+        "third": false
+      },
+      "hitType": "line",
+      "batterAdvance": 1,
+      "playSeq": [
+        "LF",
+        "SS",
+        "2B"
+      ],
+      "seqNote": "Routine single to LF, bases empty, 0 outs. LF fields on the ground; SS is the cutoff and 2B covers second. Second is the target, two bases ahead of the batter. Throw through the cutoff toward the target; redirect or hold when the play changes. The batter stops at first. Coverage and backups begin at contact.",
+      "starts": {
+        "P": {
+          "x": 1570,
+          "y": 1240
+        },
+        "C": {
+          "x": 1578,
+          "y": 1833
+        },
+        "1B": {
+          "x": 2081,
+          "y": 1172
+        },
+        "2B": {
+          "x": 1934,
+          "y": 941
+        },
+        "SS": {
+          "x": 1202,
+          "y": 935
+        },
+        "3B": {
+          "x": 1047,
+          "y": 1170
+        },
+        "LF": {
+          "x": 750,
+          "y": 679
+        },
+        "CF": {
+          "x": 1570,
+          "y": 476
+        },
+        "RF": {
+          "x": 2385,
+          "y": 683
+        }
+      },
+      "targets": {
+        "P": {
+          "x": 1827,
+          "y": 1016,
+          "tol": 81,
+          "notes": "Move into backup position between mound and 2B. Stay out of the runners lane."
+        },
+        "C": {
+          "x": 2231,
+          "y": 1389,
+          "tol": 99,
+          "notes": "Follow the runner to first to back up possible overthrow on back pick."
+        },
+        "1B": {
+          "x": 2166,
+          "y": 1184,
+          "tol": 67,
+          "notes": "Stay near first, give the batter-runner a lane, and watch the touch of the bag. Be ready for a possible back pick."
+        },
+        "2B": {
+          "x": 1595,
+          "y": 821,
+          "tol": 67,
+          "notes": "Cover second, give the runner a lane, and direct SS with a clear through, cut, or hold call. Receive the throw if it comes through."
+        },
+        "SS": {
+          "x": 1220,
+          "y": 852,
+          "tol": 72,
+          "notes": "Line up between LF and second as the cutoff. Let an accurate throw travel through toward second; cut and relay, redirect, or hold when the receiving infielder calls for it."
+        },
+        "3B": {
+          "x": 1000,
+          "y": 1250,
+          "tol": 67,
+          "notes": "Stay close to 3B bag. Be ready for play."
+        },
+        "LF": {
+          "x": 900,
+          "y": 850,
+          "tol": 67,
+          "notes": "Charge the single, gather it off the ground, then make a firm, low throw through SS toward 2B."
+        },
+        "CF": {
+          "x": 990,
+          "y": 730,
+          "tol": 108,
+          "notes": "Sprint to back up LF."
+        },
+        "RF": {
+          "x": 2000,
+          "y": 860,
+          "tol": 109,
+          "notes": "Move behind 2B in line with the throw from LF to back up an overthrow."
+        }
+      },
+      "hit": {
+        "x": 900,
+        "y": 850
+      },
+      "playOutcome": {
+        "result": "single",
+        "batterResult": "first",
+        "outsRecorded": 0,
+        "reviewStatus": "ready"
+      },
+      "runnerOutcomes": [],
+      "boardAnimation": {
+        "version": 2,
+        "movements": {
+          "P": [
+            {
+              "path": [
+                {
+                  "x": 1570,
+                  "y": 1240
+                },
+                {
+                  "x": 1827,
+                  "y": 1016
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 800
+            }
+          ],
+          "C": [
+            {
+              "path": [
+                {
+                  "x": 1578,
+                  "y": 1833
+                },
+                {
+                  "x": 2231,
+                  "y": 1389
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 1000
+            }
+          ],
+          "1B": [
+            {
+              "path": [
+                {
+                  "x": 2081,
+                  "y": 1172
+                },
+                {
+                  "x": 2166,
+                  "y": 1184
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 1000
+            }
+          ],
+          "2B": [
+            {
+              "path": [
+                {
+                  "x": 1934,
+                  "y": 941
+                },
+                {
+                  "x": 1595,
+                  "y": 821
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 800
+            }
+          ],
+          "SS": [
+            {
+              "path": [
+                {
+                  "x": 1202,
+                  "y": 935
+                },
+                {
+                  "x": 1220,
+                  "y": 852
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 750
+            }
+          ],
+          "3B": [
+            {
+              "path": [
+                {
+                  "x": 1047,
+                  "y": 1170
+                },
+                {
+                  "x": 1000,
+                  "y": 1250
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 650
+            }
+          ],
+          "LF": [
+            {
+              "path": [
+                {
+                  "x": 750,
+                  "y": 679
+                },
+                {
+                  "x": 900,
+                  "y": 850
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 850
+            }
+          ],
+          "CF": [
+            {
+              "path": [
+                {
+                  "x": 1570,
+                  "y": 476
+                },
+                {
+                  "x": 990,
+                  "y": 730
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 800
+            }
+          ],
+          "RF": [
+            {
+              "path": [
+                {
+                  "x": 2385,
+                  "y": 683
+                },
+                {
+                  "x": 2000,
+                  "y": 860
+                }
+              ],
+              "start": {
+                "event": "contact"
+              },
+              "durationMs": 1000
+            }
+          ]
+        },
+        "battedBall": {
+          "type": "line_drive",
+          "start": {
+            "x": 1577,
+            "y": 1734
+          },
+          "destination": {
+            "x": 900,
+            "y": 850
+          },
+          "fielding": "ground",
+          "fielder": "LF",
+          "bounce": {
+            "durationMs": 220,
+            "distance": 220,
+            "height": 18
+          }
+        },
+        "running": {
+          "result": "single",
+          "destinations": {
+            "batter": "first"
+          }
+        },
+        "throwTimings": [
+          {
+            "from": "LF",
+            "to": "SS",
+            "durationMs": 220,
+            "transferMs": 90
+          },
+          {
+            "from": "SS",
+            "to": "2B",
+            "durationMs": 180,
+            "transferMs": 70
+          }
+        ],
+        "timingProfile": "distance-v1"
+      }
+    },
+    "timingProfile": "distance-v1",
+    "throwTimings": [
+      {
+        "from": "LF",
+        "to": "SS",
+        "durationMs": 220,
+        "transferMs": 90
+      },
+      {
+        "from": "SS",
+        "to": "2B",
+        "durationMs": 180,
+        "transferMs": 70
+      }
+    ]
+  },
+  "reports": [
+    {
+      "version": "timing-review-v1",
+      "view": "Coach Board",
+      "profile": "distance-v1",
+      "rows": [
+        {
+          "event": "Contact",
+          "seconds": 0,
+          "details": ""
+        },
+        {
+          "event": "Landing",
+          "seconds": 1.8,
+          "details": ""
+        },
+        {
+          "event": "Bounce / ground travel ends",
+          "seconds": 2.68,
+          "details": ""
+        },
+        {
+          "event": "Pickup",
+          "seconds": 3.4,
+          "details": "LF"
+        },
+        {
+          "event": "LF → SS release",
+          "seconds": 3.76,
+          "details": ""
+        },
+        {
+          "event": "LF → SS reception",
+          "seconds": 4.64,
+          "details": ""
+        },
+        {
+          "event": "SS → 2B release",
+          "seconds": 4.92,
+          "details": ""
+        },
+        {
+          "event": "SS → 2B reception",
+          "seconds": 5.64,
+          "details": ""
+        },
+        {
+          "event": "Play complete",
+          "seconds": 5.64,
+          "details": ""
+        }
+      ],
+      "throws": [
+        {
+          "from": "LF",
+          "to": "SS",
+          "distance": 320,
+          "flightSeconds": 0.88,
+          "transferSeconds": 0.36,
+          "source": "Authored"
+        },
+        {
+          "from": "SS",
+          "to": "2B",
+          "distance": 376.3,
+          "flightSeconds": 0.72,
+          "transferSeconds": 0.28,
+          "source": "Authored"
+        }
+      ],
+      "separation": [
+        {
+          "label": "Landing",
+          "distance": 326.9
+        },
+        {
+          "label": "Bounce midpoint",
+          "distance": 141.8
+        },
+        {
+          "label": "Ground travel ends",
+          "distance": 48.2
+        },
+        {
+          "label": "Minimum during bounce / ground travel",
+          "distance": 48.2
+        }
+      ],
+      "readiness": [
+        {
+          "actor": "C",
+          "duty": "Back up a possible play at first",
+          "arrivalSeconds": 4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.395,
+          "status": "Ready"
+        },
+        {
+          "actor": "1B",
+          "duty": "Be ready at first before the batter arrives",
+          "arrivalSeconds": 4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.395,
+          "status": "Ready"
+        },
+        {
+          "actor": "CF",
+          "duty": "Back up LF's ground pickup",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 3.4,
+          "marginSeconds": 0.2,
+          "status": "Ready"
+        },
+        {
+          "actor": "RF",
+          "duty": "Back up the throw to 2B",
+          "arrivalSeconds": 4,
+          "dueSeconds": 5.64,
+          "marginSeconds": 1.64,
+          "status": "Ready"
+        },
+        {
+          "actor": "SS",
+          "duty": "Receive LF's throw",
+          "arrivalSeconds": 3,
+          "dueSeconds": 4.64,
+          "marginSeconds": 1.64,
+          "status": "Ready"
+        },
+        {
+          "actor": "2B",
+          "duty": "Receive SS's throw",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 5.64,
+          "marginSeconds": 2.44,
+          "status": "Ready"
+        }
+      ],
+      "clearance": 80,
+      "warning": "",
+      "note": "Seconds at Normal teaching playback, measured from contact. Separation uses rendered ball coordinates and native field units; review visually before approval."
+    },
+    {
+      "version": "timing-review-v1",
+      "view": "Main app solution",
+      "profile": "distance-v1",
+      "rows": [
+        {
+          "event": "Contact",
+          "seconds": 0,
+          "details": ""
+        },
+        {
+          "event": "Landing",
+          "seconds": 1.8,
+          "details": ""
+        },
+        {
+          "event": "Bounce / ground travel ends",
+          "seconds": 2.68,
+          "details": ""
+        },
+        {
+          "event": "Pickup",
+          "seconds": 3.4,
+          "details": "LF"
+        },
+        {
+          "event": "LF → SS release",
+          "seconds": 3.76,
+          "details": ""
+        },
+        {
+          "event": "LF → SS reception",
+          "seconds": 4.64,
+          "details": ""
+        },
+        {
+          "event": "SS → 2B release",
+          "seconds": 4.92,
+          "details": ""
+        },
+        {
+          "event": "SS → 2B reception",
+          "seconds": 5.64,
+          "details": ""
+        },
+        {
+          "event": "Play complete",
+          "seconds": 5.64,
+          "details": ""
+        }
+      ],
+      "throws": [
+        {
+          "from": "LF",
+          "to": "SS",
+          "distance": 320,
+          "flightSeconds": 0.88,
+          "transferSeconds": 0.36,
+          "source": "Authored"
+        },
+        {
+          "from": "SS",
+          "to": "2B",
+          "distance": 376.3,
+          "flightSeconds": 0.72,
+          "transferSeconds": 0.28,
+          "source": "Authored"
+        }
+      ],
+      "separation": [
+        {
+          "label": "Landing",
+          "distance": 326.9
+        },
+        {
+          "label": "Bounce midpoint",
+          "distance": 141.8
+        },
+        {
+          "label": "Ground travel ends",
+          "distance": 48.2
+        },
+        {
+          "label": "Minimum during bounce / ground travel",
+          "distance": 48.2
+        }
+      ],
+      "readiness": [
+        {
+          "actor": "C",
+          "duty": "Back up a possible play at first",
+          "arrivalSeconds": 4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.395,
+          "status": "Ready"
+        },
+        {
+          "actor": "1B",
+          "duty": "Be ready at first before the batter arrives",
+          "arrivalSeconds": 4,
+          "dueSeconds": 4.395,
+          "marginSeconds": 0.395,
+          "status": "Ready"
+        },
+        {
+          "actor": "CF",
+          "duty": "Back up LF's ground pickup",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 3.4,
+          "marginSeconds": 0.2,
+          "status": "Ready"
+        },
+        {
+          "actor": "RF",
+          "duty": "Back up the throw to 2B",
+          "arrivalSeconds": 4,
+          "dueSeconds": 5.64,
+          "marginSeconds": 1.64,
+          "status": "Ready"
+        },
+        {
+          "actor": "SS",
+          "duty": "Receive LF's throw",
+          "arrivalSeconds": 3,
+          "dueSeconds": 4.64,
+          "marginSeconds": 1.64,
+          "status": "Ready"
+        },
+        {
+          "actor": "2B",
+          "duty": "Receive SS's throw",
+          "arrivalSeconds": 3.2,
+          "dueSeconds": 5.64,
+          "marginSeconds": 2.44,
+          "status": "Ready"
+        }
+      ],
+      "clearance": 80,
+      "warning": "",
+      "note": "Seconds at Normal teaching playback, measured from contact. Separation uses rendered ball coordinates and native field units; review visually before approval."
+    }
+  ]
+}

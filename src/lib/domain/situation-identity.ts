@@ -54,10 +54,26 @@ export function situationIdentity(situation: Situation): string {
 }
 export function suggestSituationName(situation: Situation): string {
   const type = situation.boardAnimation?.battedBall?.type === 'pop_fly' ? 'Pop Fly' : ({line:'Line Drive', grounder:'Ground Ball', popup:'Fly Ball'} as Record<string,string>)[situation.hitType] || 'Ball in Play';
-  const bases = [['first','First'],['second','Second'],['third','Third']].filter(([key]) => situation.runnersOn?.[key as keyof Situation['runnersOn']]).map(([,label]) => label);
-  const runners = bases.length === 3 ? 'Bases Loaded' : bases.length === 0 ? 'Bases Empty' : `${bases.length === 1 ? 'Runner' : 'Runners'} on ${bases.join(' and ')}`;
-  return `${type}${situation.ballLocation ? ` to ${situation.ballLocation}` : ''} — ${runners}`;
+  const location = (situation.ballLocation || (situation.hit ? inferBallLocation(situation.hit) : '')).replace(/^(Shallow|Deep) /, '');
+  return `${type}${location ? ` to ${location}` : ''}`;
 }
+
+/** Titles describe the ball; IDs and conditions distinguish repeated exercises. */
+export function shortSituationTitle(situation: Partial<Situation>): string {
+  const title = String(situation.title || '').trim();
+  const short = title.replace(/\s+[—–]\s+variation\s*(?:[a-z]+|\d+)\s*$/i, '')
+    .replace(/\s+[—–]\s+(?:Bases (?:Empty|Loaded)|Runners? on (?:First|Second|Third)(?: and (?:First|Second|Third))*)$/i, '');
+  if (!short || /^Situation #\d+$/i.test(short)) return suggestSituationName(situation as Situation);
+  return short.replace(/^(Line Drive|Ground Ball|Fly Ball|Pop Fly|Ball in Play) to (?:Shallow|Deep) /, '$1 to ');
+}
+export function qualifiedSituationLabel(situation: Partial<Situation>): string {
+  const bases = ['first','second','third'].filter(base => situation.runnersOn?.[base as keyof Situation['runnersOn']]);
+  const conditions = bases.length === 3 ? 'Bases loaded' : !bases.length ? 'Bases empty' : `${bases.length === 1 ? 'Runner' : 'Runners'} on ${bases.join(' and ')}`;
+  const keyCode = String(situation.key || '').match(/^BD-(\d+)(.*)$/);
+  const code = situation.displayCode || (keyCode ? `S${keyCode[1].padStart(2,'0')}${keyCode[2].replaceAll('-','.')}` : situation.key);
+  return [code, shortSituationTitle(situation), conditions].filter(Boolean).join(' · ');
+}
+
 export function audienceLabel(situation: Situation): string {
   return normalizeAudience(situation.audience).staffVariant || '';
 }

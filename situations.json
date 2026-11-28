@@ -1,7 +1,7 @@
 [
   {
     "key": "BD-01",
-    "title": "Situation #1",
+    "title": "Line Drive to LF",
     "desc": "Single to LF",
     "outs": 0,
     "runnersOn": {
@@ -16,7 +16,7 @@
       "SS",
       "2B"
     ],
-    "seqNote": "Routine single, no runners on: LF fields the ball after it lands and bounces. Throw through SS to 2B to keep the batter at first. Coverage and backups move at contact.",
+    "seqNote": "Routine single to LF, bases empty, 0 outs. LF fields on the ground; SS is the cutoff and 2B covers second. Second is the target, two bases ahead of the batter. Throw through the cutoff toward the target; redirect or hold when the play changes. The batter stops at first. Coverage and backups begin at contact.",
     "starts": {
       "P": {
         "x": 1570,
@@ -59,37 +59,37 @@
       "P": {
         "x": 1827,
         "y": 1016,
-        "tol": 81,
+        "tol": 100,
         "notes": "Move into backup position between mound and 2B. Stay out of the runners lane."
       },
       "C": {
         "x": 2231,
         "y": 1389,
-        "tol": 99,
+        "tol": 120,
         "notes": "Follow the runner to first to back up possible overthrow on back pick."
       },
       "1B": {
         "x": 2166,
         "y": 1184,
-        "tol": 67,
-        "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
+        "tol": 145,
+        "notes": "Stay near first, give the batter-runner a lane, and watch the touch of the bag. Be ready for a possible back pick."
       },
       "2B": {
         "x": 1595,
         "y": 821,
-        "tol": 67,
-        "notes": "Move into position to cover 2B, receive throw. Give the runner a lane."
+        "tol": 90,
+        "notes": "Cover second, give the runner a lane, and direct SS with a clear through, cut, or hold call. Receive the throw if it comes through."
       },
       "SS": {
         "x": 1220,
         "y": 852,
-        "tol": 72,
-        "notes": "Line up between LF and 2B as the cut/relay. Listen for the call and relay to 2B when needed."
+        "tol": 82,
+        "notes": "Line up between LF and second as the cutoff. Let an accurate throw travel through toward second; cut and relay, redirect, or hold when the receiving infielder calls for it."
       },
       "3B": {
         "x": 1000,
         "y": 1250,
-        "tol": 67,
+        "tol": 90,
         "notes": "Stay close to 3B bag. Be ready for play."
       },
       "LF": {
@@ -101,14 +101,14 @@
       "CF": {
         "x": 990,
         "y": 730,
-        "tol": 108,
-        "notes": "Sprint to back up LF."
+        "tol": 135,
+        "notes": "Back up LF from deeper in the outfield, ready to stop a ball that gets through. Allow space to react rather than crowding the pickup."
       },
       "RF": {
         "x": 2000,
         "y": 860,
-        "tol": 109,
-        "notes": "Move behind 2B in line with the throw from LF to back up an overthrow."
+        "tol": 155,
+        "notes": "Back up the throw to second from beyond the receiver, in line with the incoming throw. Adjust depth to stop an overthrow."
       }
     },
     "hit": {
@@ -158,7 +158,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 1450
+            "durationMs": 1150
           }
         ],
         "1B": [
@@ -176,7 +176,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 1250
+            "durationMs": 1000
           }
         ],
         "2B": [
@@ -248,7 +248,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 900
+            "durationMs": 850
           }
         ],
         "CF": [
@@ -266,7 +266,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 1100
+            "durationMs": 800
           }
         ],
         "RF": [
@@ -301,9 +301,9 @@
         "fielding": "ground",
         "fielder": "LF",
         "bounce": {
-          "durationMs": 350,
-          "distance": 150,
-          "height": 26
+          "durationMs": 220,
+          "distance": 220,
+          "height": 18
         }
       },
       "running": {
@@ -311,12 +311,27 @@
         "destinations": {
           "batter": "first"
         }
-      }
+      },
+      "throwTimings": [
+        {
+          "from": "LF",
+          "to": "SS",
+          "durationMs": 220,
+          "transferMs": 90
+        },
+        {
+          "from": "SS",
+          "to": "2B",
+          "durationMs": 180,
+          "transferMs": 70
+        }
+      ],
+      "timingProfile": "distance-v1"
     }
   },
   {
     "key": "BD-02",
-    "title": "Situation #2",
+    "title": "Line Drive to CF",
     "desc": "Single to CF",
     "outs": 0,
     "runnersOn": {
@@ -331,7 +346,7 @@
       "2B",
       "SS"
     ],
-    "seqNote": "Routine single to CF, no runners on. This branch is on the 2B side: CF gathers after the bounce, 2B cuts/relays, and SS covers second. On the SS side, those two infield roles reverse. The batter holds at first.",
+    "seqNote": "Routine single to CF on the 2B side, bases empty, 0 outs. CF fields on the ground; 2B is the cutoff and SS covers second. Second is the target, two bases ahead of the batter. Throw through the cutoff toward the target; redirect or hold when the play changes. The batter stops at first. Coverage and backups begin at contact.",
     "starts": {
       "P": {
         "x": 1570,
@@ -374,61 +389,61 @@
       "P": {
         "x": 1480,
         "y": 990,
-        "tol": 98,
-        "notes": "Back up the throw to second from behind the bag, between second and the mound. Stay clear of the runner."
+        "tol": 120,
+        "notes": "Back up the throw to second from behind the receiver, between second and the mound. Adjust depth to stop an overthrow and stay clear of the runner."
       },
       "C": {
         "x": 2200,
         "y": 1468,
-        "tol": 99,
+        "tol": 120,
         "notes": "Follow the runner to first to back up possible overthrow on back pick."
       },
       "1B": {
         "x": 2166,
         "y": 1184,
-        "tol": 67,
-        "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
+        "tol": 145,
+        "notes": "Stay near first, give the batter-runner a lane, and watch the touch of the bag. Be ready for a possible back pick."
       },
       "2B": {
-        "x": 1650,
-        "y": 765,
-        "tol": 67,
-        "notes": "For this single on the 2B side, line up between CF and second as the cut/relay. For a ball on the SS side, cover second instead."
+        "x": 1652,
+        "y": 660,
+        "tol": 77,
+        "notes": "For this single on the 2B side, line up between CF and second as the cut/relay. For a ball on the SS side, cover second instead. Let an accurate throw travel through toward second; cut and relay, redirect, or hold when SS calls for it."
       },
       "SS": {
         "x": 1595,
         "y": 821,
-        "tol": 72,
-        "notes": "Cover second and receive the relay from 2B for this ball on the 2B side. For a ball on the SS side, become the cut/relay instead."
+        "tol": 90,
+        "notes": "Cover second for this ball on the 2B side. Give the runner a lane and direct 2B with a clear through, cut, or hold call. For a ball on the SS side, become the cut/relay instead."
       },
       "3B": {
         "x": 1000,
         "y": 1250,
-        "tol": 67,
+        "tol": 90,
         "notes": "Stay close to third and be ready for a play."
       },
       "LF": {
         "x": 1370,
-        "y": 580,
-        "tol": 108,
-        "notes": "Sprint to back up CF."
+        "y": 420,
+        "tol": 165,
+        "notes": "Back up CF from the left-field side and deeper than the pickup. Leave room to react to a ball that gets through."
       },
       "CF": {
         "x": 1710,
-        "y": 700,
+        "y": 500,
         "tol": 82,
         "notes": "Charge the single, gather it off the ground after the bounce, and throw firmly through 2B toward SS covering second."
       },
       "RF": {
         "x": 1990,
-        "y": 580,
-        "tol": 124,
-        "notes": "Sprint to back up CF."
+        "y": 420,
+        "tol": 165,
+        "notes": "Back up CF from the right-field side and deeper than the pickup. Leave room to react to a ball that gets through."
       }
     },
     "hit": {
       "x": 1710,
-      "y": 700
+      "y": 500
     },
     "playOutcome": {
       "result": "single",
@@ -473,7 +488,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 1450
+            "durationMs": 1150
           }
         ],
         "1B": [
@@ -491,7 +506,7 @@
             "start": {
               "event": "contact"
             },
-            "durationMs": 1250
+            "durationMs": 1000
           }
         ],
         "2B": [
@@ -502,8 +517,8 @@
                 "y": 943
               },
               {
-                "x": 1650,
-                "y": 765
+                "x": 1652,
+                "y": 660
               }
             ],
             "start": {
@@ -557,13 +572,13 @@
               },
               {
                 "x": 1370,
-                "y": 580
+                "y": 420
               }
             ],
             "start": {
               "event": "contact"
             },
-            "durationMs": 1100
+            "durationMs": 800
           }
         ],
         "CF": [
@@ -575,13 +590,13 @@
               },
               {
                 "x": 1710,
-                "y": 700
+                "y": 500
               }
             ],
             "start": {
               "event": "contact"
             },
-            "durationMs": 900
+            "durationMs": 850
           }
         ],
         "RF": [
@@ -593,13 +608,13 @@
               },
               {
                 "x": 1990,
-                "y": 580
+                "y": 420
               }
             ],
             "start": {
               "event": "contact"
             },
-            "durationMs": 1100
+            "durationMs": 800
           }
         ]
       },
@@ -611,14 +626,14 @@
         },
         "destination": {
           "x": 1710,
-          "y": 700
+          "y": 500
         },
         "fielding": "ground",
         "fielder": "CF",
         "bounce": {
-          "durationMs": 350,
-          "distance": 150,
-          "height": 26
+          "durationMs": 220,
+          "distance": 220,
+          "height": 18
         }
       },
       "running": {
@@ -626,12 +641,13 @@
         "destinations": {
           "batter": "first"
         }
-      }
+      },
+      "timingProfile": "distance-v1"
     }
   },
   {
     "key": "BD-03",
-    "title": "Situation #3",
+    "title": "Line Drive to RF",
     "desc": "Single to RF",
     "outs": 0,
     "runnersOn": {
@@ -687,69 +703,172 @@
     },
     "targets": {
       "P": {
-        "x": 1379,
-        "y": 960,
-        "tol": 98,
+        "x": 1302,
+        "y": 1055,
+        "tol": 125,
         "notes": "Move into backup position between mound and SS position."
       },
       "C": {
         "x": 2200,
         "y": 1468,
-        "tol": 99,
-        "notes": "Follow the runner to first to back up possible overthrow on back pick."
+        "tol": 120,
+        "notes": "Trail the batter-runner into first-base backup, arriving just after the runner. Stay clear of the running lane."
       },
       "1B": {
-        "x": 2166,
-        "y": 1184,
-        "tol": 67,
+        "x": 2197,
+        "y": 1310,
+        "tol": 100,
         "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane."
       },
       "2B": {
-        "x": 1941,
-        "y": 676,
-        "tol": 72,
+        "x": 1987,
+        "y": 823,
+        "tol": 85,
         "notes": "Move to cut/relay position between ball and 2B. Listen for communication."
       },
       "SS": {
-        "x": 1597,
-        "y": 825,
-        "tol": 67,
+        "x": 1580,
+        "y": 861,
+        "tol": 90,
         "notes": "Cover 2B. Be ready for throw and tag play."
       },
       "3B": {
-        "x": 965,
-        "y": 1120,
-        "tol": 67,
+        "x": 962,
+        "y": 1315,
+        "tol": 90,
         "notes": "Maintain position to possibly back up throw from RF, then cover 3B."
       },
       "LF": {
-        "x": 793,
-        "y": 762,
-        "tol": 82,
-        "notes": "Sprint to possible back up position behind SS position."
+        "x": 946,
+        "y": 894,
+        "tol": 140,
+        "notes": "Back up the throw to second from beyond SS, in line with the incoming throw. Allow space to stop an overthrow."
       },
       "CF": {
-        "x": 2287,
-        "y": 546,
-        "tol": 153,
-        "notes": "Sprint to back up RF."
+        "x": 2250,
+        "y": 620,
+        "tol": 165,
+        "notes": "Back up RF from deeper in right-center. Leave room to stop a ball that gets through rather than crowding the pickup."
       },
       "RF": {
-        "x": 2306,
-        "y": 664,
+        "x": 2464,
+        "y": 778,
         "tol": 67,
         "notes": "Make a good, hard, low throw toward 2B. Keep it low enough for the cut/relay to handle."
       }
     },
     "hit": {
-      "x": 2418,
-      "y": 710
-    }
+      "x": 2463,
+      "y": 779
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {
+        "RF": [
+          {
+            "path": [
+              {
+                "x": 2383,
+                "y": 665
+              },
+              {
+                "x": 2464,
+                "y": 778
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 850
+          }
+        ],
+        "CF": [
+          {
+            "path": [
+              {
+                "x": 1629,
+                "y": 427
+              },
+              {
+                "x": 2250,
+                "y": 620
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "C": [
+          {
+            "path": [
+              {
+                "x": 1578,
+                "y": 1833
+              },
+              {
+                "x": 2200,
+                "y": 1468
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 1150
+          }
+        ],
+        "1B": [
+          {
+            "path": [
+              {
+                "x": 2087,
+                "y": 1155
+              },
+              {
+                "x": 2197,
+                "y": 1310
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 850
+          }
+        ]
+      },
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2463,
+          "y": 779
+        },
+        "fielding": "ground",
+        "fielder": "RF",
+        "bounce": {
+          "durationMs": 220,
+          "distance": 220,
+          "height": 18
+        }
+      },
+      "timingProfile": "distance-v1"
+    },
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "first",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": []
   },
   {
     "key": "BD-04",
-    "title": "Situation #4",
-    "desc": "Single to LF",
+    "title": "Line Drive to LF",
+    "desc": "Single to LF with a runner on first. The lead runner advances to second and holds; LF throws through the cutoff toward third to discourage another advance.",
     "outs": 0,
     "runnersOn": {
       "first": true,
@@ -804,68 +923,177 @@
     },
     "targets": {
       "P": {
-        "x": 1067,
-        "y": 1486,
-        "tol": 93,
+        "x": 1107,
+        "y": 1592,
+        "tol": 125,
         "notes": "Move to back up position between 3B and home. Read the play to back up 3B or possibly home plate."
       },
       "C": {
         "x": 1577,
-        "y": 1677,
-        "tol": 67,
-        "notes": "Protect home plate. Give runner a lane for play at the plate."
+        "y": 1668,
+        "tol": 95,
+        "notes": "Stay ready near home plate while leaving the runner a clear lane. Be available if the play develops toward home."
       },
       "1B": {
-        "x": 2166,
-        "y": 1184,
-        "tol": 72,
+        "x": 2205,
+        "y": 1307,
+        "tol": 100,
         "notes": "After seeing the runner touch 1B, cover the bag. Give the runner a lane. Be ready for possible back pick."
       },
       "2B": {
-        "x": 1607,
-        "y": 840,
-        "tol": 72,
+        "x": 1578,
+        "y": 848,
+        "tol": 90,
         "notes": "Cover 2B. Be ready for possible throw/play on back runner."
       },
       "SS": {
-        "x": 889,
-        "y": 761,
+        "x": 850,
+        "y": 1080,
         "tol": 88,
-        "notes": "Move to cut/relay position between ball and 3B. Listen for communication."
+        "notes": "Line up between LF and third. In this demonstration let the accurate throw travel through to 3B; cut or redirect only when called."
       },
       "3B": {
-        "x": 961,
-        "y": 1120,
-        "tol": 67,
+        "x": 960,
+        "y": 1320,
+        "tol": 90,
         "notes": "Cover 3B. Be ready for possible throw from LF."
       },
       "LF": {
-        "x": 680,
-        "y": 721,
+        "x": 753,
+        "y": 878,
         "tol": 67,
         "notes": "Make a good, hard, low throw to 3B. Make the throw low enough for the cut/relay to handle."
       },
       "CF": {
-        "x": 893,
-        "y": 559,
-        "tol": 108,
-        "notes": "Sprint to back up LF."
+        "x": 990,
+        "y": 650,
+        "tol": 155,
+        "notes": "Back up LF from deeper in left-center. Take a direct supporting route and leave room to stop a ball that gets through."
       },
       "RF": {
-        "x": 2131,
+        "x": 1977,
         "y": 709,
-        "tol": 113,
+        "tol": 145,
         "notes": "Move to back up position near 2B."
       }
     },
     "hit": {
-      "x": 679,
-      "y": 722
-    }
+      "x": 757,
+      "y": 881
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {
+        "LF": [
+          {
+            "path": [
+              {
+                "x": 749,
+                "y": 674
+              },
+              {
+                "x": 753,
+                "y": 878
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 850
+          }
+        ],
+        "CF": [
+          {
+            "path": [
+              {
+                "x": 1633,
+                "y": 445
+              },
+              {
+                "x": 990,
+                "y": 650
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 800
+          }
+        ],
+        "C": [
+          {
+            "path": [
+              {
+                "x": 1578,
+                "y": 1833
+              },
+              {
+                "x": 1577,
+                "y": 1668
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 700
+          }
+        ],
+        "1B": [
+          {
+            "path": [
+              {
+                "x": 2040,
+                "y": 1253
+              },
+              {
+                "x": 2205,
+                "y": 1307
+              }
+            ],
+            "start": {
+              "event": "contact"
+            },
+            "durationMs": 850
+          }
+        ]
+      },
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 757,
+          "y": 881
+        },
+        "fielding": "ground",
+        "fielder": "LF",
+        "bounce": {
+          "durationMs": 220,
+          "distance": 220,
+          "height": 18
+        }
+      },
+      "timingProfile": "distance-v1"
+    },
+    "playOutcome": {
+      "result": "single",
+      "batterResult": "first",
+      "outsRecorded": 0,
+      "reviewStatus": "ready"
+    },
+    "runnerOutcomes": [
+      {
+        "startingBase": "first",
+        "result": "second",
+        "taggedUp": false
+      }
+    ]
   },
   {
     "key": "BD-05",
-    "title": "Situation #5",
+    "title": "Line Drive to CF",
     "desc": "Single to CF",
     "outs": 0,
     "runnersOn": {
@@ -978,11 +1206,28 @@
     "hit": {
       "x": 1679,
       "y": 545
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1679,
+          "y": 545
+        },
+        "fielding": "ground",
+        "fielder": "CF"
+      }
     }
   },
   {
     "key": "BD-06",
-    "title": "Situation #6",
+    "title": "Line Drive to RF",
     "desc": "Single to RF",
     "outs": 0,
     "runnersOn": {
@@ -1108,11 +1353,28 @@
     "hit": {
       "x": 2106,
       "y": 562
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2106,
+          "y": 562
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-07",
-    "title": "Situation #7",
+    "title": "Line Drive to LF",
     "desc": "Single to LF",
     "outs": 0,
     "runnersOn": {
@@ -1225,11 +1487,28 @@
     "hit": {
       "x": 679,
       "y": 722
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 679,
+          "y": 722
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-08",
-    "title": "Situation #8",
+    "title": "Line Drive to CF",
     "desc": "Single to CF",
     "outs": 0,
     "runnersOn": {
@@ -1342,11 +1621,28 @@
     "hit": {
       "x": 1708,
       "y": 531
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1708,
+          "y": 531
+        },
+        "fielding": "ground",
+        "fielder": "CF"
+      }
     }
   },
   {
     "key": "BD-09",
-    "title": "Situation #9",
+    "title": "Line Drive to RF",
     "desc": "Single to RF",
     "outs": 0,
     "runnersOn": {
@@ -1459,11 +1755,28 @@
     "hit": {
       "x": 2106,
       "y": 562
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2106,
+          "y": 562
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-10-1",
-    "title": "Situation #10-1",
+    "title": "Line Drive to LF",
     "desc": "Single to LF",
     "outs": 0,
     "runnersOn": {
@@ -1576,11 +1889,28 @@
     "hit": {
       "x": 679,
       "y": 722
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 679,
+          "y": 722
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-10-2",
-    "title": "Situation #10-2",
+    "title": "Line Drive to LF",
     "desc": "Single to LF",
     "outs": 0,
     "runnersOn": {
@@ -1693,11 +2023,28 @@
     "hit": {
       "x": 679,
       "y": 722
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 679,
+          "y": 722
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-10-3",
-    "title": "Situation #10-3",
+    "title": "Line Drive to LF",
     "desc": "Single to LF",
     "outs": 0,
     "runnersOn": {
@@ -1810,11 +2157,28 @@
     "hit": {
       "x": 679,
       "y": 722
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 679,
+          "y": 722
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-11",
-    "title": "Situation #11",
+    "title": "Line Drive to CF",
     "desc": "Single to CF",
     "outs": 0,
     "runnersOn": {
@@ -1927,11 +2291,28 @@
     "hit": {
       "x": 1708,
       "y": 531
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1708,
+          "y": 531
+        },
+        "fielding": "ground",
+        "fielder": "CF"
+      }
     }
   },
   {
     "key": "BD-12",
-    "title": "Situation #12",
+    "title": "Line Drive to RF",
     "desc": "Single to RF",
     "outs": 0,
     "runnersOn": {
@@ -2062,11 +2443,28 @@
     "hit": {
       "x": 2106,
       "y": 562
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2106,
+          "y": 562
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-13",
-    "title": "Situation #13",
+    "title": "Line Drive to LF Line",
     "desc": "Hit Down the LF Line",
     "outs": 0,
     "runnersOn": {
@@ -2179,11 +2577,28 @@
     "hit": {
       "x": 554,
       "y": 625
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 554,
+          "y": 625
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-14",
-    "title": "Situation #14",
+    "title": "Line Drive to Left-Center",
     "desc": "Hit to Left-Center Field",
     "outs": 0,
     "runnersOn": {
@@ -2296,11 +2711,28 @@
     "hit": {
       "x": 1216,
       "y": 479
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1216,
+          "y": 479
+        },
+        "fielding": "ground",
+        "fielder": "CF"
+      }
     }
   },
   {
     "key": "BD-15",
-    "title": "Situation #15",
+    "title": "Line Drive to Right-Center",
     "desc": "Hit to Right-Center Field",
     "outs": 0,
     "runnersOn": {
@@ -2413,11 +2845,28 @@
     "hit": {
       "x": 1967,
       "y": 485
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1967,
+          "y": 485
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-16",
-    "title": "Situation #16",
+    "title": "Line Drive to RF Line",
     "desc": "Hit down RF Line",
     "outs": 0,
     "runnersOn": {
@@ -2530,11 +2979,28 @@
     "hit": {
       "x": 2569,
       "y": 629
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2569,
+          "y": 629
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-17",
-    "title": "Situation #17",
+    "title": "Line Drive to LF Line",
     "desc": "Hit Down LF Line",
     "outs": 0,
     "runnersOn": {
@@ -2647,11 +3113,28 @@
     "hit": {
       "x": 554,
       "y": 625
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 554,
+          "y": 625
+        },
+        "fielding": "ground",
+        "fielder": "LF"
+      }
     }
   },
   {
     "key": "BD-18",
-    "title": "Situation #18",
+    "title": "Line Drive to Left-Center",
     "desc": "Hit to Left-Center Field",
     "outs": 0,
     "runnersOn": {
@@ -2764,11 +3247,28 @@
     "hit": {
       "x": 1216,
       "y": 479
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1216,
+          "y": 479
+        },
+        "fielding": "ground",
+        "fielder": "CF"
+      }
     }
   },
   {
     "key": "BD-19",
-    "title": "Situation #19",
+    "title": "Line Drive to Right-Center",
     "desc": "Hit to Right-Center Field",
     "outs": 0,
     "runnersOn": {
@@ -2881,11 +3381,28 @@
     "hit": {
       "x": 1967,
       "y": 485
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 1967,
+          "y": 485
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   },
   {
     "key": "BD-20",
-    "title": "Situation #20",
+    "title": "Line Drive to RF Line",
     "desc": "Hit Down Right Field Line",
     "outs": 0,
     "runnersOn": {
@@ -2998,6 +3515,23 @@
     "hit": {
       "x": 2569,
       "y": 629
+    },
+    "boardAnimation": {
+      "version": 2,
+      "movements": {},
+      "battedBall": {
+        "type": "line_drive",
+        "start": {
+          "x": 1577,
+          "y": 1734
+        },
+        "destination": {
+          "x": 2569,
+          "y": 629
+        },
+        "fielding": "ground",
+        "fielder": "RF"
+      }
     }
   }
 ]

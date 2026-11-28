@@ -105,6 +105,8 @@ export interface SituationAnimation {
   battedBall: {type:'ground_ball'|'line_drive'|'fly_ball'|'pop_fly';start:Point;destination:Point;fielder?:PositionId | null;fielding?:'caught'|'ground';bounce?:{durationMs:number;distance:number;height:number};stepId?:string} | null;
   steps?: {id:string;name:string;timing?:'pre_pitch'}[];
   throwSteps?: (string | null)[];
+  timingProfile?: 'distance-v1';
+  throwTimings?: {from:PositionId;to:PositionId;durationMs:number;transferMs:number}[];
   runnerStarts?: Partial<Record<'batter' | StartingBase, Point>>;
   running?: {
     result: 'single' | 'double' | 'triple' | 'home_run' | 'out';

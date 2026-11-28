@@ -27,7 +27,7 @@ test('invalid import leaves the current draft intact and cancelling replacement 
  await login(page,baseURL);await page.goto('/coach-board');await page.getByRole('dialog').getByRole('button',{name:'New Board',exact:true}).click();await page.getByLabel('Board name').fill('Keep this draft');await page.getByRole('button',{name:'Back to Library',exact:true}).click();const library=page.getByRole('dialog'),input=library.getByLabel('Import Board JSON file',{exact:true});
  await input.setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{bad')});await expect(library.getByRole('status')).toContainText('valid Board JSON');await expect(library).toBeVisible();await expect(page.getByLabel('Board name')).toHaveValue('Keep this draft');
  page.once('dialog',dialog=>dialog.dismiss());await input.setInputFiles({name:'wheel.json',mimeType:'application/json',buffer:Buffer.from(readFileSync(example))});await expect(library).toBeVisible();await expect(page.getByLabel('Board name')).toHaveValue('Keep this draft');
- await library.getByRole('button',{name:'Close Library',exact:true}).click();await expect(page.getByLabel('Board name')).toHaveValue('Keep this draft');
+ await library.getByRole('button',{name:'Close',exact:true}).click();await expect(page.getByLabel('Board name')).toHaveValue('Keep this draft');
 });
 
 test('a new private Board records contact from a free-form step',async({page,baseURL})=>{
