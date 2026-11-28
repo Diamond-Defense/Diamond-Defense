@@ -1038,12 +1038,18 @@ function computeRosterPlayerId(teamObj, playerObj){
     return applyPracticeState(state, options);
   }
 
+  function clearPracticeAdvanceError(){
+    const error=document.getElementById('practiceAdvanceError');
+    if(error){error.textContent='';error.hidden=true;}
+  }
   function hidePracticeAdvance(){
+    clearPracticeAdvanceError();
     document.getElementById('practiceAdvancePanel')?.classList.add('hidden');
     DIQ_PRACTICE_ADVANCE_ACTION = null;
   }
 
   function showPracticeAdvance(state, options={}){
+    clearPracticeAdvanceError();
     const panel = document.getElementById('practiceAdvancePanel');
     const title = document.getElementById('practiceAdvanceTitle');
     const message = document.getElementById('practiceAdvanceMessage');
@@ -1069,7 +1075,18 @@ function computeRosterPlayerId(teamObj, playerObj){
     refreshGuideText();
   }
 
+  let practiceStartPending=false;
+  function lockPracticeButtons(buttons,label){
+    const previous=[...buttons].filter(Boolean).map(button=>({button,disabled:button.disabled,text:button.textContent}));
+    for(const {button} of previous){button.disabled=true;button.setAttribute('aria-busy','true');if(label)button.textContent=label;}
+    return()=>{for(const {button,disabled,text} of previous){button.disabled=disabled;button.removeAttribute('aria-busy');if(label)button.textContent=text;}};
+  }
   async function startGuidedPractice(assignmentId){
+    if(practiceStartPending)return;
+    practiceStartPending=true;
+    const continuation=DIQ_PRACTICE_ADVANCE_ACTION?.type==='continue'&&DIQ_PRACTICE_ADVANCE_ACTION.assignmentId===assignmentId;
+    clearPracticeAdvanceError();
+    const unlock=lockPracticeButtons(document.querySelectorAll('[data-practice-start],#practiceAdvanceButton'),'Preparing…');
     setPracticeStatus(playerPracticeStatus, 'Preparing your next situation…');
     try{
       const state = await diqApiRequest(`practice/assignments/${encodeURIComponent(assignmentId)}/start`, { method:'POST' });
@@ -1077,18 +1094,23 @@ function computeRosterPlayerId(teamObj, playerObj){
       if(!state.nextSituation?.situationKey || !state.nextSituation?.situation){
         throw new Error('The next assigned situation could not be loaded.');
       }
-      hidePracticeAdvance();
       window._diqSelectPracticeSituation?.(
         state.nextSituation.situationKey,
         state.lockedAssignmentId,
         state.nextSituation.situation,
       );
+      hidePracticeAdvance();
       showFieldWorkspace();
       setPracticeStatus(playerPracticeStatus);
     }catch(error){
-      setPracticeStatus(playerPracticeStatus, error?.message || 'Practice could not be started.', 'error');
+      const message=error?.message || 'Practice could not be started.';
+      setPracticeStatus(playerPracticeStatus, message, 'error');
       await refreshPlayerPracticeState().catch(()=>null);
-    }
+      if(continuation){
+        const inlineError=document.getElementById('practiceAdvanceError');
+        if(inlineError){inlineError.textContent=`${message} Select Next assigned situation to retry, or open Assignments to review your practice.`;inlineError.hidden=false;}
+      }
+    }finally{practiceStartPending=false;unlock();}
   }
 
   function practiceSituationCode(key, displayCode){
@@ -1211,6 +1233,7 @@ function computeRosterPlayerId(teamObj, playerObj){
           ${assignment.instructions ? `<div class="dd-task-notes"><span>Coach’s notes</span><p>${escapeHtml(assignment.instructions)}</p></div>` : ''}
           <div class="practice-progress-copy"><strong>${progress.completed} of ${progress.required} complete</strong></div>
           ${(assignment.situations || []).length > 3 ? `<details class="dd-task-details"><summary>Situations (${assignment.situations.length})</summary>${situationList}</details>` : situationList}
+          ${next && !complete ? `<div class="practice-start-rules"><strong>${recipient?.lockActive || DIQ_PRACTICE_STATE.lockedAssignmentId === assignment.id ? 'Practice rules' : 'Before you start'}</strong><ul><li>Complete the situations in the order shown.</li><li>Reset is unavailable while assigned practice is pending.</li><li>Complete all required assignments to unlock free practice, Situation Library, and Random.</li></ul></div>` : ''}
           ${next && !complete ? `<button class="dd-button btn-green" data-variant="primary" type="button" data-practice-start="${escapeHtml(assignment.id)}" ${DIQ_PRACTICE_STATE.lockedAssignmentId && DIQ_PRACTICE_STATE.lockedAssignmentId !== assignment.id ? 'disabled title="Finish your current practice assignment first"' : ''}>${recipient?.lockActive || DIQ_PRACTICE_STATE.lockedAssignmentId === assignment.id ? 'Continue practice' : 'Start practice'}</button>` : ''}
         </article>`;
       }).join('');
@@ -1219,6 +1242,25 @@ function computeRosterPlayerId(teamObj, playerObj){
   }
 
   let practiceQueue = [];
+  let practiceFormBaseline=null;
+  function practiceFormSnapshot(){
+    return JSON.stringify({title:practiceTitle?.value||'',instructions:practiceInstructions?.value||'',dueAt:practiceDueAt?.value||'',players:[...(practicePlayerChoices?.querySelectorAll('input:checked')||[])].map(input=>input.value).sort(),situations:[...practiceQueue]});
+  }
+  function hasUnsavedPracticeEdits(){
+    return Boolean(practiceFormBaseline!==null&&practiceAssignmentForm?.getClientRects().length&&practiceFormSnapshot()!==practiceFormBaseline);
+  }
+  function allowDiscardPracticeEdits(){
+    return !hasUnsavedPracticeEdits()||window.confirm('Discard unsaved assignment changes? Save your draft or changes first if you want to keep them.');
+  }
+  document.addEventListener('click',event=>{
+    const target=event.target instanceof Element?event.target.closest('button,a'):null;
+    if(!target||!hasUnsavedPracticeEdits())return;
+    const leavesForm=target.matches('#practiceCancelEdit,#practiceBuilderBack,#practiceNewAssignment,[data-practice-view],[data-training-section],[data-coach-tab],[data-training-action="new"]')||Boolean(target.closest('.app-navigation nav'))||target.matches('.navigation-brand');
+    if(!leavesForm)return;
+    if(!allowDiscardPracticeEdits()){event.preventDefault();event.stopImmediatePropagation();return;}
+    resetPracticeForm();
+  },true);
+  window.addEventListener('beforeunload',event=>{if(hasUnsavedPracticeEdits()){event.preventDefault();event.returnValue='';}});
   function showPracticePane(pane='list'){
     trainingPracticePane = pane;
     practiceAssignmentForm?.classList.toggle('hidden', pane !== 'editor');
@@ -1431,6 +1473,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       filterPracticeSituationChoices();
       updatePracticeSelection();
     }
+    practiceFormBaseline=practiceFormSnapshot();
   }
 
   function filterPracticeSituationChoices(){
@@ -1523,7 +1566,12 @@ function computeRosterPlayerId(teamObj, playerObj){
     return input;
   }
 
+  let practiceSavePending=false;
   async function createPracticeAssignment(publish){
+    if(practiceSavePending)return;
+    practiceSavePending=true;
+    const unlock=lockPracticeButtons([practiceSaveDraft,practicePublish]);
+    practiceAssignmentForm?.setAttribute('aria-busy','true');
     const editing = practiceEditingAssignment;
     setPracticeStatus(coachPracticeStatus, editing ? 'Saving changes…' : publish ? 'Publishing assignment…' : 'Saving draft…');
     try{
@@ -1544,7 +1592,7 @@ function computeRosterPlayerId(teamObj, playerObj){
       await loadPracticeAssignments('coach');
     }catch(error){
       setPracticeStatus(coachPracticeStatus, error?.message || 'Assignment could not be saved.', 'error');
-    }
+    }finally{practiceSavePending=false;unlock();practiceAssignmentForm?.removeAttribute('aria-busy');}
   }
 
   function showFieldWorkspace(){
@@ -2444,7 +2492,7 @@ function computeRosterPlayerId(teamObj, playerObj){
     const user=DIQ_AUTH_USER || window.__DIQ_AUTH_USER__;
     let label=document.getElementById('trainingTeamField');
     if(!label){label=document.createElement('label');label.id='trainingTeamField';label.className='field';label.append('Workspace');const select=document.createElement('select');select.id='trainingTeamSelect';select.setAttribute('aria-label','Workspace');label.append(select);document.querySelector('#coachCard .tools-panel-actions')?.before(label);
-      select.onchange=()=>{if(!window.confirm('Switch teams? Any unsaved assignment form will be cleared.')){select.value=staffTeamId();return;}trainingTeamId=select.value;coachResultsAppliedFilters={};resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';selectTrainingSection(trainingSection);};
+      select.onchange=()=>{if(!allowDiscardPracticeEdits()){select.value=staffTeamId();return;}trainingTeamId=select.value;coachResultsAppliedFilters={};resetPracticeForm();coachResultsPage=1;coachPracticePage=1;coachResultsOptionsTeamId='';selectTrainingSection(trainingSection);};
     }
     const previous=staffTeamId();
     const select=label.querySelector('select');

@@ -70,3 +70,8 @@ body.player-experience #appWorkspace>#practiceWorkspace:has(#playerPracticeView:
  #playerPracticeList .practice-assignment-card>:is(.dd-task-notes,.practice-progress-copy,.practice-situation-list,.dd-task-details) {grid-column:1;min-width:0;}
  #playerPracticeList .practice-assignment-card>[data-practice-start] {grid-column:2;grid-row:2;align-self:start;justify-self:end;}
 }
+
+#playerPracticeList .practice-start-rules{grid-column:1;min-width:0;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface-raised);font-size:13px;line-height:1.5;color:var(--text-secondary);}
+#playerPracticeList .practice-start-rules strong{color:var(--text-primary);}
+#playerPracticeList .practice-start-rules ul{margin:6px 0 0;padding-left:18px;}
+#playerPracticeList .practice-start-rules li+li{margin-top:4px;}

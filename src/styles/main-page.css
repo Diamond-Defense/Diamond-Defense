@@ -346,3 +346,5 @@ body.player-experience #trainingPanel.is-complete #trainingMetrics{display:none;
 body.player-experience #trainingPanel.has-completion-summary #seqBody .training-feedback{display:none;}
 .sequence-coach-note summary{cursor:pointer;font-weight:650;color:var(--text-primary);min-height:24px;}
 .sequence-coach-note[open] summary{margin-bottom:8px;}
+
+body.player-experience #trainingPanel .practice-advance-panel #practiceAdvanceError:not([hidden]){display:block;margin:0 0 10px;padding:10px 12px;border:1px solid var(--error);border-radius:8px;color:var(--text-primary);background:var(--surface-raised);font-size:13px;line-height:1.5;text-align:left;}
