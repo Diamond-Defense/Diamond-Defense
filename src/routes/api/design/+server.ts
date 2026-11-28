@@ -184,7 +184,7 @@ export const POST: RequestHandler = async event => {
         return fail('This situation is outside the destination library’s scope.',403);
       }
       const snapshot = entry && await repository.get(entry.key);
-      if (!snapshot || snapshot.revision !== body.sourceRevision) return fail('The source changed. Reload before play-testing.',409);
+      if (!snapshot || snapshot.revision !== body.sourceRevision) return fail('The source changed. Reload before previewing as a player.',409);
       return json({snapshot});
     }
     if (body?.action === 'withdraw_submission') {

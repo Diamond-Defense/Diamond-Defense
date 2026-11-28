@@ -1,8 +1,21 @@
 <script>
   import { onMount } from 'svelte';
+  import { qualifiedSituationLabel } from '$lib/domain/situation-identity';
   import Button from '$lib/components/ui/Button.svelte';
   import Feedback from '$lib/components/ui/Feedback.svelte';
   let { request, refresh, mode, destination } = $props();
+  let currentOrigin = $state('');
+  function environmentName(origin) {
+    try {
+      const hostname = new URL(origin).hostname;
+      if (['localhost', '127.0.0.1', '[::1]'].includes(hostname)) return 'Local';
+      if (hostname === 'preview.diamonddefence.app') return 'Preview';
+      if (['diamonddefence.app', 'www.diamonddefence.app'].includes(hostname)) return 'Production';
+      return hostname;
+    } catch { return 'Unknown environment'; }
+  }
+  const destinationOrigin = $derived(review?.destination || currentOrigin);
+  const destinationEnvironment = $derived(environmentName(destinationOrigin));
   let file = $state(null);
   let review = $state(null);
   let order = $state(null);
@@ -23,6 +36,24 @@
   let dropKey = $state(null);
   let announcement = $state('');
   const label = value => String(value || '').replace(/[_-]/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+  const transferLabel = item => {
+    const situation = item.situation || item.incoming || item;
+    return qualifiedSituationLabel({...situation, key: item.key, title: item.title, displayCode: item.displayCode || situation.displayCode});
+  };
+  const importFieldLabels = {
+    title: 'Title', desc: 'Description', audience: 'Staff label', suggestedDivisions: 'Suggested age divisions',
+    ballLocation: 'Ball location', category: 'Category', primaryCategory: 'Primary category', relatedCategories: 'Related categories',
+    difficulty: 'Difficulty', outs: 'Starting outs', runnersOn: 'Starting runners', starts: 'Starting player positions',
+    targets: 'Player target positions', hit: 'Ball destination', hitType: 'Batted ball type', boardAnimation: 'Animation',
+    batterAdvance: 'Batter advancement', playOutcome: 'Play outcome', runnerOutcomes: 'Runner outcomes',
+    playSeq: 'Primary throw sequence', playSeq2: 'Secondary throw sequence', seqNote: 'Throw sequence notes',
+    variationNumber: 'Variation number', variationTagVersion: 'Variation label version', variationTagged: 'Variation labeling', variationSourceKey: 'Source situation'
+  };
+  const importFieldLabel = field => importFieldLabels[field] || label(String(field).replace(/([a-z])([A-Z])/g, '$1 $2'));
+  const importChangeSummary = item => {
+    if (item.status === 'new') return ['New situation will be added'];
+    return (item.changes || []).map(change => `${importFieldLabel(change.field)} updated`);
+  };
   const categoriesOf = item => [...new Set([item.primaryCategory, ...(item.relatedCategories || []), item.category].filter(Boolean))];
   const categories = $derived([...new Set(records.flatMap(categoriesOf))].sort());
   const dirty = $derived(Boolean(order && order.situations.map(item => item.key).join('|') !== savedKeys.join('|')));
@@ -52,7 +83,7 @@
       }
     });
   }
-  onMount(load);
+  onMount(() => {currentOrigin = window.location.origin; load();});
   const json = (method, data) => ({method,headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
   function exportSelected() {
     return run(async () => {
@@ -78,7 +109,8 @@
     return run(async () => {
       const targetUrl = importUrl;
       const items = review.rows.filter(item => selected.includes(item.key) && ['new','changed'].includes(item.status));
-      if (!items.length || !window.confirm(`Publish ${items.length} situations to ${review.destinationLibrary} on ${review.destination}?`)) return;
+      if (!items.length || !window.confirm(`Import ${items.length} situations into ${review.destinationLibrary} on ${environmentName(review.destination)} (${review.destination})?`)) return;
+      const importedInto = `${review.destinationLibrary} on ${environmentName(review.destination)} (${review.destination})`;
       let count = 0;
       try {
         for (const item of items) {
@@ -89,7 +121,7 @@
         }
         review = null; selected = [];
         await refresh();
-        status = `Published ${count} situations.`;
+        status = `Imported ${count} situations into ${importedInto}.`;
       } catch (failure) {
         review = null; selected = [];
         if (count) await refresh();
@@ -189,24 +221,31 @@
   {#if mode === 'import'}
     <p class="tool-purpose">Review a JSON file before adding or updating situations.</p>
     <div class="tool-upload">
-      <p>Destination: <strong>{destination.name}</strong></p>
+      <div class="transfer-destination" aria-label="Import destination">
+        <span class="muted">Import destination</span>
+        <div class="transfer-destination-heading"><strong>{review?.destinationLibrary || destination.name}</strong><span class="environment-badge" class:production={destinationEnvironment === 'Production'}>{destinationEnvironment}</span></div>
+        <span class="muted transfer-origin">{destinationOrigin || 'Loading environment…'}</span>
+      </div>
       <label class="field">Situation JSON file <input type="file" accept=".json,application/json" disabled={busy}
         onchange={event => {file = event.currentTarget.files?.[0]; review = null; selected=[];}}></label>
       <p class="muted">JSON files up to 5 MB.{file ? ` Selected: ${file.name} (${Math.ceil(file.size/1024)} KB)` : ''}</p>
       <div class="tool-actions"><Button variant="primary" disabled={!file || busy} onclick={reviewImport}>Review</Button></div>
     </div>
     {#if review}
-      <p>From {review.source} into <strong>{review.destinationLibrary}</strong>.</p>
+      <p class="transfer-origin">Source: <strong>{environmentName(review.source)}</strong> ({review.source})</p>
+      <p>Importing into <strong>{review.destinationLibrary} · {destinationEnvironment}</strong> <span class="muted transfer-origin">({destinationOrigin})</span></p>
       <div class="tool-summary">{#each importCounts as count}<span><strong>{count.count}</strong> {count.value==='unchanged'?'Duplicates':count.value==='changed'?'Updates':count.value==='conflict'?'Conflicts / invalid': 'New'}</span>{/each}</div>
       <p class="muted">Duplicates are skipped. Conflicts and invalid entries cannot be selected. Review changed fields before importing updates.</p>
-      <div class="tool-actions"><Button disabled={busy || !publishable.length} onclick={() => selected = publishable.map(item => item.key)}>Select eligible</Button><Button disabled={busy || !selected.length} onclick={() => selected=[]}>Clear</Button><span>{selected.length} selected</span><Button variant="primary" disabled={busy || !selected.length} onclick={publishImport}>Import ({selected.length})</Button></div>
+      <div class="tool-actions"><Button disabled={busy || !publishable.length} onclick={() => selected = publishable.map(item => item.key)}>Select eligible</Button><Button disabled={busy || !selected.length} onclick={() => selected=[]}>Clear</Button><span>{selected.length} selected</span><Button variant="primary" disabled={busy || !selected.length} onclick={publishImport}>Import into {destinationEnvironment} ({selected.length})</Button></div>
       <div class="admin-access-table-wrap"><table class="tool-table" aria-label="Import preview"><thead><tr><th class="tool-check">Select</th><th>Situation</th><th>Status</th><th>Review</th></tr></thead><tbody>
       {#each review.rows as item,index}
-        <tr><td><input aria-label={'Select '+(item.title || item.key)+' row '+(index+1)} type="checkbox" value={item.key} bind:group={selected} disabled={busy || !['new','changed'].includes(item.status)}></td><td>{item.title || item.key}</td><td><span class="design-status" data-status={item.status==='conflict'?'rejected':item.status==='new'?'approved':'pending'}>{item.status==='unchanged'?'Duplicate':label(item.status)}</span></td><td>
+        <tr><td><input aria-label={'Select '+transferLabel(item)+' row '+(index+1)} type="checkbox" value={item.key} bind:group={selected} disabled={busy || !['new','changed'].includes(item.status)}></td><td>{transferLabel(item)}</td><td><span class="design-status" data-status={item.status==='conflict'?'rejected':item.status==='new'?'approved':'pending'}>{item.status==='unchanged'?'Duplicate':label(item.status)}</span></td><td>
           {#if item.error}<p class="tool-error">{item.error}</p>{/if}
           {#if item.warning}<p>{item.warning}</p>{/if}
-          {#if item.changes?.length}<details><summary>Changed fields ({item.changes.length})</summary>{#each item.changes as change}<pre>{change.field}{'\n'}Current: {JSON.stringify(change.before,null,2)}{'\n'}Incoming: {JSON.stringify(change.after,null,2)}</pre>{/each}</details>{/if}
-          {#if !item.error && !item.warning && !item.changes?.length}—{/if}
+          {#if item.status === 'new' || item.changes?.length}
+            <ul class="import-change-summary">{#each importChangeSummary(item) as summary}<li>{summary}</li>{/each}</ul>
+            {#if item.changes?.length}<details><summary>Technical details ({item.changes.length} fields)</summary>{#each item.changes as change}<pre>{importFieldLabel(change.field)} ({change.field}){'\n'}Current: {JSON.stringify(change.before,null,2)}{'\n'}Incoming: {JSON.stringify(change.after,null,2)}</pre>{/each}</details>{/if}
+          {:else if !item.error && !item.warning}<span class="muted">No differences</span>{/if}
         </td></tr>
       {/each}
       </tbody></table></div>
@@ -263,13 +302,21 @@
       </section>
     {/if}
     <div class="admin-access-table-wrap"><table class="tool-table" aria-label={mode==='transfer'?'Export situations':'Select situations for deletion'}><thead><tr><th class="tool-check"><input type="checkbox" aria-label="Select matching situations" disabled={busy || !matching.length} checked={matching.length>0 && matching.every(item=>selected.includes(item.key))} indeterminate={matching.some(item=>selected.includes(item.key)) && !matching.every(item=>selected.includes(item.key))} onchange={event=>{selected=event.currentTarget.checked?[...new Set([...selected,...matching.map(item=>item.key)])]:selected.filter(key=>!matching.some(item=>item.key===key));previews=[];confirmText='';}}></th><th>Situation</th><th>Difficulty</th><th>Category</th>{#if mode==='delete'}<th>Status</th>{/if}</tr></thead><tbody>
-      {#each matching as item (item.key)}<tr class:selected-row={selected.includes(item.key)}><td><input aria-label={'Select '+item.title} type="checkbox" bind:group={selected} value={item.key} disabled={busy} onchange={()=>{previews=[];confirmText='';}}></td><td>{item.title}</td><td>{label(item.difficulty) || '—'}</td><td>{categoriesOf(item).map(label).join(', ') || '—'}</td>{#if mode==='delete'}<td>{item.active?'Active':'Archived'}</td>{/if}</tr>
+      {#each matching as item (item.key)}<tr class:selected-row={selected.includes(item.key)}><td><input aria-label={'Select '+(mode==='transfer'?transferLabel(item):item.title)} type="checkbox" bind:group={selected} value={item.key} disabled={busy} onchange={()=>{previews=[];confirmText='';}}></td><td>{mode==='transfer'?transferLabel(item):item.title}</td><td>{label(item.difficulty) || '—'}</td><td>{categoriesOf(item).map(label).join(', ') || '—'}</td>{#if mode==='delete'}<td>{item.active?'Active':'Archived'}</td>{/if}</tr>
       {:else}<tr><td colspan={mode==='delete'?5:4}>No situations match these filters.</td></tr>{/each}
     </tbody></table></div>
   {/if}
 </section>
 
 <style>
+  .transfer-destination {display:grid;gap:6px;padding:14px;border:1px solid var(--border-emphasis);border-radius:8px;background:var(--surface-raised);}
+  .transfer-destination-heading {display:flex;align-items:center;flex-wrap:wrap;gap:10px;}
+  .environment-badge {display:inline-block;padding:4px 10px;border:1px solid var(--border-emphasis);border-radius:6px;font-weight:700;background:var(--surface);}
+  .environment-badge.production {background:#fff3df;border-color:#b77919;color:#784600;}
+  .transfer-origin {overflow-wrap:anywhere;}
+
+  .import-change-summary { margin: 0 0 8px; padding-left: 18px; }
+  .import-change-summary li + li { margin-top: 4px; }
   .global-tools {display:grid;gap:16px;min-width:0;padding:0;margin:0;background:transparent;border:0;box-shadow:none;}
   h3,p {margin:0;}
   .tool-purpose,.muted,.tool-order-state {color:var(--text-secondary);}

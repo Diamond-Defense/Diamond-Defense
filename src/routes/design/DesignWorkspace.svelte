@@ -129,7 +129,7 @@
   let review = $state(null);
   let variationName = $state('');
   const scopeKey = scope => JSON.stringify([scope.type, scope.id]);
-  const scopeLabel = {global:'Global Library',organization:'Organization Library',region:'Regional Library',team:'Team Library'};
+  const scopeLabel = {global:'Global Library',organization:'Organization Library',region:'Regional Library',team:'Team Situation Library'};
   const library = $derived(workspaces.find(scope => scopeKey(scope) === selected));
   const sectionIcons = {
     library:'M8 3h12v14H8z M4 7v14h12',
@@ -641,7 +641,7 @@
         {/if}
         <label>Review notes <textarea bind:value={historicalNotes}></textarea></label>
         <div class="actions">
-          <button disabled={busy} onclick={() => playTest(historicalReview.situation)}>Play-test proposal</button>
+          <button disabled={busy} onclick={() => playTest(historicalReview.situation)}>Preview proposal as player</button>
           <button disabled={busy || (historicalReview.submissionType === 'update' && !historicalFields.length)} onclick={() => decideHistorical('approve')}>Approve proposal</button>
           <button disabled={busy || !historicalNotes.trim()} onclick={() => decideHistorical('reject')}>Reject proposal</button>
           <button disabled={busy} onclick={() => historicalReview = null}>Close review</button>
@@ -705,9 +705,9 @@
           <label>Variation name <input bind:value={variationName}></label>
         {/if}
         <div class="actions">
-          {#if review.incoming}<button disabled={busy} onclick={() => playTest({...review.incoming, key:review.source_key, revision:review.source_revision})}>Play-test incoming revision</button>{/if}
+          {#if review.incoming}<button disabled={busy} onclick={() => playTest({...review.incoming, key:review.source_key, revision:review.source_revision})}>Preview incoming revision as player</button>{/if}
           {#if review.existing}
-            <button disabled={busy} onclick={() => playTest(review.existing)}>Play-test current revision</button>
+            <button disabled={busy} onclick={() => playTest(review.existing)}>Preview current revision as player</button>
             <button disabled={busy || review.stale} onclick={() => action({action:'approve',promotionId:review.id,resolution:'keep',destinationRevision:review.existing.revision},'Kept the current library version.')}>Keep current</button>
             <button class="primary" disabled={busy || review.stale} onclick={() => action({action:'approve',promotionId:review.id,resolution:'adopt',destinationRevision:review.existing.revision},'Incoming revision published.')}>Adopt incoming</button>
             <button disabled={busy || review.stale || !variationName.trim()} onclick={() => action({action:'approve',promotionId:review.id,resolution:'variation',destinationRevision:review.existing.revision,title:variationName},'Named variation published.')}>Publish as variation</button>

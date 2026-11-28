@@ -17,7 +17,7 @@ export async function requireUser(
   roles?: AuthenticatedUser['role'][],
 ): Promise<AuthenticatedUser> {
   const user = await currentUser(databaseFor(event), event.cookies);
-  if (!user) throw error(401, 'Login required.');
+  if (!user) throw error(401, 'Log in to continue.');
   if (user.mustChangePassword) {
     throw error(403, 'Change your temporary password before continuing.');
   }

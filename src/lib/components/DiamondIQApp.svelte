@@ -357,7 +357,7 @@
   </div>
   {#if testing}
     <div class="situation-preview-bar">
-      <strong>Play-test · {testing.title}</strong>
+      <strong>Player preview · {testing.title}</strong>
       <button class="btn btn-ghost" onclick={closePlayTest}>Back to review</button>
     </div>
   {/if}

@@ -16,5 +16,5 @@ export const GET: RequestHandler = async event => {
 export const PUT: RequestHandler = async event => {
  assertSameOrigin(event);
  await requireTrainingManager(event,event.params.teamId);
- return json({error:'Manage inherited situations with Hide and Show in the Team Library.'},{status:410});
+ return json({error:'Manage inherited situations with Hide and Show in the Team Situation Library.'},{status:410});
 };

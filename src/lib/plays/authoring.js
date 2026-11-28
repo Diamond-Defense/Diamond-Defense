@@ -103,7 +103,7 @@ export function animationIssues(situation) {
 // Per-tab, per-user navigation transfer; never an intermediate database record.
 export const HANDOFF_KEY='diq-situation-authoring-v1';
 export function writeHandoff(storage,userId,destination,situation,baseline=situation,rationale='') {
-  if(!userId||!situation?.key)throw new Error('Sign in before switching Situation editors.');
+  if(!userId||!situation?.key)throw new Error('Log in before switching Situation editors.');
   storage.setItem(HANDOFF_KEY,JSON.stringify({version:1,userId,destination,situation:syncSituationAnimation(situation),baseline:clone(baseline),rationale,createdAt:Date.now()}));
 }
 export function readHandoff(storage,userId,destination) {

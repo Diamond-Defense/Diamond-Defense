@@ -19,6 +19,11 @@
  const filters=$derived({q,type:playbook?'':type,runners,outs,ball,location,concept,difficulty,outcome});
  const matching=$derived(playbook?sortLibraryItems(filterLibraryItems(catalog.map(record=>libraryCardModel(record,'situation',{current:record.key===currentKey})),filters),sort):[]);
  const title=$derived(playbook?'Situation Library':'Board & Situation Library');
+ const resultType=$derived(playbook||type==='situation'?'situations':type==='board'?'Boards':'Boards and Situations');
+ const resultCount=$derived(resultType==='situations'?`${total} ${total===1?'situation':'situations'}`:resultType==='Boards'?`${total} ${total===1?'Board':'Boards'}`:`${total} ${total===1?'result':'results'} · Boards and Situations`);
+ const hasSearchFilters=$derived(Boolean(q||runners||outs||ball||location||concept||difficulty||outcome));
+ const emptyHeading=$derived(hasSearchFilters?`No matching ${resultType}`:`No ${resultType} available yet`);
+ const emptyHint=$derived(hasSearchFilters?'Try a broader search or clear the filters.':playbook?'Situations will appear here when they are available in your library.':type==='situation'?(allowCreate?'Create a Situation to get started.':'Shared Situations will appear here when available.'):type==='board'?'Create or import a Board to get started.':allowCreate?'Create a Board or Situation, or import a Board to get started.':'Create or import a Board, or choose a shared Situation when available.');
  function persist(){if(ready)try{sessionStorage.setItem('diq-browser:'+stateKey,JSON.stringify({q,type,runners,outs,ball,location,concept,difficulty,outcome,sort,filtersOpen,visibleCount,scrollTop}));}catch{ /* Browsing remains available if storage is disabled or full. */ }}
  $effect(()=>{q;type;runners;outs;ball;location;concept;difficulty;outcome;sort;filtersOpen;visibleCount;scrollTop;persist();});
  let cachedQuery='',cachedItems=[];
@@ -93,7 +98,7 @@
  <div class="primary-filters" inert={busy}>
   <label class="search">Search <input id={playbook?'playbookSearch':undefined} type="search" bind:value={q} oninput={resetPage} placeholder={playbook?'Search situations':'Search boards and situations'} maxlength="120" /></label>
   <label>Category <select id={playbook?'playbookCategory':undefined} bind:value={concept} onchange={resetPage}><option value="">All categories</option>{#each TEACHING_CATEGORIES as category}<option value={category.id}>{category.label}</option>{/each}</select></label>
-  <label>Difficulty <select id={playbook?'playbookDifficulty':undefined} bind:value={difficulty} onchange={resetPage}><option value="">All levels</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
+  <label>Difficulty <select id={playbook?'playbookDifficulty':undefined} bind:value={difficulty} onchange={resetPage}><option value="">All difficulties</option><option value="foundational">Foundational</option><option value="intermediate">Intermediate</option><option value="advanced">Advanced</option></select></label>
   <button id={playbook?'playbookMoreFilters':undefined} class="filter-toggle" aria-expanded={filtersOpen} aria-controls={playbook?'playbookExtraFilters':'board-library-extra-filters'} onclick={()=>filtersOpen=!filtersOpen}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 17h16M9 4v6M15 14v6" /></svg> Filters <span id={playbook?'playbookMoreFilterCount':undefined}>{activeFilters?`· ${activeFilters} active`:''}</span></button>
   <button id={playbook?'playbookClearFilters':undefined} disabled={!q&&!concept&&!difficulty&&!activeFilters} onclick={clear}>Clear filters</button>
  </div>
@@ -105,10 +110,10 @@
   <label>Batted ball <select bind:value={ball} onchange={resetPage}><option value="">Any batted ball</option>{#each ['ground_ball','line_drive','air_ball'] as value}<option value={value}>{ballLabel(value)}</option>{/each}</select></label>
   <label>Ball location <select bind:value={location} onchange={resetPage}><option value="">Any location</option>{#each BALL_LOCATIONS as value}<option value={value}>{value}</option>{/each}</select></label>
   {#if !playbook}<label>Content type <select bind:value={type} onchange={resetPage}><option value="">Boards &amp; Situations</option><option value="board">Boards</option><option value="situation">Situations</option></select></label>{/if}
-  <label>Sort plays <select bind:value={sort} onchange={resetPage}><option value="starting">Difficulty, runners &amp; outs</option><option value="updated">Recently updated</option><option value="created">Recently created</option><option value="title">Name</option></select></label>
+  <label>Sort <select bind:value={sort} onchange={resetPage}><option value="starting">Difficulty, runners &amp; outs</option><option value="updated">Recently updated</option><option value="created">Recently created</option><option value="title">Name</option></select></label>
  </div></div>
  </div>
- <div class="summary"><p id={playbook?'playbookResultCount':undefined} role="status" aria-live="polite">{message|| (loading&&!items.length?'Loading…':`${total} ${playbook?(total===1?'situation':'situations'):(total===1?'play':'plays')}`)}</p>{#if message}<button disabled={busy||loading} onclick={()=>playbook?onretry():reload++}>Retry</button>{/if}</div>
+ <div class="summary"><p id={playbook?'playbookResultCount':undefined} role="status" aria-live="polite">{message|| (loading&&!items.length?'Loading…':resultCount)}</p>{#if message}<button disabled={busy||loading} onclick={()=>playbook?onretry():reload++}>Retry</button>{/if}</div>
  <section id={playbook?'playbookBrowserList':undefined} bind:this={results} onscroll={loadNearBottom} aria-label="Library results" aria-busy={loading} inert={busy}>
  {#each items as item (`${item.type}:${item.id}`)}
  <article data-content-id={item.id} aria-label={`${item.type==='board'?'Board':'Situation'}: ${item.title}`}>
@@ -123,7 +128,7 @@
   {/if}
  </article>
  {:else}
- {#if !loading&&!message}<div class="empty"><h3>{q||type||runners||outs||ball||location||concept||difficulty||outcome?(type==='board'&&!q&&!runners&&!outs&&!ball&&!location&&!concept&&!difficulty&&!outcome?'No saved Boards yet':'No matching plays'):'No saved plays yet'}</h3><p>{q||type||runners||outs||ball||location||concept||difficulty||outcome?'Try a broader search or clear the filters.':'Create a Board to start your collection.'}</p></div>{/if}
+ {#if !loading&&!message}<div class="empty"><h3>{emptyHeading}</h3><p>{emptyHint}</p></div>{/if}
  {/each}
  {#if items.length&&items.length<total}<div class="load-status"><button disabled={loading||busy} onclick={()=>visibleCount+=limit}>{loading?'Loading more…':'Load more'}</button></div>{/if}
  </section>

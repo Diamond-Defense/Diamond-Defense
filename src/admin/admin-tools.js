@@ -3911,7 +3911,7 @@
     guidance.textContent = 'Manage inherited situations and difficulty in Design.';
     const link = document.createElement('a');
     link.className = 'btn btn-ghost';
-    link.textContent = 'Open Team Library';
+    link.textContent = 'Open Team Situation Library';
     const teamId = window._diqStaffTeamId?.();
     link.href = teamId ? '/workspace/design?' + new URLSearchParams({type:'team',id:teamId}) : '/workspace/design';
     library.append(heading,guidance,link);
@@ -4194,7 +4194,7 @@
     const panel=byId('situationSimilarPanel');panel.hidden=!matches.length;
     if(panel.dataset.situationKey!==snapshot.key){panel.open=!intentional;panel.dataset.situationKey=snapshot.key;}
     panel.querySelector('summary').textContent=intentional?'Related variations':'Similar situations';
-    panel.querySelector('p').textContent=intentional?'This draft is already linked to its source. A public variation tag is assigned when published.':'These plays share the same ball type, location, runners, and outs. Review them before creating another situation.';
+    panel.querySelector('p').textContent=intentional?'This draft is already linked to its source. A public variation tag is assigned when published.':'These situations share the same ball type, location, runners, and outs. Review them before creating another situation.';
     matches.forEach(item=>{
       const row=document.createElement('div');row.className='similar-situation-row';
       const name=document.createElement('span');name.textContent=[situationDisplayLabel(item),window._diqAudienceLabel?.(item)].filter(Boolean).join(' · ');

@@ -399,7 +399,7 @@ const ensureHeaderGrouping = () => {
       const label = document.createElement('span');
       label.id = 'accountMenuTriggerLabel';
       label.className = 'account-menu-trigger-label';
-      label.textContent = playerButton.textContent || 'Login';
+      label.textContent = playerButton.textContent || 'Log in';
       const chevron = document.createElement('span');
       chevron.className = 'account-menu-chevron';
       chevron.setAttribute('aria-hidden', 'true');
@@ -3710,7 +3710,7 @@ function finishSolutionAnimation(run,lastThrow,movingIds=[]){
   if(watchSolutionBtn){
     watchSolutionBtn.disabled = false;
     watchSolutionBtn.textContent = 'Watch Solution';
-    watchSolutionBtn.setAttribute('aria-label', 'Watch Solution again');
+    watchSolutionBtn.setAttribute('aria-label', 'Replay Solution');
   }
   if(_solutionReview.hasSeq && continueBtn){
     continueBtn.classList.remove('hidden');
@@ -4249,9 +4249,9 @@ function refreshPlayerPresentation(){
   if (watchSolutionBtn && watchParent && watchSolutionBtn.parentElement !== watchParent) watchParent.prepend(watchSolutionBtn);
 
   if (watchSolutionBtn) {
-    const label = _solutionReview?.animating ? 'Playing solution…' : _solutionReview?.watched ? 'Replay solution' : 'Watch Solution';
+    const label = _solutionReview?.animating ? 'Playing solution…' : _solutionReview?.watched ? 'Replay Solution' : 'Watch Solution';
     if (watchSolutionBtn.textContent !== label) watchSolutionBtn.textContent = label;
-    const accessibleLabel = _solutionReview?.watched && !_solutionReview?.animating ? 'Watch Solution again' : label;
+    const accessibleLabel = _solutionReview?.watched && !_solutionReview?.animating ? 'Replay Solution' : label;
     if (watchSolutionBtn.getAttribute('aria-label') !== accessibleLabel) watchSolutionBtn.setAttribute('aria-label',accessibleLabel);
   }
 

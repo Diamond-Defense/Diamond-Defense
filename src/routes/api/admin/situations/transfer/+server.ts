@@ -67,6 +67,7 @@ export const POST: RequestHandler = async (event) => {
     let key = fileKey;
     const summary = (item: Situation, source: string) => ({
       key: String(item?.key ?? ''), title: String(item?.title ?? ''), source,
+      displayCode: item?.displayCode,
       staffLabel: String(item?.audience?.staffVariant ?? '').trim(),
       runnersOn: item?.runnersOn ?? null, outs: item?.outs ?? null,
     });
@@ -95,7 +96,7 @@ export const POST: RequestHandler = async (event) => {
       const warning = !current && (otherKeys.has(fileKey) || otherNames.has(situation.title.trim().toLowerCase()))
         ? 'A matching situation exists in another library. This creates an independent copy that can appear alongside the inherited situation.'
         : undefined;
-      return { key, title: situation.title, warning, status: current ? (changes.length ? 'changed' : 'unchanged') : 'new', revision: current?.revision, situation, changes };
+      return { key, title: situation.title, displayCode: current?.displayCode || input.displayCode, warning, status: current ? (changes.length ? 'changed' : 'unchanged') : 'new', revision: current?.revision, situation, changes };
     } catch (error) { return { key, title: String(input?.title ?? key), status: 'conflict', incoming, conflicts, error: error instanceof Error ? error.message : 'Invalid situation.' }; }
   }));
   return json({ source: String(bundle.source ?? 'Unknown environment'), destination: event.url.origin, destinationLibrary:scope.name, rows }, { headers: { 'Cache-Control': 'no-store' } });

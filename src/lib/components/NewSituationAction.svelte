@@ -21,7 +21,7 @@
 {#if scopes.length}
  <div class="new-situation-action">
   <button class="dd-button" data-variant="primary" type="button" {disabled} aria-expanded={scopes.length>1?open:undefined} onclick={()=>scopes.length===1?create(scopes[0]):open=!open}>New Situation</button>
-  {#if open}<div class="creation-options" role="group" aria-label="Choose situation library"><p>Create in</p>{#each scopes as scope}<button class="dd-button" data-variant="ghost" type="button" {disabled} onclick={()=>create(scope)}>{scope.name}<small>{scope.type==='global'?'Global Library':scope.type==='team'?'Team Library':scope.type==='region'?'Regional Library':'Organization Library'}</small></button>{/each}</div>{/if}
+  {#if open}<div class="creation-options" role="group" aria-label="Choose situation library"><p>Create in</p>{#each scopes as scope}<button class="dd-button" data-variant="ghost" type="button" {disabled} onclick={()=>create(scope)}>{scope.name}<small>{scope.type==='global'?'Global Library':scope.type==='team'?'Team Situation Library':scope.type==='region'?'Regional Library':'Organization Library'}</small></button>{/each}</div>{/if}
  </div>
 {/if}
 <style>

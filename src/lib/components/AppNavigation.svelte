@@ -16,7 +16,7 @@
   </nav>
   <div class="navigation-account account-actions">
     <a href="/?workspace=guide" data-sveltekit-reload onclick={event=>utility(event,onguide)}><svg viewBox="0 0 24 24" aria-hidden="true">{@html headerIcons.guide}</svg>Guide</a>
-    <a id={onaccount?'sharedAccountTrigger':undefined} class="navigation-profile" href="/?workspace=account" aria-haspopup={onaccount?'menu':undefined} aria-controls={onaccount?'accountMenu':undefined} aria-expanded={onaccount?false:undefined} data-sveltekit-reload onclick={event=>utility(event,onaccount)}><span class="navigation-avatar" aria-hidden="true">{initials||'DD'}</span><span><strong>{user?.displayName||'Login'}</strong>{#if user}<small>{user.role==='admin'?'Admin':user.role==='coach'?'Coach':'Player'}</small>{/if}</span><span aria-hidden="true">⌄</span></a>
+    <a id={onaccount?'sharedAccountTrigger':undefined} class="navigation-profile" href="/?workspace=account" aria-haspopup={onaccount?'menu':undefined} aria-controls={onaccount?'accountMenu':undefined} aria-expanded={onaccount?false:undefined} data-sveltekit-reload onclick={event=>utility(event,onaccount)}><span class="navigation-avatar" aria-hidden="true">{initials||'DD'}</span><span><strong>{user?.displayName||'Log in'}</strong>{#if user}<small>{user.role==='admin'?'Admin':user.role==='coach'?'Coach':'Player'}</small>{/if}</span><span aria-hidden="true">⌄</span></a>
   </div>
 </header>
 <style>
