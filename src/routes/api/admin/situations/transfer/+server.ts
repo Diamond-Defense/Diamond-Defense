@@ -9,7 +9,7 @@ import { designWorkspaces, type LibraryScope } from '$lib/server/security/design
 import { expectedRevision } from '$lib/server/http/revisions';
 import { assertSameOrigin, requireUser } from '$lib/server/security/authorization';
 
-const fields = ['key', 'variationNumber', 'variationTagVersion', 'variationTagged', 'variationSourceKey', 'title', 'desc', 'audience', 'suggestedDivisions', 'ballLocation', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit', 'hitType', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'playSeq2', 'seqNote'] as const;
+const fields = ['key', 'variationNumber', 'variationTagVersion', 'variationTagged', 'variationSourceKey', 'title', 'desc', 'audience', 'suggestedDivisions', 'ballLocation', 'category', 'difficulty', 'primaryCategory', 'relatedCategories', 'outs', 'runnersOn', 'starts', 'targets', 'hit', 'hitType', 'boardAnimation', 'batterAdvance', 'playOutcome', 'runnerOutcomes', 'playSeq', 'playSeq2', 'seqNote'] as const;
 function editable(value: Situation): Situation {
   return Object.fromEntries(fields.filter(key => value[key] !== undefined).map(key => [key, value[key]])) as unknown as Situation;
 }
@@ -85,7 +85,7 @@ export const POST: RequestHandler = async (event) => {
         throw new Error('This scoped copy collides with another key in the import file.');
       }
       const existing = byKey.get(key);
-      const situation = editable(validateSituation(editable({ ...input, key, suggestedDivisions: input.suggestedDivisions ?? existing?.suggestedDivisions, audience: input.audience ?? existing?.audience, variationTagged: existing?.variationTagged ?? input.variationTagged, variationNumber: existing?.variationNumber ?? input.variationNumber, variationTagVersion: existing?.variationTagVersion ?? input.variationTagVersion, variationSourceKey: input.variationSourceKey ?? existing?.variationSourceKey, ballLocation: input.ballLocation ?? existing?.ballLocation })));
+      const situation = editable(validateSituation(editable({ ...input, key, boardAnimation: input.boardAnimation === undefined ? existing?.boardAnimation : input.boardAnimation, suggestedDivisions: input.suggestedDivisions ?? existing?.suggestedDivisions, audience: input.audience ?? existing?.audience, variationTagged: existing?.variationTagged ?? input.variationTagged, variationNumber: existing?.variationNumber ?? input.variationNumber, variationTagVersion: existing?.variationTagVersion ?? input.variationTagVersion, variationSourceKey: input.variationSourceKey ?? existing?.variationSourceKey, ballLocation: input.ballLocation ?? existing?.ballLocation })));
 
       incoming = summary(situation, 'Import file');
       validateGeometry(situation);
@@ -115,7 +115,10 @@ export const PUT: RequestHandler = async event => {
     try { input = JSON.parse(text); }
     catch { return json({error:'Choose a valid situation.'},{status:400}); }
     if (!input || typeof input !== 'object') return json({error:'Choose a valid situation.'},{status:400});
-    const situation = validateSituation(editable(input));
+    // Older bundles omitted animation entirely. Preserve it rather than silently
+    // deleting destination playback settings when publishing another field.
+    const existing = typeof input.key === 'string' ? await repository.get(input.key) : null;
+    const situation = validateSituation(editable({...input,boardAnimation:input.boardAnimation === undefined ? existing?.boardAnimation : input.boardAnimation}));
     validateGeometry(situation);
     const current = await db.one<{library_scope:string;library_id:string;active:number}>(
       'SELECT library_scope,library_id,active FROM situations WHERE key=?1',[situation.key],

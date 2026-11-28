@@ -9,7 +9,7 @@ Administrators can transfer all published situations or a selected subset using 
 3. Choose **Export**. Published situations load automatically into the searchable library list.
 4. Select individual situations, **Select matching situations**, or **Select all situations**, then **Download selected**. Selections remain selected when the search changes.
 
-The file contains published situation content, including ball placement, defensive starts and targets, coaching notes, outcomes, and throw sequences. Staff labels and ball-location labels are included. Local drafts and archived situations are excluded. Accounts, teams, assignments, attempts, and historical revisions are never exported by this tool.
+The file contains published situation content, including ball placement, defensive starts and targets, coaching notes, outcomes, throw sequences, and boardAnimation (movement timing and paths, bounce settings, timing profile, throw/transfer overrides, and authored runner settings). Staff labels and ball-location labels are included. Local drafts and archived situations are excluded. Accounts, teams, assignments, attempts, and historical revisions are never exported by this tool.
 
 ## Import into production
 
@@ -63,3 +63,8 @@ When bulk deletion is blocked, the review lists each blocking assignment's name,
 Variation numbers and source relationships are included in exports. Apply migrations through 0028 in both environments before deploying this feature. Existing destination records keep their tags; new imports retain their exported letter when available, or receive the next free letter if that letter is already reserved. Older exports without tags receive them automatically.
 
 Exports made before the starting-state correction lack variationTagVersion 2. Their old title-only letters are ignored; destination tags are allocated within the corrected starting-state group. Source relationships and situation content are preserved.
+
+
+## Animation transfer correction
+
+Both the source exporter and destination importer must include boardAnimation in their supported field list. Older implementations omitted it, so animation-only updates could appear as duplicates and exporting/importing would not transfer those changes. Deploy the corrected code to the source and destination, then create a fresh export; an older JSON file cannot recover data omitted during export. Older files without boardAnimation preserve the existing destination animation. Duplicate counts compare content, not revision numbers; a destination already updated by data migrations can legitimately match the source.
